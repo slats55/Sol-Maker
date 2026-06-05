@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "External integrations (DEX quote/route, data providers, wallet-adapter signing bridge). Audited per-adapter (Phase 5+).",
+  "description": "External integrations (DEX quote/route, data providers, wallet-adapter signing bridge). Audited per-adapter (Phase 6+).",
   "exports": { ".": "./src/index.ts" },
   "main": "./src/index.ts",
   "types": "./src/index.ts"

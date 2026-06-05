@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Soulmaker CLI — doctor, config:check, mode, solana:doctor, wallet:watch, token:inspect, token:accounts, token:risk, paper:run, paper:journal, paper:status.",
+  "description": "Soulmaker CLI — doctor, config:check, mode, solana:doctor, wallet:watch, token:inspect, token:accounts, token:risk, paper:run, paper:journal, paper:status, strategy:evaluate.",
   "bin": {
     "soulmaker": "./src/index.ts"
   },
@@ -13,6 +13,7 @@
     "@soulmaker/risk": "workspace:*",
     "@soulmaker/security": "workspace:*",
     "@soulmaker/solana": "workspace:*",
+    "@soulmaker/strategy": "workspace:*",
     "commander": "^12.1.0"
   }
 }

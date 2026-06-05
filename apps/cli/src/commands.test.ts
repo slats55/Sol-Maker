@@ -14,6 +14,7 @@ import {
   tokenInspectReport,
   tokenAccountsReport,
   tokenRiskReport,
+  strategyEvaluateReport,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
 import type {
@@ -853,6 +854,229 @@ describe("paperJournalReport", () => {
       const out = paperJournalReport(
         { cwd, env: {} },
         { journalPath: "leak.jsonl", json: true },
+      );
+      expect(out).not.toContain("SUPERSECRET");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 5 — strategy:evaluate (deterministic, paper-only rules engine)
+// ---------------------------------------------------------------------------
+
+const STRATEGY_CONFIG = {
+  minScoreForPaperBuy: 55,
+  minScoreForWatch: 30,
+  maxRiskScore: 60,
+};
+
+function strategyCandidate(mint: string) {
+  return {
+    mint,
+    symbol: "WIF",
+    riskReport: passReport(mint),
+    source: "snipe-list",
+  };
+}
+
+function writeStrategyFixtures(cwd: string, candidate: unknown, config: unknown): void {
+  writeFileSync(join(cwd, "candidate.json"), JSON.stringify(candidate));
+  writeFileSync(join(cwd, "config.json"), JSON.stringify(config));
+}
+
+describe("strategyEvaluateReport", () => {
+  it("refuses when --candidate is missing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const out = strategyEvaluateReport({ cwd, env: {} }, { strategyConfigPath: "config.json" });
+      expect(out).toMatch(/^Refusing: --candidate/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses when --config is missing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const out = strategyEvaluateReport({ cwd, env: {} }, { candidatePath: "candidate.json" });
+      expect(out).toMatch(/^Refusing: --config/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a missing candidate file cleanly", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "config.json"), JSON.stringify(STRATEGY_CONFIG));
+      const out = strategyEvaluateReport(
+        { cwd, env: {} },
+        { candidatePath: "nope.json", strategyConfigPath: "config.json" },
+      );
+      expect(out).toMatch(/^Refusing: cannot read candidate file/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses malformed candidate JSON cleanly", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "candidate.json"), "{ not json");
+      writeFileSync(join(cwd, "config.json"), JSON.stringify(STRATEGY_CONFIG));
+      const out = strategyEvaluateReport(
+        { cwd, env: {} },
+        { candidatePath: "candidate.json", strategyConfigPath: "config.json" },
+      );
+      expect(out).toMatch(/^Refusing: candidate file is not valid JSON/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses an invalid config cleanly", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeStrategyFixtures(cwd, strategyCandidate(MINT_A), { minScoreForWatch: 30 });
+      const out = strategyEvaluateReport(
+        { cwd, env: {} },
+        { candidatePath: "candidate.json", strategyConfigPath: "config.json" },
+      );
+      expect(out).toMatch(/^Refusing: invalid config: minScoreForPaperBuy/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a candidate whose riskReport.decision is not a valid literal", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const bad = {
+        mint: MINT_A,
+        riskReport: { mint: MINT_A, decision: "APPROVED", score: 0, flags: [], summary: [], generatedAt: PAPER_TIME, disclaimer: "x" },
+      };
+      writeStrategyFixtures(cwd, bad, STRATEGY_CONFIG);
+      const out = strategyEvaluateReport(
+        { cwd, env: {} },
+        { candidatePath: "candidate.json", strategyConfigPath: "config.json" },
+      );
+      expect(out).toMatch(/^Refusing: malformed candidate: riskReport.decision/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a candidate whose riskReport.score is out of range", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const bad = {
+        mint: MINT_A,
+        riskReport: { mint: MINT_A, decision: "PASS_FOR_PAPER_EVALUATION", score: 150, flags: [], summary: [], generatedAt: PAPER_TIME, disclaimer: "x" },
+      };
+      writeStrategyFixtures(cwd, bad, STRATEGY_CONFIG);
+      const out = strategyEvaluateReport(
+        { cwd, env: {} },
+        { candidatePath: "candidate.json", strategyConfigPath: "config.json" },
+      );
+      expect(out).toMatch(/^Refusing: malformed candidate: riskReport.score/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("produces a human PAPER-ONLY report with the required disclaimers", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeStrategyFixtures(cwd, strategyCandidate(MINT_A), STRATEGY_CONFIG);
+      const out = strategyEvaluateReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        { candidatePath: "candidate.json", strategyConfigPath: "config.json" },
+      );
+      expect(out).toContain("PAPER ONLY");
+      expect(out).toContain("decision:    PAPER_BUY_CANDIDATE");
+      expect(out).toMatch(/not financial advice/i);
+      expect(out).toMatch(/not a buy recommendation/i);
+      expect(out).toMatch(/no transaction was built, signed, simulated, or sent/i);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json emits parseable JSON carrying the PAPER-ONLY language", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeStrategyFixtures(cwd, strategyCandidate(MINT_A), STRATEGY_CONFIG);
+      const out = strategyEvaluateReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        { candidatePath: "candidate.json", strategyConfigPath: "config.json", json: true },
+      );
+      const parsed = JSON.parse(out) as {
+        banner: string;
+        paperOnly: boolean;
+        report: { decision: string; score: number; createdAt: string };
+      };
+      expect(parsed.paperOnly).toBe(true);
+      expect(parsed.report.decision).toBe("PAPER_BUY_CANDIDATE");
+      expect(parsed.report.createdAt).toBe(PAPER_TIME);
+      expect(out).toMatch(/no transaction was built, signed, simulated, or sent/i);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("reads an injected --paper-state to apply position-awareness rules", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const paperState = {
+        positions: {
+          OTHER: {
+            mint: "OTHER",
+            quantity: 1,
+            averageEntryPriceUsd: 100,
+            costBasisUsd: 100,
+            realizedPnlUsd: 0,
+            unrealizedPnlUsd: 0,
+            openedAt: PAPER_TIME,
+            updatedAt: PAPER_TIME,
+          },
+        },
+        realizedPnlUsd: 0,
+        unrealizedPnlUsd: 0,
+        fills: [],
+        closedTradeCount: 0,
+        simulatedNotionalUsd: 0,
+      };
+      writeStrategyFixtures(cwd, strategyCandidate(MINT_A), {
+        ...STRATEGY_CONFIG,
+        maxOpenPositions: 1,
+      });
+      writeFileSync(join(cwd, "paper-state.json"), JSON.stringify(paperState));
+      const out = strategyEvaluateReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatePath: "candidate.json",
+          strategyConfigPath: "config.json",
+          paperStatePath: "paper-state.json",
+        },
+      );
+      // One open position already + maxOpenPositions 1 ⇒ no new buy, just WATCH.
+      expect(out).toContain("decision:    WATCH");
+      expect(out).toContain("max-open-positions-reached");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("does not leak a secret-looking value injected into a candidate field", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const leakyMint = "https://rpc.example.com/?api-key=SUPERSECRET";
+      writeStrategyFixtures(cwd, strategyCandidate(leakyMint), STRATEGY_CONFIG);
+      const out = strategyEvaluateReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        { candidatePath: "candidate.json", strategyConfigPath: "config.json" },
       );
       expect(out).not.toContain("SUPERSECRET");
     } finally {

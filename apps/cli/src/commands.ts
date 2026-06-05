@@ -54,7 +54,17 @@ import {
   type PaperPricePoint,
   type PaperRiskCaps,
   type PaperRunSummary,
+  type PaperState,
 } from "@soulmaker/paper";
+import {
+  evaluateStrategy,
+  formatStrategyReport,
+  buildStrategyEnvelope,
+  portfolioFromPaperState,
+  type StrategyCandidate,
+  type StrategyConfig,
+  type StrategyPortfolio,
+} from "@soulmaker/strategy";
 
 export interface CommandContext {
   cwd?: string;
@@ -740,6 +750,150 @@ function renderJournalReport(
   out += `\n\nevents: ${events.length}`;
   if (errors.length) out += `\nmalformed lines skipped: ${errors.length}`;
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5 — deterministic, paper-only strategy rules engine
+// ---------------------------------------------------------------------------
+
+export interface StrategyEvaluateCommandOptions {
+  /** Path to a JSON StrategyCandidate object. */
+  candidatePath?: string;
+  /** Path to a JSON StrategyConfig object. */
+  strategyConfigPath?: string;
+  /** Optional path to a JSON PaperState (for position-awareness rules). */
+  paperStatePath?: string;
+  json?: boolean;
+}
+
+/** Read + parse one local JSON file into an unknown value. Clean errors only. */
+function readJsonValue(ctx: CommandContext, path: string, label: string): unknown {
+  const resolved = resolvePath(ctx, path);
+  let text: string;
+  try {
+    text = readFileSync(resolved, "utf8");
+  } catch {
+    throw new Error(`cannot read ${label} file at ${resolved}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`${label} file is not valid JSON at ${resolved}`);
+  }
+}
+
+function asObject(value: unknown, label: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be a JSON object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+const VALID_RISK_DECISIONS = ["REJECT", "CAUTION", "PASS_FOR_PAPER_EVALUATION"];
+
+/** Validate a candidate JSON object (read-only; never normalizes or mutates). */
+function asStrategyCandidate(value: unknown): StrategyCandidate {
+  const obj = asObject(value, "candidate");
+  if (typeof obj.mint !== "string" || obj.mint.length === 0) {
+    throw new Error("malformed candidate: mint must be a non-empty string");
+  }
+  // A missing riskReport is allowed (the engine fails safe, treating it as
+  // REJECT ⇒ SKIP). But a *present* report must be well-formed: a valid decision
+  // literal and a finite score in [0, 100]. Anything else is a malformed
+  // candidate and is refused cleanly rather than silently fed to the engine.
+  const rr = obj.riskReport;
+  if (rr !== undefined && rr !== null) {
+    if (typeof rr !== "object" || Array.isArray(rr)) {
+      throw new Error("malformed candidate: riskReport must be an object");
+    }
+    const report = rr as Record<string, unknown>;
+    if (
+      typeof report.decision !== "string" ||
+      !VALID_RISK_DECISIONS.includes(report.decision)
+    ) {
+      throw new Error(
+        "malformed candidate: riskReport.decision must be one of " +
+          "REJECT, CAUTION, PASS_FOR_PAPER_EVALUATION",
+      );
+    }
+    if (
+      typeof report.score !== "number" ||
+      !Number.isFinite(report.score) ||
+      report.score < 0 ||
+      report.score > 100
+    ) {
+      throw new Error(
+        "malformed candidate: riskReport.score must be a finite number in [0, 100]",
+      );
+    }
+  }
+  return obj as unknown as StrategyCandidate;
+}
+
+/** Validate a strategy config JSON object: the required numeric thresholds. */
+function asStrategyConfig(value: unknown): StrategyConfig {
+  const obj = asObject(value, "config");
+  for (const key of [
+    "minScoreForPaperBuy",
+    "minScoreForWatch",
+    "maxRiskScore",
+  ] as const) {
+    const v = obj[key];
+    if (typeof v !== "number" || !Number.isFinite(v)) {
+      throw new Error(`invalid config: ${key} must be a finite number`);
+    }
+  }
+  return obj as unknown as StrategyConfig;
+}
+
+/** Validate an injected PaperState JSON object and derive the portfolio view. */
+function asPortfolio(value: unknown): StrategyPortfolio {
+  const obj = asObject(value, "paper-state");
+  if (obj.positions === null || typeof obj.positions !== "object") {
+    throw new Error("invalid paper-state: missing positions object");
+  }
+  return portfolioFromPaperState(obj as unknown as PaperState);
+}
+
+/**
+ * `soulmaker strategy:evaluate` — evaluate one local candidate against a local
+ * strategy config (and optional injected paper state) and print a deterministic,
+ * PAPER-ONLY decision report. Reads injected local JSON only: no chain access,
+ * no wallet, no RPC; it builds, signs, simulates, and sends NOTHING. The report
+ * only feeds paper simulation and is NOT financial advice or a buy recommendation.
+ */
+export function strategyEvaluateReport(
+  ctx: CommandContext = {},
+  opts: StrategyEvaluateCommandOptions = {},
+): string {
+  if (!opts.candidatePath) return "Refusing: --candidate <path> is required.";
+  if (!opts.strategyConfigPath) return "Refusing: --config <path> is required.";
+
+  let candidate: StrategyCandidate;
+  let config: StrategyConfig;
+  let portfolio: StrategyPortfolio | undefined;
+  try {
+    candidate = asStrategyCandidate(readJsonValue(ctx, opts.candidatePath, "candidate"));
+    config = asStrategyConfig(readJsonValue(ctx, opts.strategyConfigPath, "config"));
+    portfolio = opts.paperStatePath
+      ? asPortfolio(readJsonValue(ctx, opts.paperStatePath, "paper-state"))
+      : undefined;
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  const report = evaluateStrategy({
+    candidate,
+    config,
+    portfolio,
+    now: ctx.now ?? isoNow,
+  });
+
+  if (opts.json) {
+    // redactValue is a backstop; the report carries only injected/public data.
+    return JSON.stringify(redactValue(buildStrategyEnvelope(report)), null, 2);
+  }
+  return formatStrategyReport(report);
 }
 
 function yesNo(value: boolean): string {

@@ -47,6 +47,9 @@ importers:
       '@soulmaker/solana':
         specifier: workspace:*
         version: link:../../packages/solana
+      '@soulmaker/strategy':
+        specifier: workspace:*
+        version: link:../../packages/strategy
       commander:
         specifier: ^12.1.0
         version: 12.1.0
@@ -92,7 +95,17 @@ importers:
         specifier: workspace:*
         version: link:../security
 
-  packages/strategy: {}
+  packages/strategy:
+    dependencies:
+      '@soulmaker/paper':
+        specifier: workspace:*
+        version: link:../paper
+      '@soulmaker/risk':
+        specifier: workspace:*
+        version: link:../risk
+      '@soulmaker/security':
+        specifier: workspace:*
+        version: link:../security
 
 packages:
 

@@ -1,7 +1,7 @@
 # Soulmaker Roadmap
 
 Phased, safety-gated plan. Each phase must be **tested and green** before the
-next begins. Live trading does not appear until Phase 6, behind every gate in
+next begins. Live trading does not appear until Phase 7, behind every gate in
 [`WALLET_SAFETY_MODEL.md`](WALLET_SAFETY_MODEL.md).
 
 Legend: ✅ done · 🟡 in progress · ⬜ not started
@@ -95,22 +95,50 @@ Implemented in `@soulmaker/paper` + the CLI (Sprint 4):
 - ⬜ Snipe-list **ingestion** wiring (candidates are supplied as fixtures today;
   a live snipe-list source is a later sprint). Still **no real sends**.
 
-## Phase 5 — Transaction planning & simulation ⬜
+## Phase 5 — Strategy rules engine 🟡 (deterministic, paper-only — complete)
+
+Implemented in `@soulmaker/strategy` + the CLI (Sprint 5):
+
+- ✅ Deterministic, **paper-only** rules engine: turns an advisory
+  `@soulmaker/risk` report + injected, read-only metrics into a single decision —
+  `SKIP` / `WATCH` / `PAPER_BUY_CANDIDATE` / `PAPER_SELL_CANDIDATE` — that feeds
+  `@soulmaker/paper` **only**.
+- ✅ **Risk gate:** `REJECT` ⇒ always `SKIP`; `CAUTION` ⇒ `SKIP` unless
+  `allowCaution`; risk score above `maxRiskScore` ⇒ `SKIP` (never bypassable).
+- ✅ **Metric gates** (when configured): liquidity / volume minimums and a max
+  absolute price-change band; a configured-but-missing metric is a disqualifier.
+- ✅ **Cooldowns:** post-loss ⇒ `SKIP`; post-trade ⇒ capped to `WATCH`.
+- ✅ **Position awareness:** `maxOpenPositions` and `maxPositionConcentrationPct`
+  block a new paper buy (cap to `WATCH`); held positions run take-profit /
+  stop-loss exit rules (`PAPER_SELL_CANDIDATE`).
+- ✅ **Score** (0–100, clamped) with documented constants; **disqualifiers always
+  override the score** — a high score can never bypass a hard disqualifier.
+- ✅ Stable reason/disqualifier ids; injected clock + seeded id ⇒ deterministic,
+  no-mutation; fully offline tests.
+- ✅ CLI: `strategy:evaluate` (`--candidate`, `--config`, `--paper-state`,
+  `--json`). Reads injected local JSON only; refuses missing/malformed input
+  cleanly; redacted output; PAPER-ONLY / not-advice disclaimers.
+- ✅ **No tx build/sign/simulate/send. No wallet, RPC, network, or execution SDK.
+  No `Date.now` / `Math.random`.** Output is not advice and makes no profitability
+  claim.
+- ⬜ Live snipe-list ingestion + richer position management (deferred).
+
+## Phase 6 — Transaction planning & simulation ⬜
 
 - ⬜ Transaction **plan** object (explicit destinations, amounts, fees).
 - ⬜ Human-readable preview (no blind signing).
 - ⬜ Simulation interface (`simulateTransaction`).
 - ⬜ **Still no sending.** Tests prove unsafe plans are rejected.
 
-## Phase 6 — Burner-wallet live mode ⬜
+## Phase 7 — Burner-wallet live mode ⬜
 
-- ⬜ Only after Phases 0–5 are green.
+- ⬜ Only after Phases 0–6 are green.
 - ⬜ Live sending behind explicit `DANGEROUS_BURNER_LIVE`.
 - ⬜ Requires a **fresh burner** secret; refuses main-wallet-style config.
 - ⬜ Enforce caps **before** building/sending.
 - ⬜ Simulate before send; log signatures + risk flags (redacted).
 
-## Phase 7 — Web dashboard ⬜
+## Phase 8 — Web dashboard ⬜
 
 - ⬜ Local web UI (`apps/web`).
 - ⬜ Phantom via Solana Wallet Adapter — **watch-only** first.

@@ -140,7 +140,7 @@ documented per-file review), **AVOID** (do not use as a base; do not run).
 - **Wallet/key handling:** n/a to Soulmaker; we never hand keys to a third party.
 - **Recommendation:** **STUDY-ONLY** (UX/workflow), pending official docs + a
   safe API model before any code-level integration.
-- **Final decision:** Inspire the dashboard/command-center **UX** (Phase 7).
+- **Final decision:** Inspire the dashboard/command-center **UX** (Phase 8).
   No dependency, no scraping, no private-API coupling.
 
 ---

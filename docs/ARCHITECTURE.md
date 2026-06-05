@@ -20,15 +20,15 @@ tree in one pass.
 
 ```
 apps/cli          @soulmaker/cli       read-only command surface
-apps/web          (Phase 7)            local dashboard (placeholder)
+apps/web          (Phase 8)            local dashboard (placeholder)
 
 packages/security @soulmaker/security  redaction + redacting logger      [no deps]
 packages/core     @soulmaker/core      config, modes, caps, LIVE GATE    [zod]
 packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.js, spl-token, security]
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
-packages/strategy @soulmaker/strategy  snipe list, entry/exit, TP/SL (Phase 4+)
-packages/adapters @soulmaker/adapters  audited external integrations (Phase 5+)
+packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
+packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
 ### Dependency direction
@@ -50,13 +50,17 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 5+)
 - Everything that could touch the chain (solana, strategy, paper, adapters) sits
   *below* core and must route any live intent through core's gate. `solana` is
   now implemented as a **read-only** layer (Phase 2), `risk` as a **pure,
-  advisory, read-only** engine (Phase 3), and `paper` as a **pure, simulated-only**
-  engine (Phase 4); `strategy` and `adapters` remain typed placeholders. Note
-  `@soulmaker/solana`, `@soulmaker/risk`, and `@soulmaker/paper` depend on
-  `@soulmaker/security` (for redaction) but **not** on `core` — the CLI is what
-  composes config/modes (core) with the read-only client (solana), the risk
-  engine (risk), and the paper engine (paper). `@soulmaker/paper` also depends on
-  `@soulmaker/risk` for the advisory decision type.
+  advisory, read-only** engine (Phase 3), `paper` as a **pure, simulated-only**
+  engine (Phase 4), and `strategy` as a **pure, paper-only** rules engine
+  (Phase 5) whose output only feeds `paper`; `adapters` remains a typed
+  placeholder. Note `@soulmaker/solana`, `@soulmaker/risk`, `@soulmaker/paper`,
+  and `@soulmaker/strategy` depend on `@soulmaker/security` (for redaction) but
+  **not** on `core` — the CLI is what composes config/modes (core) with the
+  read-only client (solana), the risk engine (risk), the paper engine (paper),
+  and the strategy engine (strategy). `@soulmaker/paper` depends on
+  `@soulmaker/risk` for the advisory decision type; `@soulmaker/strategy` depends
+  on `@soulmaker/risk` (advisory decision + score) and on `@soulmaker/paper`
+  **types only** (to adapt a simulated `PaperState` into its portfolio view).
 
 ## The live boundary
 
@@ -76,7 +80,7 @@ Mode → capability mapping lives in `packages/core/src/modes.ts`
 (`capabilitiesFor`): only `DANGEROUS_BURNER_LIVE` has `canSend: true`. In the
 current repo **no code consumes `canSend`/the gate to actually send** — there is
 no signing/sending implementation at all. The gate and capability model exist so
-that when execution is built (Phase 6) it has exactly one door to go through.
+that when execution is built (Phase 7) it has exactly one door to go through.
 
 ## Read-only Solana layer (`@soulmaker/solana`, Phase 2)
 
@@ -178,6 +182,53 @@ The CLI owns all file I/O: it reads injected candidate/price fixtures, **appends
 (never truncates) to the JSONL journal, and prints redacted human or JSON output.
 `paper:run` needs no chain access and no wallet; the `--kill-switch` flag is
 OR-ed with the core config kill switch so a global stop also halts paper runs.
+
+## Strategy rules engine (`@soulmaker/strategy`, Phase 5)
+
+A **pure**, deterministic, **paper-only** decision layer. It turns one advisory
+`@soulmaker/risk` report plus injected, read-only metrics into a single decision —
+`SKIP` / `WATCH` / `PAPER_BUY_CANDIDATE` / `PAPER_SELL_CANDIDATE` — whose only
+consumer is `@soulmaker/paper`. It depends on `@soulmaker/risk` (advisory decision
++ score), `@soulmaker/paper` **types only** (to adapt a `PaperState`), and
+`@soulmaker/security` (redaction backstop) — no `core`, no `solana`, no
+`@solana/web3.js`, no RPC, no filesystem, no signer/keypair/transaction, no
+`Date.now`, no `Math.random`. Identical input → byte-identical output (seeded id,
+injectable clock).
+
+- `types.ts` — `StrategyCandidate` / `StrategyConfig` / `StrategyReport` /
+  `StrategyDecision` / `StrategyReason` / `StrategyPortfolio`.
+- `reasons.ts` — the stable kebab-case reason/disqualifier id catalog so tests
+  assert exact behavior.
+- `score.ts` — `scoreCandidate`: a transparent additive 0–100 model (neutral base
+  − risk penalty + metric bonuses), clamped, with exported constants.
+- `evaluate.ts` — `evaluateStrategy`: risk gate → entry metric gates → cooldowns →
+  score → decide. Disqualifiers always override the score; never mutates input.
+- `report.ts` — `formatStrategyReport` (redacted human block) + JSON envelope,
+  always carrying the PAPER-ONLY / not-advice language.
+- `portfolio.ts` — `portfolioFromPaperState`: pure adapter from a simulated
+  `PaperState` to the engine's lightweight portfolio view (open count, held
+  mints, top concentration).
+
+**Data flow:**
+
+```
+@soulmaker/risk  TokenRiskReport (decision + score)     injected metrics
+        │                                                      │
+        ▼                                                      ▼
+   StrategyCandidate ────────► evaluateStrategy(candidate, config, portfolio?)
+   (+ optional PaperState ─ portfolioFromPaperState ─► StrategyPortfolio)
+        │  StrategyReport (decision, score, reasons, disqualifiers, risk*, notes)
+        ▼
+CLI strategy:evaluate  → formatStrategyReport (human) | JSON envelope (--json)
+        ▼
+   feeds @soulmaker/paper ONLY (a paper candidate) — never execution
+```
+
+The CLI's `strategy:evaluate` reads injected local JSON only (candidate + config,
+optional paper-state), refuses missing/malformed input cleanly, and redacts all
+output. The report is **paper-only** and explicitly **not** financial advice, a
+buy recommendation, or live-trading authorization. See
+[`STRATEGY_MODEL.md`](STRATEGY_MODEL.md).
 
 ## Configuration
 

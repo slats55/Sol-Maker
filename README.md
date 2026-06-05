@@ -16,13 +16,15 @@ all pass.
 
 ---
 
-## ⚠️ Status: Phases 0–1 done; Phase 2 read-only core complete; Phase 3 advisory risk engine complete; Phase 4 in progress (simulated paper engine). No live trading. By design.
+## ⚠️ Status: Phases 0–1 done; Phase 2 read-only core complete; Phase 3 advisory risk engine complete; Phase 4 simulated paper engine complete; Phase 5 paper-only strategy rules engine complete. No live trading. By design.
 
 Nothing in this repository can move funds. There is **no transaction signing or
 sending code anywhere in it yet** — the read-only Solana watcher (Phase 2) and
-advisory risk engine (Phase 3) are read-only by construction, and the Phase 4
-paper engine is **simulated-only** (injected prices, no wallet, no chain). The
-default mode is `PAPER`. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+advisory risk engine (Phase 3) are read-only by construction, the Phase 4 paper
+engine is **simulated-only** (injected prices, no wallet, no chain), and the
+Phase 5 strategy engine is a **pure, paper-only** rules engine that only feeds the
+paper engine (no chain, no wallet, no execution). The default mode is `PAPER`.
+See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Non-negotiable security rules (summary)
 
@@ -50,16 +52,17 @@ The full, authoritative list is in [`SECURITY.md`](SECURITY.md). The short form:
 soulmaker/
   apps/
     cli/        # @soulmaker/cli  — read-only CLI (doctor, config:check, mode, paper:status,
-                #                    solana:doctor, wallet:watch, token:inspect/accounts/risk)
-    web/        # Phase 7 dashboard (placeholder)
+                #                    solana:doctor, wallet:watch, token:inspect/accounts/risk,
+                #                    paper:run/journal, strategy:evaluate)
+    web/        # Phase 8 dashboard (placeholder)
   packages/
     core/       # @soulmaker/core      — config schema, modes, risk caps, LIVE GATE
     security/   # @soulmaker/security  — secret redaction + redacting logger
     solana/     # Phase 2 — read-only RPC watcher (public-key/mint reads only)
     risk/       # Phase 3 — read-only advisory token risk flags + scoring
     paper/      # Phase 4 — deterministic, simulated-only paper trading engine
-    strategy/   # Phase 4+ — snipe list, entry/exit, TP/SL (placeholder)
-    adapters/   # Phase 5+ — audited external integrations (placeholder)
+    strategy/   # Phase 5 — deterministic, paper-only strategy rules engine (feeds paper)
+    adapters/   # Phase 6+ — audited external integrations (placeholder)
   docs/         # ARCHITECTURE, ROADMAP, WALLET_SAFETY_MODEL, RISK_MODEL, REFERENCE_REPO_AUDIT
   scripts/      # thin operational scripts
   tests/        # cross-package integration tests (unit tests live beside code)
@@ -101,6 +104,9 @@ pnpm soulmaker token:risk <mint>      # advisory risk report — NOT a buy recom
 pnpm soulmaker paper:run --candidates <candidates.json> --prices <prices.json>
 pnpm soulmaker paper:journal --journal <journal.jsonl>
 pnpm soulmaker paper:status   --journal <journal.jsonl>
+
+# paper-only strategy decisioning (offline; injected JSON; feeds paper only; not advice)
+pnpm soulmaker strategy:evaluate --candidate <candidate.json> --config <config.json>
 ```
 
 Configuration comes from `soulmaker.config.json` (copy
@@ -115,6 +121,7 @@ gitignored. Defaults are safe: `PAPER` mode, kill switch off, redaction on.
 - [`docs/WALLET_SAFETY_MODEL.md`](docs/WALLET_SAFETY_MODEL.md) — key handling & live gate
 - [`docs/RISK_MODEL.md`](docs/RISK_MODEL.md) — caps, kill switch, token risk flags
 - [`docs/PAPER_TRADING_MODEL.md`](docs/PAPER_TRADING_MODEL.md) — simulated paper engine (Phase 4)
+- [`docs/STRATEGY_MODEL.md`](docs/STRATEGY_MODEL.md) — paper-only strategy rules engine (Phase 5)
 - [`docs/REFERENCE_REPO_AUDIT.md`](docs/REFERENCE_REPO_AUDIT.md) — audit of reference repos
 - [`SECURITY.md`](SECURITY.md) — the authoritative security rules
 

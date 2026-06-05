@@ -26,7 +26,7 @@ Defined in `packages/core/src/config/schema.ts` and re-checked by the live gate.
 - The **kill switch** (`killSwitch: true`) makes the live gate refuse regardless
   of mode — a one-flag emergency stop.
 - Enforcement of *runtime* accounting (tracking daily realized loss, counting
-  open positions) lands with the paper engine (Phase 4) and execution (Phase 6).
+  open positions) lands with the paper engine (Phase 4) and execution (Phase 7).
   The caps object is the contract those phases must honor **before** building or
   sending anything.
 
@@ -106,6 +106,16 @@ that has a critical flag, because a critical flag forces `REJECT` outright.
 > as a candidate filter — `CAUTION`/`REJECT` never enter a paper buy by default).
 > It is never a live-trading safety judgment and never authorizes a send. No
 > transaction is built, signed, simulated, or sent at any point.
+
+### Consumed by the strategy engine (Phase 5)
+
+The Phase 5 strategy engine (`@soulmaker/strategy`, see
+[`STRATEGY_MODEL.md`](STRATEGY_MODEL.md)) uses this advisory report as its **first
+gate**: `REJECT` ⇒ always `SKIP`; `CAUTION` ⇒ `SKIP` unless explicitly allowed;
+and the advisory **score** must be at/below the configured `maxRiskScore` — a cap
+that **no** strategy score can buy back. Risk can therefore only make the strategy
+*more* conservative, never less, and the strategy output only feeds **paper**
+simulation (never execution). It is advisory, not a buy/sell recommendation.
 
 ### Allowlist / denylist / previously-traded
 

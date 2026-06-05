@@ -65,6 +65,13 @@ A candidate may enter a simulated **buy** only if its advisory risk decision is
 A critical risk flag forces `REJECT` upstream in `@soulmaker/risk` and can never
 be rescued by an allowlist credit, so it can never reach a paper buy.
 
+> **Upstream of the candidate:** the Phase 5 strategy engine
+> (`@soulmaker/strategy`, see [`STRATEGY_MODEL.md`](STRATEGY_MODEL.md)) is the
+> layer that *decides* whether a token becomes a paper buy/sell candidate at all.
+> It only ever **feeds** this paper engine — it performs no simulated fill itself,
+> touches no wallet/chain, and builds/signs/simulates/sends nothing. A strategy
+> `PAPER_BUY_CANDIDATE` is a candidate for *this* simulated engine, not a real buy.
+
 ## Caps & kill switch (enforced before every simulated action)
 
 `PaperRiskCaps` (USD, simulation-scoped — distinct from the on-chain SOL caps in
@@ -137,5 +144,5 @@ are refused cleanly; secrets are never leaked (output is redacted).
   prediction or a track record.
 - There is no slippage, liquidity, partial-fill, or latency modeling beyond the
   simple price-point model; fills are exact at the injected price.
-- Nothing here is wired to execution. Live sending remains Phase 6, behind every
+- Nothing here is wired to execution. Live sending remains Phase 7, behind every
   gate in [`WALLET_SAFETY_MODEL.md`](WALLET_SAFETY_MODEL.md).

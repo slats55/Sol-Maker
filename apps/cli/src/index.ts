@@ -12,6 +12,7 @@ import {
   tokenInspectReport,
   tokenAccountsReport,
   tokenRiskReport,
+  strategyEvaluateReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -215,6 +216,36 @@ program
             allowlistPath: opts.allowlist,
             denylistPath: opts.denylist,
             previouslyTradedPath: opts.previouslyTraded,
+            json: Boolean(opts.json),
+          },
+        ),
+      );
+    },
+  );
+
+program
+  .command("strategy:evaluate")
+  .description(
+    "Evaluate a local candidate against a local strategy config (PAPER ONLY; feeds paper simulation; not advice)",
+  )
+  .option("--candidate <path>", "JSON StrategyCandidate object (with a risk report)")
+  .option("--config <path>", "JSON StrategyConfig object")
+  .option("--paper-state <path>", "optional JSON PaperState for position-awareness rules")
+  .option("--json", "emit the report as stable JSON")
+  .action(
+    (opts: {
+      candidate?: string;
+      config?: string;
+      paperState?: string;
+      json?: boolean;
+    }) => {
+      printResult(
+        strategyEvaluateReport(
+          {},
+          {
+            candidatePath: opts.candidate,
+            strategyConfigPath: opts.config,
+            paperStatePath: opts.paperState,
             json: Boolean(opts.json),
           },
         ),

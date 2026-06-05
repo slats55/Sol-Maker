@@ -115,7 +115,27 @@ entirely within the no-custody model:
   evaluation** — never "safe", "approved for live trading", "profitable", or a
   reason to send anything.
 
-## Key handling rules (for when Phase 6 arrives)
+## Phase 5 (Sprint 5): the strategy engine is paper-only and key-free
+
+The Phase 5 strategy engine (`@soulmaker/strategy` + the `strategy:evaluate`
+command) stays entirely within the no-custody model:
+
+- It only **decides** whether a candidate becomes a *simulated* paper buy/sell
+  candidate, and its output **only feeds `@soulmaker/paper`.** It performs no
+  simulated fill, and it **does not** build, sign, simulate, or send a
+  transaction; nothing is wired to execution.
+- It accepts **no** private key, seed, or wallet secret — and there is no code
+  path that could. `@soulmaker/strategy` is a **pure** package: no signer, no
+  `Keypair`, no `@solana/web3.js`, no RPC, no network, no filesystem, no
+  `Date.now`, no `Math.random`.
+- Inputs are local, **injected** JSON (candidate + config, optional paper-state).
+  The CLI owns file I/O and redacts all output (human and `--json`), so an
+  injected secret-looking value can never leak.
+- The report is **paper-only** and explicitly **not** financial advice, a buy
+  recommendation, or live-trading authorization; it makes no profitability claim.
+  A `PAPER_BUY_CANDIDATE` means a candidate for *simulated* paper evaluation.
+
+## Key handling rules (for when Phase 7 arrives)
 
 - The config stores only the **name** of the env var holding the burner key
   (`live.burnerKeyEnvVar`), **never** the key. The key is read **at send time**,
