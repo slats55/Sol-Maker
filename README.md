@@ -16,11 +16,12 @@ all pass.
 
 ---
 
-## ⚠️ Status: Phase 0–1 (foundation). No live trading. By design.
+## ⚠️ Status: Phases 0–1 done; Phase 2 read-only core complete (WS streaming deferred); Phase 3 in progress (read-only). No live trading. By design.
 
 Nothing in this repository can move funds. There is **no transaction signing or
-sending code anywhere in it yet.** The default mode is `PAPER`. See
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
+sending code anywhere in it yet** — the read-only Solana watcher (Phase 2) and
+the advisory risk engine (Phase 3) are read-only by construction. The default
+mode is `PAPER`. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Non-negotiable security rules (summary)
 
@@ -47,13 +48,14 @@ The full, authoritative list is in [`SECURITY.md`](SECURITY.md). The short form:
 ```
 soulmaker/
   apps/
-    cli/        # @soulmaker/cli  — read-only CLI (doctor, config:check, mode, paper:status)
+    cli/        # @soulmaker/cli  — read-only CLI (doctor, config:check, mode, paper:status,
+                #                    solana:doctor, wallet:watch, token:inspect/accounts/risk)
     web/        # Phase 7 dashboard (placeholder)
   packages/
     core/       # @soulmaker/core      — config schema, modes, risk caps, LIVE GATE
     security/   # @soulmaker/security  — secret redaction + redacting logger
-    solana/     # Phase 2 — read-only RPC/WS watcher (placeholder)
-    risk/       # Phase 3 — token risk flags + scoring (placeholder)
+    solana/     # Phase 2 — read-only RPC watcher (public-key/mint reads only)
+    risk/       # Phase 3 — read-only advisory token risk flags + scoring
     strategy/   # Phase 4+ — snipe list, entry/exit, TP/SL (placeholder)
     paper/      # Phase 4 — paper trading engine (placeholder)
     adapters/   # Phase 5+ — audited external integrations (placeholder)
@@ -86,6 +88,13 @@ pnpm soulmaker doctor
 pnpm soulmaker config:check
 pnpm soulmaker mode
 pnpm soulmaker paper:status
+
+# read-only chain commands (need rpcUrl; PAPER mode needs --allow-paper-read)
+pnpm soulmaker solana:doctor
+pnpm soulmaker wallet:watch <publicKey>
+pnpm soulmaker token:inspect <mint>
+pnpm soulmaker token:accounts <ownerPublicKey>
+pnpm soulmaker token:risk <mint>      # advisory risk report — NOT a buy recommendation
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

@@ -8,6 +8,8 @@
  * transaction — the CLI in this phase cannot move funds by construction.
  */
 
+import { readFileSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import {
   loadConfig,
   evaluateLiveGate,
@@ -31,6 +33,12 @@ import {
   type ReadOnlyClientConfig,
   type TokenAccountSummary,
 } from "@soulmaker/solana";
+import {
+  buildTokenRiskReport,
+  formatTokenRiskReport,
+  parseList,
+  type TokenRiskInput,
+} from "@soulmaker/risk";
 
 export interface CommandContext {
   cwd?: string;
@@ -361,6 +369,107 @@ function formatTokenAccounts(
   lines.push("");
   lines.push("READ-ONLY: no transaction was built, signed, or sent.");
   return redactString(lines.join("\n"));
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 — read-only advisory risk engine
+// ---------------------------------------------------------------------------
+
+export interface RiskCommandOptions extends ChainReadOptions {
+  /** Path to a newline-separated allowlist file (relative to cwd or absolute). */
+  allowlistPath?: string;
+  /** Path to a newline-separated denylist file. */
+  denylistPath?: string;
+  /** Path to a newline-separated previously-traded mints file. */
+  previouslyTradedPath?: string;
+  /** Emit the report as stable JSON instead of the human-readable block. */
+  json?: boolean;
+}
+
+/** Read + parse one operator list file. Throws a clear (non-secret) error. */
+function readListFile(
+  ctx: CommandContext,
+  path: string | undefined,
+  label: string,
+): string[] | undefined {
+  if (!path) return undefined;
+  const base = ctx.cwd ?? process.cwd();
+  const resolved = isAbsolute(path) ? path : join(base, path);
+  let content: string;
+  try {
+    content = readFileSync(resolved, "utf8");
+  } catch {
+    throw new Error(`cannot read ${label} list file at ${resolved}`);
+  }
+  return parseList(content).entries;
+}
+
+/**
+ * `soulmaker token:risk <mint>` — read-only, advisory token risk report.
+ *
+ * Read-only by construction: it inspects the mint via `@soulmaker/solana`, runs
+ * the pure `@soulmaker/risk` engine, and prints an advisory report. It builds,
+ * signs, simulates, and sends NOTHING. This is NOT a buy recommendation.
+ */
+export async function tokenRiskReport(
+  mint: string,
+  ctx: CommandContext = {},
+  opts: RiskCommandOptions = {},
+): Promise<string> {
+  const gate = openChainRead(ctx, opts);
+  if (!gate.ok) return redactString(gate.message);
+
+  // Validate the mint up front so an invalid key fails clearly.
+  try {
+    parsePublicKey(mint);
+  } catch (err) {
+    if (err instanceof InvalidPublicKeyError) return `Refusing: ${err.message}`;
+    throw err;
+  }
+
+  // Load operator lists from files (if provided). Failures are clean refusals.
+  let allowlist: string[] | undefined;
+  let denylist: string[] | undefined;
+  let previouslyTradedMints: string[] | undefined;
+  try {
+    allowlist = readListFile(ctx, opts.allowlistPath, "allowlist");
+    denylist = readListFile(ctx, opts.denylistPath, "denylist");
+    previouslyTradedMints = readListFile(
+      ctx,
+      opts.previouslyTradedPath,
+      "previously-traded",
+    );
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  try {
+    const inspection = await buildTokenInspectReport(gate.client, mint, {
+      now: ctx.now,
+    });
+    const input: TokenRiskInput = {
+      mint: inspection.mint,
+      decimals: inspection.decimals,
+      supplyRaw: inspection.supplyRaw,
+      uiSupply: inspection.uiSupply,
+      mintAuthorityPresent: inspection.mintAuthorityPresent,
+      freezeAuthorityPresent: inspection.freezeAuthorityPresent,
+      isInitialized: inspection.isInitialized,
+      programLabel: inspection.programLabel,
+      allowlist,
+      denylist,
+      previouslyTradedMints,
+    };
+    const report = buildTokenRiskReport(input, { now: ctx.now });
+    if (opts.json) {
+      // redactValue is a backstop; the report carries only public data.
+      return JSON.stringify(redactValue(report), null, 2);
+    }
+    return formatTokenRiskReport(report);
+  } catch (err) {
+    if (err instanceof InvalidPublicKeyError) return `Refusing: ${err.message}`;
+    return readError(err);
+  }
 }
 
 function yesNo(value: boolean): string {

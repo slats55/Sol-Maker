@@ -9,6 +9,7 @@ import {
   walletWatchReport,
   tokenInspectReport,
   tokenAccountsReport,
+  tokenRiskReport,
 } from "./commands.js";
 
 const program = new Command();
@@ -104,5 +105,42 @@ program
       ),
     );
   });
+
+program
+  .command("token:risk <mint>")
+  .description(
+    "Read-only ADVISORY token risk report (flags + score). Not a buy recommendation.",
+  )
+  .option("--allow-paper-read", "permit chain reads while in PAPER mode")
+  .option("--allowlist <path>", "newline-separated allowlist file")
+  .option("--denylist <path>", "newline-separated denylist file")
+  .option("--previously-traded <path>", "newline-separated previously-traded mints file")
+  .option("--json", "emit the report as stable JSON")
+  .action(
+    async (
+      mint: string,
+      opts: {
+        allowPaperRead?: boolean;
+        allowlist?: string;
+        denylist?: string;
+        previouslyTraded?: string;
+        json?: boolean;
+      },
+    ) => {
+      printResult(
+        await tokenRiskReport(
+          mint,
+          {},
+          {
+            allowPaperRead: Boolean(opts.allowPaperRead),
+            allowlistPath: opts.allowlist,
+            denylistPath: opts.denylist,
+            previouslyTradedPath: opts.previouslyTraded,
+            json: Boolean(opts.json),
+          },
+        ),
+      );
+    },
+  );
 
 program.parseAsync(process.argv);

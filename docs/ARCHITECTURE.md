@@ -49,10 +49,12 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 5+)
   source of truth for "is a live send allowed?".
 - Everything that could touch the chain (solana, strategy, paper, adapters) sits
   *below* core and must route any live intent through core's gate. `solana` is
-  now implemented as a **read-only** layer (Phase 2); `strategy`, `paper`, and
-  `adapters` remain typed placeholders. Note `@soulmaker/solana` depends on
-  `@soulmaker/security` (for redaction) but **not** on `core` — the CLI is what
-  composes config/modes (core) with the read-only client (solana).
+  now implemented as a **read-only** layer (Phase 2) and `risk` as a **pure,
+  advisory, read-only** engine (Phase 3); `strategy`, `paper`, and `adapters`
+  remain typed placeholders. Note `@soulmaker/solana` and `@soulmaker/risk`
+  depend on `@soulmaker/security` (for redaction) but **not** on `core` — the CLI
+  is what composes config/modes (core) with the read-only client (solana) and the
+  risk engine (risk).
 
 ## The live boundary
 
@@ -98,6 +100,44 @@ drops any `?api-key=` query, and all rendered output is passed through
 `redactString` as a backstop. The CLI gates these commands on
 `capabilitiesFor(mode).canReadChain` and refuses in `PAPER` mode unless
 `--allow-paper-read` is passed; none of them require any burner/live env var.
+
+## Read-only risk engine (`@soulmaker/risk`, Phase 3)
+
+A **pure**, advisory layer that turns read-only mint facts into structured risk
+flags and a numeric score. It depends only on `@soulmaker/security` (for the
+redaction backstop) — not on `core` or `solana`, and not on the network. It
+holds no signer, secret key, or keypair, and builds/signs/simulates/sends
+nothing.
+
+- `lists.ts` — pure allow/deny/previously-traded utilities (`parseList`,
+  `dedupeList`, `listIncludes`); case-preserving (base58 is case-sensitive),
+  comment/blank-aware, duplicate-detecting. No file I/O (the CLI reads files).
+- `risk-flags.ts` — `evaluateRiskFlags(input)`: deterministic, ordered,
+  explained flags. Unknown facts become cautions, never assumed safe.
+- `risk-score.ts` — `scoreRiskFlags(flags)`: per-severity weights + allowlist
+  credit, clamped to `[0, 100]`, plus the decision (`REJECT` / `CAUTION` /
+  `PASS_FOR_PAPER_EVALUATION`). Any critical flag forces `REJECT`.
+- `risk-report.ts` — `buildTokenRiskReport(input, { now })` (injectable clock →
+  deterministic) and `formatTokenRiskReport` (redacted human block).
+
+**Data flow:**
+
+```
+@soulmaker/solana  getTokenMintInfo / buildTokenInspectReport   (read-only chain facts)
+        │  mint, decimals, supply, authorities, program, initialized
+        ▼
+CLI  tokenRiskReport  ──+── reads operator list files → parseList (pure)
+        │               └── maps facts + lists → TokenRiskInput
+        ▼
+@soulmaker/risk  buildTokenRiskReport  → flags + advisory score + decision
+        ▼
+CLI  formatTokenRiskReport (human) | JSON.stringify(redactValue(report))  (--json)
+```
+
+The CLI's `token:risk` reuses the same `openChainRead` gate as the other Phase 2
+read commands (capability + `rpcUrl`, `--allow-paper-read` for PAPER), validates
+the mint, and is read-only end to end. The report is **advisory only** and is
+explicitly **not** a buy recommendation.
 
 ## Configuration
 

@@ -1,0 +1,83 @@
+/**
+ * Types for the read-only, advisory token risk engine (Phase 3 / Sprint 3).
+ *
+ * This layer turns the *facts* gathered by `@soulmaker/solana`'s read-only mint
+ * inspection into structured, explained, advisory **risk flags** and a numeric
+ * **advisory score**. It is NOT a buy/sell recommendation engine and it never
+ * builds, signs, simulates, or sends a transaction. There is intentionally no
+ * type here for a signer, secret key, keypair, or transaction.
+ */
+
+/** How serious a single flag is, from purely informational to deal-breaking. */
+export type RiskSeverity = "info" | "low" | "medium" | "high" | "critical";
+
+/**
+ * The advisory disposition of a mint.
+ *
+ *  - `REJECT`                     — a critical flag fired, or the score is high
+ *                                   enough that the mint should not proceed.
+ *  - `CAUTION`                    — notable risk; proceed only with care.
+ *  - `PASS_FOR_PAPER_EVALUATION`  — may proceed to *paper-trading* evaluation
+ *                                   LATER. This does NOT mean "safe to live
+ *                                   trade" and never authorizes a real send.
+ */
+export type RiskDecision = "REJECT" | "CAUTION" | "PASS_FOR_PAPER_EVALUATION";
+
+/** A single, explained risk observation. Deterministic for a given input. */
+export interface RiskFlag {
+  /** Stable kebab-case identifier, e.g. "freeze-authority-present". */
+  id: string;
+  severity: RiskSeverity;
+  /** Short human title, e.g. "Freeze authority present". */
+  title: string;
+  /** One-sentence explanation of why this matters / what was observed. */
+  detail: string;
+  /** Machine-readable supporting facts (never secrets — public data only). */
+  evidence?: Record<string, unknown>;
+}
+
+/**
+ * Read-only inputs to the risk engine. Everything except `mint` is optional so
+ * the engine degrades gracefully on partial data — an undetermined fact is
+ * treated as *unknown* (a soft caution), never silently assumed safe.
+ *
+ * These fields mirror `@soulmaker/solana`'s `TokenMintInfo` plus operator lists.
+ * None of them is secret: a mint is a public key, authorities are booleans.
+ */
+export interface TokenRiskInput {
+  /** The token mint public key (base58). Required. */
+  mint: string;
+  decimals?: number;
+  /** Raw supply as a base-10 string (authoritative; no precision loss). */
+  supplyRaw?: string;
+  /** Approximate UI supply (display only). */
+  uiSupply?: number;
+  /** True when a mint authority is set (can mint more — dilution/rug risk). */
+  mintAuthorityPresent?: boolean;
+  /** True when a freeze authority is set (can freeze — you may not be able to sell). */
+  freezeAuthorityPresent?: boolean;
+  isInitialized?: boolean;
+  /** Owning token program label, e.g. "spl-token" / "spl-token-2022" / "unknown". */
+  programLabel?: string;
+  /** Operator allowlist of trusted mints (base58). */
+  allowlist?: string[];
+  /** Operator denylist of known-bad mints (base58). Hard reject. */
+  denylist?: string[];
+  /** Mints the operator has previously traded (local state concept). */
+  previouslyTradedMints?: string[];
+}
+
+/** The full advisory risk report for one mint. */
+export interface TokenRiskReport {
+  mint: string;
+  /** 0 = safest advisory score, 100 = riskiest. Always clamped to [0, 100]. */
+  score: number;
+  decision: RiskDecision;
+  flags: RiskFlag[];
+  /** Plain-English advisory statements (always read-only, never a buy signal). */
+  summary: string[];
+  /** ISO-8601 timestamp from an injectable clock (deterministic in tests). */
+  generatedAt: string;
+  /** Fixed advisory disclaimer. */
+  disclaimer: string;
+}

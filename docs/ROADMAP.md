@@ -52,13 +52,27 @@ Implemented in `@soulmaker/solana` + the CLI (Sprint 2):
 - ⬜ WebSocket streaming + live pool/token-launch **event** abstraction
   (deferred to a later read-only sprint / folded into Phase 3 inputs).
 
-## Phase 3 — Filter & risk engine ⬜
+## Phase 3 — Filter & risk engine 🟡 (read-only advisory engine complete)
 
-- ⬜ Token risk flags: mint authority present, freeze authority present,
-  metadata mutable, missing socials (if detectable), suspicious pool size,
-  denylisted mint, previously-traded mint, liquidity/burn status (if reliable).
-- ⬜ Allowlist / denylist.
-- ⬜ Risk scoring output (advisory only).
+Implemented in `@soulmaker/risk` + the CLI (Sprint 3):
+
+- ✅ Read-only, advisory **risk flags** from `@soulmaker/solana` mint facts:
+  denylisted mint, mint not initialized, freeze authority present (critical);
+  mint authority present, unknown token program, suspicious decimals (high);
+  supply unparsable, zero supply, previously-traded mint (medium); unknown
+  authority/initialization (low); allowlisted, renounced authorities, standard
+  SPL / Token-2022 program (info). Deterministic, fully offline-tested.
+- ✅ **Allowlist / denylist / previously-traded** support: pure list parser
+  (ignores blanks + `# comments`, case-preserving, dedupes); CLI file options.
+- ✅ **Advisory score** (0–100, clamped) + decision
+  (`REJECT` / `CAUTION` / `PASS_FOR_PAPER_EVALUATION`) with documented weights and
+  thresholds. `PASS_FOR_PAPER_EVALUATION` is **not** a live-trading judgment.
+- ✅ CLI: `token:risk <mint>` (`--allow-paper-read`, `--allowlist`, `--denylist`,
+  `--previously-traded`, `--json`). Read-only; advisory; not a buy recommendation.
+- ✅ **No tx build/sign/send. No key custody. No execution SDKs.** Every flag is
+  explained; output is redacted as a backstop.
+- ⬜ Off-chain / pool-derived flags (metadata mutable, socials, pool size, LP
+  burn/lock, deployer denylist) — deferred (need data not available read-only yet).
 
 ## Phase 4 — Paper trading engine ⬜
 

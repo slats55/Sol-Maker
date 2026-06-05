@@ -11,6 +11,7 @@ import {
   walletWatchReport,
   tokenInspectReport,
   tokenAccountsReport,
+  tokenRiskReport,
 } from "./commands.js";
 import type {
   ReadOnlyClientConfig,
@@ -352,6 +353,189 @@ describe("tokenAccountsReport", () => {
         createClient: fakeClientFactory,
       });
       expect(out).toMatch(/^Refusing:/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 — read-only advisory risk command
+// ---------------------------------------------------------------------------
+
+const FIXED_TIME = "2026-06-05T12:00:00.000Z";
+
+describe("tokenRiskReport", () => {
+  it("refuses an invalid mint", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "WATCH_ONLY",
+      rpcUrl: "https://rpc.example.com",
+    });
+    try {
+      const out = await tokenRiskReport("bad-mint", {
+        cwd,
+        env: {},
+        createClient: fakeClientFactory,
+      });
+      expect(out).toMatch(/^Refusing:/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses when no rpc url is configured", async () => {
+    const { cwd, cleanup } = withConfig({ mode: "WATCH_ONLY" });
+    try {
+      const out = await tokenRiskReport(VALID_PUBKEY, {
+        cwd,
+        env: {},
+        createClient: fakeClientFactory,
+      });
+      expect(out).toMatch(/Refusing: no rpcUrl configured/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses in PAPER mode without --allow-paper-read", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "PAPER",
+      rpcUrl: "https://rpc.example.com",
+    });
+    try {
+      const out = await tokenRiskReport(VALID_PUBKEY, {
+        cwd,
+        env: {},
+        createClient: fakeClientFactory,
+      });
+      expect(out).toMatch(/^Refusing: mode PAPER does not read chain/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("works in PAPER mode with --allow-paper-read and a fake RPC client", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "PAPER",
+      rpcUrl: "https://rpc.example.com",
+    });
+    try {
+      const out = await tokenRiskReport(
+        VALID_PUBKEY,
+        { cwd, env: {}, createClient: fakeClientFactory, now: () => FIXED_TIME },
+        { allowPaperRead: true },
+      );
+      expect(out).toContain("Token risk report (READ-ONLY)");
+      expect(out).toContain(`mint:        ${VALID_PUBKEY}`);
+      expect(out).toContain("generated:   " + FIXED_TIME);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("states READ-ONLY, not-a-buy-recommendation, and no transaction sent", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "WATCH_ONLY",
+      rpcUrl: "https://rpc.example.com",
+    });
+    try {
+      const out = await tokenRiskReport(VALID_PUBKEY, {
+        cwd,
+        env: {},
+        createClient: fakeClientFactory,
+      });
+      expect(out).toContain("READ-ONLY");
+      expect(out).toMatch(/not a buy recommendation/i);
+      expect(out).toMatch(/no transaction was built, signed, simulated, or sent/i);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("does not leak an RPC api-key into the report", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "WATCH_ONLY",
+      rpcUrl: "https://rpc.example.com/?api-key=SUPERSECRET",
+    });
+    try {
+      const out = await tokenRiskReport(VALID_PUBKEY, {
+        cwd,
+        env: {},
+        createClient: fakeClientFactory,
+      });
+      expect(out).not.toContain("SUPERSECRET");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json emits parseable JSON with the advisory fields and phrasing", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "WATCH_ONLY",
+      rpcUrl: "https://rpc.example.com",
+    });
+    try {
+      const out = await tokenRiskReport(
+        VALID_PUBKEY,
+        { cwd, env: {}, createClient: fakeClientFactory, now: () => FIXED_TIME },
+        { json: true },
+      );
+      const parsed = JSON.parse(out) as {
+        mint: string;
+        score: number;
+        decision: string;
+        flags: unknown[];
+        summary: string[];
+        disclaimer: string;
+        generatedAt: string;
+      };
+      expect(parsed.mint).toBe(VALID_PUBKEY);
+      expect(typeof parsed.score).toBe("number");
+      expect(Array.isArray(parsed.flags)).toBe(true);
+      expect(parsed.generatedAt).toBe(FIXED_TIME);
+      // Required product language survives in the serialized form too.
+      expect(out).toContain("READ-ONLY");
+      expect(out).toMatch(/not a buy recommendation/i);
+      expect(out).toMatch(/no transaction was built, signed, simulated, or sent/i);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("a denylist file (with comments/blanks) drives a REJECT decision", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "WATCH_ONLY",
+      rpcUrl: "https://rpc.example.com",
+    });
+    try {
+      writeFileSync(
+        join(cwd, "deny.txt"),
+        ["# known-bad mints", "", `${VALID_PUBKEY}   # rugged`, ""].join("\n"),
+      );
+      const out = await tokenRiskReport(
+        VALID_PUBKEY,
+        { cwd, env: {}, createClient: fakeClientFactory, now: () => FIXED_TIME },
+        { denylistPath: "deny.txt" },
+      );
+      expect(out).toContain("decision:    REJECT");
+      expect(out).toMatch(/denylist/i);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses cleanly when a list file cannot be read", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "WATCH_ONLY",
+      rpcUrl: "https://rpc.example.com",
+    });
+    try {
+      const out = await tokenRiskReport(
+        VALID_PUBKEY,
+        { cwd, env: {}, createClient: fakeClientFactory },
+        { allowlistPath: "does-not-exist.txt" },
+      );
+      expect(out).toMatch(/^Refusing: cannot read allowlist list file/);
     } finally {
       cleanup();
     }

@@ -69,6 +69,29 @@ The Phase 2 Solana layer (`@soulmaker/solana`) reads public chain state and
 - RPC endpoints are shown as **host only**; any `?api-key=` is dropped and output
   is redacted as a backstop. An RPC URL is config, not a wallet secret.
 
+## Phase 3 (Sprint 3): the risk engine is read-only and mint-only
+
+The Phase 3 risk engine (`@soulmaker/risk` + the `token:risk` command) stays
+fully within the read-only model:
+
+- It consumes only **public** data: a token **mint** public key and the read-only
+  facts `@soulmaker/solana` already collects (decimals, supply, authorities
+  present/absent, program, initialized), plus operator allow/deny/previously-
+  traded **lists of public mints**. **No wallet secret is needed or accepted.**
+- The mint argument is validated by the same `parsePublicKey` that **refuses
+  secret-length input**, so a private key or seed cannot be pasted into
+  `token:risk` and silently accepted.
+- `@soulmaker/risk` is a **pure** package: no signer, no keypair, no transaction
+  building/signing/sending, no file I/O, no network. The CLI reads any list files
+  and hands their text to the pure parser.
+- `token:risk` is gated exactly like the other read commands
+  (`capabilitiesFor(mode).canReadChain`, `--allow-paper-read` for PAPER) and
+  requires **no** burner/live environment variable. Output is redacted as a
+  backstop (human and `--json`), so an RPC `?api-key=` can never leak.
+- The report is **advisory only**. `PASS_FOR_PAPER_EVALUATION` permits only
+  *paper-trading* evaluation later — it is never a live-trading judgment and
+  never authorizes a send.
+
 ## Key handling rules (for when Phase 6 arrives)
 
 - The config stores only the **name** of the env var holding the burner key
