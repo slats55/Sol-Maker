@@ -28,6 +28,7 @@ packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.j
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
+packages/backtest @soulmaker/backtest  deterministic simulated replay (Sprint 8)  [strategy, paper, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -61,6 +62,14 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   `@soulmaker/risk` for the advisory decision type; `@soulmaker/strategy` depends
   on `@soulmaker/risk` (advisory decision + score) and on `@soulmaker/paper`
   **types only** (to adapt a simulated `PaperState` into its portfolio view).
+- `@soulmaker/backtest` (Sprint 8) sits **above** both strategy and paper: it
+  depends on `@soulmaker/strategy` (run `planStrategyBatch`), `@soulmaker/paper`
+  (run `runPaperSession`/journal reconstruction), and `@soulmaker/security`
+  (redaction). Neither strategy nor paper depends on it, so there is **no cycle**
+  and `@soulmaker/strategy` keeps its "decision-only, never runs a paper session"
+  contract — the backtest is the orchestrator that drives a session. It is pure
+  (no `core`, `solana`, `@solana/web3.js`, RPC, filesystem, network, `Date.now`,
+  or `Math.random`).
 
 ## The live boundary
 
@@ -159,11 +168,15 @@ byte-identical output (seeded ids, injectable clock).
 - `caps.ts` — `checkBuyCaps` (kill switch, trade size, daily loss, open
   positions, optional per-position ceiling), evaluated **before** every action.
 - `run.ts` — `runPaperSession`: risk filter → caps → simulated fills → TP/SL
-  sweep → summary; returns ordered journal events + final state + summary.
+  sweep → summary; returns ordered journal events + final state + summary. An
+  optional injected `startingState` (Sprint 8, cloned via `cloneState` so the
+  caller's object is never mutated) lets a run **continue** an existing simulated
+  portfolio: sells, caps, and PnL all see the carried-forward positions. Omitting
+  it preserves the original empty-state behavior exactly.
 - `journal.ts` — pure (de)serialization + `reduceJournal` replay; malformed
   lines are reported, never fatal. `deriveStateFromJournalText` (Sprint 7) is the
   **strict** variant (parse + reduce + fill-payload validation) used by
-  `strategy:plan --journal`.
+  `strategy:plan --journal` and by `paper:run --journal` continuation.
 - `report.ts` — `summarize` + redacted human formatter + JSON envelope (always
   carries the `PAPER ONLY` banner + "nothing was built/signed/simulated/sent").
 
@@ -184,6 +197,18 @@ The CLI owns all file I/O: it reads injected candidate/price fixtures, **appends
 (never truncates) to the JSONL journal, and prints redacted human or JSON output.
 `paper:run` needs no chain access and no wallet; the `--kill-switch` flag is
 OR-ed with the core config kill switch so a global stop also halts paper runs.
+
+**Journal-continuing runs (Sprint 8).** With `--journal`, `paper:run` is stateful:
+the CLI reads an existing journal **first** and strictly derives the run's
+`startingState` via `deriveStateFromJournalText`. A malformed line or invalid fill
+is **refused before anything is appended** (a journal used as authoritative state
+must not silently drop events); a missing journal starts from the empty state and
+is created on append; a valid journal is only ever appended to. This makes
+`strategy:plan --journal` → `paper:run --journal` a real paper-only loop — a sell
+candidate derived from the journal now finds its open simulated position instead
+of being rejected with "no open simulated position". The lenient read-only summary
+commands (`paper:journal` / `paper:status`) keep their tolerant display behavior;
+only the **stateful** run/planning paths use the strict derivation.
 
 ## Strategy rules engine (`@soulmaker/strategy`, Phase 5)
 
@@ -262,6 +287,55 @@ recommendation, or live-trading authorization. A **forbidden-import regression
 test** (`no-forbidden-imports.test.ts`) asserts the package source (now including
 `exits.ts`) imports no `@solana/web3*`, `fs`/`node:fs`, `http(s)`, or `ws`. See
 [`STRATEGY_MODEL.md`](STRATEGY_MODEL.md).
+
+## Backtest / replay engine (`@soulmaker/backtest`, Sprint 8)
+
+A **pure**, deterministic, **simulated-only** replay engine that bridges
+journal-continuing paper runs and historical replay. It orchestrates the SAME
+production code paths the manual loop uses — `planStrategyBatch` (decide) then
+`runPaperSession` started from the carried-forward state (simulate) — over an
+ordered list of injected **steps**, and reports a deterministic summary. It
+depends on `@soulmaker/strategy`, `@soulmaker/paper`, and `@soulmaker/security`;
+nothing depends on it (no cycle). No `core`, `solana`, `@solana/web3.js`, RPC,
+filesystem, network, `Date.now`, or `Math.random` — the only clock is each step's
+injected `at`, so a given scenario yields **byte-stable** output.
+
+- `types.ts` — `BacktestScenario` (a self-contained artifact: embedded
+  `strategyConfig` + `caps` + ordered `steps` + optional seed `initialJournal`),
+  `BacktestStep`, `BacktestStepResult`, `BacktestReport`.
+- `backtest.ts` — `validateScenario` (strict; refuses a malformed/empty scenario
+  with a clear, non-secret message) and `runBacktest`: seed (optional, via
+  `deriveStateFromJournalText`) → per step `planStrategyBatch` → `runPaperSession`
+  (continued) → final `reduceJournal` + `markFinalUnrealized` + `summarize`. The
+  scenario is never mutated.
+- `report.ts` — `formatBacktestReport` (redacted human block) + the required
+  labels: **SIMULATED PAPER-ONLY REPORT**, *uses injected historical data only*,
+  *not a live result*, *not financial advice*, *not a profitability claim*.
+
+**Data flow:**
+
+```
+BacktestScenario (config + caps + steps[, initialJournal])
+        │  per step (carrying simulated state forward):
+        ▼
+  planStrategyBatch(candidates, config, paperState) ─► PaperCandidate[]
+        ▼
+  runPaperSession(caps, candidates, prices, startingState) ─► events + state
+        ▼  (all steps)
+  reduceJournal(seed+steps) → markFinalUnrealized → summarize → BacktestReport
+        ▼
+CLI paper:backtest  → human | --json | --out writes ONLY the report JSON
+```
+
+The CLI's `paper:backtest` reads ONE local JSON scenario, refuses malformed input
+cleanly, redacts all output, and never writes a journal or any fills (`--out`
+writes the report JSON only). The report uses **injected historical data only** —
+it is **not** a live result, a profitability claim, or financial advice. The
+command lives beside the other `paper:*` commands because its artifact is a
+paper-simulation report; the strategy layer is an internal driver. A
+**forbidden-import regression test** asserts the package imports no
+`@solana/web3*`, `fs`/`node:fs`, `http(s)`, or `ws`. See
+[`PAPER_TRADING_MODEL.md`](PAPER_TRADING_MODEL.md).
 
 ## Configuration
 

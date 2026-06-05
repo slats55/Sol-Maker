@@ -14,6 +14,7 @@ import {
   tokenRiskReport,
   strategyEvaluateReport,
   strategyPlanReport,
+  paperBacktestReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -301,5 +302,26 @@ program
       );
     },
   );
+
+program
+  .command("paper:backtest")
+  .description(
+    "Deterministic, injected-only simulated replay of a local scenario through plan → paper (PAPER ONLY; not a live result; not financial advice; not a profitability claim)",
+  )
+  .option("--scenario <path>", "local JSON backtest scenario (config + caps + steps)")
+  .option("--out <path>", "write ONLY the report JSON to this file (never a journal/fills)")
+  .option("--json", "emit the report as stable JSON")
+  .action((opts: { scenario?: string; out?: string; json?: boolean }) => {
+    printResult(
+      paperBacktestReport(
+        {},
+        {
+          scenarioPath: opts.scenario,
+          outPath: opts.out,
+          json: Boolean(opts.json),
+        },
+      ),
+    );
+  });
 
 program.parseAsync(process.argv);

@@ -33,6 +33,21 @@ function clonePositions(
   return out;
 }
 
+/**
+ * Clone a whole {@link PaperState} so a caller can hand it to a run (as a
+ * starting state) without that state being mutated or aliased by the run.
+ * Positions are copied field-by-field; the `fills` array is copied (its fill
+ * objects are append-only bookkeeping, never mutated in place). Pure: the input
+ * is never modified, and a run started from the clone stays decoupled from it.
+ */
+export function cloneState(state: PaperState): PaperState {
+  return {
+    ...state,
+    positions: clonePositions(state.positions),
+    fills: [...state.fills],
+  };
+}
+
 /** Apply a simulated BUY fill: open or add to a position (weighted average). */
 export function applyBuyFill(state: PaperState, fill: PaperFill): PaperState {
   const positions = clonePositions(state.positions);

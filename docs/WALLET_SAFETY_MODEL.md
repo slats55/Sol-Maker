@@ -115,7 +115,7 @@ entirely within the no-custody model:
   evaluation** — never "safe", "approved for live trading", "profitable", or a
   reason to send anything.
 
-## Phase 5 (Sprints 5–7): the strategy engine is paper-only and key-free
+## Phase 5 (Sprints 5–8): the strategy engine is paper-only and key-free
 
 The Phase 5 strategy engine (`@soulmaker/strategy` + the `strategy:evaluate` and
 `strategy:plan` commands) stays entirely within the no-custody model:
@@ -147,6 +147,16 @@ The Phase 5 strategy engine (`@soulmaker/strategy` + the `strategy:evaluate` and
   metrics and a simulated position size only; they produce **simulated paper**
   sell candidates, never a real order, signer, or send. Still no key, seed,
   wallet, RPC, network, or transaction.
+- **Sprint 8 — journal-continuing runs + deterministic backtest** stays inside the
+  same model. `paper:run --journal` continuing from an existing journal, and the
+  new `@soulmaker/backtest` / `paper:backtest` replay, both read **injected local
+  data only** and only ever drive the **simulated** paper engine. They hold **no**
+  key, seed, wallet, signer, `Keypair`, RPC, or network, and build/sign/simulate/
+  send **no** transaction; `@soulmaker/backtest` is a **pure** package with its own
+  forbidden-import regression test. The backtest report uses injected historical
+  data only and is explicitly **not a live result, not a profitability claim, and
+  not advice**. None of this begins transaction planning/simulation (roadmap Phase
+  6) or live sending (Phase 7), which remain **not started**.
 - The report is **paper-only** and explicitly **not** financial advice, a buy
   recommendation, or live-trading authorization; it makes no profitability claim.
   A `PAPER_BUY_CANDIDATE` means a candidate for *simulated* paper evaluation.

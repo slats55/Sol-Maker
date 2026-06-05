@@ -74,9 +74,9 @@ Implemented in `@soulmaker/risk` + the CLI (Sprint 3):
 - ⬜ Off-chain / pool-derived flags (metadata mutable, socials, pool size, LP
   burn/lock, deployer denylist) — deferred (need data not available read-only yet).
 
-## Phase 4 — Paper trading engine 🟡 (deterministic simulated engine complete)
+## Phase 4 — Paper trading engine 🟡 (deterministic simulated engine complete; Sprint 8 journal-continuing runs)
 
-Implemented in `@soulmaker/paper` + the CLI (Sprint 4):
+Implemented in `@soulmaker/paper` + the CLI (Sprint 4; Sprint 8 journal continuation):
 
 - ✅ Simulated buy/sell against **injected** prices (weighted-average positions,
   realized + unrealized PnL). No chain, no wallet, no transaction.
@@ -92,13 +92,23 @@ Implemented in `@soulmaker/paper` + the CLI (Sprint 4):
   `--kill-switch` OR-ed with the core config kill switch).
 - ✅ CLI: `paper:run`, `paper:journal`, `paper:status` (real, replacing the stub).
 - ✅ Deterministic (seeded ids + injected clock), fully offline tests.
+- ✅ **(Sprint 8) Journal-continuing runs** — `runPaperSession` accepts an optional
+  injected `startingState` (cloned, never mutated) so a run can continue an existing
+  simulated portfolio: sells/caps/PnL all see the carried-forward positions. CLI
+  `paper:run --journal` now reads an existing journal FIRST and strictly derives the
+  starting state (`deriveStateFromJournalText`); a malformed line / invalid fill is
+  refused **before** anything is appended; a missing journal starts empty; the journal
+  is only ever appended to (never truncated or rewritten). This makes `strategy:plan
+  --journal` → `paper:run --journal` a real paper-only loop (a journal-derived sell
+  candidate now finds its open position instead of being rejected).
 - ⬜ Snipe-list **ingestion** wiring (candidates are supplied as fixtures today;
   a live snipe-list source is a later sprint). Still **no real sends**.
 
-## Phase 5 — Strategy rules engine 🟡 (deterministic, paper-only — single + batch + journal-aware)
+## Phase 5 — Strategy rules engine 🟡 (deterministic, paper-only — single + batch + journal-aware + journal-continuing loop + backtest)
 
-Implemented in `@soulmaker/strategy` + the CLI (Sprint 5 single-candidate engine;
-Sprint 6 batch plan pipeline; Sprint 7 journal-aware planning + richer exits):
+Implemented in `@soulmaker/strategy` + `@soulmaker/backtest` + the CLI (Sprint 5
+single-candidate engine; Sprint 6 batch plan pipeline; Sprint 7 journal-aware
+planning + richer exits; Sprint 8 journal-continuing loop + deterministic backtest):
 
 - ✅ Deterministic, **paper-only** rules engine: turns an advisory
   `@soulmaker/risk` report + injected, read-only metrics into a single decision —
@@ -148,13 +158,25 @@ Sprint 6 batch plan pipeline; Sprint 7 journal-aware planning + richer exits):
 - ✅ **No tx build/sign/simulate/send. No wallet, RPC, network, or execution SDK.
   No `Date.now` / `Math.random`.** Output is not advice and makes no profitability
   claim.
+- ✅ **(Sprint 8) Journal-continuing paper loop** — `strategy:plan --journal` and
+  `paper:run --journal` now form a real paper-only loop: planning derives the held
+  portfolio from the journal and emits a `PAPER_SELL_CANDIDATE`; the run continues
+  from the same journal-derived state and accepts that sell (no more "cannot sell —
+  no open simulated position"). See Phase 4 for the engine/CLI details.
+- ✅ **(Sprint 8) Deterministic simulated backtest** (`@soulmaker/backtest` +
+  `paper:backtest`) — replays an injected, self-contained local JSON scenario
+  (embedded strategy config + caps + ordered steps) through the **same** production
+  code paths (`planStrategyBatch` → `runPaperSession` with `startingState`,
+  `deriveStateFromJournalText`, `reduceJournal`, `summarize`), carrying the simulated
+  portfolio forward between steps. Pure (no fs/network/RPC/`Date.now`/`Math.random`),
+  byte-stable for a given scenario, and refuses a malformed/empty scenario. The
+  report carries the required labels — **SIMULATED PAPER-ONLY REPORT**, *uses
+  injected historical data only*, *not a live result*, *not financial advice*, *not
+  a profitability claim*. A new package because the backtest orchestrates BOTH
+  strategy and paper (it sits above each); neither depends on it, so there is no
+  cycle and `@soulmaker/strategy` keeps its "never runs a paper session" contract.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
-- ⬜ **(Recommended Sprint 8) Deterministic simulated backtest report** — replay
-  injected *historical* candidate batches + price/metric series through plan →
-  paper into a simulated paper summary. Injected local JSON only; **not** a track
-  record, live result, or profitability claim. **Not started** (deferred from
-  Sprint 7 to keep that slice small).
 
 ## Phase 6 — Transaction planning & simulation ⬜ (NOT started)
 

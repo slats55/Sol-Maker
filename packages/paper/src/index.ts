@@ -21,6 +21,7 @@ export {
   initialState,
   applyBuyFill,
   applySellFill,
+  cloneState,
   markUnrealized,
 } from "./engine.js";
 export type { SellResult } from "./engine.js";

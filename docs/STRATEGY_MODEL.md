@@ -1,4 +1,4 @@
-# Soulmaker Strategy Model (Phase 5 / Sprints 5–7)
+# Soulmaker Strategy Model (Phase 5 / Sprints 5–8)
 
 The strategy engine (`@soulmaker/strategy` + the `strategy:evaluate` and
 `strategy:plan` CLI commands) is a **deterministic, paper-only rules engine**. It
@@ -17,8 +17,15 @@ submitted to the paper-trading engine as a simulated **paper-buy** or
   paper journal, instead of a prebuilt `--paper-state` snapshot) and **richer
   simulated exits** (trailing stop, partial/scaled take-profit, and per-mint
   position-aware sizing). It is still paper-only and still never auto-runs.
+- **Sprint 8** closed the paper-only **loop** and added the **deterministic
+  backtest**. `paper:run --journal` now **continues** from an existing valid
+  journal (a strict starting state), so a `PAPER_SELL_CANDIDATE` derived from the
+  journal actually fills instead of being rejected. A new `@soulmaker/backtest`
+  package (CLI `paper:backtest`) replays an injected, self-contained local scenario
+  through the **same** `planStrategyBatch` → `runPaperSession` code paths — still
+  paper-only, still never live; see [`PAPER_TRADING_MODEL.md`](PAPER_TRADING_MODEL.md).
 
-(Sprints 5–7 extend this Phase 5 package; they do **not** begin roadmap Phase 6
+(Sprints 5–8 extend this Phase 5 package; they do **not** begin roadmap Phase 6
 — transaction planning/simulation — which remains **not started**.)
 
 > **Paper-only. Not advice.** The strategy engine **does not execute trades** and
@@ -334,9 +341,12 @@ and never writes (or mutates) a journal.
   on **injected** metrics (`priceChangePct`, `peakPriceChangePct`,
   `drawdownFromPeakPct`, `positionSizeUsd`) and a derived simulated position size.
   They are deterministic bookkeeping, **not** a fill, a price prediction, or a
-  performance claim. A multi-tick **simulated backtest report** (replaying an
-  injected price series through plan → paper) is **not** implemented in Sprint 7 —
-  it is recommended for **Sprint 8** (see [`ROADMAP.md`](ROADMAP.md)).
+  performance claim. A multi-step **simulated backtest** (replaying an injected
+  scenario through plan → paper) **is** implemented in **Sprint 8** as
+  `@soulmaker/backtest` / `paper:backtest` — injected local data only, deterministic
+  and byte-stable, and explicitly **not a live result, not a profitability claim,
+  and not advice** (see [`PAPER_TRADING_MODEL.md`](PAPER_TRADING_MODEL.md) and
+  [`ROADMAP.md`](ROADMAP.md)).
 - **Candidate-list ingestion** is wired only as far as **injected local JSON** (a
   `StrategyCandidate[]` file fed to `strategy:plan`). There is **no live
   snipe-list source, scraping, or network fetch** — and there will be no

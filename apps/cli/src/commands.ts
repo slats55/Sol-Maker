@@ -70,6 +70,11 @@ import {
   type StrategyPortfolio,
   type StrategyPlanInput,
 } from "@soulmaker/strategy";
+import {
+  runBacktest,
+  formatBacktestReport,
+  type BacktestReport,
+} from "@soulmaker/backtest";
 
 export interface CommandContext {
   cwd?: string;
@@ -631,9 +636,67 @@ function buildPaperCaps(
 }
 
 /**
+ * Read an existing journal file's text, or `null` when the file does not exist
+ * yet (a clean "start from empty state" signal that the caller then creates on
+ * append). Any OTHER read failure (permissions, a directory, …) throws so the
+ * caller refuses the run rather than silently starting from an empty state and
+ * appending to — or over an — unreadable journal.
+ */
+function readJournalTextIfExists(resolved: string): string | null {
+  try {
+    return readFileSync(resolved, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return null;
+    throw new Error(`cannot read journal file at ${resolved}`);
+  }
+}
+
+/**
+ * Strictly derive a starting {@link PaperState} from an existing journal's text
+ * for a stateful `paper:run --journal` continuation. When the journal is used as
+ * the authoritative portfolio for a NEW run, a malformed line or an invalid fill
+ * must refuse the run (never silently drop events) — otherwise the appended fills
+ * would build on a corrupted/partial state. Returns the derived state, or a
+ * human, non-secret refusal reason. An empty/blank journal yields the empty state.
+ */
+function startingStateFromJournalText(
+  text: string,
+): { ok: true; state: PaperState } | { ok: false; reason: string } {
+  const { state, parseErrors, fillErrors } = deriveStateFromJournalText(text);
+  if (parseErrors.length > 0) {
+    const first = parseErrors[0];
+    return {
+      ok: false,
+      reason:
+        `existing journal is malformed: ${parseErrors.length} bad line(s); ` +
+        `first at line ${first?.line}: ${first?.reason}. No events were appended.`,
+    };
+  }
+  if (fillErrors.length > 0) {
+    const first = fillErrors[0];
+    return {
+      ok: false,
+      reason:
+        `existing journal has ${fillErrors.length} invalid fill event(s); ` +
+        `first at event index ${first?.index}: ${first?.reason}. No events were appended.`,
+    };
+  }
+  return { ok: true, state };
+}
+
+/**
  * `soulmaker paper:run` — run a deterministic, simulated-only paper evaluation
  * from local injected candidate + price fixtures. No chain access, no wallet, no
  * transaction is built, signed, simulated, or sent.
+ *
+ * With `--journal`, the run is *stateful and continuous*: if the journal file
+ * already exists it is read FIRST and the simulated portfolio is strictly derived
+ * from it (via `deriveStateFromJournalText`) as the run's starting state — so a
+ * sell candidate produced from that journal finds its open position and the caps
+ * account for positions already held. A malformed line or invalid fill in the
+ * existing journal refuses the run and appends nothing. A missing journal starts
+ * from the empty state and is created on append. The journal is only ever
+ * appended to — existing events are never truncated or rewritten.
  */
 export function paperRunReport(
   ctx: CommandContext = {},
@@ -657,6 +720,25 @@ export function paperRunReport(
     return redactString(`Refusing: ${(err as Error).message}`);
   }
 
+  // When continuing a journal, strictly derive the starting state BEFORE running.
+  // Refuse (and append nothing) on a missing-but-unreadable or corrupt journal.
+  let startingState: PaperState | undefined;
+  let journalResolved: string | undefined;
+  if (opts.journalPath) {
+    journalResolved = resolvePath(ctx, opts.journalPath);
+    let existing: string | null;
+    try {
+      existing = readJournalTextIfExists(journalResolved);
+    } catch (err) {
+      return redactString(`Refusing: ${(err as Error).message}`);
+    }
+    if (existing !== null) {
+      const derived = startingStateFromJournalText(existing);
+      if (!derived.ok) return redactString(`Refusing: ${derived.reason}`);
+      startingState = derived.state;
+    }
+  }
+
   const result = runPaperSession({
     caps,
     candidates,
@@ -664,15 +746,15 @@ export function paperRunReport(
     takeProfitPct,
     stopLossPct,
     now: ctx.now ?? isoNow,
+    ...(startingState !== undefined ? { startingState } : {}),
   });
 
-  if (opts.journalPath) {
-    const resolved = resolvePath(ctx, opts.journalPath);
+  if (journalResolved) {
     try {
-      // Append-only: never truncates an existing journal.
-      appendFileSync(resolved, serializeEvents(result.events));
+      // Append-only: never truncates or rewrites existing journal events.
+      appendFileSync(journalResolved, serializeEvents(result.events));
     } catch {
-      return redactString(`Refusing: cannot write journal file at ${resolved}`);
+      return redactString(`Refusing: cannot write journal file at ${journalResolved}`);
     }
   }
 
@@ -1060,6 +1142,67 @@ export function strategyPlanReport(
     return JSON.stringify(redactValue(envelope), null, 2);
   }
   return formatStrategyPlanReport(result, { title: "Strategy plan" });
+}
+
+// ---------------------------------------------------------------------------
+// Phase 8 — paper:backtest (deterministic, injected-only simulated replay)
+// ---------------------------------------------------------------------------
+
+export interface PaperBacktestCommandOptions {
+  /** Path to a local JSON backtest scenario (self-contained: config + caps + steps). */
+  scenarioPath?: string;
+  /** Optional path to write ONLY the report JSON (never a journal or fills). */
+  outPath?: string;
+  json?: boolean;
+}
+
+/**
+ * `soulmaker paper:backtest` — replay an injected, local JSON scenario through the
+ * real `planStrategyBatch` → `runPaperSession` (journal-continuing) code paths and
+ * print a deterministic, PAPER-ONLY simulated report. It reads ONE local JSON file
+ * only: no chain access, no wallet, no RPC, no network. It builds, signs,
+ * simulates, and sends NOTHING. The scenario embeds its own strategy config + caps,
+ * so it is a single reproducible artifact. The report uses injected historical data
+ * only — it is NOT a live result, NOT a profitability claim, and NOT financial
+ * advice. The command never writes a journal or any fills; `--out` writes only the
+ * report JSON. It lives beside the other `paper:*` commands because the artifact is
+ * a paper-simulation report (the strategy layer is an internal driver).
+ */
+export function paperBacktestReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestCommandOptions = {},
+): string {
+  if (!opts.scenarioPath) return "Refusing: --scenario <path> is required.";
+
+  let scenario: unknown;
+  try {
+    scenario = readJsonValue(ctx, opts.scenarioPath, "scenario");
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  let report: BacktestReport;
+  try {
+    // Pure replay; validates the scenario strictly and refuses malformed input.
+    report = runBacktest(scenario);
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  // Optional: write ONLY the redacted report JSON (never a journal/fills).
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(report), null, 2) + "\n");
+    } catch {
+      return redactString(`Refusing: cannot write output file at ${resolved}`);
+    }
+  }
+
+  if (opts.json) {
+    return JSON.stringify(redactValue(report), null, 2);
+  }
+  return formatBacktestReport(report);
 }
 
 function yesNo(value: boolean): string {

@@ -8,6 +8,7 @@
     "soulmaker": "./src/index.ts"
   },
   "dependencies": {
+    "@soulmaker/backtest": "workspace:*",
     "@soulmaker/core": "workspace:*",
     "@soulmaker/paper": "workspace:*",
     "@soulmaker/risk": "workspace:*",

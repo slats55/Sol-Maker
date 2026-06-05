@@ -32,6 +32,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@soulmaker/backtest':
+        specifier: workspace:*
+        version: link:../../packages/backtest
       '@soulmaker/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -55,6 +58,18 @@ importers:
         version: 12.1.0
 
   packages/adapters: {}
+
+  packages/backtest:
+    dependencies:
+      '@soulmaker/paper':
+        specifier: workspace:*
+        version: link:../paper
+      '@soulmaker/security':
+        specifier: workspace:*
+        version: link:../security
+      '@soulmaker/strategy':
+        specifier: workspace:*
+        version: link:../strategy
 
   packages/core:
     dependencies:

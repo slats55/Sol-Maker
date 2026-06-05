@@ -16,6 +16,7 @@ import {
   tokenRiskReport,
   strategyEvaluateReport,
   strategyPlanReport,
+  paperBacktestReport,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
 import { parseJournal, reduceJournal } from "@soulmaker/paper";
@@ -1668,6 +1669,394 @@ describe("strategyPlanReport — --journal (Sprint 7, read-only journal-aware pl
           journalPath: "journal.jsonl",
           json: true,
         },
+      );
+      expect(out).not.toContain("SUPERSECRET");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 8 — paper:run --journal continuation (Sprint 8): a run started from an
+// existing valid journal continues the simulated portfolio (read-before-append).
+// ---------------------------------------------------------------------------
+
+/** A SELL candidate fixture for `mint` (a held position is required at run time). */
+function sellCandidate(mint: string, proposedSizeUsd = 0) {
+  return { mint, proposedSide: "SELL", proposedSizeUsd, riskReport: passReport(mint) };
+}
+
+describe("paperRunReport — --journal continuation (Sprint 8)", () => {
+  it("reads an existing valid journal as the starting state before appending (sell continuation)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeOpenPositionJournal(cwd); // journal holds an open MINT_A (qty 50 @ 2)
+      // A SELL candidate + a higher exit price. Without journal continuation the
+      // sell would be rejected ("no open simulated position").
+      writeFileSync(join(cwd, "sell.json"), JSON.stringify([sellCandidate(MINT_A, 0)]));
+      writeFileSync(
+        join(cwd, "sell-prices.json"),
+        JSON.stringify([
+          { mint: MINT_A, priceUsd: 3, observedAt: PAPER_TIME, source: "injected-fixture" },
+        ]),
+      );
+      const out = paperRunReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "sell.json",
+          pricesPath: "sell-prices.json",
+          journalPath: "journal.jsonl",
+          maxTradeSizeUsd: 1000,
+        },
+      );
+      expect(out).toContain("buys / sells:     0 / 1");
+      expect(out).not.toMatch(/no open simulated position/i);
+      // (3 - 2) * 50 = +50 realized on the closed position.
+      expect(out).toContain("realized PnL:     $50.00");
+
+      // The full journal now reconstructs to a CLOSED MINT_A with +50 realized.
+      const journalText = readFileSync(join(cwd, "journal.jsonl"), "utf8");
+      const state = reduceJournal(parseJournal(journalText).events);
+      expect(state.positions[MINT_A]).toBeUndefined();
+      expect(state.realizedPnlUsd).toBe(50);
+      expect(state.closedTradeCount).toBe(1);
+      // Exactly one buy fill (prior) + one sell fill (this run) — no duplication.
+      const fills = parseJournal(journalText).events.filter(
+        (e) => e.type === "PAPER_BUY_FILLED" || e.type === "PAPER_SELL_FILLED",
+      );
+      expect(fills).toHaveLength(2);
+
+      const status = paperStatusReport({ cwd, env: {} }, { journalPath: "journal.jsonl" });
+      expect(status).toContain("open positions:   0");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed existing journal and appends nothing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(
+        join(cwd, "journal.jsonl"),
+        ['{"type":"RUN_STARTED","at":"x","caps":{},"note":"n"}', "{not json"].join("\n"),
+      );
+      const before = readFileSync(join(cwd, "journal.jsonl"), "utf8");
+      const { candidates, prices } = cleanFixtures();
+      writeFixtures(cwd, candidates, prices);
+      const out = paperRunReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "candidates.json",
+          pricesPath: "prices.json",
+          journalPath: "journal.jsonl",
+          maxTradeSizeUsd: 1000,
+        },
+      );
+      expect(out).toMatch(/^Refusing: existing journal is malformed/);
+      // The journal is byte-for-byte unchanged — nothing was appended.
+      expect(readFileSync(join(cwd, "journal.jsonl"), "utf8")).toBe(before);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses an existing journal carrying an invalid fill payload and appends nothing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(
+        join(cwd, "journal.jsonl"),
+        '{"type":"PAPER_BUY_FILLED","at":"x","fill":{"side":"BUY","mint":"M","quantity":"oops","priceUsd":1,"notionalUsd":1,"feeUsd":0,"filledAt":"x"}}',
+      );
+      const before = readFileSync(join(cwd, "journal.jsonl"), "utf8");
+      const { candidates, prices } = cleanFixtures();
+      writeFixtures(cwd, candidates, prices);
+      const out = paperRunReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "candidates.json",
+          pricesPath: "prices.json",
+          journalPath: "journal.jsonl",
+          maxTradeSizeUsd: 1000,
+        },
+      );
+      expect(out).toMatch(/^Refusing: existing journal has \d+ invalid fill/);
+      expect(readFileSync(join(cwd, "journal.jsonl"), "utf8")).toBe(before);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("a missing journal starts from the empty state and creates it on append", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { candidates, prices } = cleanFixtures();
+      writeFixtures(cwd, candidates, prices);
+      expect(readdirSync(cwd).some((f) => f === "fresh.jsonl")).toBe(false);
+      const out = paperRunReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "candidates.json",
+          pricesPath: "prices.json",
+          journalPath: "fresh.jsonl",
+          maxTradeSizeUsd: 1000,
+        },
+      );
+      expect(out).toContain("buys / sells:     1 / 0");
+      // The journal was created and holds this run's events.
+      const text = readFileSync(join(cwd, "fresh.jsonl"), "utf8");
+      expect(text).toContain("PAPER_BUY_FILLED");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("end-to-end: buy run → strategy:plan --journal emits a sell → sell run → status closes the position", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      // 1) A first paper run opens a simulated MINT_A position and appends to the journal.
+      writeOpenPositionJournal(cwd);
+      const afterBuy = paperStatusReport({ cwd, env: {} }, { journalPath: "journal.jsonl" });
+      expect(afterBuy).toContain("open positions:   1");
+
+      // 2) strategy:plan --journal sees the held position and emits a SELL candidate
+      //    (priceChangePct 60 ≥ takeProfitPct 50 ⇒ FULL exit), written to plan.json.
+      writeFileSync(
+        join(cwd, "plan-candidates.json"),
+        JSON.stringify([
+          {
+            mint: MINT_A,
+            symbol: "WIF",
+            riskReport: passReport(MINT_A),
+            metrics: { priceChangePct: 60 },
+            source: "snipe-list",
+          },
+        ]),
+      );
+      writeFileSync(
+        join(cwd, "config.json"),
+        JSON.stringify({ ...STRATEGY_CONFIG, takeProfitPct: 50 }),
+      );
+      const planOut = strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "plan-candidates.json",
+          strategyConfigPath: "config.json",
+          journalPath: "journal.jsonl",
+          outPath: "plan.json",
+        },
+      );
+      expect(planOut).toContain("PAPER_SELL_CANDIDATE");
+      const plan = JSON.parse(readFileSync(join(cwd, "plan.json"), "utf8")) as {
+        mint: string;
+        proposedSide: string;
+      }[];
+      expect(plan).toHaveLength(1);
+      expect(plan[0]?.proposedSide).toBe("SELL");
+
+      // 3) A later paper run reads the SAME journal as starting state, accepts the
+      //    SELL candidate, appends a sell fill — and must NOT reject it.
+      writeFileSync(
+        join(cwd, "exit-prices.json"),
+        JSON.stringify([
+          { mint: MINT_A, priceUsd: 3, observedAt: PAPER_TIME, source: "injected-fixture" },
+        ]),
+      );
+      const sellRun = paperRunReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "plan.json",
+          pricesPath: "exit-prices.json",
+          journalPath: "journal.jsonl",
+          maxTradeSizeUsd: 1000,
+        },
+      );
+      expect(sellRun).not.toMatch(/no open simulated position/i);
+      expect(sellRun).toContain("buys / sells:     0 / 1");
+
+      // 4) paper:status --journal shows the position closed with realized PnL.
+      const status = paperStatusReport({ cwd, env: {} }, { journalPath: "journal.jsonl" });
+      expect(status).toContain("open positions:   0");
+      expect(status).toContain("closed trades:    1");
+      expect(status).toContain("realized PnL:     $50.00");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("regression: a journal-derived SELL never produces 'cannot sell — no open simulated position'", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeOpenPositionJournal(cwd);
+      writeFileSync(join(cwd, "sell.json"), JSON.stringify([sellCandidate(MINT_A, 0)]));
+      writeFileSync(
+        join(cwd, "sell-prices.json"),
+        JSON.stringify([
+          { mint: MINT_A, priceUsd: 2, observedAt: PAPER_TIME, source: "injected-fixture" },
+        ]),
+      );
+      const out = paperRunReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "sell.json",
+          pricesPath: "sell-prices.json",
+          journalPath: "journal.jsonl",
+          maxTradeSizeUsd: 1000,
+        },
+      );
+      expect(out).not.toMatch(/cannot sell — no open simulated position/i);
+      expect(out).not.toMatch(/REJECT\(caps\)/);
+      expect(out).toContain("buys / sells:     0 / 1");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 8 — paper:backtest (deterministic, injected-only simulated replay)
+// ---------------------------------------------------------------------------
+
+/** A self-contained one-step buy scenario (config + caps + steps) for MINT_A. */
+function buyScenario(): unknown {
+  return {
+    name: "cli-backtest",
+    strategyConfig: STRATEGY_CONFIG, // minScoreForPaperBuy 55 ⇒ a clean PASS buys
+    caps: { maxTradeSizeUsd: 1000, maxDailyLossUsd: 1000, maxOpenPositions: 5, killSwitch: false },
+    defaultPaperSizeUsd: 100,
+    steps: [
+      {
+        id: "step-1",
+        at: PAPER_TIME,
+        candidates: [{ mint: MINT_A, riskReport: passReport(MINT_A) }],
+        prices: [{ mint: MINT_A, priceUsd: 2, observedAt: PAPER_TIME, source: "injected-fixture" }],
+      },
+    ],
+  };
+}
+
+describe("paperBacktestReport (Sprint 8)", () => {
+  it("refuses when --scenario is missing", () => {
+    expect(paperBacktestReport({}, {})).toMatch(/^Refusing: --scenario/);
+  });
+
+  it("refuses a missing scenario file cleanly", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const out = paperBacktestReport({ cwd, env: {} }, { scenarioPath: "nope.json" });
+      expect(out).toMatch(/^Refusing: cannot read scenario file/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a non-JSON scenario file cleanly", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "scenario.json"), "{ not json");
+      const out = paperBacktestReport({ cwd, env: {} }, { scenarioPath: "scenario.json" });
+      expect(out).toMatch(/^Refusing: scenario file is not valid JSON/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses an empty-steps scenario clearly", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(
+        join(cwd, "scenario.json"),
+        JSON.stringify({ name: "x", strategyConfig: STRATEGY_CONFIG, caps: {}, steps: [] }),
+      );
+      const out = paperBacktestReport({ cwd, env: {} }, { scenarioPath: "scenario.json" });
+      expect(out).toMatch(/^Refusing: /);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("runs a deterministic backtest and prints the required PAPER-ONLY labels", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "scenario.json"), JSON.stringify(buyScenario()));
+      const run = () =>
+        paperBacktestReport(
+          { cwd, env: {}, now: () => PAPER_TIME },
+          { scenarioPath: "scenario.json" },
+        );
+      const out = run();
+      for (const label of [
+        "SIMULATED PAPER-ONLY REPORT",
+        "Uses injected historical data only",
+        "Not a live result",
+        "Not financial advice",
+        "Not a profitability claim",
+      ]) {
+        expect(out).toContain(label);
+      }
+      expect(out).toContain("simulated fills:   1 buy / 0 sell");
+      expect(out).toBe(run()); // deterministic
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json output is parseable and carries the labels", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "scenario.json"), JSON.stringify(buyScenario()));
+      const out = paperBacktestReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        { scenarioPath: "scenario.json", json: true },
+      );
+      const parsed = JSON.parse(out) as {
+        banner: string;
+        scenarioName: string;
+        fillCounts: { buyCount: number };
+        notProfitabilityClaim: boolean;
+      };
+      expect(parsed.banner).toBe("SIMULATED PAPER-ONLY REPORT");
+      expect(parsed.scenarioName).toBe("cli-backtest");
+      expect(parsed.fillCounts.buyCount).toBe(1);
+      expect(parsed.notProfitabilityClaim).toBe(true);
+      expect(out).toContain("Not financial advice");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--out writes ONLY the report JSON and creates no journal/fills", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "scenario.json"), JSON.stringify(buyScenario()));
+      paperBacktestReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        { scenarioPath: "scenario.json", outPath: "report.json" },
+      );
+      const written = readFileSync(join(cwd, "report.json"), "utf8");
+      const parsed = JSON.parse(written) as { scenarioName: string; stepCount: number };
+      expect(parsed.scenarioName).toBe("cli-backtest");
+      expect(parsed.stepCount).toBe(1);
+      // The report is NOT a journal: no run/fill events leak into it.
+      expect(written).not.toContain("RUN_STARTED");
+      expect(written).not.toContain("PAPER_BUY_FILLED");
+      // No .jsonl journal is ever produced by a backtest.
+      expect(readdirSync(cwd).some((f) => f.endsWith(".jsonl"))).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("does not leak a secret-looking injected value into the output", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const leaky = "https://rpc.example.com/?api-key=SUPERSECRET";
+      const scenario = buyScenario() as { steps: { candidates: { source?: string }[] }[] };
+      scenario.steps[0]!.candidates[0]!.source = leaky;
+      writeFileSync(join(cwd, "scenario.json"), JSON.stringify(scenario));
+      const out = paperBacktestReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        { scenarioPath: "scenario.json", json: true },
       );
       expect(out).not.toContain("SUPERSECRET");
     } finally {

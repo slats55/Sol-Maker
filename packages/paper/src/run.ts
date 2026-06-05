@@ -12,7 +12,13 @@
  */
 
 import { checkBuyCaps, openPositionCount } from "./caps.js";
-import { applyBuyFill, applySellFill, initialState, markUnrealized } from "./engine.js";
+import {
+  applyBuyFill,
+  applySellFill,
+  cloneState,
+  initialState,
+  markUnrealized,
+} from "./engine.js";
 import { makeIdGen } from "./ids.js";
 import { summarize } from "./report.js";
 import type {
@@ -36,6 +42,15 @@ export interface PaperRunInput {
   stopLossPct?: number;
   /** Flat simulated fee per fill, in USD. Default 0. */
   feeUsd?: number;
+  /**
+   * Optional existing simulated portfolio to start this run from (e.g. derived
+   * from an append-only journal via `deriveStateFromJournalText`). When omitted,
+   * the run starts from the empty {@link initialState} (unchanged default). The
+   * provided state is cloned and never mutated; caps, sells, and PnL all see the
+   * carried-forward positions, so a run can sell or add to a pre-existing
+   * position and the daily-loss / open-position / per-position caps account for it.
+   */
+  startingState?: PaperState;
   /** Injectable clock for run-level events. Default fixed (pure). */
   now?: () => string;
 }
@@ -94,7 +109,10 @@ export function runPaperSession(input: PaperRunInput): PaperRunResult {
       ? input.stopLossPct
       : undefined;
 
-  let state = initialState();
+  // Start from the injected state (cloned, so the caller's object is never
+  // mutated) or the empty initial state. Either way every reducer below returns
+  // fresh state, so `input.startingState` is left untouched.
+  let state = input.startingState ? cloneState(input.startingState) : initialState();
   const events: PaperJournalEvent[] = [];
 
   events.push({

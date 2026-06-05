@@ -16,7 +16,7 @@ all pass.
 
 ---
 
-## ⚠️ Status: Phases 0–1 done; Phase 2 read-only core complete; Phase 3 advisory risk engine complete; Phase 4 simulated paper engine complete; Phase 5 paper-only strategy rules engine complete (Sprint 5 single-candidate + Sprint 6 batch plan pipeline + Sprint 7 journal-aware planning & richer simulated exits). No live trading. By design.
+## ⚠️ Status: Phases 0–1 done; Phase 2 read-only core complete; Phase 3 advisory risk engine complete; Phase 4 simulated paper engine complete; Phase 5 paper-only strategy rules engine complete (Sprint 5 single-candidate + Sprint 6 batch plan pipeline + Sprint 7 journal-aware planning & richer simulated exits + Sprint 8 journal-continuing paper runs & deterministic simulated backtest). No live trading. By design.
 
 Nothing in this repository can move funds. There is **no transaction signing or
 sending code anywhere in it yet** — the read-only Solana watcher (Phase 2) and
@@ -27,9 +27,15 @@ paper engine (no chain, no wallet, no execution). Sprint 6 adds `strategy:plan`,
 which turns an injected candidate **list** into a `PaperCandidate[]` an operator
 passes to `paper:run` **manually**. Sprint 7 adds `strategy:plan --journal` (derive
 the simulated portfolio from a **read-only** paper journal) and richer **simulated**
-exits (trailing stop, partial take-profit, position-aware sizing) — still
-paper-only, still no auto-run. None of this begins transaction planning (roadmap
-Phase 6 remains not started). The default mode is `PAPER`. See
+exits (trailing stop, partial take-profit, position-aware sizing). Sprint 8 closes
+the loop: `paper:run --journal` now **continues** from an existing valid journal
+(strictly derived starting state, append-only) so a sell candidate produced from
+the journal actually finds its open position — and a new `@soulmaker/backtest`
+package + `paper:backtest` command replay injected, local-only steps through the
+**same** `plan → paper` code paths into a deterministic, **simulated** report. It
+is **injected historical data only**: not a live result, not a profitability
+claim, not advice. None of this begins transaction planning (roadmap Phase 6
+remains not started). The default mode is `PAPER`. See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Non-negotiable security rules (summary)
@@ -59,17 +65,21 @@ soulmaker/
   apps/
     cli/        # @soulmaker/cli  — read-only CLI (doctor, config:check, mode, paper:status,
                 #                    solana:doctor, wallet:watch, token:inspect/accounts/risk,
-                #                    paper:run/journal, strategy:evaluate, strategy:plan)
+                #                    paper:run/journal, strategy:evaluate, strategy:plan,
+                #                    paper:backtest)
     web/        # Phase 8 dashboard (placeholder)
   packages/
     core/       # @soulmaker/core      — config schema, modes, risk caps, LIVE GATE
     security/   # @soulmaker/security  — secret redaction + redacting logger
     solana/     # Phase 2 — read-only RPC watcher (public-key/mint reads only)
     risk/       # Phase 3 — read-only advisory token risk flags + scoring
-    paper/      # Phase 4 — deterministic, simulated-only paper trading engine
+    paper/      # Phase 4 — deterministic, simulated-only paper trading engine;
+                #            Sprint 8 adds journal-continuing runs (injectable startingState)
     strategy/   # Phase 5 — deterministic, paper-only strategy rules engine (feeds paper);
                 #            Sprint 6 adds the batch plan pipeline → PaperCandidate[];
                 #            Sprint 7 adds journal-aware planning + richer simulated exits
+    backtest/   # @soulmaker/backtest  — Sprint 8 deterministic, injected-only simulated
+                #            replay over plan → paper (not a live result; not advice)
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   docs/         # ARCHITECTURE, ROADMAP, WALLET_SAFETY_MODEL, RISK_MODEL, REFERENCE_REPO_AUDIT
   scripts/      # thin operational scripts
@@ -112,6 +122,11 @@ pnpm soulmaker token:risk <mint>      # advisory risk report — NOT a buy recom
 pnpm soulmaker paper:run --candidates <candidates.json> --prices <prices.json>
 pnpm soulmaker paper:journal --journal <journal.jsonl>
 pnpm soulmaker paper:status   --journal <journal.jsonl>
+# --journal makes paper:run STATEFUL: an existing valid journal is read first and
+# becomes the run's starting state (append-only). A malformed journal is refused
+# before anything is appended; a missing journal starts empty and is created.
+pnpm soulmaker paper:run --candidates <candidates.json> --prices <prices.json> \
+  --journal <journal.jsonl>
 
 # paper-only strategy decisioning (offline; injected JSON; feeds paper only; not advice)
 pnpm soulmaker strategy:evaluate --candidate <candidate.json> --config <config.json>
@@ -123,8 +138,15 @@ pnpm soulmaker strategy:plan --candidates <candidates.json> --config <config.jso
 # optional position-awareness from a READ-ONLY paper journal (instead of --paper-state):
 pnpm soulmaker strategy:plan --candidates <candidates.json> --config <config.json> \
   --journal <journal.jsonl>
-# then, by hand:
-pnpm soulmaker paper:run --candidates <paper-candidates.json> --prices <prices.json>
+# then, by hand — pass the SAME journal so the run continues from it (Sprint 8):
+pnpm soulmaker paper:run --candidates <paper-candidates.json> --prices <prices.json> \
+  --journal <journal.jsonl>
+
+# deterministic, injected-only SIMULATED backtest/replay (PAPER ONLY; not a live
+# result; not a profitability claim; not advice). The scenario is one local JSON
+# file embedding its own strategy config + caps + ordered steps:
+pnpm soulmaker paper:backtest --scenario <scenario.json>
+pnpm soulmaker paper:backtest --scenario <scenario.json> --json --out <report.json>
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

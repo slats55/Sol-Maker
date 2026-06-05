@@ -1,4 +1,4 @@
-# Soulmaker Paper Trading Model (Phase 4 / Sprint 4)
+# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest)
 
 The paper engine (`@soulmaker/paper` + the `paper:*` CLI commands) is a
 **deterministic, offline, simulated-only** trading sandbox. It exists to prove
@@ -131,8 +131,48 @@ same run (they do constrain subsequent runs that share the journal/state).
   silently fold a corrupt fill. It is pure (no filesystem) and only folds the
   well-formed fills, so the returned state is never `NaN`-corrupted.
   `strategy:plan --journal` uses it **read-only** (see
-  [`STRATEGY_MODEL.md`](STRATEGY_MODEL.md)); `paper:journal`/`paper:status` keep
-  their lenient behaviour.
+  [`STRATEGY_MODEL.md`](STRATEGY_MODEL.md)) and `paper:run --journal` uses it to
+  derive a run's **starting state** (below); `paper:journal`/`paper:status` keep
+  their lenient display behaviour.
+
+## Journal-continuing runs (Sprint 8)
+
+`runPaperSession` takes an optional injected `startingState` (a `PaperState`). It
+is **cloned** (`cloneState`) so the caller's object is never mutated, and the run
+proceeds from it: a sell can close a pre-existing position, and the caps
+(`maxOpenPositions`, `maxPositionSizeUsd`, `maxDailyLossUsd`, kill switch) all
+account for the carried-forward positions and realized PnL. Omitting it preserves
+the original empty-state behaviour exactly.
+
+The CLI wires this through `paper:run --journal`:
+
+- If the journal **exists**, it is read **first** and the starting state is
+  **strictly** derived (`deriveStateFromJournalText`). A malformed line or an
+  invalid fill **refuses the run and appends nothing** — a journal used as the
+  authoritative portfolio for a new run must not silently drop events.
+- If the journal **does not exist**, the run starts from the empty state and the
+  journal is **created** on append.
+- A valid journal is only ever **appended to** — existing events are never
+  truncated or rewritten.
+
+This makes `strategy:plan --journal` → `paper:run --journal` a real paper-only
+loop: a `PAPER_SELL_CANDIDATE` derived from the journal now finds its open
+simulated position instead of being rejected with "no open simulated position".
+
+## Backtest / replay (Sprint 8)
+
+`@soulmaker/backtest` (CLI `paper:backtest`) replays an injected, self-contained
+local JSON **scenario** (embedded strategy config + caps + ordered steps, plus an
+optional seed `initialJournal`) through the **same** production code paths —
+`planStrategyBatch` then `runPaperSession` with `startingState` — carrying the
+simulated portfolio forward between steps, then reconstructs the final state with
+`reduceJournal` + `markFinalUnrealized` + `summarize`. It is **pure** (no
+fs/network/RPC/`Date.now`/`Math.random`) and **byte-stable** for a given scenario,
+and refuses a malformed or empty-steps scenario clearly. Its report carries
+**injected-historical-data-only** language and is **not a live result, not a
+profitability claim, and not advice**. The command never writes a journal or any
+fills; `--out` writes only the report JSON. See
+[`ARCHITECTURE.md`](ARCHITECTURE.md) for the data flow.
 
 ## PnL reporting
 
@@ -146,15 +186,22 @@ simulated, or sent" disclaimer.
 
 | Command | Purpose |
 | --- | --- |
-| `paper:run` | run a deterministic simulated evaluation from injected fixtures |
-| `paper:journal` | read + summarize an append-only journal |
+| `paper:run` | run a deterministic simulated evaluation from injected fixtures (with `--journal`, **continues** from an existing valid journal) |
+| `paper:journal` | read + summarize an append-only journal (lenient display) |
 | `paper:status` | real status from an optional journal (clean empty state otherwise) |
+| `paper:backtest` | deterministic, injected-only simulated replay of a local scenario (Sprint 8) |
 
 `paper:run` options: `--candidates <path>` `--prices <path>` `--journal <path>`
 `--max-trade-size-usd` `--max-daily-loss-usd` `--max-open-positions`
 `--max-position-size-usd` `--take-profit-pct` `--stop-loss-pct` `--kill-switch`
-`--allow-caution` `--json`. Missing/unreadable fixtures and invalid numeric caps
-are refused cleanly; secrets are never leaked (output is redacted).
+`--allow-caution` `--json`. With `--journal`, an existing journal is read first
+and becomes the run's starting state (strict; refuses a malformed journal before
+appending). Missing/unreadable fixtures and invalid numeric caps are refused
+cleanly; secrets are never leaked (output is redacted).
+
+`paper:backtest` options: `--scenario <path>` `--json` `--out <path>` (writes the
+report JSON only — never a journal or fills). A malformed/empty scenario is
+refused cleanly; output is redacted.
 
 ## Limitations (be honest)
 

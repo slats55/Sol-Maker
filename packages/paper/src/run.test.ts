@@ -2,7 +2,13 @@ import { describe, it, expect } from "vitest";
 import { buildTokenRiskReport } from "@soulmaker/risk";
 import type { TokenRiskInput } from "@soulmaker/risk";
 import { runPaperSession } from "./run.js";
-import type { PaperCandidate, PaperPricePoint, PaperRiskCaps } from "./types.js";
+import { initialState } from "./engine.js";
+import type {
+  PaperCandidate,
+  PaperPricePoint,
+  PaperRiskCaps,
+  PaperState,
+} from "./types.js";
 
 const A = "So11111111111111111111111111111111111111112";
 const B = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -276,5 +282,155 @@ describe("runPaperSession — determinism", () => {
     const r = runPaperSession({ caps: CAPS, candidates: [], prices: [], now: at });
     expect(r.events[0]?.type).toBe("RUN_STARTED");
     expect(r.events[r.events.length - 1]?.type).toBe("RUN_COMPLETED");
+  });
+});
+
+describe("runPaperSession — starting state (journal continuation)", () => {
+  /** Build a state holding one open MINT_A position (qty 50 @ avg 2). */
+  function openAState(): PaperState {
+    const buy = runPaperSession({
+      caps: CAPS,
+      candidates: [buyCandidate(A, 100)],
+      prices: [price(A, 2)],
+      now: at,
+    });
+    expect(buy.state.positions[A]?.quantity).toBe(50);
+    return buy.state;
+  }
+
+  it("with no starting state behaves exactly as passing the empty initialState", () => {
+    const input = {
+      caps: CAPS,
+      candidates: [buyCandidate(A, 100)],
+      prices: [price(A, 2)],
+      now: at,
+    };
+    const withoutSeed = runPaperSession(input);
+    const withEmptySeed = runPaperSession({ ...input, startingState: initialState() });
+    expect(JSON.stringify(withEmptySeed.events)).toBe(JSON.stringify(withoutSeed.events));
+    expect(JSON.stringify(withEmptySeed.summary)).toBe(JSON.stringify(withoutSeed.summary));
+  });
+
+  it("can sell an existing position carried in from the starting state", () => {
+    const starting = openAState();
+    const r = runPaperSession({
+      caps: CAPS,
+      candidates: [{ mint: A, proposedSide: "SELL", proposedSizeUsd: 0 }], // full exit
+      prices: [price(A, 3)],
+      startingState: starting,
+      now: at,
+    });
+    expect(types(r)).toContain("PAPER_SELL_FILLED");
+    expect(r.summary.realizedPnlUsd).toBe(50); // (3 - 2) * 50
+    expect(r.summary.openPositionCount).toBe(0);
+    expect(r.state.positions[A]).toBeUndefined();
+  });
+
+  it("does NOT mutate the starting state", () => {
+    const starting = openAState();
+    const snapshot = JSON.stringify(starting);
+    runPaperSession({
+      caps: CAPS,
+      candidates: [{ mint: A, proposedSide: "SELL", proposedSizeUsd: 0 }],
+      prices: [price(A, 5)],
+      startingState: starting,
+      now: at,
+    });
+    // The caller's object is untouched: same positions, fills, realized PnL.
+    expect(JSON.stringify(starting)).toBe(snapshot);
+    expect(starting.positions[A]?.quantity).toBe(50);
+    expect(starting.realizedPnlUsd).toBe(0);
+  });
+
+  it("a size>0 sell against the starting state REDUCES (partial) the position", () => {
+    const starting = openAState(); // qty 50 @ avg 2
+    const r = runPaperSession({
+      caps: CAPS,
+      // proposedSizeUsd 30 @ price 3 ⇒ sell 10 units; 40 remain open.
+      candidates: [{ mint: A, proposedSide: "SELL", proposedSizeUsd: 30 }],
+      prices: [price(A, 3)],
+      startingState: starting,
+      now: at,
+    });
+    expect(r.summary.sellCount).toBe(1);
+    expect(r.summary.openPositionCount).toBe(1);
+    expect(r.state.positions[A]?.quantity).toBeCloseTo(40, 9);
+  });
+
+  it("a size 0 sell against the starting state is a FULL exit (whole position)", () => {
+    const starting = openAState();
+    const r = runPaperSession({
+      caps: CAPS,
+      candidates: [{ mint: A, proposedSide: "SELL", proposedSizeUsd: 0 }],
+      prices: [price(A, 3)],
+      startingState: starting,
+      now: at,
+    });
+    expect(r.summary.openPositionCount).toBe(0);
+    expect(r.state.positions[A]).toBeUndefined();
+  });
+
+  it("maxOpenPositions counts positions carried in from the starting state", () => {
+    const starting = openAState(); // already 1 open position (A)
+    const r = runPaperSession({
+      caps: { ...CAPS, maxOpenPositions: 1 },
+      candidates: [buyCandidate(B, 100)], // a NEW mint would exceed the cap
+      prices: [price(B, 2)],
+      startingState: starting,
+      now: at,
+    });
+    expect(r.summary.buyCount).toBe(0);
+    const reject = r.events.find(
+      (e) => e.type === "CANDIDATE_REJECTED_BY_CAPS" && e.mint === B,
+    );
+    expect(reject && reject.type === "CANDIDATE_REJECTED_BY_CAPS" && reject.cap).toBe(
+      "maxOpenPositions",
+    );
+  });
+
+  it("maxPositionSizeUsd accounts for the starting position's cost basis", () => {
+    const starting = openAState(); // A costBasis 100
+    const r = runPaperSession({
+      caps: { ...CAPS, maxPositionSizeUsd: 150 },
+      candidates: [buyCandidate(A, 100)], // 100 (existing) + 100 > 150 ⇒ blocked
+      prices: [price(A, 2)],
+      startingState: starting,
+      now: at,
+    });
+    expect(r.summary.buyCount).toBe(0);
+    const reject = r.events.find(
+      (e) => e.type === "CANDIDATE_REJECTED_BY_CAPS" && e.mint === A,
+    );
+    expect(reject && reject.type === "CANDIDATE_REJECTED_BY_CAPS" && reject.cap).toBe(
+      "maxPositionSizeUsd",
+    );
+  });
+
+  it("maxDailyLossUsd accounts for realized losses carried in from the starting state", () => {
+    // Build a starting state that already realized a -50 loss on A.
+    const lossy = runPaperSession({
+      caps: CAPS,
+      candidates: [
+        buyCandidate(A, 100),
+        { mint: A, proposedSide: "SELL", proposedSizeUsd: 0 },
+      ],
+      prices: [price(A, 2), price(A, 1)], // buy @2, full exit @1 ⇒ realized -50
+      now: at,
+    });
+    expect(lossy.state.realizedPnlUsd).toBe(-50);
+    const r = runPaperSession({
+      caps: { ...CAPS, maxDailyLossUsd: 40 }, // already past the cap
+      candidates: [buyCandidate(B, 100)],
+      prices: [price(B, 2)],
+      startingState: lossy.state,
+      now: at,
+    });
+    expect(r.summary.buyCount).toBe(0);
+    const reject = r.events.find(
+      (e) => e.type === "CANDIDATE_REJECTED_BY_CAPS" && e.mint === B,
+    );
+    expect(reject && reject.type === "CANDIDATE_REJECTED_BY_CAPS" && reject.cap).toBe(
+      "maxDailyLossUsd",
+    );
   });
 });

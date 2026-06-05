@@ -1,0 +1,15 @@
+{
+  "name": "@soulmaker/backtest",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic, offline, simulated-only paper backtest/replay (Phase 5 bridge, Sprint 8): replays injected historical steps through planStrategyBatch → runPaperSession with journal-continuing state. Injected local data only; not a live result, not financial advice, not a profitability claim. No keys, no tx, no sends.",
+  "exports": { ".": "./src/index.ts" },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@soulmaker/paper": "workspace:*",
+    "@soulmaker/security": "workspace:*",
+    "@soulmaker/strategy": "workspace:*"
+  }
+}
