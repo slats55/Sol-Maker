@@ -95,9 +95,10 @@ Implemented in `@soulmaker/paper` + the CLI (Sprint 4):
 - ⬜ Snipe-list **ingestion** wiring (candidates are supplied as fixtures today;
   a live snipe-list source is a later sprint). Still **no real sends**.
 
-## Phase 5 — Strategy rules engine 🟡 (deterministic, paper-only — complete)
+## Phase 5 — Strategy rules engine 🟡 (deterministic, paper-only — single + batch complete)
 
-Implemented in `@soulmaker/strategy` + the CLI (Sprint 5):
+Implemented in `@soulmaker/strategy` + the CLI (Sprint 5 single-candidate engine;
+Sprint 6 batch plan pipeline):
 
 - ✅ Deterministic, **paper-only** rules engine: turns an advisory
   `@soulmaker/risk` report + injected, read-only metrics into a single decision —
@@ -118,12 +119,32 @@ Implemented in `@soulmaker/strategy` + the CLI (Sprint 5):
 - ✅ CLI: `strategy:evaluate` (`--candidate`, `--config`, `--paper-state`,
   `--json`). Reads injected local JSON only; refuses missing/malformed input
   cleanly; redacted output; PAPER-ONLY / not-advice disclaimers.
+- ✅ **(Sprint 6) Batch plan pipeline** (`plan.ts`): `planStrategyBatch` evaluates
+  a `StrategyCandidate[]` and converts only `PAPER_BUY_CANDIDATE` /
+  `PAPER_SELL_CANDIDATE` into a deterministic `PaperCandidate[]` (carrying the
+  advisory risk report + paper-only provenance). `WATCH`/`SKIP` are never
+  converted; disqualifiers can never be bypassed; order and duplicate mints are
+  preserved.
+- ✅ **(Sprint 6) Candidate-list ingestion** as injected local JSON, and CLI
+  `strategy:plan` (`--candidates`, `--config`, `--paper-state`, `--out`, `--size`,
+  `--include-skipped`, `--include-watch`, `--json`). Emits a `PaperCandidate[]`
+  the operator passes to `paper:run` **manually** — it **does not auto-run paper
+  trades**, create fills, or touch the journal. Malformed entries are refused with
+  their array index; all output (incl. `--out`) is redacted.
+- ✅ **(Sprint 6) Forbidden-import regression test** asserts the package source
+  imports no `@solana/web3*`, `fs`/`node:fs`, `http(s)`, or `ws`.
 - ✅ **No tx build/sign/simulate/send. No wallet, RPC, network, or execution SDK.
   No `Date.now` / `Math.random`.** Output is not advice and makes no profitability
   claim.
-- ⬜ Live snipe-list ingestion + richer position management (deferred).
+- ⬜ **Live** snipe-list source (scraping / network fetch) + richer position
+  management (deferred — and live scraping is explicitly out of scope; candidates
+  remain injected local JSON).
 
-## Phase 6 — Transaction planning & simulation ⬜
+## Phase 6 — Transaction planning & simulation ⬜ (NOT started)
+
+> Note: "Sprint 6" in this repo delivered the **strategy → paper plan pipeline**
+> (an extension of Phase 5, above), **not** this roadmap phase. Transaction
+> planning/simulation remains entirely unstarted — by design.
 
 - ⬜ Transaction **plan** object (explicit destinations, amounts, fees).
 - ⬜ Human-readable preview (no blind signing).

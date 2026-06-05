@@ -115,10 +115,10 @@ entirely within the no-custody model:
   evaluation** — never "safe", "approved for live trading", "profitable", or a
   reason to send anything.
 
-## Phase 5 (Sprint 5): the strategy engine is paper-only and key-free
+## Phase 5 (Sprints 5–6): the strategy engine is paper-only and key-free
 
-The Phase 5 strategy engine (`@soulmaker/strategy` + the `strategy:evaluate`
-command) stays entirely within the no-custody model:
+The Phase 5 strategy engine (`@soulmaker/strategy` + the `strategy:evaluate` and
+`strategy:plan` commands) stays entirely within the no-custody model:
 
 - It only **decides** whether a candidate becomes a *simulated* paper buy/sell
   candidate, and its output **only feeds `@soulmaker/paper`.** It performs no
@@ -127,10 +127,18 @@ command) stays entirely within the no-custody model:
 - It accepts **no** private key, seed, or wallet secret — and there is no code
   path that could. `@soulmaker/strategy` is a **pure** package: no signer, no
   `Keypair`, no `@solana/web3.js`, no RPC, no network, no filesystem, no
-  `Date.now`, no `Math.random`.
-- Inputs are local, **injected** JSON (candidate + config, optional paper-state).
-  The CLI owns file I/O and redacts all output (human and `--json`), so an
-  injected secret-looking value can never leak.
+  `Date.now`, no `Math.random`. A **forbidden-import regression test** enforces
+  this at the source level.
+- Inputs are local, **injected** JSON (candidate(s) + config, optional
+  paper-state). The CLI owns file I/O and redacts all output (human, `--json`,
+  and the `strategy:plan --out` file), so an injected secret-looking value can
+  never leak.
+- **Sprint 6 — batch planning (`strategy:plan`)** stays inside the same model: it
+  turns an injected candidate **list** into a `PaperCandidate[]` an operator may
+  **manually** hand to `paper:run`. It produces a **plan only** — it never
+  auto-runs paper trades, never creates fills, and never writes a journal — and
+  it remains key-free, offline, and injected-data-only. It does **not** begin
+  transaction planning/simulation (roadmap Phase 6), which is **not started**.
 - The report is **paper-only** and explicitly **not** financial advice, a buy
   recommendation, or live-trading authorization; it makes no profitability claim.
   A `PAPER_BUY_CANDIDATE` means a candidate for *simulated* paper evaluation.

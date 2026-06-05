@@ -53,6 +53,23 @@ export {
 } from "./report.js";
 export type { StrategyReportEnvelope } from "./report.js";
 
+export {
+  planStrategyBatch,
+  strategyReportToPaperCandidate,
+  buildPaperCandidateBatch,
+  formatStrategyPlanReport,
+  buildStrategyPlanEnvelope,
+  DEFAULT_PAPER_SIZE_USD,
+} from "./plan.js";
+export type {
+  StrategyPlanInput,
+  StrategyPlanItem,
+  StrategyPlanResult,
+  StrategyPlanEnvelope,
+  PaperCandidateConversionOptions,
+  FormatStrategyPlanOptions,
+} from "./plan.js";
+
 export { portfolioFromPaperState } from "./portfolio.js";
 
 export { makeIdGen } from "./ids.js";

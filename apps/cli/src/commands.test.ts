@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -15,6 +15,7 @@ import {
   tokenAccountsReport,
   tokenRiskReport,
   strategyEvaluateReport,
+  strategyPlanReport,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
 import type {
@@ -1079,6 +1080,312 @@ describe("strategyEvaluateReport", () => {
         { candidatePath: "candidate.json", strategyConfigPath: "config.json" },
       );
       expect(out).not.toContain("SUPERSECRET");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 6 — strategy:plan (batch → paper candidates; PAPER ONLY, no auto-run)
+// ---------------------------------------------------------------------------
+
+/** Write a candidates ARRAY fixture + a strategy config fixture. */
+function writePlanFixtures(cwd: string, candidates: unknown, config: unknown): void {
+  writeFileSync(join(cwd, "candidates.json"), JSON.stringify(candidates));
+  writeFileSync(join(cwd, "config.json"), JSON.stringify(config));
+}
+
+describe("strategyPlanReport", () => {
+  it("refuses when --candidates is missing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const out = strategyPlanReport({ cwd, env: {} }, { strategyConfigPath: "config.json" });
+      expect(out).toMatch(/^Refusing: --candidates/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses when --config is missing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const out = strategyPlanReport({ cwd, env: {} }, { candidatesPath: "candidates.json" });
+      expect(out).toMatch(/^Refusing: --config/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a missing candidates file cleanly", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "config.json"), JSON.stringify(STRATEGY_CONFIG));
+      const out = strategyPlanReport(
+        { cwd, env: {} },
+        { candidatesPath: "nope.json", strategyConfigPath: "config.json" },
+      );
+      expect(out).toMatch(/^Refusing: cannot read candidates file/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses malformed candidates JSON cleanly", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "candidates.json"), "{ not json");
+      writeFileSync(join(cwd, "config.json"), JSON.stringify(STRATEGY_CONFIG));
+      const out = strategyPlanReport(
+        { cwd, env: {} },
+        { candidatesPath: "candidates.json", strategyConfigPath: "config.json" },
+      );
+      expect(out).toMatch(/^Refusing: candidates file is not valid JSON/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a non-array candidates file cleanly", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writePlanFixtures(cwd, { mint: MINT_A }, STRATEGY_CONFIG); // object, not array
+      const out = strategyPlanReport(
+        { cwd, env: {} },
+        { candidatesPath: "candidates.json", strategyConfigPath: "config.json" },
+      );
+      expect(out).toMatch(/^Refusing: candidates file must be a JSON array/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed candidate entry, naming its array index", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      // index 0 valid, index 1 missing mint.
+      writePlanFixtures(cwd, [strategyCandidate(MINT_A), { symbol: "X" }], STRATEGY_CONFIG);
+      const out = strategyPlanReport(
+        { cwd, env: {} },
+        { candidatesPath: "candidates.json", strategyConfigPath: "config.json" },
+      );
+      expect(out).toMatch(/^Refusing: malformed candidate at index 1: mint/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses an invalid config cleanly", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writePlanFixtures(cwd, [strategyCandidate(MINT_A)], { minScoreForWatch: 30 });
+      const out = strategyPlanReport(
+        { cwd, env: {} },
+        { candidatesPath: "candidates.json", strategyConfigPath: "config.json" },
+      );
+      expect(out).toMatch(/^Refusing: invalid config: minScoreForPaperBuy/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed paper state cleanly", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writePlanFixtures(cwd, [strategyCandidate(MINT_A)], STRATEGY_CONFIG);
+      writeFileSync(join(cwd, "paper-state.json"), JSON.stringify({ noPositions: true }));
+      const out = strategyPlanReport(
+        { cwd, env: {} },
+        {
+          candidatesPath: "candidates.json",
+          strategyConfigPath: "config.json",
+          paperStatePath: "paper-state.json",
+        },
+      );
+      expect(out).toMatch(/^Refusing: invalid paper-state: missing positions object/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("produces a human PAPER-ONLY plan with the required disclaimers", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writePlanFixtures(cwd, [strategyCandidate(MINT_A)], STRATEGY_CONFIG);
+      const out = strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "candidates.json",
+          strategyConfigPath: "config.json",
+          defaultPaperSizeUsd: 100,
+        },
+      );
+      expect(out).toContain("Strategy plan");
+      expect(out).toContain("PAPER ONLY");
+      expect(out).toContain("PAPER_BUY_CANDIDATE");
+      expect(out).toMatch(/not financial advice/i);
+      expect(out).toMatch(/not a buy recommendation/i);
+      expect(out).toMatch(/no transaction was built, signed, simulated, or sent/i);
+      // It is a PLAN, not a run: no paper:run language leaks in.
+      expect(out).not.toMatch(/buys \/ sells/i);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json output is parseable and carries the PAPER-ONLY language", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writePlanFixtures(cwd, [strategyCandidate(MINT_A)], STRATEGY_CONFIG);
+      const out = strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "candidates.json",
+          strategyConfigPath: "config.json",
+          defaultPaperSizeUsd: 100,
+          json: true,
+        },
+      );
+      const parsed = JSON.parse(out) as {
+        paperOnly: boolean;
+        result: {
+          createdAt: string;
+          paperCandidates: { mint: string; proposedSide: string; proposedSizeUsd: number }[];
+        };
+      };
+      expect(parsed.paperOnly).toBe(true);
+      expect(parsed.result.createdAt).toBe(PAPER_TIME);
+      expect(parsed.result.paperCandidates).toHaveLength(1);
+      expect(parsed.result.paperCandidates[0]?.proposedSide).toBe("BUY");
+      expect(out).toMatch(/no transaction was built, signed, simulated, or sent/i);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--out writes ONLY a parseable PaperCandidate[] array", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writePlanFixtures(cwd, [strategyCandidate(MINT_A)], STRATEGY_CONFIG);
+      strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "candidates.json",
+          strategyConfigPath: "config.json",
+          defaultPaperSizeUsd: 100,
+          outPath: "paper-candidates.json",
+        },
+      );
+      const written = readFileSync(join(cwd, "paper-candidates.json"), "utf8");
+      const arr = JSON.parse(written) as {
+        mint: string;
+        proposedSide: string;
+        proposedSizeUsd: number;
+      }[];
+      expect(Array.isArray(arr)).toBe(true);
+      expect(arr).toHaveLength(1);
+      expect(arr[0]?.mint).toBe(MINT_A);
+      expect(arr[0]?.proposedSide).toBe("BUY");
+      expect(arr[0]?.proposedSizeUsd).toBe(100);
+      // The out file is a candidate list, NOT a run journal/events.
+      expect(written).not.toContain("RUN_STARTED");
+      expect(written).not.toContain("PAPER_BUY_FILLED");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("the --out file can be MANUALLY handed to paper:run (no auto-chaining)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writePlanFixtures(cwd, [strategyCandidate(MINT_A)], STRATEGY_CONFIG);
+      strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "candidates.json",
+          strategyConfigPath: "config.json",
+          defaultPaperSizeUsd: 100,
+          outPath: "paper-candidates.json",
+        },
+      );
+      // The operator separately provides prices and runs paper:run by hand.
+      writeFileSync(
+        join(cwd, "prices.json"),
+        JSON.stringify([
+          { mint: MINT_A, priceUsd: 2, observedAt: PAPER_TIME, source: "injected-fixture" },
+        ]),
+      );
+      const runOut = paperRunReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "paper-candidates.json",
+          pricesPath: "prices.json",
+          maxTradeSizeUsd: 1000,
+        },
+      );
+      expect(runOut).toContain("buys / sells:     1 / 0");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("does not run paper:run, create fills, or touch any journal", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writePlanFixtures(cwd, [strategyCandidate(MINT_A)], STRATEGY_CONFIG);
+      strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "candidates.json",
+          strategyConfigPath: "config.json",
+          defaultPaperSizeUsd: 100,
+          outPath: "paper-candidates.json",
+        },
+      );
+      // No journal (.jsonl) file is ever produced by planning.
+      const files = readdirSync(cwd);
+      expect(files.some((f) => f.endsWith(".jsonl"))).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("does not leak API keys or secrets into human, JSON, or --out output", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const leaky = "https://rpc.example.com/?api-key=SUPERSECRET";
+      const candidates = [
+        { mint: MINT_A, symbol: "WIF", riskReport: passReport(MINT_A), source: leaky },
+      ];
+      writePlanFixtures(cwd, candidates, STRATEGY_CONFIG);
+
+      const human = strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        { candidatesPath: "candidates.json", strategyConfigPath: "config.json", defaultPaperSizeUsd: 100 },
+      );
+      expect(human).not.toContain("SUPERSECRET");
+
+      const json = strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "candidates.json",
+          strategyConfigPath: "config.json",
+          defaultPaperSizeUsd: 100,
+          json: true,
+        },
+      );
+      expect(json).not.toContain("SUPERSECRET");
+
+      strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "candidates.json",
+          strategyConfigPath: "config.json",
+          defaultPaperSizeUsd: 100,
+          outPath: "out.json",
+        },
+      );
+      expect(readFileSync(join(cwd, "out.json"), "utf8")).not.toContain("SUPERSECRET");
     } finally {
       cleanup();
     }

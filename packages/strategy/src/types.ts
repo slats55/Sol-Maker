@@ -96,6 +96,14 @@ export interface StrategyCandidate {
   previousPaperTrade?: PreviousPaperTradeMeta;
   /** Provenance label, explicitly injected/read-only (e.g. "snipe-list"). */
   source?: string;
+  /**
+   * Optional simulated notional (USD) to attach if this candidate is converted
+   * into a `PaperCandidate` by the strategy → paper *plan* pipeline. It is NOT
+   * read by `evaluateStrategy` (the single-candidate decision ignores size); it
+   * only sources `PaperCandidate.proposedSizeUsd` during batch planning. Never a
+   * real order size — `paper:run` is simulation only.
+   */
+  proposedSizeUsd?: number;
 }
 
 /**

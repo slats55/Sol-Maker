@@ -13,6 +13,7 @@ import {
   tokenAccountsReport,
   tokenRiskReport,
   strategyEvaluateReport,
+  strategyPlanReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -246,6 +247,48 @@ program
             candidatePath: opts.candidate,
             strategyConfigPath: opts.config,
             paperStatePath: opts.paperState,
+            json: Boolean(opts.json),
+          },
+        ),
+      );
+    },
+  );
+
+program
+  .command("strategy:plan")
+  .description(
+    "Evaluate a BATCH of local candidates and emit paper candidates for a later paper:run (PAPER ONLY; does not run paper trades; not advice)",
+  )
+  .option("--candidates <path>", "JSON array of StrategyCandidate objects")
+  .option("--config <path>", "JSON StrategyConfig object")
+  .option("--paper-state <path>", "optional JSON PaperState for position-awareness rules")
+  .option("--out <path>", "write ONLY the resulting PaperCandidate[] array to this file")
+  .option("--size <number>", "fallback simulated USD size for converted candidates")
+  .option("--include-skipped", "keep SKIP decisions in the report (never in paper candidates)")
+  .option("--include-watch", "keep WATCH decisions in the report (never in paper candidates)")
+  .option("--json", "emit the plan as stable JSON")
+  .action(
+    (opts: {
+      candidates?: string;
+      config?: string;
+      paperState?: string;
+      out?: string;
+      size?: string;
+      includeSkipped?: boolean;
+      includeWatch?: boolean;
+      json?: boolean;
+    }) => {
+      printResult(
+        strategyPlanReport(
+          {},
+          {
+            candidatesPath: opts.candidates,
+            strategyConfigPath: opts.config,
+            paperStatePath: opts.paperState,
+            outPath: opts.out,
+            defaultPaperSizeUsd: num(opts.size),
+            includeSkipped: Boolean(opts.includeSkipped),
+            includeWatch: Boolean(opts.includeWatch),
             json: Boolean(opts.json),
           },
         ),

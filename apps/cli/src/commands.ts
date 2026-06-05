@@ -9,7 +9,7 @@
  * injected data and touch no wallet, key, or network.
  */
 
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import {
   loadConfig,
@@ -61,9 +61,13 @@ import {
   formatStrategyReport,
   buildStrategyEnvelope,
   portfolioFromPaperState,
+  planStrategyBatch,
+  formatStrategyPlanReport,
+  buildStrategyPlanEnvelope,
   type StrategyCandidate,
   type StrategyConfig,
   type StrategyPortfolio,
+  type StrategyPlanInput,
 } from "@soulmaker/strategy";
 
 export interface CommandContext {
@@ -848,11 +852,32 @@ function asStrategyConfig(value: unknown): StrategyConfig {
 
 /** Validate an injected PaperState JSON object and derive the portfolio view. */
 function asPortfolio(value: unknown): StrategyPortfolio {
+  return portfolioFromPaperState(asPaperState(value));
+}
+
+/** Validate an injected PaperState JSON object (read-only; never normalizes). */
+function asPaperState(value: unknown): PaperState {
   const obj = asObject(value, "paper-state");
   if (obj.positions === null || typeof obj.positions !== "object") {
     throw new Error("invalid paper-state: missing positions object");
   }
-  return portfolioFromPaperState(obj as unknown as PaperState);
+  return obj as unknown as PaperState;
+}
+
+/**
+ * Validate a JSON array of candidates, one entry at a time, surfacing the array
+ * index of the first malformed entry. Reuses the single-candidate validator so
+ * the per-entry rules stay identical to `strategy:evaluate`.
+ */
+function asStrategyCandidates(values: unknown[]): StrategyCandidate[] {
+  return values.map((value, index) => {
+    try {
+      return asStrategyCandidate(value);
+    } catch (err) {
+      const detail = (err as Error).message.replace(/^malformed candidate: /, "");
+      throw new Error(`malformed candidate at index ${index}: ${detail}`);
+    }
+  });
 }
 
 /**
@@ -894,6 +919,94 @@ export function strategyEvaluateReport(
     return JSON.stringify(redactValue(buildStrategyEnvelope(report)), null, 2);
   }
   return formatStrategyReport(report);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6 — paper-only strategy → paper plan pipeline
+// ---------------------------------------------------------------------------
+
+export interface StrategyPlanCommandOptions {
+  /** Path to a JSON array of StrategyCandidate objects. */
+  candidatesPath?: string;
+  /** Path to a JSON StrategyConfig object. */
+  strategyConfigPath?: string;
+  /** Optional path to a JSON PaperState (for position-awareness rules). */
+  paperStatePath?: string;
+  /** Optional path to write ONLY the resulting PaperCandidate[] array. */
+  outPath?: string;
+  /** Keep SKIP items in the report (never in paperCandidates). */
+  includeSkipped?: boolean;
+  /** Keep WATCH items in the report (never in paperCandidates). */
+  includeWatch?: boolean;
+  /** Fallback simulated notional (USD) for converted candidates lacking one. */
+  defaultPaperSizeUsd?: number;
+  json?: boolean;
+}
+
+/**
+ * `soulmaker strategy:plan` — evaluate a BATCH of injected candidates and emit a
+ * deterministic, PAPER-ONLY plan plus the `PaperCandidate[]` an operator may
+ * LATER hand to `paper:run`. It reads injected local JSON only: no chain access,
+ * no wallet, no RPC. It does NOT run paper trades, create fills, or touch the
+ * journal — it produces a plan/candidate set only. It builds, signs, simulates,
+ * and sends NOTHING, and is NOT financial advice or a buy recommendation.
+ */
+export function strategyPlanReport(
+  ctx: CommandContext = {},
+  opts: StrategyPlanCommandOptions = {},
+): string {
+  if (!opts.candidatesPath) return "Refusing: --candidates <path> is required.";
+  if (!opts.strategyConfigPath) return "Refusing: --config <path> is required.";
+
+  let input: StrategyPlanInput;
+  try {
+    const candidates = asStrategyCandidates(
+      readJsonArray(ctx, opts.candidatesPath, "candidates"),
+    );
+    const config = asStrategyConfig(readJsonValue(ctx, opts.strategyConfigPath, "config"));
+    const paperState = opts.paperStatePath
+      ? asPaperState(readJsonValue(ctx, opts.paperStatePath, "paper-state"))
+      : undefined;
+    const defaultPaperSizeUsd = optionalNonNeg(opts.defaultPaperSizeUsd, "size");
+    input = {
+      candidates,
+      config,
+      paperState,
+      defaultPaperSizeUsd,
+      includeSkipped: Boolean(opts.includeSkipped),
+      includeWatch: Boolean(opts.includeWatch),
+      now: ctx.now ?? isoNow,
+    };
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  // Pure planning only — this NEVER runs a paper session, fills, or a journal.
+  const result = planStrategyBatch(input);
+
+  // Optional: write ONLY the PaperCandidate[] (redacted) for a later paper:run.
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    try {
+      writeFileSync(
+        resolved,
+        JSON.stringify(redactValue(result.paperCandidates), null, 2) + "\n",
+      );
+    } catch {
+      return redactString(`Refusing: cannot write output file at ${resolved}`);
+    }
+  }
+
+  if (opts.json) {
+    // The plan references each converted candidate from BOTH `items` and
+    // `paperCandidates`; redactValue treats any shared (even non-cyclic)
+    // reference as circular, so flatten to a plain JSON tree first to redact it
+    // fully. redactValue remains a backstop — the result carries only
+    // injected/public data. (No true cycles exist, so stringify cannot throw.)
+    const envelope: unknown = JSON.parse(JSON.stringify(buildStrategyPlanEnvelope(result)));
+    return JSON.stringify(redactValue(envelope), null, 2);
+  }
+  return formatStrategyPlanReport(result, { title: "Strategy plan" });
 }
 
 function yesNo(value: boolean): string {

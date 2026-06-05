@@ -1,10 +1,19 @@
-# Soulmaker Strategy Model (Phase 5 / Sprint 5)
+# Soulmaker Strategy Model (Phase 5 / Sprints 5–6)
 
-The strategy engine (`@soulmaker/strategy` + the `strategy:evaluate` CLI command)
-is a **deterministic, paper-only rules engine**. It decides whether a token
-candidate should be **skipped**, **watched**, or submitted to the paper-trading
-engine as a simulated **paper-buy** or **paper-sell** candidate — and nothing
-more. Its output **only ever feeds `@soulmaker/paper`.**
+The strategy engine (`@soulmaker/strategy` + the `strategy:evaluate` and
+`strategy:plan` CLI commands) is a **deterministic, paper-only rules engine**. It
+decides whether a token candidate should be **skipped**, **watched**, or
+submitted to the paper-trading engine as a simulated **paper-buy** or
+**paper-sell** candidate — and nothing more. Its output **only ever feeds
+`@soulmaker/paper`.**
+
+- **Sprint 5** added the single-candidate engine and `strategy:evaluate`.
+- **Sprint 6** added the **batch plan pipeline** and `strategy:plan`: evaluate a
+  *list* of injected candidates and emit a deterministic `PaperCandidate[]` an
+  operator may **later, manually** hand to `paper:run`. It **never auto-runs paper
+  trades.** (Sprint 6 is an extension of this Phase 5 package; it does **not**
+  begin roadmap Phase 6 — transaction planning/simulation — which remains **not
+  started**.)
 
 > **Paper-only. Not advice.** The strategy engine **does not execute trades** and
 > **does not build, sign, simulate, or send a transaction.** It uses
@@ -158,17 +167,85 @@ Every report (human and `--json`) states, in `disclaimer` + `notes`:
 All rendered output is passed through `@soulmaker/security`'s `redactString` /
 `redactValue` as a backstop, so an injected secret-looking value can never leak.
 
+## Batch planning — `strategy:plan` (Sprint 6)
+
+`strategy:plan` is the **paper-only bridge** from the strategy engine to the paper
+engine. It evaluates a **batch** of injected candidates (a snipe-/candidate-list)
+and produces a deterministic plan plus the `PaperCandidate[]` an operator may
+**later, by hand** pass to `paper:run`. It produces a **plan/candidate set only**:
+it does **not** auto-run paper trades, create fills, or touch the journal.
+
+```
+StrategyCandidate[]  ──►  planStrategyBatch (evaluateStrategy per candidate)
+   keep only PAPER_BUY_CANDIDATE / PAPER_SELL_CANDIDATE
+   convert each → PaperCandidate (carries the advisory risk report + provenance)
+   ▼
+StrategyPlanResult { items, paperCandidates, counts, disclaimers }
+   ▼
+CLI: human report | --json envelope | --out writes ONLY PaperCandidate[]
+   ▼
+operator MANUALLY runs:  paper:run --candidates <out.json> --prices <prices.json>
+```
+
+**Inclusion / omission rules**
+
+- `PAPER_BUY_CANDIDATE` → a `PaperCandidate` with `proposedSide: "BUY"`.
+- `PAPER_SELL_CANDIDATE` → a `PaperCandidate` with `proposedSide: "SELL"`. (The
+  paper candidate type already supports sell intent, so the conversion is real,
+  not report-only.)
+- `WATCH` and `SKIP` are **never** converted into `paperCandidates`. They are also
+  omitted from the report `items` by default; `--include-watch` / `--include-skipped`
+  surface them in `items` (with an `omissionReason`) **but still never** in
+  `paperCandidates`.
+- A hard **disqualifier** (risk `REJECT`, risk score above cap, a failed metric
+  gate, a loss cooldown) forces `SKIP`, so it can never become a paper candidate —
+  even with a high score.
+
+**Simulated size.** Each converted candidate carries `proposedSizeUsd`, resolved
+as: a per-candidate `proposedSizeUsd` ► the configured `--size` default ► `0`. A
+`0` buy size is the deliberate fail-safe: `paper:run` rejects a non-positive buy by
+its caps, so a sizeless plan can never open a simulated position by accident. For a
+**sell**, `0` means "exit the whole simulated position" in `paper:run`.
+
+**Provenance.** Every converted candidate carries `source` (`strategy-plan:<origin>`)
+and a `reason` making explicit it came from the strategy plan and is paper-only
+("…no transaction was built, signed, simulated, or sent"), plus the advisory
+`riskReport` so `paper:run` re-gates on the same evidence.
+
+**Duplicates & order.** Candidate **order is preserved**; **duplicate mints are
+preserved** (each gets its own stable item id, e.g. `strategy-plan-1`,
+`strategy-plan-2`). The strategy layer does not assume one-position-per-mint —
+`paper:run` and its caps remain the place that constraint is enforced.
+
+The counts on `StrategyPlanResult` (`paperBuyCandidateCount`,
+`paperSellCandidateCount`, `watchCount`, `skippedCount`, `rejectedCount`) are over
+**all** candidates: `skippedCount` is a soft `SKIP` (score below the watch
+threshold, no disqualifier); `rejectedCount` is a hard `SKIP` (a disqualifier
+fired).
+
 ## CLI
 
 | Command | Purpose |
 | --- | --- |
-| `strategy:evaluate` | evaluate one local candidate against a local config (PAPER ONLY) |
+| `strategy:evaluate` | evaluate **one** local candidate against a local config (PAPER ONLY) |
+| `strategy:plan` | evaluate a **batch** and emit `PaperCandidate[]` for a later, manual `paper:run` (PAPER ONLY; no auto-run) |
 
-Options: `--candidate <path>` (JSON `StrategyCandidate`), `--config <path>` (JSON
-`StrategyConfig`), `--paper-state <path>` (optional JSON `PaperState` for
-position-awareness), `--json`. The command reads **injected local JSON only**:
-no chain access, no RPC, no wallet. Missing/malformed candidate files, malformed
-JSON, and invalid configs are **refused cleanly**; secrets are never leaked.
+`strategy:evaluate` options: `--candidate <path>` (JSON `StrategyCandidate`),
+`--config <path>` (JSON `StrategyConfig`), `--paper-state <path>` (optional JSON
+`PaperState` for position-awareness), `--json`.
+
+`strategy:plan` options: `--candidates <path>` (JSON **array** of
+`StrategyCandidate`), `--config <path>` (JSON `StrategyConfig`), `--paper-state
+<path>` (optional JSON `PaperState`), `--out <path>` (write **only** the
+`PaperCandidate[]`), `--size <number>` (fallback simulated USD size),
+`--include-skipped`, `--include-watch`, `--json`.
+
+Both commands read **injected local JSON only**: no chain access, no RPC, no
+wallet. Missing/malformed candidate files, malformed JSON, a non-array candidates
+file, a malformed candidate entry (reported **with its array index**), an invalid
+config, and a malformed paper state are all **refused cleanly**; secrets are never
+leaked (human, `--json`, and `--out` output are all redacted). `strategy:plan`
+never invokes `paper:run`, never creates fills, and never writes a journal.
 
 ## Relationship to the other layers
 
@@ -191,5 +268,10 @@ JSON, and invalid configs are **refused cleanly**; secrets are never leaked.
   track record.
 - The exit rules are intentionally minimal (take-profit / stop-loss on an
   injected `priceChangePct`); richer position management is future work.
-- Snipe-list / live candidate ingestion is **not** wired here — candidates are
-  supplied as injected JSON. Nothing is wired to execution.
+- **Candidate-list ingestion** is wired only as far as **injected local JSON** (a
+  `StrategyCandidate[]` file fed to `strategy:plan`). There is **no live
+  snipe-list source, scraping, or network fetch** — and there will be no
+  `references/`-style scraping. The operator supplies the list.
+- The plan is the **end** of the automated path. `strategy:plan` emits a
+  `PaperCandidate[]`; an operator must **manually** pass it to `paper:run`. There
+  is **no auto-chaining**, and nothing is wired to execution.

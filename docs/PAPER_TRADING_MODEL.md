@@ -71,6 +71,14 @@ be rescued by an allowlist credit, so it can never reach a paper buy.
 > It only ever **feeds** this paper engine — it performs no simulated fill itself,
 > touches no wallet/chain, and builds/signs/simulates/sends nothing. A strategy
 > `PAPER_BUY_CANDIDATE` is a candidate for *this* simulated engine, not a real buy.
+>
+> **Producing the candidate file (Sprint 6):** `strategy:plan` evaluates a *batch*
+> of injected candidates and can write **only** the resulting `PaperCandidate[]`
+> to a file (`--out`). That file is exactly the `--candidates` input this engine
+> expects, so the operator can **manually** run
+> `paper:run --candidates <plan-out.json> --prices <prices.json>`. The bridge is
+> **manual by design**: `strategy:plan` never invokes `paper:run`, never fills,
+> and never writes a journal — it emits a plan, nothing more.
 
 ## Caps & kill switch (enforced before every simulated action)
 

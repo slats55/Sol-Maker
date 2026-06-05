@@ -189,8 +189,9 @@ A **pure**, deterministic, **paper-only** decision layer. It turns one advisory
 `@soulmaker/risk` report plus injected, read-only metrics into a single decision —
 `SKIP` / `WATCH` / `PAPER_BUY_CANDIDATE` / `PAPER_SELL_CANDIDATE` — whose only
 consumer is `@soulmaker/paper`. It depends on `@soulmaker/risk` (advisory decision
-+ score), `@soulmaker/paper` **types only** (to adapt a `PaperState`), and
-`@soulmaker/security` (redaction backstop) — no `core`, no `solana`, no
++ score), `@soulmaker/paper` **types only** (to adapt a `PaperState` and to emit
+`PaperCandidate[]` from the Sprint 6 plan pipeline), and `@soulmaker/security`
+(redaction backstop) — no `core`, no `solana`, no
 `@solana/web3.js`, no RPC, no filesystem, no signer/keypair/transaction, no
 `Date.now`, no `Math.random`. Identical input → byte-identical output (seeded id,
 injectable clock).
@@ -208,6 +209,14 @@ injectable clock).
 - `portfolio.ts` — `portfolioFromPaperState`: pure adapter from a simulated
   `PaperState` to the engine's lightweight portfolio view (open count, held
   mints, top concentration).
+- `plan.ts` (Sprint 6) — the **batch plan pipeline**: `planStrategyBatch`
+  (evaluate a `StrategyCandidate[]` → `StrategyPlanResult`),
+  `strategyReportToPaperCandidate` (convert a paper-eligible decision → a
+  `PaperCandidate`, carrying the advisory risk report + provenance),
+  `buildPaperCandidateBatch`, and `formatStrategyPlanReport` / the JSON envelope.
+  Pure: only `PaperCandidate` / `PaperState` **types** from `@soulmaker/paper`,
+  no runtime coupling. `WATCH`/`SKIP` are never converted; disqualifiers can never
+  be bypassed; order and duplicate mints are preserved.
 
 **Data flow:**
 
@@ -220,14 +229,24 @@ injectable clock).
         │  StrategyReport (decision, score, reasons, disqualifiers, risk*, notes)
         ▼
 CLI strategy:evaluate  → formatStrategyReport (human) | JSON envelope (--json)
+
+   StrategyCandidate[] ─► planStrategyBatch ─► StrategyPlanResult
+        │  (PAPER_BUY/SELL_CANDIDATE → PaperCandidate; WATCH/SKIP omitted)
         ▼
-   feeds @soulmaker/paper ONLY (a paper candidate) — never execution
+CLI strategy:plan  → human | JSON envelope | --out writes ONLY PaperCandidate[]
+        ▼
+   operator MANUALLY → paper:run   (no auto-chaining; never execution)
 ```
 
-The CLI's `strategy:evaluate` reads injected local JSON only (candidate + config,
-optional paper-state), refuses missing/malformed input cleanly, and redacts all
-output. The report is **paper-only** and explicitly **not** financial advice, a
-buy recommendation, or live-trading authorization. See
+The CLI's `strategy:evaluate` (one candidate) and `strategy:plan` (a batch) read
+injected local JSON only, refuse missing/malformed input cleanly (the batch
+reports a malformed entry **with its array index**), and redact all output
+(human, `--json`, and the `--out` file). `strategy:plan` produces a plan only — it
+never invokes `paper:run`, creates fills, or writes a journal. The output is
+**paper-only** and explicitly **not** financial advice, a buy recommendation, or
+live-trading authorization. A **forbidden-import regression test**
+(`no-forbidden-imports.test.ts`) asserts the package source imports no
+`@solana/web3*`, `fs`/`node:fs`, `http(s)`, or `ws`. See
 [`STRATEGY_MODEL.md`](STRATEGY_MODEL.md).
 
 ## Configuration

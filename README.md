@@ -16,15 +16,18 @@ all pass.
 
 ---
 
-## ⚠️ Status: Phases 0–1 done; Phase 2 read-only core complete; Phase 3 advisory risk engine complete; Phase 4 simulated paper engine complete; Phase 5 paper-only strategy rules engine complete. No live trading. By design.
+## ⚠️ Status: Phases 0–1 done; Phase 2 read-only core complete; Phase 3 advisory risk engine complete; Phase 4 simulated paper engine complete; Phase 5 paper-only strategy rules engine complete (Sprint 5 single-candidate + Sprint 6 batch plan pipeline). No live trading. By design.
 
 Nothing in this repository can move funds. There is **no transaction signing or
 sending code anywhere in it yet** — the read-only Solana watcher (Phase 2) and
 advisory risk engine (Phase 3) are read-only by construction, the Phase 4 paper
 engine is **simulated-only** (injected prices, no wallet, no chain), and the
 Phase 5 strategy engine is a **pure, paper-only** rules engine that only feeds the
-paper engine (no chain, no wallet, no execution). The default mode is `PAPER`.
-See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+paper engine (no chain, no wallet, no execution). Sprint 6 adds `strategy:plan`,
+which turns an injected candidate **list** into a `PaperCandidate[]` an operator
+passes to `paper:run` **manually** — it does **not** auto-run paper trades, and it
+does **not** begin transaction planning (roadmap Phase 6 remains not started). The
+default mode is `PAPER`. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Non-negotiable security rules (summary)
 
@@ -53,7 +56,7 @@ soulmaker/
   apps/
     cli/        # @soulmaker/cli  — read-only CLI (doctor, config:check, mode, paper:status,
                 #                    solana:doctor, wallet:watch, token:inspect/accounts/risk,
-                #                    paper:run/journal, strategy:evaluate)
+                #                    paper:run/journal, strategy:evaluate, strategy:plan)
     web/        # Phase 8 dashboard (placeholder)
   packages/
     core/       # @soulmaker/core      — config schema, modes, risk caps, LIVE GATE
@@ -61,7 +64,8 @@ soulmaker/
     solana/     # Phase 2 — read-only RPC watcher (public-key/mint reads only)
     risk/       # Phase 3 — read-only advisory token risk flags + scoring
     paper/      # Phase 4 — deterministic, simulated-only paper trading engine
-    strategy/   # Phase 5 — deterministic, paper-only strategy rules engine (feeds paper)
+    strategy/   # Phase 5 — deterministic, paper-only strategy rules engine (feeds paper);
+                #            Sprint 6 adds the batch plan pipeline → PaperCandidate[]
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   docs/         # ARCHITECTURE, ROADMAP, WALLET_SAFETY_MODEL, RISK_MODEL, REFERENCE_REPO_AUDIT
   scripts/      # thin operational scripts
@@ -107,6 +111,13 @@ pnpm soulmaker paper:status   --journal <journal.jsonl>
 
 # paper-only strategy decisioning (offline; injected JSON; feeds paper only; not advice)
 pnpm soulmaker strategy:evaluate --candidate <candidate.json> --config <config.json>
+
+# batch plan: a candidate LIST → PaperCandidate[] for a later, MANUAL paper:run
+# (PAPER ONLY; does NOT auto-run paper trades; not advice)
+pnpm soulmaker strategy:plan --candidates <candidates.json> --config <config.json> \
+  --size 100 --out <paper-candidates.json>
+# then, by hand:
+pnpm soulmaker paper:run --candidates <paper-candidates.json> --prices <prices.json>
 ```
 
 Configuration comes from `soulmaker.config.json` (copy
