@@ -7,7 +7,15 @@ import {
   configCheckReport,
   modeReport,
   paperStatusReport,
+  solanaDoctorReport,
+  walletWatchReport,
+  tokenInspectReport,
+  tokenAccountsReport,
 } from "./commands.js";
+import type {
+  ReadOnlyClientConfig,
+  ReadOnlySolanaClient,
+} from "@soulmaker/solana";
 
 /** Write a temp config dir and return its path + a cleanup fn. */
 function withConfig(config: unknown): { cwd: string; cleanup: () => void } {
@@ -18,6 +26,51 @@ function withConfig(config: unknown): { cwd: string; cleanup: () => void } {
   );
   return { cwd, cleanup: () => rmSync(cwd, { recursive: true, force: true }) };
 }
+
+const VALID_PUBKEY = "So11111111111111111111111111111111111111112";
+
+/** An in-memory read-only client so CLI tests never touch the network. */
+function fakeSolanaClient(): ReadOnlySolanaClient {
+  return {
+    endpointHost: "rpc.example.com",
+    getRpcHealth: async () => ({
+      ok: true,
+      endpointHost: "rpc.example.com",
+      solanaCore: "1.18.22",
+      slot: 7,
+    }),
+    getVersion: async () => ({ solanaCore: "1.18.22" }),
+    getSolBalance: async () => ({
+      ownerBase58: VALID_PUBKEY,
+      lamports: 1_000_000_000,
+      sol: 1,
+    }),
+    getTokenAccounts: async () => [
+      {
+        tokenAccount: "Tok1111111111111111111111111111111111111111",
+        mint: "Min1111111111111111111111111111111111111111",
+        programLabel: "spl-token",
+        amountRaw: "1000",
+        decimals: 3,
+        uiAmount: 1,
+      },
+    ],
+    getTokenMintInfo: async () => ({
+      mint: VALID_PUBKEY,
+      decimals: 9,
+      supplyRaw: "0",
+      uiSupply: 0,
+      mintAuthorityPresent: false,
+      freezeAuthorityPresent: false,
+      isInitialized: true,
+      programLabel: "spl-token",
+      source: "test",
+    }),
+  };
+}
+
+const fakeClientFactory = (_config: ReadOnlyClientConfig): ReadOnlySolanaClient =>
+  fakeSolanaClient();
 
 describe("doctorReport", () => {
   it("reports a healthy, safe default config", () => {
@@ -99,6 +152,206 @@ describe("paperStatusReport", () => {
       const out = paperStatusReport({ cwd, env: {} });
       expect(out).toContain("open positions:  0");
       expect(out).toContain("Phase 4");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 2 — read-only Solana commands
+// ---------------------------------------------------------------------------
+
+describe("solanaDoctorReport", () => {
+  it("explains PAPER cannot read chain and reports no rpc url", async () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const out = await solanaDoctorReport({ cwd, env: {} });
+      expect(out).toContain("reads chain:     no (mode PAPER)");
+      expect(out).toContain("rpc url set:     no");
+      expect(out).toContain("No rpcUrl configured");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("runs a read-only health check when an rpc url is set", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "WATCH_ONLY",
+      rpcUrl: "https://rpc.example.com/?api-key=SUPERSECRET",
+    });
+    try {
+      const out = await solanaDoctorReport({
+        cwd,
+        env: {},
+        createClient: fakeClientFactory,
+      });
+      expect(out).toContain("rpc health:      OK");
+      expect(out).toContain("rpc host:        rpc.example.com");
+      // The api-key in the configured rpcUrl must never be printed.
+      expect(out).not.toContain("SUPERSECRET");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("walletWatchReport", () => {
+  it("refuses in PAPER mode without --allow-paper-read", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "PAPER",
+      rpcUrl: "https://rpc.example.com",
+    });
+    try {
+      const out = await walletWatchReport(VALID_PUBKEY, {
+        cwd,
+        env: {},
+        createClient: fakeClientFactory,
+      });
+      expect(out).toMatch(/^Refusing: mode PAPER does not read chain/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("allows a PAPER read when --allow-paper-read is passed", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "PAPER",
+      rpcUrl: "https://rpc.example.com",
+    });
+    try {
+      const out = await walletWatchReport(
+        VALID_PUBKEY,
+        { cwd, env: {}, createClient: fakeClientFactory },
+        { allowPaperRead: true },
+      );
+      expect(out).toContain("Wallet watch (READ-ONLY)");
+      expect(out).toContain(VALID_PUBKEY);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses when no rpc url is configured", async () => {
+    const { cwd, cleanup } = withConfig({ mode: "WATCH_ONLY" });
+    try {
+      const out = await walletWatchReport(VALID_PUBKEY, {
+        cwd,
+        env: {},
+        createClient: fakeClientFactory,
+      });
+      expect(out).toMatch(/Refusing: no rpcUrl configured/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses an invalid public key", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "WATCH_ONLY",
+      rpcUrl: "https://rpc.example.com",
+    });
+    try {
+      const out = await walletWatchReport("not-a-key", {
+        cwd,
+        env: {},
+        createClient: fakeClientFactory,
+      });
+      expect(out).toMatch(/^Refusing:/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("works with NO burner env vars set (Phase 2 needs none)", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "WATCH_ONLY",
+      rpcUrl: "https://rpc.example.com",
+    });
+    try {
+      // env is deliberately empty: no SOULMAKER_I_UNDERSTAND_BURNER_RISK,
+      // no burner key — read-only watching must not require any of them.
+      const out = await walletWatchReport(VALID_PUBKEY, {
+        cwd,
+        env: {},
+        createClient: fakeClientFactory,
+      });
+      expect(out).toContain("Wallet watch (READ-ONLY)");
+      expect(out).toContain("no transaction was built, signed, or sent");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("tokenInspectReport", () => {
+  it("refuses an invalid mint", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "WATCH_ONLY",
+      rpcUrl: "https://rpc.example.com",
+    });
+    try {
+      const out = await tokenInspectReport("bad-mint", {
+        cwd,
+        env: {},
+        createClient: fakeClientFactory,
+      });
+      expect(out).toMatch(/^Refusing:/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("prints a mint inspection that warns it is not a buy recommendation", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "WATCH_ONLY",
+      rpcUrl: "https://rpc.example.com",
+    });
+    try {
+      const out = await tokenInspectReport(VALID_PUBKEY, {
+        cwd,
+        env: {},
+        createClient: fakeClientFactory,
+      });
+      expect(out).toContain("Token mint inspection (READ-ONLY)");
+      expect(out).toMatch(/NOT a buy recommendation/i);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("tokenAccountsReport", () => {
+  it("lists token accounts read-only for a valid owner", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "WATCH_ONLY",
+      rpcUrl: "https://rpc.example.com",
+    });
+    try {
+      const out = await tokenAccountsReport(VALID_PUBKEY, {
+        cwd,
+        env: {},
+        createClient: fakeClientFactory,
+      });
+      expect(out).toContain("SPL token accounts (READ-ONLY)");
+      expect(out).toContain("token accounts:  1");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses an invalid owner key", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "WATCH_ONLY",
+      rpcUrl: "https://rpc.example.com",
+    });
+    try {
+      const out = await tokenAccountsReport("xxx", {
+        cwd,
+        env: {},
+        createClient: fakeClientFactory,
+      });
+      expect(out).toMatch(/^Refusing:/);
     } finally {
       cleanup();
     }

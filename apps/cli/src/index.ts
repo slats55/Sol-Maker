@@ -5,6 +5,10 @@ import {
   configCheckReport,
   modeReport,
   paperStatusReport,
+  solanaDoctorReport,
+  walletWatchReport,
+  tokenInspectReport,
+  tokenAccountsReport,
 } from "./commands.js";
 
 const program = new Command();
@@ -15,6 +19,14 @@ program
     "Soulmaker — security-first Solana trading command center (read-only CLI).",
   )
   .version("0.0.0");
+
+/** Print a report and set a non-zero exit code for refusals/read failures. */
+function printResult(text: string): void {
+  console.log(text);
+  if (/^(Refusing|RPC read failed|Config is INVALID)/m.test(text)) {
+    process.exitCode = 1;
+  }
+}
 
 program
   .command("doctor")
@@ -27,7 +39,7 @@ program
   .command("config:check")
   .description("Validate the config and print it (secrets redacted)")
   .action(() => {
-    console.log(configCheckReport());
+    printResult(configCheckReport());
   });
 
 program
@@ -44,4 +56,53 @@ program
     console.log(paperStatusReport());
   });
 
-program.parse(process.argv);
+program
+  .command("solana:doctor")
+  .description("Read-only RPC readiness check (no wallet, no sends)")
+  .action(async () => {
+    printResult(await solanaDoctorReport());
+  });
+
+program
+  .command("wallet:watch <publicKey>")
+  .description("Read-only wallet snapshot: SOL balance + SPL token accounts")
+  .option("--allow-paper-read", "permit chain reads while in PAPER mode")
+  .action(async (publicKey: string, opts: { allowPaperRead?: boolean }) => {
+    printResult(
+      await walletWatchReport(
+        publicKey,
+        {},
+        { allowPaperRead: Boolean(opts.allowPaperRead) },
+      ),
+    );
+  });
+
+program
+  .command("token:inspect <mint>")
+  .description("Read-only token mint inspection (not a buy recommendation)")
+  .option("--allow-paper-read", "permit chain reads while in PAPER mode")
+  .action(async (mint: string, opts: { allowPaperRead?: boolean }) => {
+    printResult(
+      await tokenInspectReport(
+        mint,
+        {},
+        { allowPaperRead: Boolean(opts.allowPaperRead) },
+      ),
+    );
+  });
+
+program
+  .command("token:accounts <ownerPublicKey>")
+  .description("Read-only list of a wallet's SPL token accounts")
+  .option("--allow-paper-read", "permit chain reads while in PAPER mode")
+  .action(async (owner: string, opts: { allowPaperRead?: boolean }) => {
+    printResult(
+      await tokenAccountsReport(
+        owner,
+        {},
+        { allowPaperRead: Boolean(opts.allowPaperRead) },
+      ),
+    );
+  });
+
+program.parseAsync(process.argv);

@@ -3,8 +3,13 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Read-only Solana RPC/WebSocket abstraction, token metadata and pool/event interfaces (Phase 2). No key custody.",
+  "description": "Read-only Solana layer (Phase 2): public-key validation, read-only RPC client, wallet watch and token mint inspection. No key custody, no sends.",
   "exports": { ".": "./src/index.ts" },
   "main": "./src/index.ts",
-  "types": "./src/index.ts"
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@solana/spl-token": "^0.4.9",
+    "@solana/web3.js": "^1.95.0",
+    "@soulmaker/security": "workspace:*"
+  }
 }

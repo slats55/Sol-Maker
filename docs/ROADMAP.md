@@ -33,13 +33,24 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started
 
 > Phases 0 and 1 are implemented in this commit. Everything below is planned.
 
-## Phase 2 — Solana read-only watcher ⬜
+## Phase 2 — Solana read-only watcher 🟡 (read-only core complete)
 
-- ⬜ RPC/WebSocket abstraction over `@solana/web3.js` (read-only).
-- ⬜ Read-only wallet / public-key monitor (balances, txns).
-- ⬜ Token metadata lookup interface.
-- ⬜ Pool/token launch event abstraction.
-- ⬜ **No live sends.** Tests use mocks/fixtures; no network in unit tests.
+Implemented in `@soulmaker/solana` + the CLI (Sprint 2):
+
+- ✅ Read-only RPC abstraction over `@solana/web3.js`: health, version, SOL
+  balance, SPL token accounts (classic + Token-2022), token mint info.
+- ✅ Read-only wallet / public-key monitor (`wallet:watch`, `token:accounts`).
+- ✅ Token mint inspection (`token:inspect`): decimals, supply, mint authority
+  present, freeze authority present, initialized — feeds Phase 3.
+- ✅ Public-key validation that **refuses secret-length input** (no private keys).
+- ✅ CLI: `solana:doctor`, `wallet:watch`, `token:inspect`, `token:accounts`,
+  PAPER-gated with an explicit `--allow-paper-read` override.
+- ✅ Deterministic, offline (mocked-RPC) tests; optional live mainnet smoke
+  verified manually (read-only).
+- ✅ **No live sends. No signer. No key custody.** The client exposes only read
+  methods and is a frozen object (a send method cannot be bolted on).
+- ⬜ WebSocket streaming + live pool/token-launch **event** abstraction
+  (deferred to a later read-only sprint / folded into Phase 3 inputs).
 
 ## Phase 3 — Filter & risk engine ⬜
 

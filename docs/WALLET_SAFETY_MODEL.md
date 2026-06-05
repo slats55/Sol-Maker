@@ -48,6 +48,27 @@ arming live mode requires editing **two different surfaces** (a committed-style
 config *and* the live environment). Neither alone is enough. A leaked or
 copy-pasted config cannot, by itself, enable sending.
 
+## Phase 2: read-only access uses PUBLIC KEYS ONLY
+
+The Phase 2 Solana layer (`@soulmaker/solana`) reads public chain state and
+**never touches secret material**:
+
+- Every key it accepts is a **public** key. `parsePublicKey` validates 32-byte
+  public keys and **refuses secret-length input** — anything longer than a
+  44-char public key (e.g. an ~88-char base58 secret key) is rejected with
+  "Refusing (never paste a private key or seed phrase)". You cannot paste a
+  private key into `wallet:watch` / `token:inspect` / `token:accounts` and have
+  it silently accepted.
+- The read-only client is a **frozen** object exposing only read methods. There
+  is no `sendTransaction`, `signTransaction`, `requestAirdrop`, or signer on it
+  (asserted by tests). No secret key is ever held, logged, or required.
+- These commands require **no** burner/live environment variables. They are
+  gated on `capabilitiesFor(mode).canReadChain` and refuse in `PAPER` mode unless
+  the operator passes `--allow-paper-read` (an explicit, documented opt-in to
+  read chain while otherwise fully simulated).
+- RPC endpoints are shown as **host only**; any `?api-key=` is dropped and output
+  is redacted as a backstop. An RPC URL is config, not a wallet secret.
+
 ## Key handling rules (for when Phase 6 arrives)
 
 - The config stores only the **name** of the env var holding the burner key

@@ -32,6 +32,14 @@ Defined in `packages/core/src/config/schema.ts` and re-checked by the live gate.
 
 ## 2. Token / launch risk flags (Phase 3 design)
 
+> **Phase 2 status:** the read-only `token:inspect` command already **collects**
+> the on-chain mint facts several of these flags depend on — `mintAuthority`
+> present, `freezeAuthority` present, `decimals`, `supply`, and `isInitialized` —
+> via `@soulmaker/solana`'s `getTokenMintInfo`. This is **observation only**: it
+> is surfaced in a human-readable report and is explicitly **not** a risk score
+> or a buy recommendation. Turning these observations (plus pool size, burn
+> status, socials, allow/deny lists) into a single advisory **score** is Phase 3.
+
 Each candidate mint will be evaluated against flags. Several mirror well-trodden
 Solana sniper checks (validated by what real reference bots check — see
 [`REFERENCE_REPO_AUDIT.md`](REFERENCE_REPO_AUDIT.md)), re-implemented cleanly:

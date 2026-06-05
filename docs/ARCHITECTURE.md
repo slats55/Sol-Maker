@@ -24,7 +24,7 @@ apps/web          (Phase 7)            local dashboard (placeholder)
 
 packages/security @soulmaker/security  redaction + redacting logger      [no deps]
 packages/core     @soulmaker/core      config, modes, caps, LIVE GATE    [zod]
-packages/solana   @soulmaker/solana    read-only chain access (Phase 2)
+packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.js, spl-token, security]
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)
 packages/strategy @soulmaker/strategy  snipe list, entry/exit, TP/SL (Phase 4+)
 packages/paper    @soulmaker/paper     paper trading engine (Phase 4)
@@ -48,8 +48,11 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 5+)
 - `@soulmaker/core` owns config, modes, caps, and the **live gate** — the single
   source of truth for "is a live send allowed?".
 - Everything that could touch the chain (solana, strategy, paper, adapters) sits
-  *below* core and must route any live intent through core's gate. Today those
-  packages are typed placeholders.
+  *below* core and must route any live intent through core's gate. `solana` is
+  now implemented as a **read-only** layer (Phase 2); `strategy`, `paper`, and
+  `adapters` remain typed placeholders. Note `@soulmaker/solana` depends on
+  `@soulmaker/security` (for redaction) but **not** on `core` — the CLI is what
+  composes config/modes (core) with the read-only client (solana).
 
 ## The live boundary
 
@@ -70,6 +73,31 @@ Mode → capability mapping lives in `packages/core/src/modes.ts`
 current repo **no code consumes `canSend`/the gate to actually send** — there is
 no signing/sending implementation at all. The gate and capability model exist so
 that when execution is built (Phase 6) it has exactly one door to go through.
+
+## Read-only Solana layer (`@soulmaker/solana`, Phase 2)
+
+A small, read-only layer over `@solana/web3.js` / `@solana/spl-token`:
+
+- `public-key.ts` — `parsePublicKey` / `isValidPublicKey` / `publicKeyToBase58`.
+  Validates 32-byte public keys and **refuses secret-length input** (anything
+  longer than a 44-char public key — e.g. an ~88-char secret key — is rejected
+  with a pointed message). There is no path that treats input as a private key.
+- `rpc-client.ts` — `createReadOnlySolanaClient(config)` builds a `Connection`
+  and returns a **frozen** object exposing only read methods: `getRpcHealth`,
+  `getVersion`, `getSolBalance`, `getTokenAccounts`, `getTokenMintInfo`. There is
+  no `sendTransaction`/`signTransaction`/`requestAirdrop`/signer — a test asserts
+  none exist and that the object is frozen. The client depends on a narrow
+  `SolanaRpcLike` seam (a read-only subset of `Connection`), so unit tests inject
+  an in-memory fake and never hit the network.
+- `wallet-watch.ts` / `token-inspect.ts` — assemble structured, redacted reports
+  (SOL balance + token accounts; mint decimals/supply/authorities) with an
+  injectable clock for deterministic tests, plus human-readable formatters.
+
+The endpoint is only ever shown as a **host** (`new URL(rpcUrl).host`), which
+drops any `?api-key=` query, and all rendered output is passed through
+`redactString` as a backstop. The CLI gates these commands on
+`capabilitiesFor(mode).canReadChain` and refuses in `PAPER` mode unless
+`--allow-paper-read` is passed; none of them require any burner/live env var.
 
 ## Configuration
 

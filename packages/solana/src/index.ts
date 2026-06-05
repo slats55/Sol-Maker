@@ -1,18 +1,53 @@
 /**
- * @soulmaker/solana — Phase 2 (read-only watcher).
+ * @soulmaker/solana — Phase 2 (read-only Solana watcher).
  *
- * Planned surface (not yet implemented):
- *  - RpcClient / WsClient abstraction over @solana/web3.js (read-only).
- *  - Public-key balance & transaction monitor.
- *  - Token metadata lookup interface.
- *  - Pool/token launch event abstraction.
+ * Read-only by construction: public-key validation, an RPC client that exposes
+ * only read methods, a wallet watch report, and a token mint inspection report.
  *
- * Hard rule: nothing in this package ever holds a secret key or sends a
- * transaction. It is read-only by construction.
+ * Hard rule (enforced by code + tests): nothing here holds a secret key, builds,
+ * signs, or sends a transaction. There is no signer and no `sendTransaction`.
  */
 
 export const SOLANA_PACKAGE_PHASE = 2 as const;
 
-export interface ChainWatcherPlaceholder {
-  readonly implemented: false;
-}
+export {
+  parsePublicKey,
+  isValidPublicKey,
+  publicKeyToBase58,
+  InvalidPublicKeyError,
+} from "./public-key.js";
+
+export {
+  createReadOnlySolanaClient,
+  createClientFromRpc,
+  endpointHostOf,
+} from "./rpc-client.js";
+export type { ClientFromRpcOptions } from "./rpc-client.js";
+
+export {
+  buildWalletWatchReport,
+  formatWalletWatchReport,
+} from "./wallet-watch.js";
+export type { WalletWatchOptions } from "./wallet-watch.js";
+
+export {
+  buildTokenInspectReport,
+  formatTokenInspectReport,
+} from "./token-inspect.js";
+export type { TokenInspectOptions } from "./token-inspect.js";
+
+export type {
+  PublicKeyInput,
+  ReadOnlyClientConfig,
+  ReadOnlySolanaClient,
+  RpcHealth,
+  RpcVersion,
+  SolBalance,
+  SolanaRpcLike,
+  ParsedTokenAccount,
+  TokenAccountSummary,
+  TokenProgramLabel,
+  TokenMintInfo,
+  WalletWatchReport,
+  TokenInspectReport,
+} from "./types.js";
