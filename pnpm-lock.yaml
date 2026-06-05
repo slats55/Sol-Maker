@@ -35,6 +35,9 @@ importers:
       '@soulmaker/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@soulmaker/paper':
+        specifier: workspace:*
+        version: link:../../packages/paper
       '@soulmaker/risk':
         specifier: workspace:*
         version: link:../../packages/risk
@@ -60,7 +63,14 @@ importers:
         specifier: workspace:*
         version: link:../security
 
-  packages/paper: {}
+  packages/paper:
+    dependencies:
+      '@soulmaker/risk':
+        specifier: workspace:*
+        version: link:../risk
+      '@soulmaker/security':
+        specifier: workspace:*
+        version: link:../security
 
   packages/risk:
     dependencies:

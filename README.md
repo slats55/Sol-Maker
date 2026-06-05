@@ -16,12 +16,13 @@ all pass.
 
 ---
 
-## ⚠️ Status: Phases 0–1 done; Phase 2 read-only core complete (WS streaming deferred); Phase 3 in progress (read-only). No live trading. By design.
+## ⚠️ Status: Phases 0–1 done; Phase 2 read-only core complete; Phase 3 advisory risk engine complete; Phase 4 in progress (simulated paper engine). No live trading. By design.
 
 Nothing in this repository can move funds. There is **no transaction signing or
 sending code anywhere in it yet** — the read-only Solana watcher (Phase 2) and
-the advisory risk engine (Phase 3) are read-only by construction. The default
-mode is `PAPER`. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+advisory risk engine (Phase 3) are read-only by construction, and the Phase 4
+paper engine is **simulated-only** (injected prices, no wallet, no chain). The
+default mode is `PAPER`. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Non-negotiable security rules (summary)
 
@@ -56,8 +57,8 @@ soulmaker/
     security/   # @soulmaker/security  — secret redaction + redacting logger
     solana/     # Phase 2 — read-only RPC watcher (public-key/mint reads only)
     risk/       # Phase 3 — read-only advisory token risk flags + scoring
+    paper/      # Phase 4 — deterministic, simulated-only paper trading engine
     strategy/   # Phase 4+ — snipe list, entry/exit, TP/SL (placeholder)
-    paper/      # Phase 4 — paper trading engine (placeholder)
     adapters/   # Phase 5+ — audited external integrations (placeholder)
   docs/         # ARCHITECTURE, ROADMAP, WALLET_SAFETY_MODEL, RISK_MODEL, REFERENCE_REPO_AUDIT
   scripts/      # thin operational scripts
@@ -95,6 +96,11 @@ pnpm soulmaker wallet:watch <publicKey>
 pnpm soulmaker token:inspect <mint>
 pnpm soulmaker token:accounts <ownerPublicKey>
 pnpm soulmaker token:risk <mint>      # advisory risk report — NOT a buy recommendation
+
+# simulated-only paper trading (offline; injected fixtures; PAPER ONLY)
+pnpm soulmaker paper:run --candidates <candidates.json> --prices <prices.json>
+pnpm soulmaker paper:journal --journal <journal.jsonl>
+pnpm soulmaker paper:status   --journal <journal.jsonl>
 ```
 
 Configuration comes from `soulmaker.config.json` (copy
@@ -108,6 +114,7 @@ gitignored. Defaults are safe: `PAPER` mode, kill switch off, redaction on.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — phased plan (0 → 7)
 - [`docs/WALLET_SAFETY_MODEL.md`](docs/WALLET_SAFETY_MODEL.md) — key handling & live gate
 - [`docs/RISK_MODEL.md`](docs/RISK_MODEL.md) — caps, kill switch, token risk flags
+- [`docs/PAPER_TRADING_MODEL.md`](docs/PAPER_TRADING_MODEL.md) — simulated paper engine (Phase 4)
 - [`docs/REFERENCE_REPO_AUDIT.md`](docs/REFERENCE_REPO_AUDIT.md) — audit of reference repos
 - [`SECURITY.md`](SECURITY.md) — the authoritative security rules
 

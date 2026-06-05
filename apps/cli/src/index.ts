@@ -5,12 +5,19 @@ import {
   configCheckReport,
   modeReport,
   paperStatusReport,
+  paperRunReport,
+  paperJournalReport,
   solanaDoctorReport,
   walletWatchReport,
   tokenInspectReport,
   tokenAccountsReport,
   tokenRiskReport,
 } from "./commands.js";
+
+/** Coerce a commander string option to a number, or undefined when absent. */
+function num(value: string | undefined): number | undefined {
+  return value === undefined ? undefined : Number(value);
+}
 
 const program = new Command();
 
@@ -24,7 +31,10 @@ program
 /** Print a report and set a non-zero exit code for refusals/read failures. */
 function printResult(text: string): void {
   console.log(text);
-  if (/^(Refusing|RPC read failed|Config is INVALID)/m.test(text)) {
+  // Match the FIRST line only: a refusal report *starts* with one of these, so a
+  // success report that merely contains such a word later cannot trip the exit.
+  const firstLine = text.split("\n", 1)[0] ?? "";
+  if (/^(Refusing|RPC read failed|Config is INVALID)/.test(firstLine)) {
     process.exitCode = 1;
   }
 }
@@ -52,9 +62,78 @@ program
 
 program
   .command("paper:status")
-  .description("Show paper-trading status (Phase 4 stub)")
-  .action(() => {
-    console.log(paperStatusReport());
+  .description("Show paper-trading status from an optional journal (PAPER ONLY)")
+  .option("--journal <path>", "paper journal JSONL file to summarize")
+  .option("--json", "emit the status as stable JSON")
+  .action((opts: { journal?: string; json?: boolean }) => {
+    printResult(
+      paperStatusReport({}, { journalPath: opts.journal, json: Boolean(opts.json) }),
+    );
+  });
+
+program
+  .command("paper:run")
+  .description(
+    "Run a deterministic, simulated-only paper evaluation from injected fixtures (PAPER ONLY)",
+  )
+  .option("--candidates <path>", "JSON array of paper candidates (with risk reports)")
+  .option("--prices <path>", "JSON array of injected price points")
+  .option("--journal <path>", "append this run's events to a JSONL journal")
+  .option("--max-trade-size-usd <number>", "max simulated USD per trade")
+  .option("--max-daily-loss-usd <number>", "max simulated realized USD loss before buys stop")
+  .option("--max-open-positions <number>", "max simultaneous simulated positions")
+  .option("--max-position-size-usd <number>", "optional max cost basis per position")
+  .option("--take-profit-pct <number>", "take-profit threshold in percent")
+  .option("--stop-loss-pct <number>", "stop-loss threshold in percent")
+  .option("--kill-switch", "engage the kill switch: no simulated trades")
+  .option("--allow-caution", "allow CAUTION risk reports into paper evaluation")
+  .option("--json", "emit the report as stable JSON")
+  .action(
+    (opts: {
+      candidates?: string;
+      prices?: string;
+      journal?: string;
+      maxTradeSizeUsd?: string;
+      maxDailyLossUsd?: string;
+      maxOpenPositions?: string;
+      maxPositionSizeUsd?: string;
+      takeProfitPct?: string;
+      stopLossPct?: string;
+      killSwitch?: boolean;
+      allowCaution?: boolean;
+      json?: boolean;
+    }) => {
+      printResult(
+        paperRunReport(
+          {},
+          {
+            candidatesPath: opts.candidates,
+            pricesPath: opts.prices,
+            journalPath: opts.journal,
+            maxTradeSizeUsd: num(opts.maxTradeSizeUsd),
+            maxDailyLossUsd: num(opts.maxDailyLossUsd),
+            maxOpenPositions: num(opts.maxOpenPositions),
+            maxPositionSizeUsd: num(opts.maxPositionSizeUsd),
+            takeProfitPct: num(opts.takeProfitPct),
+            stopLossPct: num(opts.stopLossPct),
+            killSwitch: Boolean(opts.killSwitch),
+            allowCaution: Boolean(opts.allowCaution),
+            json: Boolean(opts.json),
+          },
+        ),
+      );
+    },
+  );
+
+program
+  .command("paper:journal")
+  .description("Read and summarize an append-only paper journal (PAPER ONLY)")
+  .option("--journal <path>", "paper journal JSONL file")
+  .option("--json", "emit the summary as stable JSON")
+  .action((opts: { journal?: string; json?: boolean }) => {
+    printResult(
+      paperJournalReport({}, { journalPath: opts.journal, json: Boolean(opts.json) }),
+    );
   });
 
 program

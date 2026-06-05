@@ -7,12 +7,15 @@ import {
   configCheckReport,
   modeReport,
   paperStatusReport,
+  paperRunReport,
+  paperJournalReport,
   solanaDoctorReport,
   walletWatchReport,
   tokenInspectReport,
   tokenAccountsReport,
   tokenRiskReport,
 } from "./commands.js";
+import { buildTokenRiskReport } from "@soulmaker/risk";
 import type {
   ReadOnlyClientConfig,
   ReadOnlySolanaClient,
@@ -147,12 +150,28 @@ describe("modeReport", () => {
 });
 
 describe("paperStatusReport", () => {
-  it("reports an empty paper journal", () => {
+  it("prints a clean empty paper state when no journal is provided", () => {
     const { cwd, cleanup } = withConfig({ mode: "PAPER" });
     try {
       const out = paperStatusReport({ cwd, env: {} });
-      expect(out).toContain("open positions:  0");
-      expect(out).toContain("Phase 4");
+      expect(out).toContain("open positions:   0");
+      expect(out).toContain("PAPER ONLY");
+      expect(out).toContain("No journal provided");
+      expect(out).toMatch(/no transaction was built, signed, simulated, or sent/i);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("treats a non-existent journal path as a clean empty state", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const out = paperStatusReport(
+        { cwd, env: {} },
+        { journalPath: "nope.jsonl" },
+      );
+      expect(out).toContain("open positions:   0");
+      expect(out).toContain("PAPER ONLY");
     } finally {
       cleanup();
     }
@@ -536,6 +555,306 @@ describe("tokenRiskReport", () => {
         { allowlistPath: "does-not-exist.txt" },
       );
       expect(out).toMatch(/^Refusing: cannot read allowlist list file/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 4 — paper trading CLI (offline, simulated-only)
+// ---------------------------------------------------------------------------
+
+const PAPER_TIME = "2026-06-05T12:00:00.000Z";
+const MINT_A = "So11111111111111111111111111111111111111112";
+
+function passReport(mint: string) {
+  return buildTokenRiskReport(
+    {
+      mint,
+      decimals: 6,
+      supplyRaw: "1000000",
+      uiSupply: 1,
+      mintAuthorityPresent: false,
+      freezeAuthorityPresent: false,
+      isInitialized: true,
+      programLabel: "spl-token",
+    },
+    { now: () => PAPER_TIME },
+  );
+}
+
+function writeFixtures(cwd: string, candidates: unknown, prices: unknown): void {
+  writeFileSync(join(cwd, "candidates.json"), JSON.stringify(candidates));
+  writeFileSync(join(cwd, "prices.json"), JSON.stringify(prices));
+}
+
+const cleanFixtures = () => ({
+  candidates: [{ mint: MINT_A, proposedSizeUsd: 100, riskReport: passReport(MINT_A) }],
+  prices: [
+    { mint: MINT_A, priceUsd: 2, observedAt: PAPER_TIME, source: "injected-fixture" },
+    { mint: MINT_A, priceUsd: 3, observedAt: PAPER_TIME, source: "injected-fixture" },
+  ],
+});
+
+describe("paperRunReport", () => {
+  it("refuses when --candidates is missing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const out = paperRunReport({ cwd, env: {} }, { pricesPath: "prices.json" });
+      expect(out).toMatch(/^Refusing: --candidates/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses when --prices is missing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const out = paperRunReport({ cwd, env: {} }, { candidatesPath: "candidates.json" });
+      expect(out).toMatch(/^Refusing: --prices/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a missing candidates file cleanly", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const out = paperRunReport(
+        { cwd, env: {} },
+        { candidatesPath: "nope.json", pricesPath: "prices.json" },
+      );
+      expect(out).toMatch(/^Refusing: cannot read candidates file/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses invalid numeric caps cleanly", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { candidates, prices } = cleanFixtures();
+      writeFixtures(cwd, candidates, prices);
+      const out = paperRunReport(
+        { cwd, env: {} },
+        {
+          candidatesPath: "candidates.json",
+          pricesPath: "prices.json",
+          maxTradeSizeUsd: Number.NaN, // invalid
+        },
+      );
+      expect(out).toMatch(/^Refusing: invalid max-trade-size-usd/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("runs deterministically with injected fixtures and reports PAPER ONLY", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { candidates, prices } = cleanFixtures();
+      writeFixtures(cwd, candidates, prices);
+      const run = () =>
+        paperRunReport(
+          { cwd, env: {}, now: () => PAPER_TIME },
+          {
+            candidatesPath: "candidates.json",
+            pricesPath: "prices.json",
+            maxTradeSizeUsd: 1000,
+          },
+        );
+      const out = run();
+      expect(out).toContain("Paper run");
+      expect(out).toContain("PAPER ONLY");
+      expect(out).toContain("buys / sells:     1 / 0");
+      expect(out).toMatch(/not a buy recommendation|not safe to buy or live-trade/i);
+      expect(out).toMatch(/no transaction was built, signed, simulated, or sent/i);
+      expect(out).toBe(run()); // deterministic
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json emits parseable JSON carrying the PAPER-ONLY language", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { candidates, prices } = cleanFixtures();
+      writeFixtures(cwd, candidates, prices);
+      const out = paperRunReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "candidates.json",
+          pricesPath: "prices.json",
+          maxTradeSizeUsd: 1000,
+          json: true,
+        },
+      );
+      const parsed = JSON.parse(out) as {
+        banner: string;
+        summary: { buyCount: number; unrealizedPnlUsd: number };
+        events: unknown[];
+        disclaimer: string;
+      };
+      expect(parsed.summary.buyCount).toBe(1);
+      expect(parsed.summary.unrealizedPnlUsd).toBe(50); // (3 - 2) * 50
+      expect(out).toContain("PAPER ONLY");
+      expect(out).toMatch(/no transaction was built, signed, simulated, or sent/i);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("the kill switch blocks all simulated trading", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { candidates, prices } = cleanFixtures();
+      writeFixtures(cwd, candidates, prices);
+      const out = paperRunReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "candidates.json",
+          pricesPath: "prices.json",
+          maxTradeSizeUsd: 1000,
+          killSwitch: true,
+        },
+      );
+      expect(out).toContain("buys / sells:     0 / 0");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("does not leak an RPC api-key from config into the report", () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "PAPER",
+      rpcUrl: "https://rpc.example.com/?api-key=SUPERSECRET",
+    });
+    try {
+      const { candidates, prices } = cleanFixtures();
+      writeFixtures(cwd, candidates, prices);
+      const out = paperRunReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "candidates.json",
+          pricesPath: "prices.json",
+          maxTradeSizeUsd: 1000,
+        },
+      );
+      expect(out).not.toContain("SUPERSECRET");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("appends to a journal that paper:journal can then summarize", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { candidates, prices } = cleanFixtures();
+      writeFixtures(cwd, candidates, prices);
+      const runOut = paperRunReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "candidates.json",
+          pricesPath: "prices.json",
+          journalPath: "journal.jsonl",
+          maxTradeSizeUsd: 1000,
+        },
+      );
+      expect(runOut).toContain("Paper run");
+
+      const journalOut = paperJournalReport({ cwd, env: {} }, { journalPath: "journal.jsonl" });
+      expect(journalOut).toContain("Paper journal");
+      expect(journalOut).toContain("PAPER ONLY");
+      expect(journalOut).toMatch(/events: \d+/);
+      expect(journalOut).toContain("BUY"); // the simulated fill is shown
+
+      const statusOut = paperStatusReport({ cwd, env: {} }, { journalPath: "journal.jsonl" });
+      expect(statusOut).toContain("open positions:   1");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperJournalReport", () => {
+  it("refuses when --journal is missing", () => {
+    const out = paperJournalReport({}, {});
+    expect(out).toMatch(/^Refusing: --journal/);
+  });
+
+  it("refuses an unreadable journal cleanly", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const out = paperJournalReport({ cwd, env: {} }, { journalPath: "missing.jsonl" });
+      expect(out).toMatch(/^Refusing: cannot read journal file/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("handles malformed JSONL lines cleanly (skips + counts them)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(
+        join(cwd, "bad.jsonl"),
+        ['{"type":"RUN_STARTED","at":"x","caps":{},"note":"n"}', "{not json", ""].join("\n"),
+      );
+      const out = paperJournalReport({ cwd, env: {} }, { journalPath: "bad.jsonl" });
+      expect(out).toContain("Paper journal");
+      expect(out).toContain("malformed lines skipped: 1");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json output is parseable", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { candidates, prices } = cleanFixtures();
+      writeFixtures(cwd, candidates, prices);
+      paperRunReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "candidates.json",
+          pricesPath: "prices.json",
+          journalPath: "j.jsonl",
+          maxTradeSizeUsd: 1000,
+        },
+      );
+      const out = paperJournalReport({ cwd, env: {} }, { journalPath: "j.jsonl", json: true });
+      const parsed = JSON.parse(out) as { eventCount: number; banner: string };
+      expect(parsed.eventCount).toBeGreaterThan(0);
+      expect(parsed.banner).toContain("PAPER ONLY");
+      // The non-negotiable language must survive serialization here too.
+      expect(out).toMatch(/no transaction was built, signed, simulated, or sent/i);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json does not leak an RPC api-key from config", () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "PAPER",
+      rpcUrl: "https://rpc.example.com/?api-key=SUPERSECRET",
+    });
+    try {
+      const { candidates, prices } = cleanFixtures();
+      writeFixtures(cwd, candidates, prices);
+      paperRunReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "candidates.json",
+          pricesPath: "prices.json",
+          journalPath: "leak.jsonl",
+          maxTradeSizeUsd: 1000,
+        },
+      );
+      const out = paperJournalReport(
+        { cwd, env: {} },
+        { journalPath: "leak.jsonl", json: true },
+      );
+      expect(out).not.toContain("SUPERSECRET");
     } finally {
       cleanup();
     }

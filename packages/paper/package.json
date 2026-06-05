@@ -3,8 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Paper trading engine: simulated buy/sell, TP/SL, trade journal and PnL (Phase 4).",
+  "description": "Deterministic, offline, simulated-only paper trading engine (Phase 4): simulated buy/sell, TP/SL, append-only journal, PnL. No keys, no tx, no sends.",
   "exports": { ".": "./src/index.ts" },
   "main": "./src/index.ts",
-  "types": "./src/index.ts"
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@soulmaker/risk": "workspace:*",
+    "@soulmaker/security": "workspace:*"
+  }
 }

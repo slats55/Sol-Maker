@@ -74,14 +74,26 @@ Implemented in `@soulmaker/risk` + the CLI (Sprint 3):
 - ⬜ Off-chain / pool-derived flags (metadata mutable, socials, pool size, LP
   burn/lock, deployer denylist) — deferred (need data not available read-only yet).
 
-## Phase 4 — Paper trading engine ⬜
+## Phase 4 — Paper trading engine 🟡 (deterministic simulated engine complete)
 
-- ⬜ Simulated buy/sell.
-- ⬜ TP/SL.
-- ⬜ Trade journal (append-only).
-- ⬜ PnL report.
-- ⬜ Snipe-list input.
-- ⬜ Deterministic, offline tests.
+Implemented in `@soulmaker/paper` + the CLI (Sprint 4):
+
+- ✅ Simulated buy/sell against **injected** prices (weighted-average positions,
+  realized + unrealized PnL). No chain, no wallet, no transaction.
+- ✅ TP/SL: percent thresholds over the injected price series; trigger event
+  always precedes the simulated sell fill.
+- ✅ Append-only JSONL **trade journal** (malformed lines skipped + counted;
+  state reconstructable via `reduceJournal`).
+- ✅ PnL report (realized/unrealized/total, open/closed counts, rejections,
+  simulated notional) — human + stable JSON, redacted, always "PAPER ONLY".
+- ✅ Risk integration: only `PASS_FOR_PAPER_EVALUATION` may enter a paper buy;
+  `CAUTION` blocked by default; missing report ⇒ treated as `REJECT`.
+- ✅ Caps + kill switch enforced **before** every simulated action (CLI
+  `--kill-switch` OR-ed with the core config kill switch).
+- ✅ CLI: `paper:run`, `paper:journal`, `paper:status` (real, replacing the stub).
+- ✅ Deterministic (seeded ids + injected clock), fully offline tests.
+- ⬜ Snipe-list **ingestion** wiring (candidates are supplied as fixtures today;
+  a live snipe-list source is a later sprint). Still **no real sends**.
 
 ## Phase 5 — Transaction planning & simulation ⬜
 

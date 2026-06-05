@@ -1,14 +1,15 @@
 /**
- * Pure command implementations. Each returns a string report and performs NO
- * side effects beyond reading config/env (and, for the Solana commands, issuing
- * read-only RPC reads through an injectable client). This keeps them testable
- * and offline in unit tests.
+ * Command implementations. Each returns a string report. Side effects are
+ * limited to: reading config/env; read-only RPC reads through an injectable
+ * client (Solana commands); and local file I/O for the offline paper engine
+ * (reading injected candidate/price fixtures and appending to a JSONL journal).
  *
- * Every command is read-only. None of them can build, sign, or send a
- * transaction — the CLI in this phase cannot move funds by construction.
+ * No command can build, sign, simulate, or send a transaction — the CLI cannot
+ * move funds by construction. The paper commands are pure simulation over
+ * injected data and touch no wallet, key, or network.
  */
 
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import {
   loadConfig,
@@ -39,6 +40,21 @@ import {
   parseList,
   type TokenRiskInput,
 } from "@soulmaker/risk";
+import {
+  runPaperSession,
+  parseJournal,
+  reduceJournal,
+  summarize,
+  formatPaperReport,
+  buildReportEnvelope,
+  initialState,
+  lastRunSummary,
+  serializeEvents,
+  type PaperCandidate,
+  type PaperPricePoint,
+  type PaperRiskCaps,
+  type PaperRunSummary,
+} from "@soulmaker/paper";
 
 export interface CommandContext {
   cwd?: string;
@@ -142,20 +158,31 @@ export function modeReport(ctx: CommandContext = {}): string {
   ].join("\n");
 }
 
-/** `soulmaker paper:status` — paper-trading engine status (Phase 4 stub). */
-export function paperStatusReport(ctx: CommandContext = {}): string {
-  const config = loadConfig(toLoadOptions(ctx));
-  return [
-    "Paper trading status",
-    "--------------------",
-    `mode:            ${config.mode}`,
-    `open positions:  0`,
-    `realized PnL:    0 SOL`,
-    `journal entries: 0`,
-    "",
-    "Note: the paper trading engine is not implemented yet (Phase 4).",
-    "This command is a wired stub so the surface is testable today.",
-  ].join("\n");
+export interface PaperStatusOptions {
+  /** Optional path to a paper journal (JSONL). */
+  journalPath?: string;
+  json?: boolean;
+}
+
+/**
+ * `soulmaker paper:status` — real paper engine status. With no journal (or a
+ * journal that does not exist yet) it prints a clean empty state; with a journal
+ * it summarizes reconstructed open positions, PnL and recent events.
+ */
+export function paperStatusReport(
+  ctx: CommandContext = {},
+  opts: PaperStatusOptions = {},
+): string {
+  if (!opts.journalPath) return renderEmptyPaperStatus(opts.json);
+  const resolved = resolvePath(ctx, opts.journalPath);
+  let text: string;
+  try {
+    text = readFileSync(resolved, "utf8");
+  } catch {
+    // A missing journal is a clean empty state, not an error.
+    return renderEmptyPaperStatus(opts.json);
+  }
+  return renderJournalReport("Paper status", text, opts.json);
 }
 
 // ---------------------------------------------------------------------------
@@ -470,6 +497,249 @@ export async function tokenRiskReport(
     if (err instanceof InvalidPublicKeyError) return `Refusing: ${err.message}`;
     return readError(err);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 — offline, simulated-only paper trading engine
+// ---------------------------------------------------------------------------
+
+export interface PaperRunCommandOptions {
+  candidatesPath?: string;
+  pricesPath?: string;
+  /** Optional JSONL journal to APPEND this run's events to (append-only). */
+  journalPath?: string;
+  maxTradeSizeUsd?: number;
+  maxDailyLossUsd?: number;
+  maxOpenPositions?: number;
+  maxPositionSizeUsd?: number;
+  takeProfitPct?: number;
+  stopLossPct?: number;
+  killSwitch?: boolean;
+  /** Allow CAUTION risk reports into paper evaluation (default false). */
+  allowCaution?: boolean;
+  json?: boolean;
+}
+
+const DEFAULT_PAPER_CAPS = {
+  maxTradeSizeUsd: 100,
+  maxDailyLossUsd: 500,
+  maxOpenPositions: 3,
+} as const;
+
+function resolvePath(ctx: CommandContext, path: string): string {
+  const base = ctx.cwd ?? process.cwd();
+  return isAbsolute(path) ? path : join(base, path);
+}
+
+function readJsonArray(
+  ctx: CommandContext,
+  path: string,
+  label: string,
+): unknown[] {
+  const resolved = resolvePath(ctx, path);
+  let text: string;
+  try {
+    text = readFileSync(resolved, "utf8");
+  } catch {
+    throw new Error(`cannot read ${label} file at ${resolved}`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`${label} file is not valid JSON at ${resolved}`);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${label} file must be a JSON array`);
+  }
+  return parsed;
+}
+
+function requireNonNeg(value: number, name: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new Error(`invalid ${name}: must be a non-negative number`);
+  }
+  return value;
+}
+
+function requireNonNegInt(value: number, name: string): number {
+  const n = requireNonNeg(value, name);
+  if (!Number.isInteger(n)) {
+    throw new Error(`invalid ${name}: must be a non-negative integer`);
+  }
+  return n;
+}
+
+function optionalNonNeg(value: number | undefined, name: string): number | undefined {
+  return value === undefined ? undefined : requireNonNeg(value, name);
+}
+
+/** Assemble simulated caps from CLI options; throws a clear error on bad input. */
+function buildPaperCaps(
+  ctx: CommandContext,
+  opts: PaperRunCommandOptions,
+): PaperRiskCaps {
+  const maxTradeSizeUsd = requireNonNeg(
+    opts.maxTradeSizeUsd ?? DEFAULT_PAPER_CAPS.maxTradeSizeUsd,
+    "max-trade-size-usd",
+  );
+  const maxDailyLossUsd = requireNonNeg(
+    opts.maxDailyLossUsd ?? DEFAULT_PAPER_CAPS.maxDailyLossUsd,
+    "max-daily-loss-usd",
+  );
+  const maxOpenPositions = requireNonNegInt(
+    opts.maxOpenPositions ?? DEFAULT_PAPER_CAPS.maxOpenPositions,
+    "max-open-positions",
+  );
+  const maxPositionSizeUsd = optionalNonNeg(
+    opts.maxPositionSizeUsd,
+    "max-position-size-usd",
+  );
+
+  // Global safety: OR the CLI --kill-switch flag with the core config's kill
+  // switch (best-effort load; paper runs do not otherwise require a config).
+  let configKill = false;
+  try {
+    configKill = loadConfig(toLoadOptions(ctx)).killSwitch;
+  } catch {
+    configKill = false;
+  }
+
+  return {
+    maxTradeSizeUsd,
+    maxDailyLossUsd,
+    maxOpenPositions,
+    killSwitch: Boolean(opts.killSwitch) || configKill,
+    maxPositionSizeUsd,
+    allowCautionRiskReports: Boolean(opts.allowCaution),
+  };
+}
+
+/**
+ * `soulmaker paper:run` — run a deterministic, simulated-only paper evaluation
+ * from local injected candidate + price fixtures. No chain access, no wallet, no
+ * transaction is built, signed, simulated, or sent.
+ */
+export function paperRunReport(
+  ctx: CommandContext = {},
+  opts: PaperRunCommandOptions = {},
+): string {
+  if (!opts.candidatesPath) return "Refusing: --candidates <path> is required.";
+  if (!opts.pricesPath) return "Refusing: --prices <path> is required.";
+
+  let candidates: PaperCandidate[];
+  let prices: PaperPricePoint[];
+  let caps: PaperRiskCaps;
+  let takeProfitPct: number | undefined;
+  let stopLossPct: number | undefined;
+  try {
+    candidates = readJsonArray(ctx, opts.candidatesPath, "candidates") as PaperCandidate[];
+    prices = readJsonArray(ctx, opts.pricesPath, "prices") as PaperPricePoint[];
+    caps = buildPaperCaps(ctx, opts);
+    takeProfitPct = optionalNonNeg(opts.takeProfitPct, "take-profit-pct");
+    stopLossPct = optionalNonNeg(opts.stopLossPct, "stop-loss-pct");
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  const result = runPaperSession({
+    caps,
+    candidates,
+    prices,
+    takeProfitPct,
+    stopLossPct,
+    now: ctx.now ?? isoNow,
+  });
+
+  if (opts.journalPath) {
+    const resolved = resolvePath(ctx, opts.journalPath);
+    try {
+      // Append-only: never truncates an existing journal.
+      appendFileSync(resolved, serializeEvents(result.events));
+    } catch {
+      return redactString(`Refusing: cannot write journal file at ${resolved}`);
+    }
+  }
+
+  if (opts.json) {
+    return JSON.stringify(
+      redactValue(buildReportEnvelope(result.state, result.summary, result.events)),
+      null,
+      2,
+    );
+  }
+  return formatPaperReport(result.state, result.summary, {
+    title: "Paper run",
+    recentEvents: result.events,
+  });
+}
+
+/**
+ * `soulmaker paper:journal` — read and summarize an append-only paper journal.
+ * Malformed lines are skipped and counted, never fatal.
+ */
+export function paperJournalReport(
+  ctx: CommandContext = {},
+  opts: { journalPath?: string; json?: boolean } = {},
+): string {
+  if (!opts.journalPath) return "Refusing: --journal <path> is required.";
+  const resolved = resolvePath(ctx, opts.journalPath);
+  let text: string;
+  try {
+    text = readFileSync(resolved, "utf8");
+  } catch {
+    return redactString(`Refusing: cannot read journal file at ${resolved}`);
+  }
+  return renderJournalReport("Paper journal", text, opts.json);
+}
+
+/** Empty-state paper status (no journal). */
+function renderEmptyPaperStatus(json?: boolean): string {
+  const state = initialState();
+  const summary = summarize(state, []);
+  if (json) {
+    return JSON.stringify(
+      redactValue(buildReportEnvelope(state, summary, [])),
+      null,
+      2,
+    );
+  }
+  return (
+    formatPaperReport(state, summary, { title: "Paper status" }) +
+    "\n\nNo journal provided — empty paper state."
+  );
+}
+
+/** Shared journal rendering for paper:journal and paper:status. */
+function renderJournalReport(
+  title: string,
+  text: string,
+  json?: boolean,
+): string {
+  const { events, errors } = parseJournal(text);
+  const state = reduceJournal(events);
+  const summary: PaperRunSummary = summarize(state, events);
+  // Unrealized PnL cannot be recomputed from fills alone (no live prices in the
+  // journal); surface the value recorded by the most recent run, if any.
+  const last = lastRunSummary(events);
+  if (last) {
+    summary.unrealizedPnlUsd = last.unrealizedPnlUsd;
+    summary.totalPnlUsd = summary.realizedPnlUsd + last.unrealizedPnlUsd;
+  }
+
+  if (json) {
+    const envelope = {
+      ...buildReportEnvelope(state, summary, events),
+      eventCount: events.length,
+      malformedLines: errors.length,
+    };
+    return JSON.stringify(redactValue(envelope), null, 2);
+  }
+
+  let out = formatPaperReport(state, summary, { title, recentEvents: events });
+  out += `\n\nevents: ${events.length}`;
+  if (errors.length) out += `\nmalformed lines skipped: ${errors.length}`;
+  return out;
 }
 
 function yesNo(value: boolean): string {

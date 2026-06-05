@@ -92,6 +92,29 @@ fully within the read-only model:
   *paper-trading* evaluation later — it is never a live-trading judgment and
   never authorizes a send.
 
+## Phase 4 (Sprint 4): paper trading is simulated and key-free
+
+The Phase 4 paper engine (`@soulmaker/paper` + the `paper:*` commands) stays
+entirely within the no-custody model:
+
+- It is **simulated only**. No transaction is built, signed, simulated, or sent;
+  nothing is wired to execution. Paper trading does **not** imply live-trading
+  readiness.
+- It accepts **no** private key, seed, or wallet secret — and there is no code
+  path that could. `@soulmaker/paper` is a **pure** package: no signer, no
+  `Keypair`, no `@solana/web3.js`, no RPC, no network, no filesystem, no
+  DEX/execution SDK.
+- Inputs are local, **injected** fixtures (candidate + price JSON) and an
+  append-only JSONL journal. Prices are simulated; **paper PnL is not real market
+  performance.**
+- The CLI owns file I/O and redacts all output (human and `--json`), so an RPC
+  `?api-key=` in a config can never leak into a paper report.
+- The `--kill-switch` flag is OR-ed with the core config `killSwitch`, so the
+  global emergency stop also halts simulated trading.
+- A risk `PASS_FOR_PAPER_EVALUATION` only makes a token **eligible for paper
+  evaluation** — never "safe", "approved for live trading", "profitable", or a
+  reason to send anything.
+
 ## Key handling rules (for when Phase 6 arrives)
 
 - The config stores only the **name** of the env var holding the burner key

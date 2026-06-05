@@ -101,9 +101,11 @@ that has a critical flag, because a critical flag forces `REJECT` outright.
 - Else → `PASS_FOR_PAPER_EVALUATION`.
 
 > **`PASS_FOR_PAPER_EVALUATION` does not mean "safe to live trade."** It only
-> means the mint may be considered for **paper-trading** evaluation later
-> (Phase 4). It is never a live-trading safety judgment and never authorizes a
-> send. No transaction is built, signed, simulated, or sent at any point.
+> means the mint is **eligible** for **paper-trading** evaluation (the Phase 4
+> engine in [`PAPER_TRADING_MODEL.md`](PAPER_TRADING_MODEL.md) consumes it purely
+> as a candidate filter — `CAUTION`/`REJECT` never enter a paper buy by default).
+> It is never a live-trading safety judgment and never authorizes a send. No
+> transaction is built, signed, simulated, or sent at any point.
 
 ### Allowlist / denylist / previously-traded
 

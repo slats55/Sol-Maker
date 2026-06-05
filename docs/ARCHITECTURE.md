@@ -25,9 +25,9 @@ apps/web          (Phase 7)            local dashboard (placeholder)
 packages/security @soulmaker/security  redaction + redacting logger      [no deps]
 packages/core     @soulmaker/core      config, modes, caps, LIVE GATE    [zod]
 packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.js, spl-token, security]
-packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)
+packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
+packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  snipe list, entry/exit, TP/SL (Phase 4+)
-packages/paper    @soulmaker/paper     paper trading engine (Phase 4)
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 5+)
 ```
 
@@ -49,12 +49,14 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 5+)
   source of truth for "is a live send allowed?".
 - Everything that could touch the chain (solana, strategy, paper, adapters) sits
   *below* core and must route any live intent through core's gate. `solana` is
-  now implemented as a **read-only** layer (Phase 2) and `risk` as a **pure,
-  advisory, read-only** engine (Phase 3); `strategy`, `paper`, and `adapters`
-  remain typed placeholders. Note `@soulmaker/solana` and `@soulmaker/risk`
-  depend on `@soulmaker/security` (for redaction) but **not** on `core` — the CLI
-  is what composes config/modes (core) with the read-only client (solana) and the
-  risk engine (risk).
+  now implemented as a **read-only** layer (Phase 2), `risk` as a **pure,
+  advisory, read-only** engine (Phase 3), and `paper` as a **pure, simulated-only**
+  engine (Phase 4); `strategy` and `adapters` remain typed placeholders. Note
+  `@soulmaker/solana`, `@soulmaker/risk`, and `@soulmaker/paper` depend on
+  `@soulmaker/security` (for redaction) but **not** on `core` — the CLI is what
+  composes config/modes (core) with the read-only client (solana), the risk
+  engine (risk), and the paper engine (paper). `@soulmaker/paper` also depends on
+  `@soulmaker/risk` for the advisory decision type.
 
 ## The live boundary
 
@@ -138,6 +140,44 @@ The CLI's `token:risk` reuses the same `openChainRead` gate as the other Phase 2
 read commands (capability + `rpcUrl`, `--allow-paper-read` for PAPER), validates
 the mint, and is read-only end to end. The report is **advisory only** and is
 explicitly **not** a buy recommendation.
+
+## Paper trading engine (`@soulmaker/paper`, Phase 4)
+
+A **pure**, deterministic, **simulated-only** trading sandbox. It depends only on
+`@soulmaker/risk` (for the advisory decision) and `@soulmaker/security` (redaction
+backstop) — no `core`, no `solana`, no `@solana/web3.js`, no RPC, no filesystem,
+no signer/keypair/transaction, and no DEX/execution SDK. Identical input →
+byte-identical output (seeded ids, injectable clock).
+
+- `types.ts` — simulated orders/fills/positions, caps, journal event union.
+- `engine.ts` — pure reducers (`applyBuyFill`, `applySellFill`, `markUnrealized`)
+  with weighted-average cost basis; never mutates input state.
+- `caps.ts` — `checkBuyCaps` (kill switch, trade size, daily loss, open
+  positions, optional per-position ceiling), evaluated **before** every action.
+- `run.ts` — `runPaperSession`: risk filter → caps → simulated fills → TP/SL
+  sweep → summary; returns ordered journal events + final state + summary.
+- `journal.ts` — pure (de)serialization + `reduceJournal` replay; malformed
+  lines are reported, never fatal.
+- `report.ts` — `summarize` + redacted human formatter + JSON envelope (always
+  carries the `PAPER ONLY` banner + "nothing was built/signed/simulated/sent").
+
+**Data flow:**
+
+```
+@soulmaker/risk decision ──► PaperCandidate ─┐
+injected price points ───────────────────────┤
+CLI paper:run  → runPaperSession(caps, candidates, prices, TP/SL)
+        │  events[] + PaperState + PaperRunSummary
+        ▼
+CLI: formatPaperReport (human) | JSON envelope (--json) | append JSONL journal
+        ▲
+CLI paper:journal / paper:status  → parseJournal + reduceJournal (pure)
+```
+
+The CLI owns all file I/O: it reads injected candidate/price fixtures, **appends**
+(never truncates) to the JSONL journal, and prints redacted human or JSON output.
+`paper:run` needs no chain access and no wallet; the `--kill-switch` flag is
+OR-ed with the core config kill switch so a global stop also halts paper runs.
 
 ## Configuration
 
