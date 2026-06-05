@@ -1,0 +1,18 @@
+{
+  "name": "@soulmaker/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Soulmaker core: config schema, trading modes, risk caps and the live-mode gate.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@soulmaker/security": "workspace:*"
+  }
+}

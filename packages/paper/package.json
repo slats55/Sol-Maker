@@ -1,0 +1,10 @@
+{
+  "name": "@soulmaker/paper",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Paper trading engine: simulated buy/sell, TP/SL, trade journal and PnL (Phase 4).",
+  "exports": { ".": "./src/index.ts" },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts"
+}

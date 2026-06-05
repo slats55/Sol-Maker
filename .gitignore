@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Test / coverage
+coverage/
+.vitest/
+
+# Secrets & local config — NEVER commit these
+.env
+.env.*
+!.env.example
+soulmaker.config.json
+*.key
+*.keypair
+*.wallet
+secrets/
+burner/
+
+# Reference repos are cloned locally for STUDY ONLY and never committed
+references/*/
+!references/README.md
+
+# Logs
+*.log
+logs/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Claude Code machine-local settings (per-user, not shared)
+.claude/settings.local.json

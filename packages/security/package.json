@@ -1,0 +1,12 @@
+{
+  "name": "@soulmaker/security",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Secret redaction and redacting structured logger for Soulmaker.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts"
+}

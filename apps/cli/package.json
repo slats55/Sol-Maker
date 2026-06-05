@@ -1,0 +1,15 @@
+{
+  "name": "@soulmaker/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Soulmaker CLI — doctor, config:check, mode, paper:status.",
+  "bin": {
+    "soulmaker": "./src/index.ts"
+  },
+  "dependencies": {
+    "@soulmaker/core": "workspace:*",
+    "@soulmaker/security": "workspace:*",
+    "commander": "^12.1.0"
+  }
+}

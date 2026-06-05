@@ -1,0 +1,21 @@
+{
+  "mode": "PAPER",
+  "killSwitch": false,
+  "rpcUrl": null,
+  "wsUrl": null,
+  "watchPublicKeys": [],
+  "caps": {
+    "maxTradeSizeSol": 0.05,
+    "maxDailyLossSol": 0.25,
+    "maxOpenPositions": 3
+  },
+  "live": {
+    "acknowledgeBurnerRisk": false,
+    "confirmFreshBurner": false,
+    "burnerKeyEnvVar": null
+  },
+  "logging": {
+    "level": "info",
+    "redact": true
+  }
+}

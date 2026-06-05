@@ -1,0 +1,13 @@
+# Normalize line endings: store text as LF in the repo, regardless of OS.
+* text=auto eol=lf
+
+# Lockfiles & JSON stay LF.
+pnpm-lock.yaml text eol=lf
+*.json text eol=lf
+
+# Mark common binaries so they are never line-ending munged.
+*.png binary
+*.jpg binary
+*.webp binary
+*.avif binary
+*.ico binary

@@ -1,0 +1,10 @@
+{
+  "name": "@soulmaker/solana",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only Solana RPC/WebSocket abstraction, token metadata and pool/event interfaces (Phase 2). No key custody.",
+  "exports": { ".": "./src/index.ts" },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts"
+}

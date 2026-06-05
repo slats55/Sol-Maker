@@ -1,0 +1,29 @@
+{
+  "name": "soulmaker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Soulmaker — a private, security-first Solana memecoin trading command center. Wallet safety first, speed second.",
+  "type": "module",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "soulmaker": "tsx apps/cli/src/index.ts",
+    "doctor": "tsx apps/cli/src/index.ts doctor",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.2",
+    "eslint": "^9.17.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1",
+    "vitest": "^2.1.8"
+  }
+}
