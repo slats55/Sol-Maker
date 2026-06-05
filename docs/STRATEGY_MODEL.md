@@ -1,4 +1,4 @@
-# Soulmaker Strategy Model (Phase 5 / Sprints 5–6)
+# Soulmaker Strategy Model (Phase 5 / Sprints 5–7)
 
 The strategy engine (`@soulmaker/strategy` + the `strategy:evaluate` and
 `strategy:plan` CLI commands) is a **deterministic, paper-only rules engine**. It
@@ -11,9 +11,15 @@ submitted to the paper-trading engine as a simulated **paper-buy** or
 - **Sprint 6** added the **batch plan pipeline** and `strategy:plan`: evaluate a
   *list* of injected candidates and emit a deterministic `PaperCandidate[]` an
   operator may **later, manually** hand to `paper:run`. It **never auto-runs paper
-  trades.** (Sprint 6 is an extension of this Phase 5 package; it does **not**
-  begin roadmap Phase 6 — transaction planning/simulation — which remains **not
-  started**.)
+  trades.**
+- **Sprint 7** added two paper-only refinements: **journal-aware planning**
+  (`strategy:plan --journal` derives the simulated portfolio from a **read-only**
+  paper journal, instead of a prebuilt `--paper-state` snapshot) and **richer
+  simulated exits** (trailing stop, partial/scaled take-profit, and per-mint
+  position-aware sizing). It is still paper-only and still never auto-runs.
+
+(Sprints 5–7 extend this Phase 5 package; they do **not** begin roadmap Phase 6
+— transaction planning/simulation — which remains **not started**.)
 
 > **Paper-only. Not advice.** The strategy engine **does not execute trades** and
 > **does not build, sign, simulate, or send a transaction.** It uses
@@ -127,11 +133,41 @@ timestamp (clock skew, replayed or hand-edited fixtures) is **not** treated as
   a would-be buy is capped to `WATCH`.
 - `maxPositionConcentrationPct` — when the portfolio's most-concentrated position
   already meets/exceeds the cap, a would-be buy is capped to `WATCH`.
-- **Holding a position:** entry gates are skipped and the **exit** rules run.
-  With `takeProfitPct` / `stopLossPct` configured and an injected `priceChangePct`
-  (change since entry): `≥ takeProfitPct` ⇒ `PAPER_SELL_CANDIDATE`;
-  `≤ −stopLossPct` ⇒ `PAPER_SELL_CANDIDATE`; otherwise `WATCH`. With no price
-  metric, `WATCH`.
+- **Holding a position:** entry gates are skipped and the **exit** rules run (see
+  the next section). A held candidate still passes the risk gate first; a
+  post-trade cooldown or a missing `priceChangePct` metric yields `WATCH`.
+
+### 4a. Simulated exits (held positions; Sprint 7)
+
+The exit decision is a small, pure module (`packages/strategy/src/exits.ts`,
+`decideSimulatedExit`) producing a structured, **paper-only, simulated** plan —
+`FULL_EXIT`, `PARTIAL_EXIT`, or `HOLD` — recorded on the report as `report.exit`
+alongside the supporting reasons. Every input is **injected**; nothing is fetched.
+Rules are evaluated **risk-first**, and the first match wins:
+
+| # | Rule | Config / injected metric | Outcome |
+| --- | --- | --- | --- |
+| 1 | **Stop loss** | `stopLossPct`; `priceChangePct ≤ −stopLossPct` | `FULL_EXIT` (`STOP_LOSS`) |
+| 2 | **Trailing stop** | `trailingStopPct`; drawdown from a **positive** peak `≥ trailingStopPct` | `FULL_EXIT` (`TRAILING_STOP`) |
+| 3 | **Take profit** | `takeProfitPct`; `priceChangePct ≥ takeProfitPct` | `FULL_EXIT` (`TAKE_PROFIT`) |
+| 4 | **Partial take profit** | `takeProfitPartialPct`; `priceChangePct ≥` it, **and** a sizable injected position | `PARTIAL_EXIT` (`PARTIAL_TAKE_PROFIT`) |
+| 5 | otherwise | — | `HOLD` ⇒ `WATCH` |
+
+- **Trailing stop.** The drawdown is the injected `drawdownFromPeakPct`, or derived
+  as `peakPriceChangePct − priceChangePct`. It **only arms once the position
+  reached a positive peak** — below that, the downside is the stop-loss's job. A
+  non-positive threshold means "disabled" (consistent with `paper:run`).
+- **Partial / scaled exit.** Scales out `partialExitFraction` of the position
+  (default `0.5`). The USD size is `round2(fraction × positionSize)` where the
+  **position size** is the injected `metrics.positionSizeUsd` or, when absent, the
+  **per-mint simulated cost basis** derived from the injected paper state
+  (`positionSizeUsdByMint`). If no positive size can be resolved, the partial
+  **cannot be sized** and the engine **holds** (`PARTIAL_EXIT_UNSIZED`) rather than
+  emit an unsized exit. So a `PARTIAL_EXIT` always carries a **positive** `sizeUsd`.
+- A `FULL_EXIT` keeps the existing convention: the converted sell candidate has
+  size `0`, which `paper:run` reads as "exit the whole simulated position".
+- These rules are **backward-compatible**: with only `takeProfitPct` / `stopLossPct`
+  configured (the Sprint 6 surface), behaviour is unchanged.
 
 ### 5. Score (deterministic, 0–100, clamped)
 
@@ -201,11 +237,15 @@ operator MANUALLY runs:  paper:run --candidates <out.json> --prices <prices.json
   gate, a loss cooldown) forces `SKIP`, so it can never become a paper candidate —
   even with a high score.
 
-**Simulated size.** Each converted candidate carries `proposedSizeUsd`, resolved
-as: a per-candidate `proposedSizeUsd` ► the configured `--size` default ► `0`. A
-`0` buy size is the deliberate fail-safe: `paper:run` rejects a non-positive buy by
-its caps, so a sizeless plan can never open a simulated position by accident. For a
-**sell**, `0` means "exit the whole simulated position" in `paper:run`.
+**Simulated size.** Each converted candidate carries `proposedSizeUsd`. A
+**sized partial exit** uses the exit plan's computed `sizeUsd` (a positive USD
+fraction of the simulated position). Otherwise the size is resolved as: a
+per-candidate `proposedSizeUsd` ► the configured `--size` default ► `0`. A `0` buy
+size is the deliberate fail-safe: `paper:run` rejects a non-positive buy by its
+caps, so a sizeless plan can never open a simulated position by accident. For a
+**full sell**, `0` means "exit the whole simulated position" in `paper:run`; a
+**partial sell** carries its positive `sizeUsd`, which `paper:run` converts to a
+quantity at the injected sell price (clamped to the held quantity).
 
 **Provenance.** Every converted candidate carries `source` (`strategy-plan:<origin>`)
 and a `reason` making explicit it came from the strategy plan and is paper-only
@@ -223,6 +263,27 @@ The counts on `StrategyPlanResult` (`paperBuyCandidateCount`,
 threshold, no disqualifier); `rejectedCount` is a hard `SKIP` (a disqualifier
 fired).
 
+## Journal-aware planning — `strategy:plan --journal` (Sprint 7)
+
+`strategy:plan` can derive its simulated portfolio snapshot from an **append-only
+paper journal** instead of a prebuilt `--paper-state` file. `--journal <path>`
+reads the local JSONL journal **read-only**, reconstructs a `PaperState` with the
+existing paper reducer (`deriveStateFromJournalText` = `parseJournal` +
+`reduceJournal` + fill validation), and feeds that state to the same
+position-awareness and partial-exit-sizing rules.
+
+- **Read-only.** The journal is **never written, truncated, or mutated**, and no
+  journal is ever created. Planning still **never** runs `paper:run` or creates
+  fills.
+- **One source of paper state.** `--journal` and `--paper-state` are **mutually
+  exclusive**; supplying both is refused cleanly (supply only one).
+- **Strict, not lenient.** Deriving an *authoritative* portfolio must not silently
+  drop events, so a journal with **any** malformed line or **invalid fill payload**
+  is **refused** (unlike `paper:journal`, which tolerates and counts bad lines). A
+  missing file is refused; an **empty/blank** journal yields the valid empty state.
+- **Equivalence.** A valid journal produces the **same** plan as the equivalent
+  `--paper-state` snapshot reduced from that journal (covered by tests).
+
 ## CLI
 
 | Command | Purpose |
@@ -236,16 +297,19 @@ fired).
 
 `strategy:plan` options: `--candidates <path>` (JSON **array** of
 `StrategyCandidate`), `--config <path>` (JSON `StrategyConfig`), `--paper-state
-<path>` (optional JSON `PaperState`), `--out <path>` (write **only** the
-`PaperCandidate[]`), `--size <number>` (fallback simulated USD size),
-`--include-skipped`, `--include-watch`, `--json`.
+<path>` (optional JSON `PaperState`), `--journal <path>` (optional **read-only**
+paper journal JSONL; derives `PaperState`; mutually exclusive with `--paper-state`),
+`--out <path>` (write **only** the `PaperCandidate[]`), `--size <number>` (fallback
+simulated USD size), `--include-skipped`, `--include-watch`, `--json`.
 
 Both commands read **injected local JSON only**: no chain access, no RPC, no
 wallet. Missing/malformed candidate files, malformed JSON, a non-array candidates
 file, a malformed candidate entry (reported **with its array index**), an invalid
-config, and a malformed paper state are all **refused cleanly**; secrets are never
-leaked (human, `--json`, and `--out` output are all redacted). `strategy:plan`
-never invokes `paper:run`, never creates fills, and never writes a journal.
+config, a malformed paper state, a malformed/unreadable journal, an invalid
+journal fill, and supplying **both** `--journal` and `--paper-state` are all
+**refused cleanly**; secrets are never leaked (human, `--json`, and `--out` output
+are all redacted). `strategy:plan` never invokes `paper:run`, never creates fills,
+and never writes (or mutates) a journal.
 
 ## Relationship to the other layers
 
@@ -266,8 +330,13 @@ never invokes `paper:run`, never creates fills, and never writes a journal.
 - Metrics are **injected fixtures**, not live market data. The score is a
   transparent heuristic filter, **not** a probability, a price target, or a
   track record.
-- The exit rules are intentionally minimal (take-profit / stop-loss on an
-  injected `priceChangePct`); richer position management is future work.
+- The exit rules (take-profit, stop-loss, trailing stop, partial take-profit) act
+  on **injected** metrics (`priceChangePct`, `peakPriceChangePct`,
+  `drawdownFromPeakPct`, `positionSizeUsd`) and a derived simulated position size.
+  They are deterministic bookkeeping, **not** a fill, a price prediction, or a
+  performance claim. A multi-tick **simulated backtest report** (replaying an
+  injected price series through plan → paper) is **not** implemented in Sprint 7 —
+  it is recommended for **Sprint 8** (see [`ROADMAP.md`](ROADMAP.md)).
 - **Candidate-list ingestion** is wired only as far as **injected local JSON** (a
   `StrategyCandidate[]` file fed to `strategy:plan`). There is **no live
   snipe-list source, scraping, or network fetch** — and there will be no

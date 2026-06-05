@@ -5,6 +5,7 @@ import {
   serializeEvents,
   parseJournal,
   reduceJournal,
+  deriveStateFromJournalText,
   lastRunSummary,
 } from "./journal.js";
 import type { PaperCandidate, PaperPricePoint } from "./types.js";
@@ -133,6 +134,64 @@ describe("reduceJournal", () => {
     const stateB = reduceJournal(combined);
     expect(stateA.positions[A]?.quantity).toBe(50); // unchanged
     expect(stateB.positions[A]?.quantity).toBe(75); // 50 @2 + 25 @4
+  });
+});
+
+describe("deriveStateFromJournalText", () => {
+  it("derives the same state as parseJournal + reduceJournal for a clean journal", () => {
+    const run = runPaperSession({
+      caps: CAPS,
+      candidates: [cleanCandidate(A, 100)],
+      prices: [price(A, 2)],
+      now: at,
+    });
+    const text = serializeEvents(run.events);
+    const derived = deriveStateFromJournalText(text);
+    const expected = reduceJournal(parseJournal(text).events);
+    expect(derived.parseErrors).toEqual([]);
+    expect(derived.fillErrors).toEqual([]);
+    expect(JSON.stringify(derived.state)).toBe(JSON.stringify(expected));
+    expect(derived.state.positions[A]?.quantity).toBe(50);
+  });
+
+  it("an empty or blank journal yields the empty initial state with no errors", () => {
+    const derived = deriveStateFromJournalText("   \n\n  ");
+    expect(derived.parseErrors).toEqual([]);
+    expect(derived.fillErrors).toEqual([]);
+    expect(derived.events).toEqual([]);
+    expect(derived.state.positions).toEqual({});
+    expect(derived.state.realizedPnlUsd).toBe(0);
+  });
+
+  it("reports malformed (unparseable) lines as parseErrors", () => {
+    const text = [
+      '{"type":"RUN_STARTED","at":"x","caps":{},"note":"n"}',
+      "{not json",
+    ].join("\n");
+    const derived = deriveStateFromJournalText(text);
+    expect(derived.parseErrors.length).toBe(1);
+    expect(derived.parseErrors[0]?.line).toBe(2);
+  });
+
+  it("reports an invalid fill payload as a fillError WITHOUT corrupting state", () => {
+    // The event line parses (known type + string `at`), but the fill is unusable.
+    const text = [
+      '{"type":"PAPER_BUY_FILLED","at":"x","fill":{"side":"BUY","mint":"M","quantity":"oops","priceUsd":1,"notionalUsd":1,"feeUsd":0,"filledAt":"x"}}',
+    ].join("\n");
+    const derived = deriveStateFromJournalText(text);
+    expect(derived.parseErrors).toEqual([]);
+    expect(derived.fillErrors.length).toBe(1);
+    expect(derived.fillErrors[0]?.reason).toMatch(/quantity/);
+    // The bad fill is excluded, so the reconstructed state is the empty state.
+    expect(derived.state.positions).toEqual({});
+  });
+
+  it("rejects a fill whose side contradicts its event type", () => {
+    const text =
+      '{"type":"PAPER_SELL_FILLED","at":"x","realizedPnlUsd":0,"fill":{"side":"BUY","mint":"M","quantity":1,"priceUsd":1,"notionalUsd":1,"feeUsd":0,"filledAt":"x"}}';
+    const derived = deriveStateFromJournalText(text);
+    expect(derived.fillErrors.length).toBe(1);
+    expect(derived.fillErrors[0]?.reason).toMatch(/side/);
   });
 });
 

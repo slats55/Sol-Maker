@@ -44,6 +44,7 @@ import {
   runPaperSession,
   parseJournal,
   reduceJournal,
+  deriveStateFromJournalText,
   summarize,
   formatPaperReport,
   buildReportEnvelope,
@@ -932,6 +933,12 @@ export interface StrategyPlanCommandOptions {
   strategyConfigPath?: string;
   /** Optional path to a JSON PaperState (for position-awareness rules). */
   paperStatePath?: string;
+  /**
+   * Optional path to an append-only paper journal (JSONL). Read-only: the derived
+   * PaperState feeds the position-awareness rules. Mutually exclusive with
+   * `paperStatePath` — supply only one source of paper state.
+   */
+  journalPath?: string;
   /** Optional path to write ONLY the resulting PaperCandidate[] array. */
   outPath?: string;
   /** Keep SKIP items in the report (never in paperCandidates). */
@@ -941,6 +948,40 @@ export interface StrategyPlanCommandOptions {
   /** Fallback simulated notional (USD) for converted candidates lacking one. */
   defaultPaperSizeUsd?: number;
   json?: boolean;
+}
+
+/**
+ * Strictly derive a {@link PaperState} from a local append-only paper journal
+ * (JSONL) for position-aware planning. READ-ONLY: it reads the file and never
+ * writes, truncates, or mutates the journal or its entries. Any malformed line or
+ * invalid fill is refused (cleanly) rather than silently dropped — deriving an
+ * authoritative portfolio snapshot must not lose events. An empty/blank journal
+ * yields the empty initial state. Throws a clear, non-secret error on failure.
+ */
+function paperStateFromJournalFile(ctx: CommandContext, path: string): PaperState {
+  const resolved = resolvePath(ctx, path);
+  let text: string;
+  try {
+    text = readFileSync(resolved, "utf8");
+  } catch {
+    throw new Error(`cannot read journal file at ${resolved}`);
+  }
+  const { state, parseErrors, fillErrors } = deriveStateFromJournalText(text);
+  if (parseErrors.length > 0) {
+    const first = parseErrors[0];
+    throw new Error(
+      `journal is malformed: ${parseErrors.length} bad line(s); ` +
+        `first at line ${first?.line}: ${first?.reason}`,
+    );
+  }
+  if (fillErrors.length > 0) {
+    const first = fillErrors[0];
+    throw new Error(
+      `journal has ${fillErrors.length} invalid fill event(s); ` +
+        `first at event index ${first?.index}: ${first?.reason}`,
+    );
+  }
+  return state;
 }
 
 /**
@@ -957,6 +998,13 @@ export function strategyPlanReport(
 ): string {
   if (!opts.candidatesPath) return "Refusing: --candidates <path> is required.";
   if (!opts.strategyConfigPath) return "Refusing: --config <path> is required.";
+  // Exactly one source of paper state: a prebuilt snapshot OR a derived journal.
+  if (opts.journalPath && opts.paperStatePath) {
+    return (
+      "Refusing: supply only one source of paper state — " +
+      "pass either --journal or --paper-state, not both."
+    );
+  }
 
   let input: StrategyPlanInput;
   try {
@@ -964,9 +1012,14 @@ export function strategyPlanReport(
       readJsonArray(ctx, opts.candidatesPath, "candidates"),
     );
     const config = asStrategyConfig(readJsonValue(ctx, opts.strategyConfigPath, "config"));
-    const paperState = opts.paperStatePath
-      ? asPaperState(readJsonValue(ctx, opts.paperStatePath, "paper-state"))
-      : undefined;
+    // Paper state comes from a derived (read-only) journal, a prebuilt snapshot,
+    // or neither. The journal is never written or mutated by planning.
+    let paperState: PaperState | undefined;
+    if (opts.journalPath) {
+      paperState = paperStateFromJournalFile(ctx, opts.journalPath);
+    } else if (opts.paperStatePath) {
+      paperState = asPaperState(readJsonValue(ctx, opts.paperStatePath, "paper-state"));
+    }
     const defaultPaperSizeUsd = optionalNonNeg(opts.defaultPaperSizeUsd, "size");
     input = {
       candidates,

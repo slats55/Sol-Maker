@@ -354,6 +354,84 @@ describe("planStrategyBatch — ordering, duplicates, determinism, purity", () =
   });
 });
 
+describe("planStrategyBatch — Sprint 7 simulated exits", () => {
+  const partialConfig: StrategyConfig = { ...baseConfig, takeProfitPartialPct: 25 };
+
+  it("a PARTIAL simulated exit produces a SELL PaperCandidate with a positive sized notional", () => {
+    const candidate = sellCandidate("PartialMint", {
+      metrics: { priceChangePct: 30, positionSizeUsd: 200 },
+    });
+    const result = planStrategyBatch({
+      candidates: [candidate],
+      config: partialConfig,
+      now: at,
+    });
+    expect(result.paperSellCandidateCount).toBe(1);
+    const pc = result.paperCandidates[0];
+    expect(pc?.proposedSide).toBe("SELL");
+    expect(pc?.proposedSizeUsd).toBe(100); // 0.5 * 200 ⇒ a real partial, not 0 (exit-all)
+    expect(pc?.reason).toMatch(/simulated partial exit/i);
+    // The item mirrors the structured exit plan.
+    expect(result.items[0]?.report.exit?.action).toBe("PARTIAL_EXIT");
+    expect(result.items[0]?.report.exit?.trigger).toBe("PARTIAL_TAKE_PROFIT");
+  });
+
+  it("derives the partial size per-mint from an injected paper state", () => {
+    const candidate: StrategyCandidate = {
+      mint: "HeldMint",
+      riskReport: risk("PASS_FOR_PAPER_EVALUATION", 0),
+      metrics: { priceChangePct: 30 }, // size comes from the paper state, not the candidate
+    };
+    const paperState = {
+      positions: {
+        HeldMint: {
+          mint: "HeldMint",
+          quantity: 4,
+          averageEntryPriceUsd: 100,
+          costBasisUsd: 400,
+          realizedPnlUsd: 0,
+          unrealizedPnlUsd: 0,
+          openedAt: NOW,
+          updatedAt: NOW,
+        },
+      },
+      realizedPnlUsd: 0,
+      unrealizedPnlUsd: 0,
+      fills: [],
+      closedTradeCount: 0,
+      simulatedNotionalUsd: 0,
+    };
+    const result = planStrategyBatch({
+      candidates: [candidate],
+      config: partialConfig,
+      paperState,
+      now: at,
+    });
+    expect(result.paperCandidates[0]?.proposedSizeUsd).toBe(200); // 0.5 * 400 cost basis
+  });
+
+  it("a FULL simulated exit still defaults to size 0 (exit-all) — backward compatible", () => {
+    const result = planStrategyBatch({
+      candidates: [sellCandidate("SellMint")], // priceChangePct 60 ≥ takeProfit 50
+      config: sellConfig,
+      now: at,
+    });
+    expect(result.paperCandidates[0]?.proposedSizeUsd).toBe(DEFAULT_PAPER_SIZE_USD);
+    expect(result.items[0]?.report.exit?.action).toBe("FULL_EXIT");
+  });
+
+  it("stays deterministic and does not mutate inputs with exit metrics present", () => {
+    const candidates = [
+      sellCandidate("PartialMint", { metrics: { priceChangePct: 30, positionSizeUsd: 200 } }),
+    ];
+    const config: StrategyConfig = { ...partialConfig };
+    const candidatesSnapshot = JSON.stringify(candidates);
+    const run = () => planStrategyBatch({ candidates, config, now: at });
+    expect(JSON.stringify(run())).toBe(JSON.stringify(run()));
+    expect(JSON.stringify(candidates)).toBe(candidatesSnapshot);
+  });
+});
+
 describe("formatStrategyPlanReport / envelope — required product language", () => {
   it("the human report carries PAPER ONLY and the non-negotiable disclaimers", () => {
     const result = planStrategyBatch({

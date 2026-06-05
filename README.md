@@ -16,7 +16,7 @@ all pass.
 
 ---
 
-## ⚠️ Status: Phases 0–1 done; Phase 2 read-only core complete; Phase 3 advisory risk engine complete; Phase 4 simulated paper engine complete; Phase 5 paper-only strategy rules engine complete (Sprint 5 single-candidate + Sprint 6 batch plan pipeline). No live trading. By design.
+## ⚠️ Status: Phases 0–1 done; Phase 2 read-only core complete; Phase 3 advisory risk engine complete; Phase 4 simulated paper engine complete; Phase 5 paper-only strategy rules engine complete (Sprint 5 single-candidate + Sprint 6 batch plan pipeline + Sprint 7 journal-aware planning & richer simulated exits). No live trading. By design.
 
 Nothing in this repository can move funds. There is **no transaction signing or
 sending code anywhere in it yet** — the read-only Solana watcher (Phase 2) and
@@ -25,9 +25,12 @@ engine is **simulated-only** (injected prices, no wallet, no chain), and the
 Phase 5 strategy engine is a **pure, paper-only** rules engine that only feeds the
 paper engine (no chain, no wallet, no execution). Sprint 6 adds `strategy:plan`,
 which turns an injected candidate **list** into a `PaperCandidate[]` an operator
-passes to `paper:run` **manually** — it does **not** auto-run paper trades, and it
-does **not** begin transaction planning (roadmap Phase 6 remains not started). The
-default mode is `PAPER`. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+passes to `paper:run` **manually**. Sprint 7 adds `strategy:plan --journal` (derive
+the simulated portfolio from a **read-only** paper journal) and richer **simulated**
+exits (trailing stop, partial take-profit, position-aware sizing) — still
+paper-only, still no auto-run. None of this begins transaction planning (roadmap
+Phase 6 remains not started). The default mode is `PAPER`. See
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Non-negotiable security rules (summary)
 
@@ -65,7 +68,8 @@ soulmaker/
     risk/       # Phase 3 — read-only advisory token risk flags + scoring
     paper/      # Phase 4 — deterministic, simulated-only paper trading engine
     strategy/   # Phase 5 — deterministic, paper-only strategy rules engine (feeds paper);
-                #            Sprint 6 adds the batch plan pipeline → PaperCandidate[]
+                #            Sprint 6 adds the batch plan pipeline → PaperCandidate[];
+                #            Sprint 7 adds journal-aware planning + richer simulated exits
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   docs/         # ARCHITECTURE, ROADMAP, WALLET_SAFETY_MODEL, RISK_MODEL, REFERENCE_REPO_AUDIT
   scripts/      # thin operational scripts
@@ -116,6 +120,9 @@ pnpm soulmaker strategy:evaluate --candidate <candidate.json> --config <config.j
 # (PAPER ONLY; does NOT auto-run paper trades; not advice)
 pnpm soulmaker strategy:plan --candidates <candidates.json> --config <config.json> \
   --size 100 --out <paper-candidates.json>
+# optional position-awareness from a READ-ONLY paper journal (instead of --paper-state):
+pnpm soulmaker strategy:plan --candidates <candidates.json> --config <config.json> \
+  --journal <journal.jsonl>
 # then, by hand:
 pnpm soulmaker paper:run --candidates <paper-candidates.json> --prices <prices.json>
 ```

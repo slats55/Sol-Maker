@@ -123,6 +123,16 @@ same run (they do constrain subsequent runs that share the journal/state).
 - `reduceJournal` replays fill events to reconstruct positions + realized PnL.
   Unrealized PnL cannot be recomputed from fills alone (no live prices in the
   journal); the CLI surfaces the value recorded by the most recent run.
+- `deriveStateFromJournalText` (Sprint 7) is a **strict** reconstruction for
+  callers that need an *authoritative* portfolio snapshot: it composes
+  `parseJournal` + `reduceJournal` and **additionally validates each fill payload**
+  (finite non-negative amounts, a side matching the event type), returning
+  `parseErrors` and `fillErrors` separately so the caller can refuse rather than
+  silently fold a corrupt fill. It is pure (no filesystem) and only folds the
+  well-formed fills, so the returned state is never `NaN`-corrupted.
+  `strategy:plan --journal` uses it **read-only** (see
+  [`STRATEGY_MODEL.md`](STRATEGY_MODEL.md)); `paper:journal`/`paper:status` keep
+  their lenient behaviour.
 
 ## PnL reporting
 

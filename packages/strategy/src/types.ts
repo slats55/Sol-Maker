@@ -36,6 +36,46 @@ export type StrategyDecision =
   | "PAPER_SELL_CANDIDATE";
 
 /**
+ * The action of a **simulated** exit decision for a held position (Sprint 7).
+ *
+ *  - `FULL_EXIT`    — exit the whole simulated position.
+ *  - `PARTIAL_EXIT` — scale out a deterministic fraction of the simulated position.
+ *  - `HOLD`         — keep the simulated position; no exit signal crossed.
+ *
+ * A `SKIP`/reject outcome is never produced here: a held candidate that fails the
+ * risk gate is disqualified upstream (decision `SKIP`) before exits are evaluated.
+ */
+export type SimulatedExitAction = "FULL_EXIT" | "PARTIAL_EXIT" | "HOLD";
+
+/** What crossed to trigger a simulated exit. Risk-first order in `exits.ts`. */
+export type SimulatedExitTrigger =
+  | "STOP_LOSS"
+  | "TRAILING_STOP"
+  | "TAKE_PROFIT"
+  | "PARTIAL_TAKE_PROFIT";
+
+/**
+ * The structured result of evaluating exit rules for a held position. It is
+ * **paper-only and simulated**: it never represents a real order, and the engine
+ * also records the supporting {@link StrategyReason}s on the report's `reasons`.
+ * `sizeUsd` is present only for a `PARTIAL_EXIT` (a positive, deterministic
+ * fraction of the injected simulated position size, in USD).
+ */
+export interface SimulatedExitPlan {
+  action: SimulatedExitAction;
+  /** Present iff `action` is `FULL_EXIT` or `PARTIAL_EXIT`. */
+  trigger?: SimulatedExitTrigger;
+  /** Fraction of the simulated position to exit, in `[0, 1]`. FULL ⇒ 1, HOLD ⇒ 0. */
+  fraction: number;
+  /** Simulated USD size of a `PARTIAL_EXIT` (fraction × position size). Present iff PARTIAL. */
+  sizeUsd?: number;
+  /** Always true: this is a simulated paper exit, never a real order. */
+  paperOnly: true;
+  /** Always true: nothing here is a real fill, transaction, or live action. */
+  simulated: true;
+}
+
+/**
  * Optional, **injected** read-only market metrics for a candidate. Every field
  * is optional so the engine degrades gracefully; a metric that a configured gate
  * *requires* but that is missing is treated as a disqualifier (never assumed to
@@ -58,6 +98,24 @@ export interface StrategyMetrics {
    * the change since entry, which the exit rules read.
    */
   priceChangePct?: number;
+  /**
+   * Injected peak price change since entry, percent (held positions only). Used by
+   * the trailing-stop rule to decide how far price has pulled back from its high.
+   * Never derived from live data — the caller supplies it.
+   */
+  peakPriceChangePct?: number;
+  /**
+   * Injected drawdown from the peak, percent and non-negative (held positions
+   * only). Optional: when absent it is derived as `peakPriceChangePct -
+   * priceChangePct`. The trailing-stop rule only arms once the peak was positive.
+   */
+  drawdownFromPeakPct?: number;
+  /**
+   * Injected simulated size of the currently-held position, in USD (typically the
+   * simulated cost basis). Used only to size a *partial* simulated exit; never a
+   * real balance. When absent, a partial exit cannot be sized and the engine holds.
+   */
+  positionSizeUsd?: number;
 }
 
 /**
@@ -122,6 +180,12 @@ export interface StrategyPortfolio {
    * as a percent in `[0, 100]`. Used by the concentration guard.
    */
   topPositionConcentrationPct?: number;
+  /**
+   * Simulated cost basis (USD) per held mint, derived from a `PaperState`. Used to
+   * size a *partial* simulated exit when the candidate does not inject its own
+   * `metrics.positionSizeUsd`. Simulation bookkeeping only — never a real balance.
+   */
+  positionSizeUsdByMint?: Record<string, number>;
 }
 
 /**
@@ -166,6 +230,27 @@ export interface StrategyConfig {
    * price change since entry is ≤ −this percent (stop loss). Optional.
    */
   stopLossPct?: number;
+
+  /**
+   * Exit rule (held positions only): emit a FULL `PAPER_SELL_CANDIDATE` when the
+   * injected drawdown from the peak is ≥ this percent. The trailing stop only arms
+   * once the position reached a positive peak (otherwise the stop-loss governs).
+   * Optional.
+   */
+  trailingStopPct?: number;
+  /**
+   * Exit rule (held positions only): emit a PARTIAL (scaled) `PAPER_SELL_CANDIDATE`
+   * when the injected price change since entry is ≥ this percent but below the full
+   * `takeProfitPct`. Requires an injected/derivable position size to size the
+   * fraction; without one the engine holds. Optional.
+   */
+  takeProfitPartialPct?: number;
+  /**
+   * Fraction of the simulated position to scale out on a partial take-profit, in
+   * the open interval `(0, 1)`. Defaults to `0.5` (sell half) when
+   * `takeProfitPartialPct` is set without an explicit fraction.
+   */
+  partialExitFraction?: number;
 }
 
 /** A single, stable, explained reason or disqualifier. Deterministic. */
@@ -194,6 +279,12 @@ export interface StrategyReport {
   reasons: StrategyReason[];
   /** Hard disqualifiers. Any disqualifier forces `SKIP`, overriding the score. */
   disqualifiers: StrategyReason[];
+  /**
+   * The structured simulated-exit plan, present only on the held/exit path (a
+   * `PAPER_SELL_CANDIDATE`, or a `WATCH` produced by holding with no exit signal).
+   * Absent on the entry path. Paper-only and simulated — see {@link SimulatedExitPlan}.
+   */
+  exit?: SimulatedExitPlan;
   /** The advisory risk decision that gated this evaluation. */
   riskDecision: RiskDecision | "MISSING";
   /** The advisory risk score (0–100), or `null` when no report was provided. */

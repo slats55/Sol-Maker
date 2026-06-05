@@ -44,6 +44,9 @@ export {
 export { REASON_IDS, reason } from "./reasons.js";
 export type { ReasonId } from "./reasons.js";
 
+export { decideSimulatedExit, DEFAULT_PARTIAL_EXIT_FRACTION } from "./exits.js";
+export type { SimulatedExitInput, SimulatedExitDecision } from "./exits.js";
+
 export {
   formatStrategyReport,
   buildStrategyEnvelope,
@@ -77,6 +80,9 @@ export type { IdGen } from "./ids.js";
 
 export type {
   StrategyDecision,
+  SimulatedExitAction,
+  SimulatedExitTrigger,
+  SimulatedExitPlan,
   StrategyMetrics,
   PreviousPaperTradeMeta,
   StrategyCandidate,

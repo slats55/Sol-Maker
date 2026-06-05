@@ -115,7 +115,7 @@ entirely within the no-custody model:
   evaluation** — never "safe", "approved for live trading", "profitable", or a
   reason to send anything.
 
-## Phase 5 (Sprints 5–6): the strategy engine is paper-only and key-free
+## Phase 5 (Sprints 5–7): the strategy engine is paper-only and key-free
 
 The Phase 5 strategy engine (`@soulmaker/strategy` + the `strategy:evaluate` and
 `strategy:plan` commands) stays entirely within the no-custody model:
@@ -139,6 +139,14 @@ The Phase 5 strategy engine (`@soulmaker/strategy` + the `strategy:evaluate` and
   auto-runs paper trades, never creates fills, and never writes a journal — and
   it remains key-free, offline, and injected-data-only. It does **not** begin
   transaction planning/simulation (roadmap Phase 6), which is **not started**.
+- **Sprint 7 — journal-aware planning + richer exits** stays inside the same
+  model. `strategy:plan --journal <path>` reads a paper journal **read-only** to
+  derive the simulated portfolio: it **never writes, truncates, or mutates** the
+  journal, never creates fills, and never runs `paper:run`. The richer exit rules
+  (trailing stop, partial take-profit, position-aware sizing) act on **injected**
+  metrics and a simulated position size only; they produce **simulated paper**
+  sell candidates, never a real order, signer, or send. Still no key, seed,
+  wallet, RPC, network, or transaction.
 - The report is **paper-only** and explicitly **not** financial advice, a buy
   recommendation, or live-trading authorization; it makes no profitability claim.
   A `PAPER_BUY_CANDIDATE` means a candidate for *simulated* paper evaluation.

@@ -77,6 +77,7 @@ describe("@soulmaker/strategy — forbidden-import regression", () => {
     const names = files.map((f) => f.slice(SRC_DIR.length + 1));
     expect(names).toContain("plan.ts");
     expect(names).toContain("evaluate.ts");
+    expect(names).toContain("exits.ts");
     expect(names).toContain("index.ts");
   });
 

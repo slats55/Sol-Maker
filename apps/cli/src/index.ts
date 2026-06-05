@@ -262,6 +262,10 @@ program
   .option("--candidates <path>", "JSON array of StrategyCandidate objects")
   .option("--config <path>", "JSON StrategyConfig object")
   .option("--paper-state <path>", "optional JSON PaperState for position-awareness rules")
+  .option(
+    "--journal <path>",
+    "optional READ-ONLY paper journal (JSONL); derives PaperState for position-awareness (mutually exclusive with --paper-state)",
+  )
   .option("--out <path>", "write ONLY the resulting PaperCandidate[] array to this file")
   .option("--size <number>", "fallback simulated USD size for converted candidates")
   .option("--include-skipped", "keep SKIP decisions in the report (never in paper candidates)")
@@ -272,6 +276,7 @@ program
       candidates?: string;
       config?: string;
       paperState?: string;
+      journal?: string;
       out?: string;
       size?: string;
       includeSkipped?: boolean;
@@ -285,6 +290,7 @@ program
             candidatesPath: opts.candidates,
             strategyConfigPath: opts.config,
             paperStatePath: opts.paperState,
+            journalPath: opts.journal,
             outPath: opts.out,
             defaultPaperSizeUsd: num(opts.size),
             includeSkipped: Boolean(opts.includeSkipped),

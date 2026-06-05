@@ -18,10 +18,23 @@ export function portfolioFromPaperState(state: PaperState): StrategyPortfolio {
   const heldMints = open.map((p) => p.mint).sort();
   const totalCostBasisUsd = open.reduce((sum, p) => sum + p.costBasisUsd, 0);
 
+  // Per-mint simulated cost basis, for position-aware partial-exit sizing. Only
+  // finite, positive bases are recorded (a degenerate/zero basis cannot size one).
+  const positionSizeUsdByMint: Record<string, number> = {};
+  for (const p of open) {
+    if (Number.isFinite(p.costBasisUsd) && p.costBasisUsd > 0) {
+      positionSizeUsdByMint[p.mint] = p.costBasisUsd;
+    }
+  }
+
   const portfolio: StrategyPortfolio = {
     openPositionCount: open.length,
     heldMints,
   };
+
+  if (Object.keys(positionSizeUsdByMint).length > 0) {
+    portfolio.positionSizeUsdByMint = positionSizeUsdByMint;
+  }
 
   if (totalCostBasisUsd > 0) {
     let maxBasis = 0;

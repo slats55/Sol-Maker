@@ -429,6 +429,104 @@ describe("evaluateStrategy — score, determinism, purity", () => {
   });
 });
 
+describe("evaluateStrategy — richer simulated exits (Sprint 7)", () => {
+  it("holding + trailing-stop signal ⇒ PAPER_SELL_CANDIDATE with a FULL exit plan", () => {
+    const candidate: StrategyCandidate = {
+      mint: MINT,
+      riskReport: PASS,
+      previousPaperTrade: { holdingPosition: true },
+      metrics: { priceChangePct: 70, peakPriceChangePct: 100 }, // drawdown 30
+    };
+    const config: StrategyConfig = { ...baseConfig, trailingStopPct: 20 };
+    const report = evaluateStrategy({ candidate, config, now: at });
+    expect(report.decision).toBe("PAPER_SELL_CANDIDATE");
+    expect(ids(report.reasons)).toContain(REASON_IDS.SELL_TRAILING_STOP);
+    expect(report.exit?.action).toBe("FULL_EXIT");
+    expect(report.exit?.trigger).toBe("TRAILING_STOP");
+    expect(report.exit?.paperOnly).toBe(true);
+    expect(report.exit?.simulated).toBe(true);
+  });
+
+  it("holding + partial take-profit with injected position size ⇒ PARTIAL exit plan", () => {
+    const candidate: StrategyCandidate = {
+      mint: MINT,
+      riskReport: PASS,
+      previousPaperTrade: { holdingPosition: true },
+      metrics: { priceChangePct: 30, positionSizeUsd: 200 },
+    };
+    const config: StrategyConfig = {
+      ...baseConfig,
+      takeProfitPartialPct: 25,
+      takeProfitPct: 50,
+    };
+    const report = evaluateStrategy({ candidate, config, now: at });
+    expect(report.decision).toBe("PAPER_SELL_CANDIDATE");
+    expect(report.exit?.action).toBe("PARTIAL_EXIT");
+    expect(report.exit?.sizeUsd).toBe(100); // 0.5 * 200
+    expect(ids(report.reasons)).toContain(REASON_IDS.SELL_PARTIAL_TAKE_PROFIT);
+  });
+
+  it("derives the partial size from the per-mint paper position (position-aware sizing)", () => {
+    const candidate: StrategyCandidate = {
+      mint: MINT,
+      riskReport: PASS,
+      metrics: { priceChangePct: 30 }, // no positionSizeUsd on the candidate
+    };
+    const config: StrategyConfig = { ...baseConfig, takeProfitPartialPct: 25 };
+    const report = evaluateStrategy({
+      candidate,
+      config,
+      portfolio: {
+        openPositionCount: 1,
+        heldMints: [MINT],
+        positionSizeUsdByMint: { [MINT]: 400 },
+      },
+      now: at,
+    });
+    expect(report.decision).toBe("PAPER_SELL_CANDIDATE");
+    expect(report.exit?.action).toBe("PARTIAL_EXIT");
+    expect(report.exit?.sizeUsd).toBe(200); // 0.5 * 400
+  });
+
+  it("partial threshold met but no injected/derivable size ⇒ WATCH (unsized, fail-safe)", () => {
+    const candidate: StrategyCandidate = {
+      mint: MINT,
+      riskReport: PASS,
+      previousPaperTrade: { holdingPosition: true },
+      metrics: { priceChangePct: 30 },
+    };
+    const config: StrategyConfig = { ...baseConfig, takeProfitPartialPct: 25 };
+    const report = evaluateStrategy({ candidate, config, now: at });
+    expect(report.decision).toBe("WATCH");
+    expect(report.exit?.action).toBe("HOLD");
+    expect(ids(report.reasons)).toContain(REASON_IDS.PARTIAL_EXIT_UNSIZED);
+  });
+
+  it("a full take-profit still records a FULL exit plan (backward-compatible)", () => {
+    const candidate: StrategyCandidate = {
+      mint: MINT,
+      riskReport: PASS,
+      previousPaperTrade: { holdingPosition: true },
+      metrics: { priceChangePct: 80 },
+    };
+    const config: StrategyConfig = { ...baseConfig, takeProfitPct: 50 };
+    const report = evaluateStrategy({ candidate, config, now: at });
+    expect(report.decision).toBe("PAPER_SELL_CANDIDATE");
+    expect(report.exit?.action).toBe("FULL_EXIT");
+    expect(report.exit?.trigger).toBe("TAKE_PROFIT");
+  });
+
+  it("the entry (not-held) path records NO exit plan", () => {
+    const report = evaluateStrategy({
+      candidate: { mint: MINT, riskReport: PASS },
+      config: baseConfig,
+      now: at,
+    });
+    expect(report.decision).toBe("PAPER_BUY_CANDIDATE");
+    expect(report.exit).toBeUndefined();
+  });
+});
+
 /** Deep-freeze so any attempted mutation throws in strict mode. */
 function deepFreeze<T>(obj: T): T {
   if (obj && typeof obj === "object") {

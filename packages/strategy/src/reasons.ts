@@ -54,6 +54,9 @@ export const REASON_IDS = {
   // --- exit decision (held) ----------------------------------------------
   SELL_TAKE_PROFIT: "sell-take-profit",
   SELL_STOP_LOSS: "sell-stop-loss",
+  SELL_TRAILING_STOP: "sell-trailing-stop",
+  SELL_PARTIAL_TAKE_PROFIT: "sell-partial-take-profit",
+  PARTIAL_EXIT_UNSIZED: "partial-exit-unsized",
   HOLDING_NO_EXIT_SIGNAL: "holding-no-exit-signal",
   HOLDING_NO_PRICE_METRIC: "holding-no-price-metric",
 } as const;

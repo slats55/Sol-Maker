@@ -18,6 +18,7 @@ import {
   strategyPlanReport,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
+import { parseJournal, reduceJournal } from "@soulmaker/paper";
 import type {
   ReadOnlyClientConfig,
   ReadOnlySolanaClient,
@@ -1386,6 +1387,289 @@ describe("strategyPlanReport", () => {
         },
       );
       expect(readFileSync(join(cwd, "out.json"), "utf8")).not.toContain("SUPERSECRET");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 7 — strategy:plan --journal (read-only journal-aware planning)
+// ---------------------------------------------------------------------------
+
+/** A distinct mint for the plan candidate (different from the journal's MINT_A). */
+const MINT_B = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+
+/** Build a journal with one open simulated MINT_A position via paper:run. */
+function writeOpenPositionJournal(cwd: string): void {
+  const { candidates } = cleanFixtures();
+  // Single buy tick only (no second price ⇒ no exit) ⇒ MINT_A stays open.
+  writeFileSync(join(cwd, "candidates.json"), JSON.stringify(candidates));
+  writeFileSync(
+    join(cwd, "prices.json"),
+    JSON.stringify([
+      { mint: MINT_A, priceUsd: 2, observedAt: PAPER_TIME, source: "injected-fixture" },
+    ]),
+  );
+  paperRunReport(
+    { cwd, env: {}, now: () => PAPER_TIME },
+    {
+      candidatesPath: "candidates.json",
+      pricesPath: "prices.json",
+      journalPath: "journal.jsonl",
+      maxTradeSizeUsd: 1000,
+    },
+  );
+}
+
+describe("strategyPlanReport — --journal (Sprint 7, read-only journal-aware planning)", () => {
+  it("derives the same plan from a journal as from the equivalent --paper-state snapshot", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeOpenPositionJournal(cwd);
+      // Independently derive the equivalent snapshot from the same journal.
+      const journalText = readFileSync(join(cwd, "journal.jsonl"), "utf8");
+      const state = reduceJournal(parseJournal(journalText).events);
+      writeFileSync(join(cwd, "paper-state.json"), JSON.stringify(state));
+
+      writeFileSync(
+        join(cwd, "plan-candidates.json"),
+        JSON.stringify([strategyCandidate(MINT_B)]),
+      );
+      writeFileSync(join(cwd, "config.json"), JSON.stringify(STRATEGY_CONFIG));
+
+      const common = {
+        candidatesPath: "plan-candidates.json",
+        strategyConfigPath: "config.json",
+        json: true,
+      } as const;
+      const viaJournal = strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        { ...common, journalPath: "journal.jsonl" },
+      );
+      const viaSnapshot = strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        { ...common, paperStatePath: "paper-state.json" },
+      );
+      expect(viaJournal).toBe(viaSnapshot);
+      expect((JSON.parse(viaJournal) as { paperOnly: boolean }).paperOnly).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("applies position-awareness from the derived journal state (max open positions)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeOpenPositionJournal(cwd);
+      writeFileSync(
+        join(cwd, "plan-candidates.json"),
+        JSON.stringify([strategyCandidate(MINT_B)]),
+      );
+      // One open simulated position + maxOpenPositions 1 ⇒ a new buy is held to WATCH.
+      writeFileSync(
+        join(cwd, "config.json"),
+        JSON.stringify({ ...STRATEGY_CONFIG, maxOpenPositions: 1 }),
+      );
+      const out = strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "plan-candidates.json",
+          strategyConfigPath: "config.json",
+          journalPath: "journal.jsonl",
+          includeWatch: true,
+          json: true,
+        },
+      );
+      const parsed = JSON.parse(out) as {
+        result: { items: { decision: string; reasons: { id: string }[] }[] };
+      };
+      const item = parsed.result.items[0];
+      expect(item?.decision).toBe("WATCH");
+      expect(item?.reasons.map((r) => r.id)).toContain("max-open-positions-reached");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("treats an empty journal as a valid empty paper state (no refusal)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "journal.jsonl"), "");
+      writeFileSync(
+        join(cwd, "plan-candidates.json"),
+        JSON.stringify([strategyCandidate(MINT_B)]),
+      );
+      writeFileSync(join(cwd, "config.json"), JSON.stringify(STRATEGY_CONFIG));
+      const out = strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "plan-candidates.json",
+          strategyConfigPath: "config.json",
+          journalPath: "journal.jsonl",
+        },
+      );
+      expect(out).not.toMatch(/^Refusing/);
+      expect(out).toContain("Strategy plan");
+      expect(out).toContain("PAPER ONLY");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed journal (does not silently drop events)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(
+        join(cwd, "journal.jsonl"),
+        ['{"type":"RUN_STARTED","at":"x","caps":{},"note":"n"}', "{not json"].join("\n"),
+      );
+      writeFileSync(
+        join(cwd, "plan-candidates.json"),
+        JSON.stringify([strategyCandidate(MINT_B)]),
+      );
+      writeFileSync(join(cwd, "config.json"), JSON.stringify(STRATEGY_CONFIG));
+      const out = strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "plan-candidates.json",
+          strategyConfigPath: "config.json",
+          journalPath: "journal.jsonl",
+        },
+      );
+      expect(out).toMatch(/^Refusing: journal is malformed/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a journal carrying an invalid fill event", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(
+        join(cwd, "journal.jsonl"),
+        '{"type":"PAPER_BUY_FILLED","at":"x","fill":{"side":"BUY","mint":"M","quantity":"oops","priceUsd":1,"notionalUsd":1,"feeUsd":0,"filledAt":"x"}}',
+      );
+      writeFileSync(
+        join(cwd, "plan-candidates.json"),
+        JSON.stringify([strategyCandidate(MINT_B)]),
+      );
+      writeFileSync(join(cwd, "config.json"), JSON.stringify(STRATEGY_CONFIG));
+      const out = strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "plan-candidates.json",
+          strategyConfigPath: "config.json",
+          journalPath: "journal.jsonl",
+        },
+      );
+      expect(out).toMatch(/^Refusing: journal has \d+ invalid fill/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses when BOTH --journal and --paper-state are supplied", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "journal.jsonl"), "");
+      writeFileSync(join(cwd, "paper-state.json"), JSON.stringify({ positions: {} }));
+      writeFileSync(
+        join(cwd, "plan-candidates.json"),
+        JSON.stringify([strategyCandidate(MINT_B)]),
+      );
+      writeFileSync(join(cwd, "config.json"), JSON.stringify(STRATEGY_CONFIG));
+      const out = strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "plan-candidates.json",
+          strategyConfigPath: "config.json",
+          journalPath: "journal.jsonl",
+          paperStatePath: "paper-state.json",
+        },
+      );
+      expect(out).toMatch(/^Refusing: supply only one source of paper state/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a missing journal file cleanly", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(
+        join(cwd, "plan-candidates.json"),
+        JSON.stringify([strategyCandidate(MINT_B)]),
+      );
+      writeFileSync(join(cwd, "config.json"), JSON.stringify(STRATEGY_CONFIG));
+      const out = strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "plan-candidates.json",
+          strategyConfigPath: "config.json",
+          journalPath: "nope.jsonl",
+        },
+      );
+      expect(out).toMatch(/^Refusing: cannot read journal file/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("never writes to or mutates the journal, and creates no new journal", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeOpenPositionJournal(cwd);
+      const before = readFileSync(join(cwd, "journal.jsonl"), "utf8");
+      const jsonlBefore = readdirSync(cwd).filter((f) => f.endsWith(".jsonl")).sort();
+
+      writeFileSync(
+        join(cwd, "plan-candidates.json"),
+        JSON.stringify([strategyCandidate(MINT_B)]),
+      );
+      writeFileSync(join(cwd, "config.json"), JSON.stringify(STRATEGY_CONFIG));
+      strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "plan-candidates.json",
+          strategyConfigPath: "config.json",
+          journalPath: "journal.jsonl",
+          outPath: "out.json",
+        },
+      );
+
+      // The journal is byte-for-byte unchanged (no append/mutation), and no new
+      // .jsonl was produced — planning never runs paper:run or creates fills.
+      expect(readFileSync(join(cwd, "journal.jsonl"), "utf8")).toBe(before);
+      const jsonlAfter = readdirSync(cwd).filter((f) => f.endsWith(".jsonl")).sort();
+      expect(jsonlAfter).toEqual(jsonlBefore);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("keeps a secret-looking candidate value redacted on the journal-aware path", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeOpenPositionJournal(cwd);
+      const leaky = "https://rpc.example.com/?api-key=SUPERSECRET";
+      writeFileSync(
+        join(cwd, "plan-candidates.json"),
+        JSON.stringify([
+          { mint: MINT_B, symbol: "WIF", riskReport: passReport(MINT_B), source: leaky },
+        ]),
+      );
+      writeFileSync(join(cwd, "config.json"), JSON.stringify(STRATEGY_CONFIG));
+      const out = strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "plan-candidates.json",
+          strategyConfigPath: "config.json",
+          journalPath: "journal.jsonl",
+          json: true,
+        },
+      );
+      expect(out).not.toContain("SUPERSECRET");
     } finally {
       cleanup();
     }

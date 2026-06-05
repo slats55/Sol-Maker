@@ -39,9 +39,10 @@ export {
   serializeEvents,
   parseJournal,
   reduceJournal,
+  deriveStateFromJournalText,
   lastRunSummary,
 } from "./journal.js";
-export type { ParseJournalResult } from "./journal.js";
+export type { ParseJournalResult, JournalDerivation } from "./journal.js";
 
 export {
   summarize,

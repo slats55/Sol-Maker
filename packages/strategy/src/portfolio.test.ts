@@ -60,6 +60,18 @@ describe("portfolioFromPaperState", () => {
     expect(portfolio.heldMints).toEqual(["AAA"]);
   });
 
+  it("maps per-mint cost basis for position-aware partial-exit sizing", () => {
+    const portfolio = portfolioFromPaperState(
+      state([position("AAA", 300), position("BBB", 100)]),
+    );
+    expect(portfolio.positionSizeUsdByMint).toEqual({ AAA: 300, BBB: 100 });
+  });
+
+  it("omits the per-mint size map entirely when there are no positive bases", () => {
+    const portfolio = portfolioFromPaperState(state([]));
+    expect(portfolio.positionSizeUsdByMint).toBeUndefined();
+  });
+
   it("does not mutate the input state", () => {
     const s = state([position("AAA", 100)]);
     const snapshot = JSON.stringify(s);

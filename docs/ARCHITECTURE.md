@@ -161,7 +161,9 @@ byte-identical output (seeded ids, injectable clock).
 - `run.ts` — `runPaperSession`: risk filter → caps → simulated fills → TP/SL
   sweep → summary; returns ordered journal events + final state + summary.
 - `journal.ts` — pure (de)serialization + `reduceJournal` replay; malformed
-  lines are reported, never fatal.
+  lines are reported, never fatal. `deriveStateFromJournalText` (Sprint 7) is the
+  **strict** variant (parse + reduce + fill-payload validation) used by
+  `strategy:plan --journal`.
 - `report.ts` — `summarize` + redacted human formatter + JSON envelope (always
   carries the `PAPER ONLY` banner + "nothing was built/signed/simulated/sent").
 
@@ -203,12 +205,20 @@ injectable clock).
 - `score.ts` — `scoreCandidate`: a transparent additive 0–100 model (neutral base
   − risk penalty + metric bonuses), clamped, with exported constants.
 - `evaluate.ts` — `evaluateStrategy`: risk gate → entry metric gates → cooldowns →
-  score → decide. Disqualifiers always override the score; never mutates input.
+  score → decide. Disqualifiers always override the score; never mutates input. For
+  held positions it delegates the exit decision to `exits.ts` and records a
+  structured `report.exit`.
+- `exits.ts` (Sprint 7) — `decideSimulatedExit`: the pure exit-decision model
+  (stop-loss → trailing-stop → take-profit → partial take-profit → hold),
+  evaluated risk-first, producing a `SimulatedExitPlan` (`FULL_EXIT` /
+  `PARTIAL_EXIT` / `HOLD`). A partial exit is sized from an injected/derived
+  position size or the engine holds; deterministic and pure.
 - `report.ts` — `formatStrategyReport` (redacted human block) + JSON envelope,
   always carrying the PAPER-ONLY / not-advice language.
 - `portfolio.ts` — `portfolioFromPaperState`: pure adapter from a simulated
   `PaperState` to the engine's lightweight portfolio view (open count, held
-  mints, top concentration).
+  mints, top concentration, and **per-mint cost basis** for position-aware
+  partial-exit sizing).
 - `plan.ts` (Sprint 6) — the **batch plan pipeline**: `planStrategyBatch`
   (evaluate a `StrategyCandidate[]` → `StrategyPlanResult`),
   `strategyReportToPaperCandidate` (convert a paper-eligible decision → a
@@ -242,11 +252,15 @@ The CLI's `strategy:evaluate` (one candidate) and `strategy:plan` (a batch) read
 injected local JSON only, refuse missing/malformed input cleanly (the batch
 reports a malformed entry **with its array index**), and redact all output
 (human, `--json`, and the `--out` file). `strategy:plan` produces a plan only — it
-never invokes `paper:run`, creates fills, or writes a journal. The output is
-**paper-only** and explicitly **not** financial advice, a buy recommendation, or
-live-trading authorization. A **forbidden-import regression test**
-(`no-forbidden-imports.test.ts`) asserts the package source imports no
-`@solana/web3*`, `fs`/`node:fs`, `http(s)`, or `ws`. See
+never invokes `paper:run`, creates fills, or writes a journal. Its optional
+`--journal <path>` (Sprint 7) derives the simulated `PaperState` from a
+**read-only** paper journal (via `@soulmaker/paper`'s `deriveStateFromJournalText`)
+instead of a `--paper-state` snapshot; the two are mutually exclusive, the journal
+is never written or mutated, and a malformed journal/invalid fill is refused. The
+output is **paper-only** and explicitly **not** financial advice, a buy
+recommendation, or live-trading authorization. A **forbidden-import regression
+test** (`no-forbidden-imports.test.ts`) asserts the package source (now including
+`exits.ts`) imports no `@solana/web3*`, `fs`/`node:fs`, `http(s)`, or `ws`. See
 [`STRATEGY_MODEL.md`](STRATEGY_MODEL.md).
 
 ## Configuration

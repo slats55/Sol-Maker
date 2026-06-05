@@ -185,7 +185,26 @@ export function strategyReportToPaperCandidate(
   const side = sideForDecision(report.decision);
   if (side === undefined) return undefined;
 
-  const proposedSizeUsd = resolveSizeUsd(candidate, options);
+  // A sized PARTIAL simulated exit carries its own deterministic positive size; a
+  // FULL exit keeps the existing default (0 ⇒ paper:run exits the whole position).
+  const exit = report.exit;
+  let proposedSizeUsd: number;
+  if (
+    exit !== undefined &&
+    exit.action === "PARTIAL_EXIT" &&
+    typeof exit.sizeUsd === "number" &&
+    exit.sizeUsd > 0
+  ) {
+    proposedSizeUsd = exit.sizeUsd;
+  } else {
+    proposedSizeUsd = resolveSizeUsd(candidate, options);
+  }
+
+  const exitDetail =
+    side === "SELL" && exit?.trigger !== undefined
+      ? `simulated ${exit.action === "PARTIAL_EXIT" ? "partial" : "full"} exit ` +
+        `triggered by ${exit.trigger}; `
+      : "";
 
   const paperCandidate: PaperCandidate = {
     mint: report.mint,
@@ -194,6 +213,7 @@ export function strategyReportToPaperCandidate(
     source: report.source !== undefined ? `strategy-plan:${report.source}` : "strategy-plan",
     reason:
       `PAPER ONLY: strategy ${report.decision} (score ${report.score}/100); ` +
+      exitDetail +
       "simulated paper candidate, not a buy recommendation — " +
       "no transaction was built, signed, simulated, or sent.",
   };
@@ -363,6 +383,11 @@ function renderPlanItem(item: StrategyPlanItem): string[] {
   if (item.paperCandidate) {
     const pc = item.paperCandidate;
     lines.push(`    → paper candidate: ${pc.proposedSide ?? "BUY"} size ${pc.proposedSizeUsd} USD`);
+    const exit = item.report.exit;
+    if (exit?.trigger !== undefined) {
+      const sized = exit.action === "PARTIAL_EXIT" ? ` (${exit.sizeUsd} USD)` : "";
+      lines.push(`      exit (simulated): ${exit.action} via ${exit.trigger}${sized}`);
+    }
   } else if (item.omissionReason) {
     lines.push(`    omitted: ${item.omissionReason}`);
   }

@@ -70,6 +70,15 @@ export function formatStrategyReport(report: StrategyReport): string {
   );
   if (report.source !== undefined) lines.push(`source:      ${report.source}`);
   lines.push(`created:     ${report.createdAt}`);
+  if (report.exit !== undefined) {
+    const e = report.exit;
+    const trig = e.trigger !== undefined ? ` via ${e.trigger}` : "";
+    const sized =
+      e.action === "PARTIAL_EXIT"
+        ? `, fraction ${e.fraction}, size ${e.sizeUsd} USD`
+        : "";
+    lines.push(`exit (sim):  ${e.action}${trig}${sized} — simulated paper exit only`);
+  }
   lines.push("");
 
   lines.push("Reasons:");

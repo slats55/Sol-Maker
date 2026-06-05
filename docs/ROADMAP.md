@@ -95,10 +95,10 @@ Implemented in `@soulmaker/paper` + the CLI (Sprint 4):
 - ⬜ Snipe-list **ingestion** wiring (candidates are supplied as fixtures today;
   a live snipe-list source is a later sprint). Still **no real sends**.
 
-## Phase 5 — Strategy rules engine 🟡 (deterministic, paper-only — single + batch complete)
+## Phase 5 — Strategy rules engine 🟡 (deterministic, paper-only — single + batch + journal-aware)
 
 Implemented in `@soulmaker/strategy` + the CLI (Sprint 5 single-candidate engine;
-Sprint 6 batch plan pipeline):
+Sprint 6 batch plan pipeline; Sprint 7 journal-aware planning + richer exits):
 
 - ✅ Deterministic, **paper-only** rules engine: turns an advisory
   `@soulmaker/risk` report + injected, read-only metrics into a single decision —
@@ -133,12 +133,28 @@ Sprint 6 batch plan pipeline):
   their array index; all output (incl. `--out`) is redacted.
 - ✅ **(Sprint 6) Forbidden-import regression test** asserts the package source
   imports no `@solana/web3*`, `fs`/`node:fs`, `http(s)`, or `ws`.
+- ✅ **(Sprint 7) Journal-aware planning** — `strategy:plan --journal <path>`
+  derives the simulated portfolio from a **read-only** append-only paper journal
+  (via `deriveStateFromJournalText` = `parseJournal` + `reduceJournal` + fill
+  validation) instead of a `--paper-state` snapshot. The journal is never written
+  or mutated; `--journal`/`--paper-state` are mutually exclusive; a malformed
+  journal or invalid fill is refused; an empty journal yields the empty state.
+- ✅ **(Sprint 7) Richer simulated exits** — a pure exit-decision module
+  (`exits.ts`) adds **trailing stop**, **partial/scaled take-profit**, and
+  **per-mint position-aware sizing** on top of take-profit/stop-loss, recorded as a
+  structured `report.exit` (`FULL_EXIT` / `PARTIAL_EXIT` / `HOLD`). Deterministic,
+  pure, backward-compatible; a partial exit always carries a positive sized
+  notional or holds.
 - ✅ **No tx build/sign/simulate/send. No wallet, RPC, network, or execution SDK.
   No `Date.now` / `Math.random`.** Output is not advice and makes no profitability
   claim.
-- ⬜ **Live** snipe-list source (scraping / network fetch) + richer position
-  management (deferred — and live scraping is explicitly out of scope; candidates
-  remain injected local JSON).
+- ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
+  out of scope (candidates remain injected local JSON).
+- ⬜ **(Recommended Sprint 8) Deterministic simulated backtest report** — replay
+  injected *historical* candidate batches + price/metric series through plan →
+  paper into a simulated paper summary. Injected local JSON only; **not** a track
+  record, live result, or profitability claim. **Not started** (deferred from
+  Sprint 7 to keep that slice small).
 
 ## Phase 6 — Transaction planning & simulation ⬜ (NOT started)
 

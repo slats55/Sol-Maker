@@ -31,11 +31,13 @@
  */
 
 import type { RiskDecision } from "@soulmaker/risk";
+import { decideSimulatedExit } from "./exits.js";
 import { makeIdGen, type IdGen } from "./ids.js";
 import { REASON_IDS, reason } from "./reasons.js";
 import { scoreCandidate } from "./score.js";
 import { STRATEGY_DISCLAIMER, STRATEGY_NOTES } from "./report.js";
 import type {
+  SimulatedExitPlan,
   StrategyCandidate,
   StrategyConfig,
   StrategyDecision,
@@ -113,7 +115,9 @@ export function evaluateStrategy(input: EvaluateStrategyInput): StrategyReport {
     minVolumeUsd: config.minVolumeUsd,
   });
 
-  // 4) Decide. A disqualifier always wins.
+  // 4) Decide. A disqualifier always wins. The held/exit path may also produce a
+  // structured simulated-exit plan, captured here for the report.
+  let exitPlan: SimulatedExitPlan | undefined;
   let decision: StrategyDecision;
   if (disqualifiers.length > 0) {
     decision = "SKIP";
@@ -140,6 +144,7 @@ export function evaluateStrategy(input: EvaluateStrategyInput): StrategyReport {
   };
   if (candidate.symbol !== undefined) report.symbol = candidate.symbol;
   if (candidate.source !== undefined) report.source = candidate.source;
+  if (exitPlan !== undefined) report.exit = exitPlan;
   return report;
 
   // --- gate helpers (close over reasons/disqualifiers/config/candidate) -----
@@ -456,7 +461,7 @@ export function evaluateStrategy(input: EvaluateStrategyInput): StrategyReport {
     }
 
     const pct = candidate.metrics?.priceChangePct;
-    if (typeof pct !== "number") {
+    if (typeof pct !== "number" || !Number.isFinite(pct)) {
       reasons.push(
         reason(
           REASON_IDS.HOLDING_NO_PRICE_METRIC,
@@ -466,35 +471,42 @@ export function evaluateStrategy(input: EvaluateStrategyInput): StrategyReport {
       return "WATCH";
     }
 
-    if (config.takeProfitPct !== undefined && pct >= config.takeProfitPct) {
-      reasons.push(
-        reason(
-          REASON_IDS.SELL_TAKE_PROFIT,
-          `price change ${pct}% ≥ takeProfitPct ${config.takeProfitPct}%; simulated sell candidate`,
-          { priceChangePct: pct, takeProfitPct: config.takeProfitPct },
-        ),
-      );
-      return "PAPER_SELL_CANDIDATE";
-    }
+    // Delegate the full/partial/hold decision to the pure exit rules engine. It
+    // emits the supporting reasons (take-profit / stop-loss / trailing-stop /
+    // partial) and a structured plan recorded on the report as `report.exit`.
+    const { plan, reasons: exitReasons } = decideSimulatedExit({
+      priceChangePct: pct,
+      peakPriceChangePct: candidate.metrics?.peakPriceChangePct,
+      drawdownFromPeakPct: candidate.metrics?.drawdownFromPeakPct,
+      positionSizeUsd: resolveHeldPositionSizeUsd(),
+      config,
+    });
+    for (const r of exitReasons) reasons.push(r);
+    exitPlan = plan;
 
-    if (config.stopLossPct !== undefined && pct <= -config.stopLossPct) {
-      reasons.push(
-        reason(
-          REASON_IDS.SELL_STOP_LOSS,
-          `price change ${pct}% ≤ -stopLossPct ${config.stopLossPct}%; simulated sell candidate`,
-          { priceChangePct: pct, stopLossPct: config.stopLossPct },
-        ),
-      );
-      return "PAPER_SELL_CANDIDATE";
-    }
+    return plan.action === "HOLD" ? "WATCH" : "PAPER_SELL_CANDIDATE";
+  }
 
-    reasons.push(
-      reason(
-        REASON_IDS.HOLDING_NO_EXIT_SIGNAL,
-        `price change ${pct}% did not cross take-profit/stop-loss; watching the held position`,
-        { priceChangePct: pct },
-      ),
-    );
-    return "WATCH";
+  /**
+   * Resolve the simulated size (USD) of the held position for sizing a partial
+   * exit: an explicit injected `metrics.positionSizeUsd` wins; otherwise the
+   * per-mint cost basis derived from the injected paper state (portfolio). Returns
+   * undefined when neither is a positive finite number (a partial then cannot be
+   * sized and the exit rules hold). Reads only; never mutates.
+   */
+  function resolveHeldPositionSizeUsd(): number | undefined {
+    const fromMetrics = candidate.metrics?.positionSizeUsd;
+    if (typeof fromMetrics === "number" && Number.isFinite(fromMetrics) && fromMetrics > 0) {
+      return fromMetrics;
+    }
+    const fromPortfolio = portfolio?.positionSizeUsdByMint?.[candidate.mint];
+    if (
+      typeof fromPortfolio === "number" &&
+      Number.isFinite(fromPortfolio) &&
+      fromPortfolio > 0
+    ) {
+      return fromPortfolio;
+    }
+    return undefined;
   }
 }
