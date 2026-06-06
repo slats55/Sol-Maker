@@ -104,13 +104,14 @@ Implemented in `@soulmaker/paper` + the CLI (Sprint 4; Sprint 8 journal continua
 - ⬜ Snipe-list **ingestion** wiring (candidates are supplied as fixtures today;
   a live snipe-list source is a later sprint). Still **no real sends**.
 
-## Phase 5 — Strategy rules engine 🟡 (deterministic, paper-only — single + batch + journal-aware + journal-continuing loop + backtest + scenario linting/report stability + report diffing & scenario helpers)
+## Phase 5 — Strategy rules engine 🟡 (deterministic, paper-only — single + batch + journal-aware + journal-continuing loop + backtest + scenario linting/report stability + report diffing & scenario helpers + suite runs & suite diffing)
 
 Implemented in `@soulmaker/strategy` + `@soulmaker/backtest` + the CLI (Sprint 5
 single-candidate engine; Sprint 6 batch plan pipeline; Sprint 7 journal-aware
 planning + richer exits; Sprint 8 journal-continuing loop + deterministic backtest;
 Sprint 9 scenario linting, example fixtures, report stability + BOM-tolerant JSON;
-Sprint 10 backtest report diffing + deterministic scenario-authoring helpers):
+Sprint 10 backtest report diffing + deterministic scenario-authoring helpers;
+Sprint 11 backtest suite runs + suite diffing over directories of injected scenarios):
 
 - ✅ Deterministic, **paper-only** rules engine: turns an advisory
   `@soulmaker/risk` report + injected, read-only metrics into a single decision —
@@ -228,6 +229,33 @@ Sprint 10 backtest report diffing + deterministic scenario-authoring helpers):
   and safe (config-only: `strategyConfig`/`caps`/`defaultPaperSizeUsd`; never code,
   never `steps`/`name`/`initialJournal`). Every generated scenario validates; files
   are not overwritten without `--force`.
+- ✅ **(Sprint 11) Backtest suite runs** — `@soulmaker/backtest` exports
+  `runBacktestSuite(input)`, `buildBacktestSuiteIndex(result)`, and
+  `formatBacktestSuiteIndex`; the CLI adds `paper:backtest:suite --dir <scenarios/>
+  [--out-dir <reports/>] [--json] [--fail-on-error] [--force]`. The CLI reads a
+  directory of `*.scenario.json` files (sorted by filename, BOM-tolerant; a malformed
+  file refuses the whole suite) and the **pure** package runs each through the same
+  `lint → runBacktest → validate` paths: a lint error fails+skips a scenario, a
+  warning still runs, and a runtime error fails just that one entry without crashing
+  the suite. The byte-stable `suite-index.json` aggregates passed/failed counts,
+  summed fills, and summed simulated PnL — every total is simulated bookkeeping over
+  injected prices, **not** a live result, advice, or a profitability claim. With
+  `--out-dir` it writes one report per PASSED scenario plus the index (never a
+  journal/fills; preflighted so it never writes partial output).
+- ✅ **(Sprint 11) Backtest suite diffing** — `@soulmaker/backtest` exports
+  `validateBacktestSuiteIndex`, `diffBacktestSuites(base, next)`, and
+  `formatBacktestSuiteDiff`; the CLI adds `paper:backtest:diff:suite --base-dir <a/>
+  --next-dir <b/> [--json] [--fail-on-regression]`. It reads ONLY each directory's
+  `suite-index.json` (BOM-tolerant; missing/malformed refused), runs no backtests, and
+  pairs entries by digest → name → file to produce added/removed/changed scenarios,
+  aggregate deltas, and a **conservative** `hasRegression` flag. A SAME-digest result
+  drift is a regression (a deterministic replay should be byte-identical); a different
+  scenario (different content) is "changed", **not** a regression. `--fail-on-regression`
+  exits non-zero only when `hasRegression` is true.
+- ⬜ **(Sprint 11, deferred)** Deterministic scenario **variant/fuzzer** generator
+  (`paper:backtest:scenario:variants`) — perturb injected prices/metrics within
+  explicit, injected bounds (no RNG, no live data). Deferred to keep the Sprint 11
+  commit focused and reviewable; the suite + suite-diff layer ships first.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

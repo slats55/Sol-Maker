@@ -16,7 +16,7 @@ all pass.
 
 ---
 
-## ⚠️ Status: Phases 0–1 done; Phase 2 read-only core complete; Phase 3 advisory risk engine complete; Phase 4 simulated paper engine complete; Phase 5 paper-only strategy rules engine complete (Sprint 5 single-candidate + Sprint 6 batch plan pipeline + Sprint 7 journal-aware planning & richer simulated exits + Sprint 8 journal-continuing paper runs & deterministic simulated backtest + Sprint 9 scenario linting, example fixtures, stabler/richer backtest reports & BOM-tolerant JSON parsing + Sprint 10 backtest report diffing & deterministic scenario-authoring helpers). No live trading. By design.
+## ⚠️ Status: Phases 0–1 done; Phase 2 read-only core complete; Phase 3 advisory risk engine complete; Phase 4 simulated paper engine complete; Phase 5 paper-only strategy rules engine complete (Sprint 5 single-candidate + Sprint 6 batch plan pipeline + Sprint 7 journal-aware planning & richer simulated exits + Sprint 8 journal-continuing paper runs & deterministic simulated backtest + Sprint 9 scenario linting, example fixtures, stabler/richer backtest reports & BOM-tolerant JSON parsing + Sprint 10 backtest report diffing & deterministic scenario-authoring helpers + Sprint 11 backtest suite runs & suite diffing over directories of injected scenarios). No live trading. By design.
 
 Nothing in this repository can move funds. There is **no transaction signing or
 sending code anywhere in it yet** — the read-only Solana watcher (Phase 2) and
@@ -49,9 +49,18 @@ conservative `hasRegression` flag) — every delta is a bookkeeping difference b
 two **simulations**, never a prediction, profit/loss, or advice; and
 `paper:backtest:scenario:new` / `paper:backtest:scenario:matrix` deterministically
 author injected scenario **skeletons** (fake mints, injected prices — not real
-historical data) from built-in templates and safe, config-only patches. None of
-this fetches live data or begins transaction planning (roadmap Phase 6 remains not
-started; Phase 7 burner live remains not started). The default mode is `PAPER`. See
+historical data) from built-in templates and safe, config-only patches. Sprint 11
+adds the **suite** layer, still injected-only: `paper:backtest:suite` runs a whole
+directory of `*.scenario.json` files as one deterministic suite and aggregates their
+**simulated** reports into a stable `suite-index.json` (passed/failed counts, summed
+fills and PnL, per-entry summaries); `paper:backtest:diff:suite` compares two suite
+output directories by their indexes (added/removed/changed scenarios, aggregate
+deltas, and a conservative `hasRegression` flag). A suite total is simulated
+bookkeeping summed over injected prices — not a live result, not advice, not a
+profitability claim; a *changed* scenario (different content) is a bookkeeping
+difference, never a recommendation. None of this fetches live data or begins
+transaction planning (roadmap Phase 6 remains not started; Phase 7 burner live
+remains not started). The default mode is `PAPER`. See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Non-negotiable security rules (summary)
@@ -83,7 +92,8 @@ soulmaker/
                 #                    solana:doctor, wallet:watch, token:inspect/accounts/risk,
                 #                    paper:run/journal, strategy:evaluate, strategy:plan,
                 #                    paper:backtest, paper:backtest:lint, paper:backtest:diff,
-                #                    paper:backtest:scenario:new, paper:backtest:scenario:matrix)
+                #                    paper:backtest:scenario:new, paper:backtest:scenario:matrix,
+                #                    paper:backtest:suite, paper:backtest:diff:suite)
     web/        # Phase 8 dashboard (placeholder)
   packages/
     core/       # @soulmaker/core      — config schema, modes, risk caps, LIVE GATE
@@ -98,7 +108,9 @@ soulmaker/
     backtest/   # @soulmaker/backtest  — Sprint 8 deterministic, injected-only simulated
                 #            replay over plan → paper; Sprint 9 adds scenario lint/validate,
                 #            a content digest, and stabler/richer reports (not a live result);
-                #            Sprint 10 adds report diffing + scenario template/matrix builders
+                #            Sprint 10 adds report diffing + scenario template/matrix builders;
+                #            Sprint 11 adds the pure suite runner/index + suite diffing
+                #            (still pure: the package never scans dirs or reads/writes files)
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
     backtest/   # injected, copyable example scenarios + fixtures (NOT historical market data)
@@ -192,6 +204,22 @@ pnpm soulmaker paper:backtest:scenario:new --template buy-hold --out <scenario.j
 # expand a base scenario by a SAFE, config-only matrix into one file per variant
 # (patches may only set strategyConfig/caps/defaultPaperSizeUsd; no code/expressions):
 pnpm soulmaker paper:backtest:scenario:matrix --base <base.json> --matrix <matrix.json> --out-dir <dir>
+
+# Sprint 11 — run a DIRECTORY of injected *.scenario.json files as ONE deterministic
+# suite (sorted by filename, BOM-tolerant; a malformed file refuses the whole suite).
+# Lint errors fail+skip a scenario; warnings still run. Totals are SIMULATED
+# bookkeeping summed over injected prices — not a live result, not advice:
+pnpm soulmaker paper:backtest:suite --dir examples/backtest
+pnpm soulmaker paper:backtest:suite --dir examples/backtest --json
+# --out-dir writes one report per PASSED scenario + suite-index.json (never a journal/
+# fills; refuses to overwrite without --force). --fail-on-error exits non-zero if any
+# scenario failed:
+pnpm soulmaker paper:backtest:suite --dir examples/backtest --out-dir <reports/>
+# compare TWO suite output directories by their suite-index.json (added/removed/changed
+# scenarios + aggregate deltas + hasRegression; a changed scenario is NOT a regression):
+pnpm soulmaker paper:backtest:diff:suite --base-dir <reportsA/> --next-dir <reportsB/>
+pnpm soulmaker paper:backtest:diff:suite --base-dir <reportsA/> --next-dir <reportsB/> --json
+pnpm soulmaker paper:backtest:diff:suite --base-dir <reportsA/> --next-dir <reportsB/> --fail-on-regression
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

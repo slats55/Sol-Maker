@@ -28,7 +28,7 @@ packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.j
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
-packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders (Sprint 8–10)  [strategy, paper, security]
+packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing (Sprint 8–11)  [strategy, paper, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -80,6 +80,16 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   `paper:backtest:scenario:new`/`:matrix`) is the only layer that reads/writes
   files. A report diff is bookkeeping over two **simulations** — not a live result,
   prediction, or advice; generated scenarios are fixtures, not market data.
+- **(Sprint 11)** `@soulmaker/backtest` adds a pure **suite** layer on top of the
+  same primitives: `runBacktestSuite(input)` runs an ordered list of already-parsed
+  scenarios through `lintBacktestScenario → runBacktest → validateBacktestReport`,
+  `buildBacktestSuiteIndex(result)` aggregates a byte-stable index, and
+  `diffBacktestSuites(base, next)` compares two indexes. The pure package still
+  **never scans a directory or reads/writes a file** — the CLI
+  (`paper:backtest:suite`, `paper:backtest:diff:suite`) owns all directory traversal
+  and file I/O and hands the package already-parsed scenarios/indexes. A suite total
+  is simulated bookkeeping summed over injected prices; a suite diff is the change
+  between two simulated suites — never a live result, prediction, or advice.
 
 ## The live boundary
 
@@ -337,6 +347,19 @@ injected `at`, so a given scenario yields **byte-stable** output.
   Notes) + the required labels: **SIMULATED PAPER-ONLY REPORT**, *uses injected
   historical data only*, *not a live result*, *not financial advice*, *not a
   profitability claim*.
+- `report-validate.ts` / `diff.ts` / `templates.ts` / `matrix.ts` (Sprint 10) — the
+  pure, offline helpers that sit *beside* the engine: strict report validation, the
+  two-report diff (`diffBacktestReports`/`formatBacktestReportDiff`), and the
+  deterministic INJECTED scenario builders (`buildExampleBacktestScenario`,
+  `expandScenarioMatrix`).
+- `suite.ts` / `suite-report.ts` / `suite-validate.ts` / `suite-diff.ts` (Sprint 11)
+  — the pure **suite** layer: `runBacktestSuite`/`buildBacktestSuiteIndex`/
+  `formatBacktestSuiteIndex` (run an ordered list of already-parsed scenarios and
+  aggregate a byte-stable `backtest.suite.v1` index), `validateBacktestSuiteIndex`
+  (strict index validation), and `diffBacktestSuites`/`formatBacktestSuiteDiff`
+  (`backtest.suite.diff.v1`: pair by digest → name → file, aggregate deltas, a
+  conservative `hasRegression`). All still pure — the package never scans a directory
+  or reads/writes a file.
 
 **Data flow:**
 
@@ -351,6 +374,24 @@ BacktestScenario (config + caps + steps[, initialJournal])
   reduceJournal(seed+steps) → markFinalUnrealized → summarize → BacktestReport
         ▼
 CLI paper:backtest  → human | --json | --out writes ONLY the report JSON
+```
+
+**Suite data flow (Sprint 11):**
+
+```
+CLI paper:backtest:suite --dir <scenarios/>
+        │  read+parse *.scenario.json (sorted, BOM-tolerant; malformed ⇒ refuse)
+        ▼
+  runBacktestSuite({ scenarios })   per entry: lint → runBacktest → validate
+        ▼
+  buildBacktestSuiteIndex(result)   ─► byte-stable suite-index.json (backtest.suite.v1)
+        ▼
+  --out-dir writes one report per PASSED scenario + suite-index.json (never a journal)
+
+CLI paper:backtest:diff:suite --base-dir <a/> --next-dir <b/>
+        │  read each dir's suite-index.json (BOM-tolerant; missing/malformed ⇒ refuse)
+        ▼
+  diffBacktestSuites(base, next)  ─► added/removed/changed + aggregate deltas + hasRegression
 ```
 
 The CLI's `paper:backtest` reads ONE local JSON scenario, refuses malformed input

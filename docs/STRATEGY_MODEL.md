@@ -42,8 +42,17 @@ submitted to the paper-trading engine as a simulated **paper-buy** or
   `paper:backtest:scenario:new`/`:matrix`) that emit INJECTED scenario skeletons and
   safe config-only variants (fake mints + injected prices — **not** real historical
   data). The strategy engine itself is again unchanged and still only feeds paper.
+- **Sprint 11** added a **suite** layer over the same backtest primitives (still in
+  `@soulmaker/backtest`, still injected-only): `runBacktestSuite`/
+  `buildBacktestSuiteIndex` (CLI `paper:backtest:suite`) run a whole directory of
+  injected scenarios through the same `lint → runBacktest → validate` paths and
+  aggregate a byte-stable `suite-index.json`, and `diffBacktestSuites` (CLI
+  `paper:backtest:diff:suite`) compares two suite indexes into added/removed/changed
+  scenarios + aggregate deltas + a conservative `hasRegression` (a changed scenario
+  is a bookkeeping difference, **not** a recommendation). The strategy engine itself
+  is again unchanged and still only feeds paper.
 
-(Sprints 5–10 extend this Phase 5 package; they do **not** begin roadmap Phase 6
+(Sprints 5–11 extend this Phase 5 package; they do **not** begin roadmap Phase 6
 — transaction planning/simulation — which remains **not started** (and Phase 7
 burner live mode remains **not started**).)
 

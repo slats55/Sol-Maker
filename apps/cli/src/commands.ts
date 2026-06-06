@@ -9,7 +9,15 @@
  * injected data and touch no wallet, key, or network.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import {
   loadConfig,
@@ -79,12 +87,21 @@ import {
   buildExampleBacktestScenario,
   listBacktestScenarioTemplates,
   expandScenarioMatrix,
+  runBacktestSuite,
+  buildBacktestSuiteIndex,
+  formatBacktestSuiteIndex,
+  diffBacktestSuites,
+  formatBacktestSuiteDiff,
   type BacktestReport,
   type BacktestReportDiff,
   type BacktestScenario,
   type BacktestScenarioTemplate,
   type BacktestLintIssue,
   type BacktestScenarioLintResult,
+  type BacktestSuiteScenario,
+  type BacktestSuiteResult,
+  type BacktestSuiteIndex,
+  type BacktestSuiteDiff,
 } from "@soulmaker/backtest";
 
 export interface CommandContext {
@@ -1689,6 +1706,289 @@ export function paperBacktestScenarioMatrixReport(
   lines.push("- Injected fixtures — fake mints + injected prices, NOT real market data, NOT advice.");
   lines.push("- Every variant validates; lint/run with paper:backtest:lint / paper:backtest.");
   return redactString(lines.join("\n"));
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 11 — paper:backtest:suite (run a directory of scenarios as one suite)
+//             paper:backtest:diff:suite (compare two suite outputs)
+// ---------------------------------------------------------------------------
+
+export interface PaperBacktestSuiteCommandOptions {
+  /** Directory of local `*.scenario.json` files to run as one suite (required). */
+  dir?: string;
+  /** Optional directory to write one report per passed scenario + suite-index.json. */
+  outDir?: string;
+  /** Overwrite existing output files (refused by default). */
+  force?: boolean;
+  json?: boolean;
+  /** Exit non-zero when any scenario in the suite failed. */
+  failOnError?: boolean;
+}
+
+/**
+ * Derive a filesystem-safe, collision-checkable stem from a scenario filename.
+ * Strips the `.scenario.json` suffix and replaces anything outside [A-Za-z0-9._-]
+ * (and any run of dots, to kill `..`) with `_`. `readdirSync` already yields plain
+ * basenames, so there is no path separator to traverse; this is a defensive
+ * backstop plus the key used to detect two scenarios mapping to one output name.
+ */
+function suiteScenarioStem(file: string): string {
+  const base = file.replace(/\.scenario\.json$/i, "");
+  const safe = base.replace(/[^A-Za-z0-9._-]/g, "_").replace(/\.{2,}/g, "_");
+  return safe.length > 0 ? safe : "scenario";
+}
+
+/**
+ * Write the suite's report files + `suite-index.json` into `--out-dir`. Preflights
+ * every target path (internal collisions, and — without `--force` — pre-existing
+ * files) BEFORE writing anything, so a detectable problem refuses with no partial
+ * output. Reports are written exactly like `paper:backtest --out` (redacted JSON);
+ * NO journal or fills are ever written. Returns ok or a clean, non-secret reason.
+ */
+function writeSuiteOutputs(
+  ctx: CommandContext,
+  outDirArg: string,
+  force: boolean,
+  result: BacktestSuiteResult,
+  index: BacktestSuiteIndex,
+): { ok: true; written: string[] } | { ok: false; reason: string } {
+  const outDir = resolvePath(ctx, outDirArg);
+  const reports = result.entries
+    .filter((e) => e.status === "passed" && e.report !== null && e.reportFile !== null)
+    .map((e) => ({ path: join(outDir, e.reportFile as string), report: e.report as BacktestReport }));
+  const indexPath = join(outDir, "suite-index.json");
+
+  // Preflight: refuse on any internal filename collision (no partial writes).
+  const seen = new Set<string>();
+  for (const path of [...reports.map((r) => r.path), indexPath]) {
+    if (seen.has(path)) {
+      return { ok: false, reason: `output filename collision at ${path} — rename a scenario` };
+    }
+    seen.add(path);
+  }
+  // Preflight: refuse to overwrite existing files unless --force.
+  if (!force) {
+    const existing = [...seen].filter((p) => existsSync(p));
+    if (existing.length > 0) {
+      return {
+        ok: false,
+        reason:
+          `${existing.length} output file(s) already exist (pass --force to overwrite): ` +
+          existing.join(", "),
+      };
+    }
+  }
+
+  try {
+    mkdirSync(outDir, { recursive: true });
+  } catch {
+    return { ok: false, reason: `cannot create output directory at ${outDir}` };
+  }
+  const written: string[] = [];
+  for (const r of reports) {
+    try {
+      writeFileSync(r.path, JSON.stringify(redactValue(r.report), null, 2) + "\n");
+      written.push(r.path);
+    } catch {
+      return { ok: false, reason: `cannot write report file at ${r.path}` };
+    }
+  }
+  try {
+    writeFileSync(indexPath, JSON.stringify(redactValue(index), null, 2) + "\n");
+    written.push(indexPath);
+  } catch {
+    return { ok: false, reason: `cannot write suite index at ${indexPath}` };
+  }
+  return { ok: true, written };
+}
+
+/**
+ * `soulmaker paper:backtest:suite` — run a whole directory of injected
+ * `*.scenario.json` files as one deterministic, PAPER-ONLY suite and aggregate the
+ * simulated reports into a stable index. It reads ONLY local scenario files (sorted
+ * by filename, BOM-tolerant); a malformed-JSON file refuses the whole suite. With
+ * `--out-dir` it writes one redacted report JSON per PASSED scenario plus
+ * `suite-index.json` (never a journal or fills), preflighting targets so it never
+ * writes partial output. Without `--out-dir` it writes nothing. `--json` prints the
+ * suite index JSON; `--fail-on-error` exits non-zero if any scenario failed (a
+ * failed scenario is still clearly reported either way). No chain access, no wallet,
+ * no RPC, no network — every number is simulated bookkeeping, not a live result.
+ */
+export function paperBacktestSuiteReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestSuiteCommandOptions = {},
+): CliReport {
+  if (!opts.dir) return { text: "Refusing: --dir <path> is required.", exitCode: 1 };
+
+  const dir = resolvePath(ctx, opts.dir);
+  let isDir = false;
+  try {
+    isDir = statSync(dir).isDirectory();
+  } catch {
+    return { text: redactString(`Refusing: scenario directory not found at ${dir}`), exitCode: 1 };
+  }
+  if (!isDir) {
+    return { text: redactString(`Refusing: ${dir} is not a directory`), exitCode: 1 };
+  }
+
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return { text: redactString(`Refusing: cannot read scenario directory at ${dir}`), exitCode: 1 };
+  }
+  // Deterministic: only top-level *.scenario.json files, sorted by filename.
+  const scenarioFiles = names.filter((f) => /\.scenario\.json$/i.test(f)).sort();
+  if (scenarioFiles.length === 0) {
+    return {
+      text: redactString(`Refusing: no *.scenario.json files found in ${dir}`),
+      exitCode: 1,
+    };
+  }
+
+  // Parse every scenario up front (BOM-tolerant). A malformed file or a
+  // sanitized-stem collision refuses the WHOLE suite before anything runs.
+  const scenarios: BacktestSuiteScenario[] = [];
+  const stems = new Map<string, string>();
+  for (const file of scenarioFiles) {
+    const full = join(dir, file);
+    let text: string;
+    try {
+      text = stripJsonBom(readFileSync(full, "utf8"));
+    } catch {
+      return { text: redactString(`Refusing: cannot read scenario file at ${full}`), exitCode: 1 };
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return { text: redactString(`Refusing: scenario file ${file} is not valid JSON`), exitCode: 1 };
+    }
+    const stem = suiteScenarioStem(file);
+    const prior = stems.get(stem);
+    if (prior !== undefined) {
+      return {
+        text: redactString(
+          `Refusing: scenario files "${prior}" and "${file}" map to the same output name ` +
+            `"${stem}" — rename one to avoid an ambiguous report file.`,
+        ),
+        exitCode: 1,
+      };
+    }
+    stems.set(stem, file);
+    const envelope: BacktestSuiteScenario = { scenario: parsed, file, id: stem };
+    if (opts.outDir) envelope.reportFile = `${stem}.report.json`;
+    scenarios.push(envelope);
+  }
+
+  let result: BacktestSuiteResult;
+  try {
+    result = runBacktestSuite({ name: basename(dir), scenarios });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  const index = buildBacktestSuiteIndex(result);
+
+  let writtenNote = "";
+  if (opts.outDir) {
+    const written = writeSuiteOutputs(ctx, opts.outDir, Boolean(opts.force), result, index);
+    if (!written.ok) {
+      return { text: redactString(`Refusing: ${written.reason}`), exitCode: 1 };
+    }
+    writtenNote =
+      `\n\nWrote ${written.written.length} file(s) to ${resolvePath(ctx, opts.outDir)}:\n` +
+      written.written.map((p) => `- ${p}`).join("\n");
+  }
+
+  const exitCode = opts.failOnError && index.summary.failedCount > 0 ? 1 : 0;
+  if (opts.json) {
+    // redactValue is a backstop; the index carries only injected scenario identifiers.
+    return { text: JSON.stringify(redactValue(index), null, 2), exitCode };
+  }
+  return { text: formatBacktestSuiteIndex(index, { label: opts.dir }) + writtenNote, exitCode };
+}
+
+export interface PaperBacktestDiffSuiteCommandOptions {
+  /** Directory holding the BASE suite output (must contain suite-index.json). */
+  baseDir?: string;
+  /** Directory holding the NEXT suite output (must contain suite-index.json). */
+  nextDir?: string;
+  json?: boolean;
+  /** Exit non-zero only when the diff reports a regression. */
+  failOnRegression?: boolean;
+}
+
+/**
+ * Read and parse `suite-index.json` from a suite output directory (BOM-tolerant).
+ * Returns the parsed value or a clean, non-secret refusal reason. Read-only.
+ */
+function readSuiteIndexFromDir(
+  ctx: CommandContext,
+  dirArg: string,
+  label: string,
+): { ok: true; value: unknown } | { ok: false; reason: string } {
+  const dir = resolvePath(ctx, dirArg);
+  let isDir = false;
+  try {
+    isDir = statSync(dir).isDirectory();
+  } catch {
+    return { ok: false, reason: `${label} directory not found at ${dir}` };
+  }
+  if (!isDir) return { ok: false, reason: `${label} path ${dir} is not a directory` };
+
+  const indexPath = join(dir, "suite-index.json");
+  let text: string;
+  try {
+    text = stripJsonBom(readFileSync(indexPath, "utf8"));
+  } catch {
+    return { ok: false, reason: `no suite-index.json found in ${label} directory ${dir}` };
+  }
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch {
+    return { ok: false, reason: `suite-index.json in ${label} directory ${dir} is not valid JSON` };
+  }
+}
+
+/**
+ * `soulmaker paper:backtest:diff:suite` — deterministically diff TWO suite output
+ * directories by reading each one's `suite-index.json` (BOM-tolerant; a missing or
+ * malformed index refuses). It runs no backtests, reads no scenarios, and writes
+ * nothing — it only compares two already-produced indexes. `--json` emits the
+ * stable, redacted {@link BacktestSuiteDiff}; `--fail-on-regression` sets a non-zero
+ * exit only when `diff.hasRegression` is true. A delta is simulated bookkeeping —
+ * never profit, loss, a prediction, or advice; a changed scenario is not a
+ * regression. No chain access, no wallet, no RPC, no network.
+ */
+export function paperBacktestDiffSuiteReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestDiffSuiteCommandOptions = {},
+): CliReport {
+  if (!opts.baseDir) return { text: "Refusing: --base-dir <path> is required.", exitCode: 1 };
+  if (!opts.nextDir) return { text: "Refusing: --next-dir <path> is required.", exitCode: 1 };
+
+  const base = readSuiteIndexFromDir(ctx, opts.baseDir, "base");
+  if (!base.ok) return { text: redactString(`Refusing: ${base.reason}`), exitCode: 1 };
+  const next = readSuiteIndexFromDir(ctx, opts.nextDir, "next");
+  if (!next.ok) return { text: redactString(`Refusing: ${next.reason}`), exitCode: 1 };
+
+  let diff: BacktestSuiteDiff;
+  try {
+    // Validates both indexes strictly; a non-index file refuses.
+    diff = diffBacktestSuites(base.value, next.value);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const exitCode = opts.failOnRegression && diff.hasRegression ? 1 : 0;
+  if (opts.json) {
+    // redactValue is a backstop; the diff carries only injected scenario identifiers.
+    return { text: JSON.stringify(redactValue(diff), null, 2), exitCode };
+  }
+  return {
+    text: formatBacktestSuiteDiff(diff, { baseLabel: opts.baseDir, nextLabel: opts.nextDir }),
+    exitCode,
+  };
 }
 
 function yesNo(value: boolean): string {

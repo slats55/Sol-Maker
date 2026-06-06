@@ -127,3 +127,48 @@ writes nothing. Every value it prints is a **bookkeeping delta between two
 simulations**: a negative or positive delta is **not** profit, loss, a prediction,
 or advice. A different `scenarioDigest` is reported as a *different scenario*, not a
 regression; regressions are conservative and bookkeeping-oriented.
+
+## Running a whole directory as a suite (Sprint 11)
+
+This very directory is a ready-made **suite**: `paper:backtest:suite` runs every
+`*.scenario.json` here (sorted by filename, BOM-tolerant) through the same
+`lint → backtest → validate` paths and aggregates their **simulated** reports into
+one stable index. A suite is just a directory of injected scenarios — its output is
+simulated **bookkeeping only**, **not** a live result, **not** advice, **not** a
+profitability claim:
+
+```bash
+# Human summary (passed/failed counts, summed fills + simulated PnL, per-entry lines):
+pnpm soulmaker paper:backtest:suite --dir examples/backtest
+# Stable machine-readable index:
+pnpm soulmaker paper:backtest:suite --dir examples/backtest --json
+# Also write one report per PASSED scenario + suite-index.json into a directory
+# (never a journal/fills; refuses to overwrite without --force):
+pnpm soulmaker paper:backtest:suite --dir examples/backtest --out-dir reports/
+# Exit non-zero if any scenario failed (a lint error fails+skips a scenario;
+# a warning still runs):
+pnpm soulmaker paper:backtest:suite --dir examples/backtest --fail-on-error
+```
+
+A malformed JSON file refuses the **whole** suite; an otherwise-valid scenario that
+fails lint becomes a clearly-marked failed entry without crashing the run.
+
+## Diffing two suites (Sprint 11)
+
+To regression-review across whole directories, generate two suite output directories
+and diff them by their `suite-index.json`:
+
+```bash
+pnpm soulmaker paper:backtest:suite --dir scenariosA/ --out-dir reportsA/
+pnpm soulmaker paper:backtest:suite --dir scenariosB/ --out-dir reportsB/
+pnpm soulmaker paper:backtest:diff:suite --base-dir reportsA/ --next-dir reportsB/
+# --json for a stable machine-readable diff; --fail-on-regression to exit non-zero
+# only when hasRegression is true.
+```
+
+`paper:backtest:diff:suite` reads **only** each directory's `suite-index.json` — it
+runs no backtests, reads no scenarios, and writes nothing. It pairs entries by
+digest → name → file and reports added / removed / **changed** scenarios plus
+aggregate deltas. A SAME-digest result drift is a regression (a deterministic replay
+should be byte-identical); a *changed* scenario (different content) is a bookkeeping
+difference, **not** a regression by default.

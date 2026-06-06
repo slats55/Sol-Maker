@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  existsSync,
+  writeFileSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -21,6 +29,8 @@ import {
   paperBacktestDiffReport,
   paperBacktestScenarioNewReport,
   paperBacktestScenarioMatrixReport,
+  paperBacktestSuiteReport,
+  paperBacktestDiffSuiteReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -2886,6 +2896,365 @@ describe("paperBacktestScenarioMatrixReport (Sprint 10)", () => {
       const env = JSON.parse(out) as { name: string; variants: { suffix: string }[] };
       expect(env.name).toBe("sizing-sweep");
       expect(env.variants.map((v) => v.suffix)).toEqual(["size-25", "size-50"]);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 11 — paper:backtest:suite (run a directory of scenarios as one suite)
+// ---------------------------------------------------------------------------
+
+/** A second distinct passing scenario (renamed buy scenario ⇒ a different digest). */
+function buyScenarioNamed(name: string): unknown {
+  return { ...(buyScenario() as Record<string, unknown>), name };
+}
+
+/** Write scenario files into `<cwd>/<sub>` and return the relative dir arg. */
+function writeScenarioDir(cwd: string, sub: string, files: Record<string, unknown>): string {
+  const dir = join(cwd, sub);
+  mkdirSync(dir, { recursive: true });
+  for (const [name, scenario] of Object.entries(files)) {
+    const text = typeof scenario === "string" ? scenario : JSON.stringify(scenario, null, 2);
+    writeFileSync(join(dir, name), text);
+  }
+  return sub;
+}
+
+describe("paperBacktestSuiteReport (Sprint 11)", () => {
+  it("refuses when --dir is missing", () => {
+    const r = paperBacktestSuiteReport({}, {});
+    expect(r.text).toMatch(/^Refusing: --dir/);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it("refuses a missing directory", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const r = paperBacktestSuiteReport({ cwd, env: {} }, { dir: "nope" });
+      expect(r.text).toMatch(/^Refusing: scenario directory not found/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses an empty directory (no false confidence)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeScenarioDir(cwd, "scenarios", {});
+      const r = paperBacktestSuiteReport({ cwd, env: {} }, { dir });
+      expect(r.text).toMatch(/^Refusing: no \*\.scenario\.json files/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("runs a valid directory deterministically, in filename order", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeScenarioDir(cwd, "scenarios", {
+        "b.scenario.json": buyScenarioNamed("second"),
+        "a.scenario.json": buyScenarioNamed("first"),
+      });
+      const r = paperBacktestSuiteReport({ cwd, env: {} }, { dir, json: true });
+      expect(r.exitCode).toBe(0);
+      const index = JSON.parse(r.text) as {
+        schemaVersion: string;
+        summary: { scenarioCount: number; passedCount: number };
+        entries: { id: string }[];
+      };
+      expect(index.schemaVersion).toBe("backtest.suite.v1");
+      expect(index.summary.scenarioCount).toBe(2);
+      expect(index.summary.passedCount).toBe(2);
+      expect(index.entries.map((e) => e.id)).toEqual(["a", "b"]); // sorted by filename
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("human output carries the required PAPER-ONLY labels", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeScenarioDir(cwd, "scenarios", { "a.scenario.json": buyScenario() });
+      const r = paperBacktestSuiteReport({ cwd, env: {} }, { dir });
+      expect(r.text).toContain("SIMULATED PAPER-ONLY SUITE");
+      expect(r.text).toContain("Not a profitability claim");
+      expect(r.exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--out-dir writes one report per passed scenario + suite-index.json, and NO journals", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeScenarioDir(cwd, "scenarios", {
+        "a.scenario.json": buyScenarioNamed("a"),
+        "b.scenario.json": buyScenarioNamed("b"),
+      });
+      const r = paperBacktestSuiteReport({ cwd, env: {} }, { dir, outDir: "out" });
+      expect(r.exitCode).toBe(0);
+      const written = readdirSync(join(cwd, "out")).sort();
+      expect(written).toEqual(["a.report.json", "b.report.json", "suite-index.json"]);
+      // Never any journal/fills.
+      expect(written.some((f) => f.endsWith(".jsonl"))).toBe(false);
+      // Each report is a real backtest report.
+      const rep = JSON.parse(readFileSync(join(cwd, "out", "a.report.json"), "utf8")) as { schemaVersion: string };
+      expect(rep.schemaVersion).toBe("backtest.report.v1");
+      const idx = JSON.parse(readFileSync(join(cwd, "out", "suite-index.json"), "utf8")) as { schemaVersion: string };
+      expect(idx.schemaVersion).toBe("backtest.suite.v1");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses to overwrite existing output files unless --force", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeScenarioDir(cwd, "scenarios", { "a.scenario.json": buyScenario() });
+      const first = paperBacktestSuiteReport({ cwd, env: {} }, { dir, outDir: "out" });
+      expect(first.exitCode).toBe(0);
+      const blocked = paperBacktestSuiteReport({ cwd, env: {} }, { dir, outDir: "out" });
+      expect(blocked.text).toMatch(/already exist \(pass --force/);
+      expect(blocked.exitCode).toBe(1);
+      const forced = paperBacktestSuiteReport({ cwd, env: {} }, { dir, outDir: "out", force: true });
+      expect(forced.exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("an invalid scenario becomes a failed entry without crashing the suite", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeScenarioDir(cwd, "scenarios", {
+        "good.scenario.json": buyScenario(),
+        "bad.scenario.json": { name: "x", strategyConfig: STRATEGY_CONFIG, caps: {}, steps: [] },
+      });
+      const r = paperBacktestSuiteReport({ cwd, env: {} }, { dir, json: true });
+      const index = JSON.parse(r.text) as { summary: { passedCount: number; failedCount: number } };
+      expect(index.summary.passedCount).toBe(1);
+      expect(index.summary.failedCount).toBe(1);
+      // Without --fail-on-error, a failed entry still exits 0 (clearly reported).
+      expect(r.exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-error exits non-zero when any scenario failed", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeScenarioDir(cwd, "scenarios", {
+        "good.scenario.json": buyScenario(),
+        "bad.scenario.json": { name: "x", strategyConfig: STRATEGY_CONFIG, caps: {}, steps: [] },
+      });
+      const r = paperBacktestSuiteReport({ cwd, env: {} }, { dir, failOnError: true });
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses two scenarios whose sanitized stems collide", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeScenarioDir(cwd, "scenarios", {
+        "a b.scenario.json": buyScenario(),
+        "a_b.scenario.json": buyScenario(),
+      });
+      const r = paperBacktestSuiteReport({ cwd, env: {} }, { dir });
+      expect(r.text).toMatch(/map to the same output name/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("accepts a BOM-prefixed scenario file", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeScenarioDir(cwd, "scenarios", {
+        "a.scenario.json": withBom(JSON.stringify(buyScenario())),
+      });
+      const r = paperBacktestSuiteReport({ cwd, env: {} }, { dir, json: true });
+      const index = JSON.parse(r.text) as { summary: { passedCount: number } };
+      expect(index.summary.passedCount).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses (the whole suite) when a scenario file is malformed JSON", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeScenarioDir(cwd, "scenarios", {
+        "a.scenario.json": buyScenario(),
+        "broken.scenario.json": "{ not json",
+      });
+      const r = paperBacktestSuiteReport({ cwd, env: {} }, { dir });
+      expect(r.text).toMatch(/^Refusing: scenario file broken\.scenario\.json is not valid JSON/);
+      expect(r.exitCode).toBe(1);
+      // Nothing was written.
+      expect(existsSync(join(cwd, "out"))).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("redacts secret-looking content in the output (backstop)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const secret = "S".repeat(90); // an 80+ char base58-looking run ⇒ redacted
+      const dir = writeScenarioDir(cwd, "scenarios", {
+        "a.scenario.json": buyScenarioNamed(secret),
+      });
+      const r = paperBacktestSuiteReport({ cwd, env: {} }, { dir });
+      expect(r.text).not.toContain(secret);
+      expect(r.text).toContain("[REDACTED]");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 11 — paper:backtest:diff:suite (compare two suite output directories)
+// ---------------------------------------------------------------------------
+
+describe("paperBacktestDiffSuiteReport (Sprint 11)", () => {
+  /** Generate a suite output directory from a set of scenario files. */
+  function makeSuiteDir(cwd: string, sub: string, files: Record<string, unknown>): string {
+    const scenarios = writeScenarioDir(cwd, `${sub}-src`, files);
+    const r = paperBacktestSuiteReport({ cwd, env: {} }, { dir: scenarios, outDir: sub });
+    expect(r.exitCode).toBe(0);
+    return sub;
+  }
+
+  it("refuses when --base-dir or --next-dir is missing", () => {
+    expect(paperBacktestDiffSuiteReport({}, {}).text).toMatch(/^Refusing: --base-dir/);
+    expect(paperBacktestDiffSuiteReport({}, { baseDir: "a" }).text).toMatch(/^Refusing: --next-dir/);
+    expect(paperBacktestDiffSuiteReport({}, { baseDir: "a" }).exitCode).toBe(1);
+  });
+
+  it("refuses a directory with no suite-index.json", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = makeSuiteDir(cwd, "base", { "a.scenario.json": buyScenario() });
+      writeScenarioDir(cwd, "empty", {}); // exists but no suite-index.json
+      const r = paperBacktestDiffSuiteReport({ cwd, env: {} }, { baseDir: base, nextDir: "empty" });
+      expect(r.text).toMatch(/^Refusing: no suite-index\.json found in next/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("diffs two identical suite dirs to no regression (exit 0)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const files = { "a.scenario.json": buyScenarioNamed("a"), "b.scenario.json": buyScenarioNamed("b") };
+      // Same source ⇒ identical entries/digests in both suite indexes.
+      const src = writeScenarioDir(cwd, "src", files);
+      paperBacktestSuiteReport({ cwd, env: {} }, { dir: src, outDir: "base" });
+      paperBacktestSuiteReport({ cwd, env: {} }, { dir: src, outDir: "next" });
+      const r = paperBacktestDiffSuiteReport({ cwd, env: {} }, { baseDir: "base", nextDir: "next" });
+      expect(r.text).toContain("Regression: no");
+      expect(r.text).toContain("Not a profitability claim");
+      expect(r.exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("detects an added scenario between two suites", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = makeSuiteDir(cwd, "base", { "a.scenario.json": buyScenarioNamed("a") });
+      const next = makeSuiteDir(cwd, "next", {
+        "a.scenario.json": buyScenarioNamed("a"),
+        "b.scenario.json": buyScenarioNamed("b"),
+      });
+      const r = paperBacktestDiffSuiteReport({ cwd, env: {} }, { baseDir: base, nextDir: next, json: true });
+      const diff = JSON.parse(r.text) as { added: { id: string }[]; schemaVersion: string };
+      expect(diff.schemaVersion).toBe("backtest.suite.diff.v1");
+      expect(diff.added.map((a) => a.id)).toEqual(["b"]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-regression exits 1 on a dropped passed scenario; JSON stays parseable", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = makeSuiteDir(cwd, "base", {
+        "a.scenario.json": buyScenarioNamed("a"),
+        "b.scenario.json": buyScenarioNamed("b"),
+      });
+      const next = makeSuiteDir(cwd, "next", { "a.scenario.json": buyScenarioNamed("a") });
+
+      const guarded = paperBacktestDiffSuiteReport(
+        { cwd, env: {} },
+        { baseDir: base, nextDir: next, failOnRegression: true },
+      );
+      expect(guarded.text).toContain("Regression: YES");
+      expect(guarded.exitCode).toBe(1);
+
+      // JSON parseable even on a regression, and without the flag exit stays 0.
+      const asJson = paperBacktestDiffSuiteReport(
+        { cwd, env: {} },
+        { baseDir: base, nextDir: next, json: true },
+      );
+      const diff = JSON.parse(asJson.text) as { hasRegression: boolean };
+      expect(diff.hasRegression).toBe(true);
+      expect(asJson.exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed suite-index.json", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = makeSuiteDir(cwd, "base", { "a.scenario.json": buyScenario() });
+      const next = writeScenarioDir(cwd, "next", { });
+      writeFileSync(join(cwd, "next", "suite-index.json"), "{ not json");
+      const r = paperBacktestDiffSuiteReport({ cwd, env: {} }, { baseDir: base, nextDir: next });
+      expect(r.text).toMatch(/^Refusing: suite-index\.json in next .* is not valid JSON/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a JSON file that is not a suite index", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = makeSuiteDir(cwd, "base", { "a.scenario.json": buyScenario() });
+      writeScenarioDir(cwd, "next", {});
+      writeFileSync(join(cwd, "next", "suite-index.json"), JSON.stringify({ not: "an index" }));
+      const r = paperBacktestDiffSuiteReport({ cwd, env: {} }, { baseDir: base, nextDir: "next" });
+      expect(r.text).toMatch(/^Refusing: invalid backtest suite index/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("accepts a BOM-prefixed suite-index.json", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = makeSuiteDir(cwd, "base", { "a.scenario.json": buyScenario() });
+      const next = makeSuiteDir(cwd, "next", { "a.scenario.json": buyScenario() });
+      // Re-save the next index with a leading BOM; the diff must still parse it.
+      const idxPath = join(cwd, "next", "suite-index.json");
+      writeFileSync(idxPath, withBom(readFileSync(idxPath, "utf8")));
+      const r = paperBacktestDiffSuiteReport({ cwd, env: {} }, { baseDir: base, nextDir: next });
+      expect(r.text).not.toMatch(/^Refusing/);
+      expect(r.text).toContain("Backtest suite diff");
     } finally {
       cleanup();
     }

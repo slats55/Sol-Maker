@@ -19,6 +19,8 @@ import {
   paperBacktestDiffReport,
   paperBacktestScenarioNewReport,
   paperBacktestScenarioMatrixReport,
+  paperBacktestSuiteReport,
+  paperBacktestDiffSuiteReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -418,5 +420,57 @@ program
       ),
     );
   });
+
+program
+  .command("paper:backtest:suite")
+  .description(
+    "Run a directory of injected *.scenario.json files as one deterministic suite and aggregate a stable index (PAPER ONLY; simulated bookkeeping, not a live result, not advice, not a profitability claim)",
+  )
+  .option("--dir <path>", "directory of local *.scenario.json files to run")
+  .option("--out-dir <path>", "write one report per passed scenario + suite-index.json here")
+  .option("--force", "overwrite existing output files")
+  .option("--json", "emit the suite index as stable JSON")
+  .option("--fail-on-error", "exit non-zero when any scenario in the suite failed")
+  .action(
+    (opts: { dir?: string; outDir?: string; force?: boolean; json?: boolean; failOnError?: boolean }) => {
+      const { text, exitCode } = paperBacktestSuiteReport(
+        {},
+        {
+          dir: opts.dir,
+          outDir: opts.outDir,
+          force: Boolean(opts.force),
+          json: Boolean(opts.json),
+          failOnError: Boolean(opts.failOnError),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:backtest:diff:suite")
+  .description(
+    "Deterministically diff TWO suite output directories by their suite-index.json (PAPER ONLY; deltas are simulated bookkeeping, a changed scenario is not a regression, not a live result, not advice)",
+  )
+  .option("--base-dir <path>", "BASE suite output directory (contains suite-index.json)")
+  .option("--next-dir <path>", "NEXT suite output directory (contains suite-index.json)")
+  .option("--json", "emit the suite diff as stable JSON")
+  .option("--fail-on-regression", "exit non-zero when the diff reports a regression")
+  .action(
+    (opts: { baseDir?: string; nextDir?: string; json?: boolean; failOnRegression?: boolean }) => {
+      const { text, exitCode } = paperBacktestDiffSuiteReport(
+        {},
+        {
+          baseDir: opts.baseDir,
+          nextDir: opts.nextDir,
+          json: Boolean(opts.json),
+          failOnRegression: Boolean(opts.failOnRegression),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
 
 program.parseAsync(process.argv);

@@ -1,4 +1,4 @@
-# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers)
+# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing)
 
 The paper engine (`@soulmaker/paper` + the `paper:*` CLI commands) is a
 **deterministic, offline, simulated-only** trading sandbox. It exists to prove
@@ -269,6 +269,49 @@ nothing touches a wallet, key, or transaction.
   `initialJournal` (so the injected labelling can never be edited into something
   misleading), and never code or expressions.
 
+## Backtest suites & suite diffing (Sprint 11)
+
+Sprint 11 adds an orchestration layer so a whole **directory** of injected scenarios
+can be run together and compared over time. Everything stays **injected-only and
+simulated**; nothing fetches live data and nothing touches a wallet, key, or
+transaction. A "suite" is just a directory of `*.scenario.json` files — suite output
+is simulated **bookkeeping only**, **not** a live result, **not** financial advice,
+and **not** a profitability claim.
+
+- **Suite runs.** `@soulmaker/backtest` exports `runBacktestSuite(input)`,
+  `buildBacktestSuiteIndex(result)`, and `formatBacktestSuiteIndex`; the CLI adds
+  `paper:backtest:suite --dir <scenarios/> [--out-dir <reports/>] [--json]
+  [--fail-on-error] [--force]`. The CLI reads the directory's `*.scenario.json` files
+  (sorted by filename, BOM-tolerant; a malformed file refuses the **whole** suite),
+  and the **pure** package runs each through the same `lintBacktestScenario →
+  runBacktest → validateBacktestReport` paths a single backtest uses. A lint error
+  **fails and skips** a scenario (it is not run); a warning still runs but is
+  surfaced; a runtime error fails just that one entry without crashing the suite. The
+  byte-stable `suite-index.json` (`backtest.suite.v1`) carries passed/failed/warning
+  counts, total steps/candidates, summed simulated fills, and summed realized /
+  unrealized / total simulated PnL, plus a per-entry summary. With `--out-dir` the CLI
+  writes one report JSON per **passed** scenario plus `suite-index.json` (never a
+  journal or fills; it preflights every target so it never writes partial output and
+  refuses to overwrite without `--force`). `--fail-on-error` exits non-zero if any
+  scenario failed; without it the command exits 0 while still clearly reporting
+  failures.
+
+- **Suite diffing.** `@soulmaker/backtest` exports `validateBacktestSuiteIndex`,
+  `diffBacktestSuites(base, next)`, and `formatBacktestSuiteDiff`; the CLI adds
+  `paper:backtest:diff:suite --base-dir <a/> --next-dir <b/> [--json]
+  [--fail-on-regression]`. It reads **only** each directory's `suite-index.json`
+  (BOM-tolerant; missing/malformed refused), runs **no** backtests, reads no
+  scenarios, and writes nothing. It pairs entries by scenario **digest**, then
+  **name**, then **file**, and reports added / removed / **changed** scenarios,
+  aggregate summary deltas, a warning-count delta, per-entry summary deltas, and a
+  **conservative** `hasRegression` flag. A SAME-digest result drift is a regression
+  (a deterministic replay of one scenario should be byte-identical); a newly-failing
+  scenario or an increased failed count is a regression; a dropped passed scenario is
+  lost coverage. A *changed* scenario (same name/file, different content) is a
+  bookkeeping difference, **not** a regression by default — different scenarios are
+  expected to differ. `--fail-on-regression` exits non-zero only when `hasRegression`
+  is true; without it the command exits 0 even when regressions are reported.
+
 ## PnL reporting
 
 `PaperRunSummary`: realized PnL, unrealized PnL, total PnL, open position count,
@@ -289,6 +332,8 @@ simulated, or sent" disclaimer.
 | `paper:backtest:diff` | deterministically diff **two existing** report JSON files (Sprint 10): compatibility + deltas + conservative `hasRegression`; deltas are bookkeeping, not advice |
 | `paper:backtest:scenario:new` | write a deterministic INJECTED scenario skeleton from a built-in template (Sprint 10); refuses overwrite without `--force` |
 | `paper:backtest:scenario:matrix` | expand a base scenario by a safe, config-only patch matrix into one INJECTED file per variant (Sprint 10) |
+| `paper:backtest:suite` | run a **directory** of `*.scenario.json` files as one deterministic suite and aggregate a byte-stable `suite-index.json` (Sprint 11); `--out-dir` also writes one report per passed scenario; `--fail-on-error` exits non-zero on any failure |
+| `paper:backtest:diff:suite` | diff **two** suite output directories by their `suite-index.json` (Sprint 11): added/removed/changed scenarios + aggregate deltas + conservative `hasRegression`; a changed scenario is not a regression |
 
 `paper:run` options: `--candidates <path>` `--prices <path>` `--journal <path>`
 `--max-trade-size-usd` `--max-daily-loss-usd` `--max-open-positions`

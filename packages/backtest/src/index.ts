@@ -61,6 +61,32 @@ export {
 
 export { expandScenarioMatrix, ScenarioMatrixError } from "./matrix.js";
 
+export {
+  runBacktestSuite,
+  buildBacktestSuiteIndex,
+  validateBacktestSuiteInput,
+  BacktestSuiteInputError,
+  BACKTEST_SUITE_SCHEMA_VERSION,
+  BACKTEST_SUITE_BANNER,
+  BACKTEST_SUITE_DISCLAIMERS,
+} from "./suite.js";
+
+export { formatBacktestSuiteIndex } from "./suite-report.js";
+
+export {
+  validateBacktestSuiteIndex,
+  collectSuiteIndexIssues,
+  isBacktestSuiteIndex,
+  BacktestSuiteIndexError,
+} from "./suite-validate.js";
+
+export {
+  diffBacktestSuites,
+  formatBacktestSuiteDiff,
+  BACKTEST_SUITE_DIFF_SCHEMA_VERSION,
+  BACKTEST_SUITE_DIFF_DISCLAIMERS,
+} from "./suite-diff.js";
+
 export type {
   BacktestScenario,
   BacktestStep,
@@ -101,3 +127,34 @@ export type {
   ExpandedScenarioVariant,
   ScenarioMatrixResult,
 } from "./matrix.js";
+
+export type {
+  BacktestSuiteScenario,
+  BacktestSuiteInput,
+  BacktestSuiteResult,
+  BacktestSuiteRunEntry,
+  BacktestSuiteIndex,
+  BacktestSuiteEntry,
+  BacktestSuiteSummary,
+  BacktestSuiteEntrySummary,
+  BacktestSuiteError,
+  BacktestSuiteWarning,
+  BacktestSuiteLintStatus,
+  BacktestSuiteRunStatus,
+  BacktestSuiteEntryStatus,
+} from "./suite.js";
+
+export type { FormatBacktestSuiteIndexOptions } from "./suite-report.js";
+
+export type {
+  BacktestSuiteDiff,
+  BacktestSuiteDiffCompatibility,
+  BacktestSuiteDiffCompatibilityStatus,
+  BacktestSuitePairingMode,
+  BacktestSuiteSummaryDiff,
+  BacktestSuiteEntrySummaryDiff,
+  BacktestSuiteEntryRef,
+  BacktestSuiteEntryChange,
+  BacktestSuiteWarningsDiff,
+  FormatBacktestSuiteDiffOptions,
+} from "./suite-diff.js";

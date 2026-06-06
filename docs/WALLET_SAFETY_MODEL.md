@@ -183,6 +183,19 @@ The Phase 5 strategy engine (`@soulmaker/strategy` + the `strategy:evaluate` and
   test covers the new modules). None of this begins transaction
   planning/simulation (Phase 6) or live sending (Phase 7), which remain **not
   started**.
+- **Sprint 11 — backtest suites + suite diffing** stays inside the same model. The
+  pure `@soulmaker/backtest` suite layer (`runBacktestSuite`/`buildBacktestSuiteIndex`/
+  `diffBacktestSuites`) **never scans a directory or reads/writes a file** — the CLI
+  (`paper:backtest:suite`, `paper:backtest:diff:suite`) owns all I/O and only reads
+  injected local `*.scenario.json` files / `suite-index.json` files. A suite run
+  writes **only** redacted report JSON + `suite-index.json` under an explicit
+  `--out-dir` (never a journal, fills, key, seed, or wallet; preflighted so it never
+  writes partial output and refuses to overwrite without `--force`); a suite diff
+  writes **nothing**. Every suite total/delta is simulated bookkeeping over injected
+  prices — not a live result, advice, or a profitability claim. The forbidden-import
+  regression test covers the new `suite*.ts` modules, and none of this begins
+  transaction planning/simulation (Phase 6) or live sending (Phase 7), which remain
+  **not started**.
 - The report is **paper-only** and explicitly **not** financial advice, a buy
   recommendation, or live-trading authorization; it makes no profitability claim.
   A `PAPER_BUY_CANDIDATE` means a candidate for *simulated* paper evaluation.
