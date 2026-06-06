@@ -2064,3 +2064,87 @@ describe("paperBacktestReport (Sprint 8)", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Windows papercut — a leading UTF-8 BOM must not reject an otherwise-valid file
+// ---------------------------------------------------------------------------
+
+describe("BOM-prefixed UTF-8 files (Windows papercut)", () => {
+  // Editors and PowerShell 5.1's `Set-Content -Encoding utf8` prepend U+FEFF.
+  // The JSON readers call JSON.parse directly, where a leading BOM throws; the
+  // fix strips it after read, so a valid file is accepted regardless of BOM.
+  const BOM = String.fromCharCode(0xfeff); // U+FEFF, the UTF-8 byte-order mark
+  const writeBom = (cwd: string, name: string, value: unknown): void =>
+    writeFileSync(join(cwd, name), BOM + JSON.stringify(value));
+
+  it("paper:run reads BOM-prefixed candidates + prices (readJsonArray)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { candidates, prices } = cleanFixtures();
+      writeBom(cwd, "candidates.json", candidates);
+      writeBom(cwd, "prices.json", prices);
+      const out = paperRunReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatesPath: "candidates.json",
+          pricesPath: "prices.json",
+          maxTradeSizeUsd: 1000,
+        },
+      );
+      expect(out).not.toMatch(/^Refusing/);
+      expect(out).toContain("Paper run");
+      expect(out).toContain("buys / sells:     1 / 0"); // the data actually parsed
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("strategy:evaluate reads a BOM-prefixed candidate + config (readJsonValue)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBom(cwd, "candidate.json", strategyCandidate(MINT_A));
+      writeBom(cwd, "config.json", STRATEGY_CONFIG);
+      const out = strategyEvaluateReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        { candidatePath: "candidate.json", strategyConfigPath: "config.json" },
+      );
+      expect(out).not.toMatch(/^Refusing/);
+      expect(out).toContain("decision:    PAPER_BUY_CANDIDATE");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("strategy:plan reads a BOM-prefixed candidates array + config", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBom(cwd, "candidates.json", [strategyCandidate(MINT_A)]);
+      writeBom(cwd, "config.json", STRATEGY_CONFIG);
+      const out = strategyPlanReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        { candidatesPath: "candidates.json", strategyConfigPath: "config.json" },
+      );
+      expect(out).not.toMatch(/^Refusing/);
+      expect(out).toContain("Strategy plan");
+      expect(out).toContain("PAPER ONLY");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("paper:backtest reads a BOM-prefixed scenario (readJsonValue)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBom(cwd, "scenario.json", buyScenario());
+      const out = paperBacktestReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        { scenarioPath: "scenario.json" },
+      );
+      expect(out).not.toMatch(/^Refusing/);
+      expect(out).toContain("SIMULATED PAPER-ONLY REPORT");
+      expect(out).toContain("simulated fills:   1 buy / 0 sell"); // the data parsed
+    } finally {
+      cleanup();
+    }
+  });
+});

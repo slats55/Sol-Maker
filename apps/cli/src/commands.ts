@@ -97,6 +97,18 @@ function toLoadOptions(ctx: CommandContext): LoadConfigOptions {
 
 const isoNow = (): string => new Date().toISOString();
 
+/**
+ * Strip a single leading UTF-8 BOM (U+FEFF) from decoded file text. Windows
+ * editors and PowerShell 5.1's `Set-Content -Encoding utf8` prepend a BOM, which
+ * would otherwise make `JSON.parse` reject an otherwise-valid scenario/candidate/
+ * config file and make the line-by-line journal reader mis-key its first event.
+ * Applied consistently in every file reader below — a decoding-robustness fix
+ * only; it reads no wallet, key, or network and moves no funds.
+ */
+function stripBom(text: string): string {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
 // ---------------------------------------------------------------------------
 // Phase 0–1 commands (unchanged behavior)
 // ---------------------------------------------------------------------------
@@ -197,7 +209,7 @@ export function paperStatusReport(
   const resolved = resolvePath(ctx, opts.journalPath);
   let text: string;
   try {
-    text = readFileSync(resolved, "utf8");
+    text = stripBom(readFileSync(resolved, "utf8"));
   } catch {
     // A missing journal is a clean empty state, not an error.
     return renderEmptyPaperStatus(opts.json);
@@ -444,7 +456,7 @@ function readListFile(
   const resolved = isAbsolute(path) ? path : join(base, path);
   let content: string;
   try {
-    content = readFileSync(resolved, "utf8");
+    content = stripBom(readFileSync(resolved, "utf8"));
   } catch {
     throw new Error(`cannot read ${label} list file at ${resolved}`);
   }
@@ -559,7 +571,7 @@ function readJsonArray(
   const resolved = resolvePath(ctx, path);
   let text: string;
   try {
-    text = readFileSync(resolved, "utf8");
+    text = stripBom(readFileSync(resolved, "utf8"));
   } catch {
     throw new Error(`cannot read ${label} file at ${resolved}`);
   }
@@ -644,7 +656,7 @@ function buildPaperCaps(
  */
 function readJournalTextIfExists(resolved: string): string | null {
   try {
-    return readFileSync(resolved, "utf8");
+    return stripBom(readFileSync(resolved, "utf8"));
   } catch (err) {
     if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return null;
     throw new Error(`cannot read journal file at ${resolved}`);
@@ -783,7 +795,7 @@ export function paperJournalReport(
   const resolved = resolvePath(ctx, opts.journalPath);
   let text: string;
   try {
-    text = readFileSync(resolved, "utf8");
+    text = stripBom(readFileSync(resolved, "utf8"));
   } catch {
     return redactString(`Refusing: cannot read journal file at ${resolved}`);
   }
@@ -858,7 +870,7 @@ function readJsonValue(ctx: CommandContext, path: string, label: string): unknow
   const resolved = resolvePath(ctx, path);
   let text: string;
   try {
-    text = readFileSync(resolved, "utf8");
+    text = stripBom(readFileSync(resolved, "utf8"));
   } catch {
     throw new Error(`cannot read ${label} file at ${resolved}`);
   }
@@ -1044,7 +1056,7 @@ function paperStateFromJournalFile(ctx: CommandContext, path: string): PaperStat
   const resolved = resolvePath(ctx, path);
   let text: string;
   try {
-    text = readFileSync(resolved, "utf8");
+    text = stripBom(readFileSync(resolved, "utf8"));
   } catch {
     throw new Error(`cannot read journal file at ${resolved}`);
   }
