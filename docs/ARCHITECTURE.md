@@ -28,7 +28,7 @@ packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.j
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
-packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation + variant-sensitivity workflow (Sprint 8–13)  [strategy, paper, security]
+packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage (Sprint 8–14)  [strategy, paper, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -114,6 +114,27 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   CLI (`paper:backtest:sensitivity`) owns all file I/O and preflights every output
   path before writing any. A delta is the change between two simulated runs — not a
   prediction, not advice, not a profitability claim.
+- **(Sprint 14)** `@soulmaker/backtest` adds the **paper research lab** — five pure
+  slices on top of Sprints 11–13, each a deterministic, byte-stable, non-mutating
+  report layer that re-implements no engine logic:
+  - the `backtest.sensitivity.v1` report gains a deterministic `rankings` block
+    (built inside `sensitivity.ts`) ordering diffable variants by the magnitude of each
+    real per-field delta — largest movement, never a "best"/"winner" ordering;
+  - `explainScenarioVariantPlan` (in `scenario-variants.ts`; schema
+    `backtest.variant-plan.explain.v1`) DRY-RUNS a plan, reusing the SAME private
+    normalize/apply helpers as `generateScenarioVariants` so validation never diverges;
+  - `sensitivity-diff.ts` (`diffScenarioVariantSensitivityReports`; schema
+    `backtest.sensitivity.diff.v1`) diffs two sensitivity reports paired by suffix —
+    the sensitivity analogue of `suite-diff.ts`, with a conservative same-digest-drift
+    regression rule and `schemaVersion`-lenient validation;
+  - `generateScenarioVariants` gains a `"config.<field>"` target over a CLOSED
+    allowlist of unambiguous numeric config fields (no path traversal, no mint filter);
+  - `coverage.ts` (`summarizeBacktestSuiteCoverage`; schema `backtest.coverage.v1`)
+    summarizes which simulated paper paths a suite index exercised — behavioural
+    bookkeeping coverage, explicitly **not** market or test coverage.
+  The CLI adds `paper:backtest:scenario:variants:explain`,
+  `paper:backtest:diff:sensitivity`, and `paper:backtest:suite:coverage`; all read only
+  local JSON, write nothing, and run no backtest.
 
 ## The live boundary
 
@@ -384,18 +405,33 @@ injected `at`, so a given scenario yields **byte-stable** output.
   (`backtest.suite.diff.v1`: pair by digest → name → file, aggregate deltas, a
   conservative `hasRegression`). All still pure — the package never scans a directory
   or reads/writes a file.
-- `scenario-variants.ts` (Sprint 12) — the pure variant generator
-  `generateScenarioVariants(base, plan)`: bounded numeric perturbations
-  (`multiply`/`add`, clamped) over the allowlisted `price` / `metric.<field>` targets,
-  one validated variant per `suffix`. No RNG, no clock, no I/O; protects
-  `name`/`steps`/`initialJournal`/config; refuses an empty match.
-- `sensitivity.ts` (Sprint 13) — the pure **variant-sensitivity** workflow
-  `runScenarioVariantSensitivity({ base, plan })` (+ `build…Report`/`validate…Report`/
-  `format…Report`; schema `backtest.sensitivity.v1`). It composes the two layers
-  above: generate variants, run the base once as a baseline + every variant through
-  `runBacktestSuite`, and report each variant's per-field delta vs the baseline. No
-  RNG, no clock, no timestamps, no I/O, no input mutation → byte-stable report. No
-  backtest/suite/variant logic is re-implemented here.
+- `scenario-variants.ts` (Sprint 12; **config targets Sprint 14**) — the pure variant
+  generator `generateScenarioVariants(base, plan)`: bounded numeric perturbations
+  (`multiply`/`add`, clamped) over the allowlisted `price` / `metric.<field>` /
+  `config.<field>` targets, one validated variant per `suffix`. No RNG, no clock, no
+  I/O; protects `name`/`steps`/`initialJournal`/non-allowlisted config; refuses an
+  empty match and an arbitrary dotted path. **(Sprint 14)** also hosts
+  `explainScenarioVariantPlan` (+ `validate…`/`format…`; schema
+  `backtest.variant-plan.explain.v1`), a DRY-RUN inspector reusing the same private
+  normalize/apply helpers.
+- `sensitivity.ts` (Sprint 13; **rankings Sprint 14**) — the pure **variant-sensitivity**
+  workflow `runScenarioVariantSensitivity({ base, plan })` (+ `build…Report`/
+  `validate…Report`/`format…Report`; schema `backtest.sensitivity.v1`). It composes the
+  two layers above: generate variants, run the base once as a baseline + every variant
+  through `runBacktestSuite`, and report each variant's per-field delta vs the baseline
+  plus a deterministic `rankings` block. No RNG, no clock, no timestamps, no I/O, no
+  input mutation → byte-stable report. No backtest/suite/variant logic is re-implemented.
+- `sensitivity-diff.ts` (Sprint 14) — the pure sensitivity-report diff
+  `diffScenarioVariantSensitivityReports(base, next)` (+ `validate…`/`format…`; schema
+  `backtest.sensitivity.diff.v1`): pair variants by suffix, report added/removed/changed
+  + baseline/count deltas + ranking movement, with a conservative `hasRegression`
+  (same-digest drift only) and `schemaVersion`-lenient validation. The sensitivity
+  analogue of `suite-diff.ts`.
+- `coverage.ts` (Sprint 14) — the pure suite-coverage summary
+  `summarizeBacktestSuiteCoverage(index)` (+ `validate…`/`format…`; schema
+  `backtest.coverage.v1`): per-behaviour scenario counts, any-behaviour flags, scenario
+  lists, and a path-behaviour coverage ratio over existing index fields. Behavioural
+  bookkeeping coverage only — not market/test coverage.
 
 **Data flow:**
 

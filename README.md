@@ -76,9 +76,19 @@ baseline** (fills, simulated PnL, notional, positions). With `--out-dir` it writ
 the variants, one report per scenario, the suite index, and `sensitivity-report.json`
 (preflighted so it never writes partial output; refuses to overwrite without
 `--force`). A delta is the change between two simulated runs — not a prediction, not
-advice, not a profitability claim. None of this fetches live
-data or begins transaction planning (roadmap Phase 6 remains not started; Phase 7
-burner live remains not started). The default mode is `PAPER`. See
+advice, not a profitability claim. Sprint 14 rounds out the **paper research lab** on
+top of these layers: the sensitivity report now carries deterministic **rankings** of
+the diffable variants by the size of each bookkeeping delta (largest movement, never a
+"best"/"winner"); `paper:backtest:scenario:variants:explain` is a **dry-run** that
+explains a variant plan (each perturbation's target/op/value/bounds/mint and how many
+injected values it would change) without generating or running anything;
+`paper:backtest:diff:sensitivity` diffs two sensitivity reports with a conservative
+`hasRegression` flag; variant plans gained an allowlisted **`config.<field>`**
+perturbation target (e.g. `config.maxTradeSizeUsd`, no path traversal); and
+`paper:backtest:suite:coverage` reports which simulated paper-trading paths a suite
+exercised (behavioural bookkeeping coverage, **not** market or test coverage). None of
+this fetches live data or begins transaction planning (roadmap Phase 6 remains not
+started; Phase 7 burner live remains not started). The default mode is `PAPER`. See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Non-negotiable security rules (summary)
@@ -112,8 +122,10 @@ soulmaker/
                 #                    paper:backtest, paper:backtest:lint, paper:backtest:diff,
                 #                    paper:backtest:scenario:new, paper:backtest:scenario:matrix,
                 #                    paper:backtest:scenario:variants,
+                #                    paper:backtest:scenario:variants:explain,
                 #                    paper:backtest:suite, paper:backtest:diff:suite,
-                #                    paper:backtest:sensitivity)
+                #                    paper:backtest:suite:coverage,
+                #                    paper:backtest:sensitivity, paper:backtest:diff:sensitivity)
     web/        # Phase 8 dashboard (placeholder)
   packages/
     core/       # @soulmaker/core      — config schema, modes, risk caps, LIVE GATE
@@ -131,7 +143,9 @@ soulmaker/
                 #            Sprint 10 adds report diffing + scenario template/matrix builders;
                 #            Sprint 11 adds the pure suite runner/index + suite diffing;
                 #            Sprint 12 adds the deterministic scenario variant generator;
-                #            Sprint 13 adds the pure variant-sensitivity workflow + report
+                #            Sprint 13 adds the pure variant-sensitivity workflow + report;
+                #            Sprint 14 adds sensitivity rankings, variant-plan explain,
+                #            sensitivity diff, config.<field> perturbations, and suite coverage
                 #            (still pure: the package never scans dirs or reads/writes files)
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
@@ -265,6 +279,21 @@ pnpm soulmaker paper:backtest:sensitivity \
 pnpm soulmaker paper:backtest:sensitivity \
   --base examples/backtest/single-mint-buy-hold.scenario.json \
   --plan examples/backtest/price-sensitivity.variant-plan.json --out-dir <sensitivity/> --json
+
+# Sprint 14 — the paper research lab on top of the layers above.
+# (a) DRY-RUN explain a variant plan (no files, no backtest): each perturbation's
+#     target/op/value/bounds/mint + how many injected values it would change. A
+#     config.<field> target (allowlisted, e.g. config.maxTradeSizeUsd) is supported:
+pnpm soulmaker paper:backtest:scenario:variants:explain \
+  --base examples/backtest/single-mint-buy-hold.scenario.json \
+  --plan examples/backtest/price-sensitivity.variant-plan.json
+# (b) DIFF two sensitivity reports (pairs variants by suffix; conservative regression;
+#     a same-digest drift is a regression, a changed-content variant is not):
+pnpm soulmaker paper:backtest:diff:sensitivity \
+  --base <runA/sensitivity-report.json> --next <runB/sensitivity-report.json> --fail-on-regression
+# (c) COVERAGE of a suite index — which simulated paper paths were exercised
+#     (behavioural bookkeeping coverage, NOT market/test coverage):
+pnpm soulmaker paper:backtest:suite:coverage --suite-index <reports/suite-index.json>
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

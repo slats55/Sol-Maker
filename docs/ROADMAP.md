@@ -113,7 +113,9 @@ Sprint 9 scenario linting, example fixtures, report stability + BOM-tolerant JSO
 Sprint 10 backtest report diffing + deterministic scenario-authoring helpers;
 Sprint 11 backtest suite runs + suite diffing over directories of injected scenarios;
 Sprint 12 deterministic scenario variant generation + suite-over-variants;
-Sprint 13 variant-sensitivity workflow + report over the base + its variants):
+Sprint 13 variant-sensitivity workflow + report over the base + its variants;
+Sprint 14 paper research lab — sensitivity rankings, variant-plan explain (dry-run),
+sensitivity-report diffing, allowlisted config-field perturbations, suite coverage):
 
 - ✅ Deterministic, **paper-only** rules engine: turns an advisory
   `@soulmaker/risk` report + injected, read-only metrics into a single decision —
@@ -291,6 +293,43 @@ Sprint 13 variant-sensitivity workflow + report over the base + its variants):
   (internal collisions + pre-existing files) before writing any (no partial output, no
   overwrite without `--force`). A delta is the change between two simulated runs — not
   a prediction, not advice, not a profitability claim.
+- ✅ **(Sprint 14) Paper research lab** — five focused, PAPER-only research slices on
+  top of Sprints 11–13, all **pure** (no fs/network/RPC/`Date.now`/`Math.random`),
+  byte-stable, and non-mutating:
+  - **Sensitivity rankings.** The `backtest.sensitivity.v1` report now carries a
+    deterministic `rankings` block ordering the diffable variants by the magnitude of
+    each simulated bookkeeping delta vs the baseline (`byTotalSimulatedPnlDelta`,
+    `by{Realized,Unrealized}SimulatedPnlDelta`, `byFillDelta`, `byRejectDelta`,
+    `byWarningDelta`, `byNotionalDelta`). Every dimension maps to a REAL existing delta;
+    ties resolve stably by suffix then digest; it is the *largest movement*, never a
+    "best"/"winner"/"most profitable" ordering.
+  - **Variant-plan explain (dry-run).** `explainScenarioVariantPlan` +
+    `validate`/`format` (schema `backtest.variant-plan.explain.v1`) and CLI
+    `paper:backtest:scenario:variants:explain --base <a> --plan <p> [--json]` explain
+    what generation WOULD do — each perturbation's target/op/value/bounds/mint and how
+    many injected values it would change — **without** generating files or running a
+    backtest. It reuses the SAME validation as generation; a matched-nothing
+    perturbation is reported (`valid:false`, exit 1) instead of thrown so the whole plan
+    is inspectable at once.
+  - **Sensitivity diff.** `diffScenarioVariantSensitivityReports` + `validate`/`format`
+    (schema `backtest.sensitivity.diff.v1`) and CLI `paper:backtest:diff:sensitivity
+    --base <a> --next <b> [--json] [--fail-on-regression]` diff two sensitivity reports
+    (paired by suffix) with a **conservative** `hasRegression` flag: a same-digest
+    variant should replay byte-identically so any drift is a regression, while a
+    changed-content variant is "changed", not a regression. Validation is lenient on
+    `schemaVersion` so a version mismatch is surfaced, not refused.
+  - **Config perturbations.** `generateScenarioVariants` gained a third target form,
+    `"config.<field>"`, over a CLOSED, unambiguous allowlist of numeric config fields
+    (`config.maxTradeSizeUsd`, `config.takeProfitPct`, …) — no arbitrary dotted paths,
+    no `maxOpenPositions` (ambiguous), no mint filter; an absent/non-numeric field
+    matches nothing and is refused, and the perturbed variant must still validate.
+  - **Suite coverage.** `summarizeBacktestSuiteCoverage` + `validate`/`format` (schema
+    `backtest.coverage.v1`) and CLI `paper:backtest:suite:coverage --suite-index <p>
+    [--json]` report which simulated paper paths a suite exercised (per-behaviour
+    counts, any-behaviour flags, scenario lists, and a transparently-derived
+    path-behaviour ratio) using ONLY existing index fields. Explicitly **behavioural
+    bookkeeping** coverage — **not** market coverage, **not** test/code coverage, **not**
+    a profitability claim.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

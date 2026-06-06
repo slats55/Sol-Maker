@@ -387,3 +387,43 @@ scenario that exercises them.
 > bookkeeping** coverage over **injected, simulated** data — which paper paths the
 > suite touched — not a measure of market conditions, code quality, or profitability.
 > The ratio is a plainly-defined fraction, not a score and not advice.
+
+## The full paper research workflow (Sprint 14)
+
+All of the above compose into one **PAPER-only, deterministic, injected-only** research
+loop. Nothing here is live, fetched, scraped, or advice; nothing touches a wallet, key,
+signing, sending, or the network; Phases 6 and 7 remain **not started**.
+
+```bash
+# 1) Choose a local INJECTED scenario (or generate one from a template).
+BASE=examples/backtest/single-mint-buy-hold.scenario.json
+PLAN=examples/backtest/price-sensitivity.variant-plan.json
+
+# 2) EXPLAIN the variant plan first (dry-run — writes nothing, runs nothing).
+pnpm soulmaker paper:backtest:scenario:variants:explain --base "$BASE" --plan "$PLAN"
+
+# 3) GENERATE the variant files (one validated INJECTED scenario per plan entry).
+pnpm soulmaker paper:backtest:scenario:variants --base "$BASE" --plan "$PLAN" --out-dir variants/
+
+# 4) Run a variant SENSITIVITY report (base-as-baseline + every variant; rankings + deltas).
+pnpm soulmaker paper:backtest:sensitivity --base "$BASE" --plan "$PLAN" --out-dir runA/
+
+# 5) Run a SUITE over a directory of scenarios (e.g. the generated variants).
+pnpm soulmaker paper:backtest:suite --dir variants/ --out-dir variant-reports/
+
+# 6) DIFF two suites (regression-review across directories).
+pnpm soulmaker paper:backtest:diff:suite --base-dir baseline-reports/ --next-dir variant-reports/
+
+# 7) DIFF two sensitivity reports (e.g. before/after an engine or config change).
+pnpm soulmaker paper:backtest:sensitivity --base "$BASE" --plan "$PLAN" --out-dir runB/
+pnpm soulmaker paper:backtest:diff:sensitivity \
+  --base runA/sensitivity-report.json --next runB/sensitivity-report.json --fail-on-regression
+
+# 8) Review COVERAGE — which simulated paper paths the suite actually exercised.
+pnpm soulmaker paper:backtest:suite:coverage --suite-index runA/reports/suite-index.json
+```
+
+Every artifact is **simulated bookkeeping over injected data** — not a live result, not
+a backtest of real history, not advice, and not a profitability claim. A delta is the
+change between two simulations; a ranking is the largest simulated movement, not a
+"winner"; coverage is behavioural, not market or test coverage.

@@ -1,4 +1,4 @@
-# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow)
+# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow; Sprint 14 paper research lab — rankings, variant-plan explain, sensitivity diff, config perturbations, suite coverage)
 
 The paper engine (`@soulmaker/paper` + the `paper:*` CLI commands) is a
 **deterministic, offline, simulated-only** trading sandbox. It exists to prove
@@ -391,6 +391,48 @@ collisions, case-insensitive, plus pre-existing files) before writing any, so it
 never writes partial output and never overwrites without `--force`. Without
 `--out-dir` it writes nothing and just prints the report (human or `--json`).
 
+## Paper research lab (Sprint 14)
+
+Sprint 14 adds five focused, PAPER-only research slices on top of the workflow above.
+All are deterministic, byte-stable, non-mutating, and run no backtest of their own
+beyond the existing layers.
+
+- **Sensitivity rankings.** The `backtest.sensitivity.v1` report now carries a
+  `rankings` block that orders the diffable (passed) variants by the **magnitude** of
+  each simulated bookkeeping delta vs the baseline — `byTotalSimulatedPnlDelta`,
+  `by{Realized,Unrealized}SimulatedPnlDelta`, `byFillDelta`, `byRejectDelta`,
+  `byWarningDelta`, `byNotionalDelta`. Each dimension maps to a REAL existing delta; the
+  order is by `magnitude` descending with stable suffix-then-digest tie-breaks (so it
+  never depends on plan order). It is the *largest simulated movement* in either
+  direction — **never** a "best"/"winner"/"most profitable" ranking.
+- **Variant-plan explain (dry-run).** `paper:backtest:scenario:variants:explain --base
+  <a> --plan <p> [--json]` (pure `explainScenarioVariantPlan`; schema
+  `backtest.variant-plan.explain.v1`) explains what generation WOULD do — each
+  perturbation's target/op/value/`[min,max]`/mint and how many injected values it would
+  change — **without** generating files or running a backtest. It validates with the
+  SAME rules as generation; a matched-nothing perturbation is *reported*
+  (`valid:false`, exit 1) instead of thrown so the whole plan is inspectable at once.
+- **Sensitivity diff.** `paper:backtest:diff:sensitivity --base <a> --next <b> [--json]
+  [--fail-on-regression]` (pure `diffScenarioVariantSensitivityReports`; schema
+  `backtest.sensitivity.diff.v1`) diffs two sensitivity reports paired by `suffix`,
+  reporting added/removed/changed variants, baseline + count deltas, and ranking
+  movement. Regressions are **conservative**: a same-digest variant should replay
+  byte-identically so any drift is flagged, while a changed-content variant is
+  "changed", not a regression.
+- **Config perturbations.** Variant plans may now target `"config.<field>"` over a
+  CLOSED, unambiguous allowlist of numeric config fields (`config.maxTradeSizeUsd`,
+  `config.maxDailyLossUsd`, `config.maxPositionSizeUsd`, `config.minScoreForPaperBuy`,
+  `config.maxRiskScore`, `config.takeProfitPct`, `config.stopLossPct`,
+  `config.trailingStopPct`, `config.defaultPaperSizeUsd`). No arbitrary dotted path, no
+  mint filter, and `maxOpenPositions` is excluded (ambiguous across `caps`/
+  `strategyConfig`). An absent/non-numeric field matches nothing (refused); the
+  perturbed variant must still validate.
+- **Suite coverage.** `paper:backtest:suite:coverage --suite-index <p> [--json]` (pure
+  `summarizeBacktestSuiteCoverage`; schema `backtest.coverage.v1`) reports which
+  simulated paper paths a suite exercised. It is **behavioural bookkeeping** coverage —
+  **not** market coverage and **not** test/code coverage — derived only from counts the
+  index already carries.
+
 ## PnL reporting
 
 `PaperRunSummary`: realized PnL, unrealized PnL, total PnL, open position count,
@@ -411,10 +453,13 @@ simulated, or sent" disclaimer.
 | `paper:backtest:diff` | deterministically diff **two existing** report JSON files (Sprint 10): compatibility + deltas + conservative `hasRegression`; deltas are bookkeeping, not advice |
 | `paper:backtest:scenario:new` | write a deterministic INJECTED scenario skeleton from a built-in template (Sprint 10); refuses overwrite without `--force` |
 | `paper:backtest:scenario:matrix` | expand a base scenario by a safe, config-only patch matrix into one INJECTED file per variant (Sprint 10) |
-| `paper:backtest:scenario:variants` | generate INJECTED variants from a base by applying a plan of **bounded numeric perturbations** (multiply/add, clamped) to its injected prices/metrics (Sprint 12); no code/RNG; steps/name/journal/config protected; refuses overwrite without `--force` |
+| `paper:backtest:scenario:variants` | generate INJECTED variants from a base by applying a plan of **bounded numeric perturbations** (multiply/add, clamped) to its injected prices/metrics/`config.<field>` (Sprint 12; **config targets Sprint 14**); no code/RNG; steps/name/journal/non-allowlisted config protected; refuses overwrite without `--force` |
+| `paper:backtest:scenario:variants:explain` | **DRY-RUN** explain a variant plan against a base (Sprint 14): each perturbation's target/op/value/bounds/mint + how many injected values it would change; writes nothing, generates nothing, runs no backtest; exit 1 only when the plan is invalid (`backtest.variant-plan.explain.v1`) |
 | `paper:backtest:suite` | run a **directory** of `*.scenario.json` files as one deterministic suite and aggregate a byte-stable `suite-index.json` (Sprint 11); `--out-dir` also writes one report per passed scenario; `--fail-on-error` exits non-zero on any failure |
+| `paper:backtest:suite:coverage` | summarize which simulated paper paths a suite exercised from its `suite-index.json` (Sprint 14): per-behaviour counts, scenario lists, and a path-behaviour ratio (`backtest.coverage.v1`); behavioural bookkeeping coverage, NOT market/test coverage |
 | `paper:backtest:diff:suite` | diff **two** suite output directories by their `suite-index.json` (Sprint 11): added/removed/changed scenarios + aggregate deltas + conservative `hasRegression`; a changed scenario is not a regression |
-| `paper:backtest:sensitivity` | run a base scenario (baseline) + bounded variants of it through the suite path and emit a stable `backtest.sensitivity.v1` report of each variant's per-field delta vs the baseline (Sprint 13); `--out-dir` writes variants/ + reports/ + `sensitivity-report.json` (preflighted, no partial writes, `--force` to overwrite); deltas are simulated bookkeeping, not a profitability claim |
+| `paper:backtest:sensitivity` | run a base scenario (baseline) + bounded variants of it through the suite path and emit a stable `backtest.sensitivity.v1` report of each variant's per-field delta vs the baseline + deterministic **rankings** (Sprint 13; **rankings Sprint 14**); `--out-dir` writes variants/ + reports/ + `sensitivity-report.json` (preflighted, no partial writes, `--force` to overwrite); deltas are simulated bookkeeping, not a profitability claim |
+| `paper:backtest:diff:sensitivity` | diff **two** sensitivity report JSON files (Sprint 14): pairs variants by suffix → added/removed/changed + baseline/count deltas + ranking movement + conservative `hasRegression` (`backtest.sensitivity.diff.v1`); a same-digest drift is a regression, a changed-content variant is not |
 
 `paper:run` options: `--candidates <path>` `--prices <path>` `--journal <path>`
 `--max-trade-size-usd` `--max-daily-loss-usd` `--max-open-positions`
