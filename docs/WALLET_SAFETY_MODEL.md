@@ -115,7 +115,7 @@ entirely within the no-custody model:
   evaluation** — never "safe", "approved for live trading", "profitable", or a
   reason to send anything.
 
-## Phase 5 (Sprints 5–8): the strategy engine is paper-only and key-free
+## Phase 5 (Sprints 5–9): the strategy engine is paper-only and key-free
 
 The Phase 5 strategy engine (`@soulmaker/strategy` + the `strategy:evaluate` and
 `strategy:plan` commands) stays entirely within the no-custody model:
@@ -157,6 +157,20 @@ The Phase 5 strategy engine (`@soulmaker/strategy` + the `strategy:evaluate` and
   data only and is explicitly **not a live result, not a profitability claim, and
   not advice**. None of this begins transaction planning/simulation (roadmap Phase
   6) or live sending (Phase 7), which remain **not started**.
+- **Sprint 9 — scenario linting, examples, report stability + BOM-tolerant JSON**
+  stays inside the same model. The new scenario validator/linter
+  (`validateBacktestScenario` / `lintBacktestScenario`, CLI `paper:backtest:lint`)
+  is a **pure** inspector that **never runs** the backtest, never mutates input,
+  and holds no key/seed/wallet/signer/RPC/network. The richer report fields
+  (`schemaVersion`, `scenarioDigest`, `equityCurve`, `perMint`, `warnings`) are
+  bookkeeping over **injected** prices — the `scenarioDigest` is a non-cryptographic
+  reproducibility hash, **not** a security/anti-tamper guarantee. `paper:backtest
+  --seed-journal <path>` only **reads** an external JSONL journal (never writes it)
+  and never modifies the scenario file. BOM tolerance strips at most one leading
+  UTF-8 BOM before parsing — it does not relax validation. The
+  [`examples/backtest/`](../examples/backtest/) scenarios are **injected fixtures**,
+  not real market data, and carry no key/secret/real wallet. None of this begins
+  transaction planning/simulation (Phase 6) or live sending (Phase 7).
 - The report is **paper-only** and explicitly **not** financial advice, a buy
   recommendation, or live-trading authorization; it makes no profitability claim.
   A `PAPER_BUY_CANDIDATE` means a candidate for *simulated* paper evaluation.

@@ -1,0 +1,53 @@
+{
+  "name": "seed-journal continuation — INJECTED FIXTURE (simulated, not real market data)",
+  "strategyConfig": {
+    "minScoreForPaperBuy": 50,
+    "minScoreForWatch": 30,
+    "maxRiskScore": 60
+  },
+  "caps": {
+    "maxTradeSizeUsd": 1000,
+    "maxDailyLossUsd": 1000,
+    "maxOpenPositions": 5,
+    "killSwitch": false
+  },
+  "defaultPaperSizeUsd": 100,
+  "initialJournal": "{\"type\":\"PAPER_BUY_FILLED\",\"at\":\"2026-01-01T00:00:00.000Z\",\"fill\":{\"id\":\"seed-fill-1\",\"orderId\":\"seed-order-1\",\"mint\":\"FakeAAA1111111111111111111111111111111111111\",\"side\":\"BUY\",\"priceUsd\":2,\"quantity\":50,\"notionalUsd\":100,\"feeUsd\":0,\"filledAt\":\"2026-01-01T00:00:00.000Z\"}}\n",
+  "steps": [
+    {
+      "id": "step-1-continue",
+      "at": "2026-01-02T00:00:00.000Z",
+      "takeProfitPct": 50,
+      "candidates": [
+        {
+          "mint": "FakeBBB2222222222222222222222222222222222222",
+          "symbol": "FAKEB",
+          "source": "injected-fixture",
+          "riskReport": {
+            "mint": "FakeBBB2222222222222222222222222222222222222",
+            "decision": "PASS_FOR_PAPER_EVALUATION",
+            "score": 12,
+            "flags": [],
+            "summary": [],
+            "generatedAt": "2026-01-02T00:00:00.000Z",
+            "disclaimer": "Advisory only — INJECTED FIXTURE, not a real risk assessment."
+          }
+        }
+      ],
+      "prices": [
+        {
+          "mint": "FakeAAA1111111111111111111111111111111111111",
+          "priceUsd": 3,
+          "observedAt": "2026-01-02T00:00:00.000Z",
+          "source": "injected-fixture"
+        },
+        {
+          "mint": "FakeBBB2222222222222222222222222222222222222",
+          "priceUsd": 4,
+          "observedAt": "2026-01-02T00:00:00.000Z",
+          "source": "injected-fixture"
+        }
+      ]
+    }
+  ]
+}

@@ -73,7 +73,10 @@ import {
 import {
   runBacktest,
   formatBacktestReport,
+  lintBacktestScenario,
   type BacktestReport,
+  type BacktestLintIssue,
+  type BacktestScenarioLintResult,
 } from "@soulmaker/backtest";
 
 export interface CommandContext {
@@ -98,14 +101,22 @@ function toLoadOptions(ctx: CommandContext): LoadConfigOptions {
 const isoNow = (): string => new Date().toISOString();
 
 /**
- * Strip a single leading UTF-8 BOM (U+FEFF) from decoded file text. Windows
- * editors and PowerShell 5.1's `Set-Content -Encoding utf8` prepend a BOM, which
- * would otherwise make `JSON.parse` reject an otherwise-valid scenario/candidate/
- * config file and make the line-by-line journal reader mis-key its first event.
- * Applied consistently in every file reader below — a decoding-robustness fix
+ * Remove a SINGLE leading UTF-8 BOM (U+FEFF) from the start of decoded text, if
+ * present. Node's `readFileSync(path, "utf8")` does NOT strip the BOM, so a file
+ * saved by a Windows editor or `Set-Content -Encoding utf8` begins with U+FEFF,
+ * which `JSON.parse` rejects ("Unexpected token") and which a strict JSONL parser
+ * would treat as part of the first line.
+ *
+ * This only ever touches the very first character, so it can never alter a BOM
+ * that appears mid-content. It does not trim whitespace, does not normalize, and
+ * does not otherwise relax parsing — malformed JSON/JSONL still fails exactly as
+ * before. Pure and deterministic.
+ *
+ * Applied once at every file-read boundary below (the single place a BOM can
+ * enter), so no downstream parser has to remember to strip it — a decoding fix
  * only; it reads no wallet, key, or network and moves no funds.
  */
-function stripBom(text: string): string {
+export function stripJsonBom(text: string): string {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
 
@@ -209,7 +220,7 @@ export function paperStatusReport(
   const resolved = resolvePath(ctx, opts.journalPath);
   let text: string;
   try {
-    text = stripBom(readFileSync(resolved, "utf8"));
+    text = stripJsonBom(readFileSync(resolved, "utf8"));
   } catch {
     // A missing journal is a clean empty state, not an error.
     return renderEmptyPaperStatus(opts.json);
@@ -456,7 +467,7 @@ function readListFile(
   const resolved = isAbsolute(path) ? path : join(base, path);
   let content: string;
   try {
-    content = stripBom(readFileSync(resolved, "utf8"));
+    content = stripJsonBom(readFileSync(resolved, "utf8"));
   } catch {
     throw new Error(`cannot read ${label} list file at ${resolved}`);
   }
@@ -571,7 +582,7 @@ function readJsonArray(
   const resolved = resolvePath(ctx, path);
   let text: string;
   try {
-    text = stripBom(readFileSync(resolved, "utf8"));
+    text = stripJsonBom(readFileSync(resolved, "utf8"));
   } catch {
     throw new Error(`cannot read ${label} file at ${resolved}`);
   }
@@ -656,7 +667,8 @@ function buildPaperCaps(
  */
 function readJournalTextIfExists(resolved: string): string | null {
   try {
-    return stripBom(readFileSync(resolved, "utf8"));
+    // Tolerate a single leading BOM (Windows editors); never touch mid-file BOMs.
+    return stripJsonBom(readFileSync(resolved, "utf8"));
   } catch (err) {
     if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return null;
     throw new Error(`cannot read journal file at ${resolved}`);
@@ -795,7 +807,7 @@ export function paperJournalReport(
   const resolved = resolvePath(ctx, opts.journalPath);
   let text: string;
   try {
-    text = stripBom(readFileSync(resolved, "utf8"));
+    text = stripJsonBom(readFileSync(resolved, "utf8"));
   } catch {
     return redactString(`Refusing: cannot read journal file at ${resolved}`);
   }
@@ -870,7 +882,7 @@ function readJsonValue(ctx: CommandContext, path: string, label: string): unknow
   const resolved = resolvePath(ctx, path);
   let text: string;
   try {
-    text = stripBom(readFileSync(resolved, "utf8"));
+    text = stripJsonBom(readFileSync(resolved, "utf8"));
   } catch {
     throw new Error(`cannot read ${label} file at ${resolved}`);
   }
@@ -1056,7 +1068,7 @@ function paperStateFromJournalFile(ctx: CommandContext, path: string): PaperStat
   const resolved = resolvePath(ctx, path);
   let text: string;
   try {
-    text = stripBom(readFileSync(resolved, "utf8"));
+    text = stripJsonBom(readFileSync(resolved, "utf8"));
   } catch {
     throw new Error(`cannot read journal file at ${resolved}`);
   }
@@ -1157,7 +1169,8 @@ export function strategyPlanReport(
 }
 
 // ---------------------------------------------------------------------------
-// Phase 8 — paper:backtest (deterministic, injected-only simulated replay)
+// Sprint 8 — paper:backtest (deterministic, injected-only simulated replay)
+// Sprint 9 — paper:backtest:lint + --seed-journal (validate/lint, external seed)
 // ---------------------------------------------------------------------------
 
 export interface PaperBacktestCommandOptions {
@@ -1165,7 +1178,55 @@ export interface PaperBacktestCommandOptions {
   scenarioPath?: string;
   /** Optional path to write ONLY the report JSON (never a journal or fills). */
   outPath?: string;
+  /**
+   * Optional path to an external append-only JSONL journal that seeds the
+   * backtest's STARTING simulated state. Mutually exclusive with a scenario that
+   * already embeds `initialJournal` (both supplied ⇒ refuse). Read-only: the
+   * journal file is never written and the scenario file is never modified.
+   */
+  seedJournalPath?: string;
   json?: boolean;
+}
+
+/** True only for a plain (non-array) JSON object. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Read an external seed-journal file (BOM-tolerant, single leading BOM) and
+ * compose it onto a COPY of the scenario as `initialJournal`. Refuses (cleanly)
+ * when the scenario already embeds `initialJournal` (no hidden override) or when
+ * the seed file cannot be read. The scenario file on disk is never modified; the
+ * seed journal is only ever read. Returns the composed scenario or a refusal.
+ */
+function composeSeedJournal(
+  ctx: CommandContext,
+  scenario: unknown,
+  seedJournalPath: string,
+): { ok: true; scenario: unknown } | { ok: false; reason: string } {
+  if (!isPlainObject(scenario)) {
+    // Let the engine produce the canonical "scenario must be a JSON object" refusal.
+    return { ok: true, scenario };
+  }
+  if (scenario.initialJournal !== undefined) {
+    return {
+      ok: false,
+      reason:
+        "supply only one seed source — the scenario already embeds initialJournal; " +
+        "do not also pass --seed-journal.",
+    };
+  }
+  const resolved = resolvePath(ctx, seedJournalPath);
+  let text: string;
+  try {
+    // Tolerate a single leading BOM (Windows editors); never touch mid-file BOMs.
+    text = stripJsonBom(readFileSync(resolved, "utf8"));
+  } catch {
+    return { ok: false, reason: `cannot read seed journal file at ${resolved}` };
+  }
+  // Compose onto a COPY — the original scenario object is never mutated.
+  return { ok: true, scenario: { ...scenario, initialJournal: text } };
 }
 
 /**
@@ -1179,6 +1240,13 @@ export interface PaperBacktestCommandOptions {
  * advice. The command never writes a journal or any fills; `--out` writes only the
  * report JSON. It lives beside the other `paper:*` commands because the artifact is
  * a paper-simulation report (the strategy layer is an internal driver).
+ *
+ * With `--seed-journal <path>`, an EXTERNAL append-only JSONL journal seeds the
+ * starting simulated state instead of embedding it in the scenario. It is
+ * mutually exclusive with a scenario that already embeds `initialJournal` (both
+ * supplied ⇒ refuse, so there is no hidden override). The seed journal is read
+ * strictly (the engine refuses a malformed one) and never written; the scenario
+ * file is never modified.
  */
 export function paperBacktestReport(
   ctx: CommandContext = {},
@@ -1191,6 +1259,14 @@ export function paperBacktestReport(
     scenario = readJsonValue(ctx, opts.scenarioPath, "scenario");
   } catch (err) {
     return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  // Optional external seed journal, composed onto a scenario copy (never mutates
+  // the scenario file; refuses if the scenario already embeds initialJournal).
+  if (opts.seedJournalPath) {
+    const composed = composeSeedJournal(ctx, scenario, opts.seedJournalPath);
+    if (!composed.ok) return redactString(`Refusing: ${composed.reason}`);
+    scenario = composed.scenario;
   }
 
   let report: BacktestReport;
@@ -1215,6 +1291,101 @@ export function paperBacktestReport(
     return JSON.stringify(redactValue(report), null, 2);
   }
   return formatBacktestReport(report);
+}
+
+export interface PaperBacktestLintCommandOptions {
+  /** Path to a local JSON backtest scenario to validate/lint (never run). */
+  scenarioPath?: string;
+  json?: boolean;
+}
+
+function lintIssueLine(issue: BacktestLintIssue): string {
+  return issue.path
+    ? `- [${issue.code}] ${issue.message} (at ${issue.path})`
+    : `- [${issue.code}] ${issue.message}`;
+}
+
+/** Render a redacted, human-readable scenario-lint report (deterministic). */
+function formatScenarioLintReport(result: BacktestScenarioLintResult): string {
+  const { summary } = result;
+  const status = result.valid
+    ? result.warnings.length > 0
+      ? "RUNNABLE (with warnings)"
+      : "VALID"
+    : "INVALID";
+
+  const lines: string[] = [];
+  // First line drives the CLI exit code: an INVALID scenario refuses (exit 1).
+  if (result.valid) {
+    const header = `Scenario lint — ${summary.name ?? "(unnamed)"} (${status})`;
+    lines.push(header);
+    lines.push("=".repeat(header.length));
+  } else {
+    lines.push(`Refusing: scenario is not runnable — ${result.errors.length} error(s).`);
+    lines.push("=".repeat(40));
+  }
+
+  lines.push(`scenario:    ${summary.name ?? "(unnamed)"}`);
+  lines.push(`steps:       ${summary.stepCount}`);
+  lines.push(`candidates:  ${summary.candidateCount}`);
+  lines.push(`prices:      ${summary.priceCount}`);
+  lines.push(`journal:     ${summary.hasInitialJournal ? "present" : "absent"}`);
+  lines.push(`errors:      ${summary.errorCount}`);
+  lines.push(`warnings:    ${summary.warningCount}`);
+
+  lines.push("");
+  lines.push(`Errors (${result.errors.length}):`);
+  if (result.errors.length === 0) lines.push("- (none)");
+  else for (const e of result.errors) lines.push(lintIssueLine(e));
+
+  lines.push("");
+  lines.push(`Warnings (${result.warnings.length}):`);
+  if (result.warnings.length === 0) lines.push("- (none)");
+  else for (const w of result.warnings) lines.push(lintIssueLine(w));
+
+  lines.push("");
+  if (!result.valid) {
+    lines.push("Result: scenario has errors and cannot be run until they are fixed.");
+  } else if (result.warnings.length > 0) {
+    lines.push(
+      "Result: scenario is runnable, but the warnings above flag suspicious design — " +
+        "review them before trusting the backtest.",
+    );
+  } else {
+    lines.push("Result: scenario is valid and has no warnings.");
+  }
+
+  return redactString(lines.join("\n"));
+}
+
+/**
+ * `soulmaker paper:backtest:lint` — validate/lint a local JSON backtest scenario
+ * WITHOUT running it. Reads ONE local JSON file only: no chain access, no wallet,
+ * no RPC, no network. It writes no journal and no report. Errors mean the scenario
+ * cannot run (the command refuses, exit 1, in human mode); warnings mean the
+ * scenario is runnable but suspicious. `--json` emits the stable, redacted
+ * {@link BacktestScenarioLintResult} (its `valid` field carries the status).
+ */
+export function paperBacktestLintReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestLintCommandOptions = {},
+): string {
+  if (!opts.scenarioPath) return "Refusing: --scenario <path> is required.";
+
+  let scenario: unknown;
+  try {
+    scenario = readJsonValue(ctx, opts.scenarioPath, "scenario");
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  const result = lintBacktestScenario(scenario);
+
+  if (opts.json) {
+    // redactValue is a backstop; lint messages carry only structural identifiers.
+    return JSON.stringify(redactValue(result), null, 2);
+  }
+  return formatScenarioLintReport(result);
 }
 
 function yesNo(value: boolean): string {

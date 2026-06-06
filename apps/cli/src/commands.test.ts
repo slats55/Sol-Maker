@@ -17,6 +17,8 @@ import {
   strategyEvaluateReport,
   strategyPlanReport,
   paperBacktestReport,
+  paperBacktestLintReport,
+  stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
 import { parseJournal, reduceJournal } from "@soulmaker/paper";
@@ -1914,7 +1916,7 @@ describe("paperRunReport — --journal continuation (Sprint 8)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Phase 8 — paper:backtest (deterministic, injected-only simulated replay)
+// Sprint 8 — paper:backtest (deterministic, injected-only simulated replay)
 // ---------------------------------------------------------------------------
 
 /** A self-contained one-step buy scenario (config + caps + steps) for MINT_A. */
@@ -2066,60 +2068,143 @@ describe("paperBacktestReport (Sprint 8)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Windows papercut — a leading UTF-8 BOM must not reject an otherwise-valid file
+// Sprint 9 — BOM-tolerant JSON readers
 // ---------------------------------------------------------------------------
 
-describe("BOM-prefixed UTF-8 files (Windows papercut)", () => {
-  // Editors and PowerShell 5.1's `Set-Content -Encoding utf8` prepend U+FEFF.
-  // The JSON readers call JSON.parse directly, where a leading BOM throws; the
-  // fix strips it after read, so a valid file is accepted regardless of BOM.
-  const BOM = String.fromCharCode(0xfeff); // U+FEFF, the UTF-8 byte-order mark
-  const writeBom = (cwd: string, name: string, value: unknown): void =>
-    writeFileSync(join(cwd, name), BOM + JSON.stringify(value));
+/** Prefix a string with a leading UTF-8 BOM (U+FEFF). */
+function withBom(text: string): string {
+  return `\uFEFF${text}`;
+}
 
-  it("paper:run reads BOM-prefixed candidates + prices (readJsonArray)", () => {
+describe("stripJsonBom (pure helper)", () => {
+  it("removes exactly one leading BOM and leaves everything else", () => {
+    expect(stripJsonBom("\uFEFFabc")).toBe("abc");
+    expect(stripJsonBom("abc")).toBe("abc");
+  });
+
+  it("never strips a BOM in the middle of the text", () => {
+    expect(stripJsonBom("a\uFEFFb")).toBe("a\uFEFFb");
+  });
+
+  it("strips only the FIRST of two leading BOMs", () => {
+    expect(stripJsonBom("\uFEFF\uFEFFx")).toBe("\uFEFFx");
+  });
+});
+
+describe("BOM tolerance — local JSON readers parse a leading UTF-8 BOM", () => {
+  it("candidates JSON with a leading BOM parses", () => {
     const { cwd, cleanup } = withConfig({ mode: "PAPER" });
     try {
       const { candidates, prices } = cleanFixtures();
-      writeBom(cwd, "candidates.json", candidates);
-      writeBom(cwd, "prices.json", prices);
+      writeFileSync(join(cwd, "candidates.json"), withBom(JSON.stringify(candidates)));
+      writeFileSync(join(cwd, "prices.json"), JSON.stringify(prices));
       const out = paperRunReport(
         { cwd, env: {}, now: () => PAPER_TIME },
-        {
-          candidatesPath: "candidates.json",
-          pricesPath: "prices.json",
-          maxTradeSizeUsd: 1000,
-        },
+        { candidatesPath: "candidates.json", pricesPath: "prices.json", maxTradeSizeUsd: 1000 },
       );
-      expect(out).not.toMatch(/^Refusing/);
-      expect(out).toContain("Paper run");
-      expect(out).toContain("buys / sells:     1 / 0"); // the data actually parsed
+      expect(out).toContain("buys / sells:     1 / 0");
     } finally {
       cleanup();
     }
   });
 
-  it("strategy:evaluate reads a BOM-prefixed candidate + config (readJsonValue)", () => {
+  it("prices JSON with a leading BOM parses", () => {
     const { cwd, cleanup } = withConfig({ mode: "PAPER" });
     try {
-      writeBom(cwd, "candidate.json", strategyCandidate(MINT_A));
-      writeBom(cwd, "config.json", STRATEGY_CONFIG);
+      const { candidates, prices } = cleanFixtures();
+      writeFileSync(join(cwd, "candidates.json"), JSON.stringify(candidates));
+      writeFileSync(join(cwd, "prices.json"), withBom(JSON.stringify(prices)));
+      const out = paperRunReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        { candidatesPath: "candidates.json", pricesPath: "prices.json", maxTradeSizeUsd: 1000 },
+      );
+      expect(out).toContain("buys / sells:     1 / 0");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("strategy config JSON with a leading BOM parses", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(
+        join(cwd, "candidate.json"),
+        JSON.stringify({ mint: MINT_A, riskReport: passReport(MINT_A) }),
+      );
+      writeFileSync(join(cwd, "config.json"), withBom(JSON.stringify(STRATEGY_CONFIG)));
       const out = strategyEvaluateReport(
         { cwd, env: {}, now: () => PAPER_TIME },
         { candidatePath: "candidate.json", strategyConfigPath: "config.json" },
       );
       expect(out).not.toMatch(/^Refusing/);
-      expect(out).toContain("decision:    PAPER_BUY_CANDIDATE");
     } finally {
       cleanup();
     }
   });
 
-  it("strategy:plan reads a BOM-prefixed candidates array + config", () => {
+  it("backtest scenario JSON with a leading BOM parses", () => {
     const { cwd, cleanup } = withConfig({ mode: "PAPER" });
     try {
-      writeBom(cwd, "candidates.json", [strategyCandidate(MINT_A)]);
-      writeBom(cwd, "config.json", STRATEGY_CONFIG);
+      writeFileSync(join(cwd, "scenario.json"), withBom(JSON.stringify(buyScenario())));
+      const out = paperBacktestReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        { scenarioPath: "scenario.json" },
+      );
+      expect(out).toContain("SIMULATED PAPER-ONLY REPORT");
+      expect(out).toContain("simulated fills:   1 buy / 0 sell");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("optional paper-state JSON with a leading BOM parses", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(
+        join(cwd, "candidate.json"),
+        JSON.stringify({ mint: MINT_A, riskReport: passReport(MINT_A) }),
+      );
+      writeFileSync(join(cwd, "config.json"), JSON.stringify(STRATEGY_CONFIG));
+      writeFileSync(join(cwd, "paper-state.json"), withBom(JSON.stringify({ positions: {} })));
+      const out = strategyEvaluateReport(
+        { cwd, env: {}, now: () => PAPER_TIME },
+        {
+          candidatePath: "candidate.json",
+          strategyConfigPath: "config.json",
+          paperStatePath: "paper-state.json",
+        },
+      );
+      expect(out).not.toMatch(/^Refusing/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("a journal with a single leading BOM is tolerated by paper:status", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeOpenPositionJournal(cwd); // creates journal.jsonl with one open MINT_A
+      const raw = readFileSync(join(cwd, "journal.jsonl"), "utf8");
+      writeFileSync(join(cwd, "journal.jsonl"), withBom(raw)); // prepend a BOM
+      const status = paperStatusReport({ cwd, env: {} }, { journalPath: "journal.jsonl" });
+      expect(status).toContain("open positions:   1");
+    } finally {
+      cleanup();
+    }
+  });
+
+  // Reconciliation coverage (Sprint 9 ⟂ master): the strategy:plan command path was
+  // only exercised with a BOM on master. Its candidates array (readJsonArray) and
+  // config (readJsonValue) both run through JSON.parse, where a leading BOM throws
+  // unless stripped at the read boundary — so this genuinely guards that fix.
+  it("strategy:plan parses a BOM-prefixed candidates array + config", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(
+        join(cwd, "candidates.json"),
+        withBom(JSON.stringify([strategyCandidate(MINT_A)])),
+      );
+      writeFileSync(join(cwd, "config.json"), withBom(JSON.stringify(STRATEGY_CONFIG)));
       const out = strategyPlanReport(
         { cwd, env: {}, now: () => PAPER_TIME },
         { candidatesPath: "candidates.json", strategyConfigPath: "config.json" },
@@ -2132,17 +2217,254 @@ describe("BOM-prefixed UTF-8 files (Windows papercut)", () => {
     }
   });
 
-  it("paper:backtest reads a BOM-prefixed scenario (readJsonValue)", () => {
+  // Reconciliation coverage: the token:risk list reader (readListFile) is the one
+  // read site master's BOM fix covered that Sprint 9 did not. A BOM-prefixed denylist
+  // must still drive the REJECT. NOTE: list files are doubly safe here — readListFile
+  // strips the leading BOM at the read boundary AND parseList's per-entry trim() also
+  // neutralizes U+FEFF — so this locks the end-to-end "Windows-saved list" contract.
+  it("token:risk tolerates a BOM-prefixed denylist file (readListFile)", async () => {
+    const { cwd, cleanup } = withConfig({
+      mode: "WATCH_ONLY",
+      rpcUrl: "https://rpc.example.com",
+    });
+    try {
+      writeFileSync(join(cwd, "deny.txt"), withBom(`${VALID_PUBKEY}   # rugged\n`));
+      const out = await tokenRiskReport(
+        VALID_PUBKEY,
+        { cwd, env: {}, createClient: fakeClientFactory, now: () => FIXED_TIME },
+        { denylistPath: "deny.txt" },
+      );
+      expect(out).toContain("decision:    REJECT");
+      expect(out).toMatch(/denylist/i);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("BOM tolerance — malformed JSON still refuses (no loose normalization)", () => {
+  it("malformed JSON WITHOUT a BOM still refuses", () => {
     const { cwd, cleanup } = withConfig({ mode: "PAPER" });
     try {
-      writeBom(cwd, "scenario.json", buyScenario());
+      writeFileSync(join(cwd, "scenario.json"), "{ not json");
+      const out = paperBacktestReport({ cwd, env: {} }, { scenarioPath: "scenario.json" });
+      expect(out).toMatch(/^Refusing: scenario file is not valid JSON/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("malformed JSON WITH a leading BOM still refuses (only the BOM is stripped)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "scenario.json"), withBom("{ not json"));
+      const out = paperBacktestReport({ cwd, env: {} }, { scenarioPath: "scenario.json" });
+      expect(out).toMatch(/^Refusing: scenario file is not valid JSON/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("a candidates array file that is a JSON object (not array) still refuses, even with a BOM", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "candidates.json"), withBom(JSON.stringify({ not: "an array" })));
+      writeFileSync(join(cwd, "prices.json"), JSON.stringify([]));
+      const out = paperRunReport(
+        { cwd, env: {} },
+        { candidatesPath: "candidates.json", pricesPath: "prices.json" },
+      );
+      expect(out).toMatch(/^Refusing: candidates file must be a JSON array/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 9 — paper:backtest:lint
+// ---------------------------------------------------------------------------
+
+describe("paperBacktestLintReport (scenario linter CLI)", () => {
+  it("refuses when --scenario is missing", () => {
+    expect(paperBacktestLintReport({}, {})).toMatch(/^Refusing: --scenario/);
+  });
+
+  it("a clean scenario lints as VALID with no warnings", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "scenario.json"), JSON.stringify(buyScenario()));
+      const out = paperBacktestLintReport({ cwd, env: {} }, { scenarioPath: "scenario.json" });
+      expect(out).not.toMatch(/^Refusing/);
+      expect(out).toContain("(VALID)");
+      expect(out).toContain("Result: scenario is valid and has no warnings.");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("a runnable-but-suspicious scenario reports warnings and stays exit-0", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const scenario = buyScenario() as { caps: Record<string, unknown> };
+      scenario.caps.killSwitch = true;
+      writeFileSync(join(cwd, "scenario.json"), JSON.stringify(scenario));
+      const out = paperBacktestLintReport({ cwd, env: {} }, { scenarioPath: "scenario.json" });
+      expect(out).not.toMatch(/^Refusing/);
+      expect(out).toContain("RUNNABLE (with warnings)");
+      expect(out).toContain("kill-switch-on");
+      expect(out).toContain("runnable, but the warnings");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("an invalid scenario refuses (errors block a run)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(
+        join(cwd, "scenario.json"),
+        JSON.stringify({ name: "x", strategyConfig: STRATEGY_CONFIG, caps: {}, steps: [] }),
+      );
+      const out = paperBacktestLintReport({ cwd, env: {} }, { scenarioPath: "scenario.json" });
+      expect(out).toMatch(/^Refusing: scenario is not runnable/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json output is parseable, stable, and carries the lint result", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "scenario.json"), JSON.stringify(buyScenario()));
+      const run = () =>
+        paperBacktestLintReport({ cwd, env: {} }, { scenarioPath: "scenario.json", json: true });
+      const out = run();
+      const parsed = JSON.parse(out) as {
+        valid: boolean;
+        errors: unknown[];
+        warnings: unknown[];
+        summary: { name: string };
+      };
+      expect(parsed.valid).toBe(true);
+      expect(parsed.errors).toEqual([]);
+      expect(parsed.summary.name).toBe("cli-backtest");
+      expect(out).toBe(run()); // stable
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json does not leak a secret-looking injected value", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const leaky = "https://rpc.example.com/?api-key=SUPERSECRET";
+      const scenario = buyScenario() as { steps: { candidates: { source?: string }[] }[] };
+      scenario.steps[0]!.candidates[0]!.source = leaky;
+      writeFileSync(join(cwd, "scenario.json"), JSON.stringify(scenario));
+      const out = paperBacktestLintReport(
+        { cwd, env: {} },
+        { scenarioPath: "scenario.json", json: true },
+      );
+      expect(out).not.toContain("SUPERSECRET");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 9 — paper:backtest --seed-journal (external seed journal)
+// ---------------------------------------------------------------------------
+
+/** A one-step scenario (no candidates) that take-profit-exits a seeded MINT_A. */
+function exitSeededScenario(): unknown {
+  return {
+    name: "seeded-exit",
+    strategyConfig: STRATEGY_CONFIG,
+    caps: { maxTradeSizeUsd: 1000, maxDailyLossUsd: 1000, maxOpenPositions: 5, killSwitch: false },
+    steps: [
+      {
+        id: "step-1",
+        at: PAPER_TIME,
+        candidates: [],
+        prices: [{ mint: MINT_A, priceUsd: 3, observedAt: PAPER_TIME, source: "injected-fixture" }],
+        takeProfitPct: 50, // seeded MINT_A avg 2 → +50% → full exit
+      },
+    ],
+  };
+}
+
+describe("paperBacktestReport — --seed-journal (Sprint 9)", () => {
+  it("seeds the starting state from an external journal and exits the seeded position", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeOpenPositionJournal(cwd); // journal.jsonl holds open MINT_A (qty 50 @ 2)
+      const seedBefore = readFileSync(join(cwd, "journal.jsonl"), "utf8");
+      writeFileSync(join(cwd, "scenario.json"), JSON.stringify(exitSeededScenario()));
+      const scenarioBefore = readFileSync(join(cwd, "scenario.json"), "utf8");
+
       const out = paperBacktestReport(
         { cwd, env: {}, now: () => PAPER_TIME },
-        { scenarioPath: "scenario.json" },
+        { scenarioPath: "scenario.json", seedJournalPath: "journal.jsonl" },
       );
-      expect(out).not.toMatch(/^Refusing/);
-      expect(out).toContain("SIMULATED PAPER-ONLY REPORT");
-      expect(out).toContain("simulated fills:   1 buy / 0 sell"); // the data parsed
+      expect(out).toContain("simulated fills:   0 buy / 1 sell");
+      expect(out).toContain("realized PnL:      $50.00");
+
+      // The seed journal is NEVER written, and the scenario file is NEVER mutated.
+      expect(readFileSync(join(cwd, "journal.jsonl"), "utf8")).toBe(seedBefore);
+      expect(readFileSync(join(cwd, "scenario.json"), "utf8")).toBe(scenarioBefore);
+      // No new journal/fills are produced by a backtest.
+      expect(readdirSync(cwd).filter((f) => f.endsWith(".jsonl"))).toEqual(["journal.jsonl"]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a missing seed journal file", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "scenario.json"), JSON.stringify(exitSeededScenario()));
+      const out = paperBacktestReport(
+        { cwd, env: {} },
+        { scenarioPath: "scenario.json", seedJournalPath: "nope.jsonl" },
+      );
+      expect(out).toMatch(/^Refusing: cannot read seed journal file/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed seed journal", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "scenario.json"), JSON.stringify(exitSeededScenario()));
+      writeFileSync(
+        join(cwd, "seed.jsonl"),
+        ['{"type":"RUN_STARTED","at":"x","caps":{},"note":"n"}', "{not json"].join("\n"),
+      );
+      const out = paperBacktestReport(
+        { cwd, env: {} },
+        { scenarioPath: "scenario.json", seedJournalPath: "seed.jsonl" },
+      );
+      expect(out).toMatch(/^Refusing: scenario\.initialJournal is malformed/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses when the scenario already embeds initialJournal AND --seed-journal is supplied", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const scenario = exitSeededScenario() as Record<string, unknown>;
+      scenario.initialJournal = "";
+      writeFileSync(join(cwd, "scenario.json"), JSON.stringify(scenario));
+      writeFileSync(join(cwd, "seed.jsonl"), "");
+      const out = paperBacktestReport(
+        { cwd, env: {} },
+        { scenarioPath: "scenario.json", seedJournalPath: "seed.jsonl" },
+      );
+      expect(out).toMatch(/^Refusing: supply only one seed source/);
     } finally {
       cleanup();
     }

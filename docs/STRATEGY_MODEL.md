@@ -1,4 +1,4 @@
-# Soulmaker Strategy Model (Phase 5 / Sprints 5–8)
+# Soulmaker Strategy Model (Phase 5 / Sprints 5–9)
 
 The strategy engine (`@soulmaker/strategy` + the `strategy:evaluate` and
 `strategy:plan` CLI commands) is a **deterministic, paper-only rules engine**. It
@@ -24,8 +24,16 @@ submitted to the paper-trading engine as a simulated **paper-buy** or
   package (CLI `paper:backtest`) replays an injected, self-contained local scenario
   through the **same** `planStrategyBatch` → `runPaperSession` code paths — still
   paper-only, still never live; see [`PAPER_TRADING_MODEL.md`](PAPER_TRADING_MODEL.md).
+- **Sprint 9** hardened the **backtest** side of this pipeline (in
+  `@soulmaker/backtest`): a scenario **validator + linter** (`validateBacktestScenario`
+  / `lintBacktestScenario`, CLI `paper:backtest:lint`), stabler/richer reports
+  (`schemaVersion`, `scenarioDigest`, `equityCurve`, **exact** `perMint` aggregates,
+  surfaced `warnings`), an external `--seed-journal`, BOM-tolerant JSON reading, and
+  copyable **injected** example scenarios under `examples/backtest/`. The strategy
+  engine itself is unchanged and still only feeds paper; see
+  [`PAPER_TRADING_MODEL.md`](PAPER_TRADING_MODEL.md).
 
-(Sprints 5–8 extend this Phase 5 package; they do **not** begin roadmap Phase 6
+(Sprints 5–9 extend this Phase 5 package; they do **not** begin roadmap Phase 6
 — transaction planning/simulation — which remains **not started**.)
 
 > **Paper-only. Not advice.** The strategy engine **does not execute trades** and

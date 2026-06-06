@@ -1,4 +1,4 @@
-# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest)
+# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability)
 
 The paper engine (`@soulmaker/paper` + the `paper:*` CLI commands) is a
 **deterministic, offline, simulated-only** trading sandbox. It exists to prove
@@ -174,6 +174,62 @@ profitability claim, and not advice**. The command never writes a journal or any
 fills; `--out` writes only the report JSON. See
 [`ARCHITECTURE.md`](ARCHITECTURE.md) for the data flow.
 
+## Scenario linting, examples & report stability (Sprint 9)
+
+Sprint 9 hardens the backtest so scenarios are easier to author, inspect, and
+trust — and harder to misread as real performance. Everything stays
+**injected-only and simulated**.
+
+- **Scenario validator / linter.** `@soulmaker/backtest` exports
+  `validateBacktestScenario` (throwing; `validateScenario` is a back-compatible
+  alias) and `lintBacktestScenario(input) → { valid, errors, warnings, summary }`.
+  Both are built on one shared, non-throwing validation **core**, so the validator
+  and the linter can never disagree about what is structurally valid. **Errors**
+  prevent a run (structural problems + a malformed embedded journal); **warnings**
+  flag suspicious-but-allowed design — e.g. no trade sizing (no positive
+  `defaultPaperSizeUsd` and no candidate `proposedSizeUsd`), `defaultPaperSizeUsd`
+  above `maxTradeSizeUsd`, non-monotonic timestamps, duplicate step ids, duplicate
+  mints in a step, empty candidate/price arrays, a step's candidates with no
+  matching injected price, the kill switch on, caps that guarantee no buys,
+  `allowCautionRiskReports`, extreme/disabled exit thresholds, and a seed journal
+  that already holds open positions or realized PnL before step 1. The linter is
+  **pure, deterministic, and non-mutating**, and it never runs the backtest. CLI:
+  `paper:backtest:lint --scenario <path> [--json]` (errors refuse with exit 1;
+  warnings stay runnable but suspicious).
+
+- **Richer, stabler reports.** `BacktestReport` now carries a stable
+  `schemaVersion` (`backtest.report.v1`); a deterministic, non-cryptographic
+  `scenarioDigest` (a canonical content hash, for reproducibility/traceability
+  only — **not** security or anti-tamper); the scenario `warnings` (so suspicious
+  design is visible, not hidden); a per-step `equityCurve` (cumulative
+  realized/unrealized/total PnL, open/closed counts, simulated turnover — one entry
+  per step, marked at that step's injected prices); and **exact** `perMint`
+  aggregates (per-mint fill counts, open quantity, realized + unrealized + total
+  PnL, turnover). Per-mint realized PnL is **recomputed from each mint's own fills**
+  through the same weighted-average engine — it is exact, never invented or
+  estimated, even for a fully-closed position. The human report is sectioned and
+  JSON output stays byte-stable for a given scenario.
+
+- **External seed journal.** `paper:backtest --seed-journal <path>` seeds the
+  starting state from a separate JSONL journal instead of embedding it. It is
+  composed onto a scenario **copy** at the CLI layer (the pure engine stays
+  scenario-driven and filesystem-free), is **mutually exclusive** with an embedded
+  `initialJournal` (supplying both is refused — no hidden override), is read
+  strictly (a malformed journal refuses), is **never written**, and never modifies
+  the scenario file.
+
+- **BOM-tolerant JSON.** The CLI's local JSON readers (candidates, prices, strategy
+  config, paper-state, backtest scenario) and journal reads tolerate a single
+  leading UTF-8 **BOM** (`stripJsonBom`), which Windows editors and
+  `Set-Content -Encoding utf8` add. Malformed JSON still refuses cleanly (no loose
+  normalization), and a BOM in the middle of a file is never stripped.
+
+- **Example scenarios.** [`examples/backtest/`](../examples/backtest/) ships small,
+  **injected**, deterministic example scenarios (buy & hold, buy & full exit,
+  multi-mint partial exit + hold + reject, seed-journal continuation) with a README.
+  They are copyable starting points and test fixtures — **not** historical market
+  truth, not real prices, not a track record.
+
 ## PnL reporting
 
 `PaperRunSummary`: realized PnL, unrealized PnL, total PnL, open position count,
@@ -189,7 +245,8 @@ simulated, or sent" disclaimer.
 | `paper:run` | run a deterministic simulated evaluation from injected fixtures (with `--journal`, **continues** from an existing valid journal) |
 | `paper:journal` | read + summarize an append-only journal (lenient display) |
 | `paper:status` | real status from an optional journal (clean empty state otherwise) |
-| `paper:backtest` | deterministic, injected-only simulated replay of a local scenario (Sprint 8) |
+| `paper:backtest` | deterministic, injected-only simulated replay of a local scenario (Sprint 8; Sprint 9 adds `--seed-journal` + richer report) |
+| `paper:backtest:lint` | validate/lint a scenario **without** running it (Sprint 9): errors block a run, warnings flag suspicious design |
 
 `paper:run` options: `--candidates <path>` `--prices <path>` `--journal <path>`
 `--max-trade-size-usd` `--max-daily-loss-usd` `--max-open-positions`
@@ -200,8 +257,14 @@ appending). Missing/unreadable fixtures and invalid numeric caps are refused
 cleanly; secrets are never leaked (output is redacted).
 
 `paper:backtest` options: `--scenario <path>` `--json` `--out <path>` (writes the
-report JSON only — never a journal or fills). A malformed/empty scenario is
-refused cleanly; output is redacted.
+report JSON only — never a journal or fills) `--seed-journal <path>` (Sprint 9;
+seed the starting state from an external JSONL journal, mutually exclusive with an
+embedded `initialJournal`, read-only). A malformed/empty scenario is refused
+cleanly; output is redacted.
+
+`paper:backtest:lint` options: `--scenario <path>` `--json`. Reads one local JSON
+scenario, runs the pure linter, and prints a readable (or stable, redacted JSON)
+result. Errors refuse (exit 1); warnings stay runnable but suspicious.
 
 ## Limitations (be honest)
 

@@ -1,0 +1,51 @@
+{
+  "name": "single-mint buy & hold — INJECTED FIXTURE (simulated, not real market data)",
+  "strategyConfig": {
+    "minScoreForPaperBuy": 50,
+    "minScoreForWatch": 30,
+    "maxRiskScore": 60
+  },
+  "caps": {
+    "maxTradeSizeUsd": 1000,
+    "maxDailyLossUsd": 1000,
+    "maxOpenPositions": 5,
+    "killSwitch": false
+  },
+  "defaultPaperSizeUsd": 100,
+  "steps": [
+    {
+      "id": "step-1",
+      "at": "2026-01-01T00:00:00.000Z",
+      "candidates": [
+        {
+          "mint": "FakeAAA1111111111111111111111111111111111111",
+          "symbol": "FAKEA",
+          "source": "injected-fixture",
+          "riskReport": {
+            "mint": "FakeAAA1111111111111111111111111111111111111",
+            "decision": "PASS_FOR_PAPER_EVALUATION",
+            "score": 12,
+            "flags": [],
+            "summary": [],
+            "generatedAt": "2026-01-01T00:00:00.000Z",
+            "disclaimer": "Advisory only — INJECTED FIXTURE, not a real risk assessment."
+          }
+        }
+      ],
+      "prices": [
+        {
+          "mint": "FakeAAA1111111111111111111111111111111111111",
+          "priceUsd": 2,
+          "observedAt": "2026-01-01T00:00:00.000Z",
+          "source": "injected-fixture"
+        },
+        {
+          "mint": "FakeAAA1111111111111111111111111111111111111",
+          "priceUsd": 3,
+          "observedAt": "2026-01-01T01:00:00.000Z",
+          "source": "injected-fixture"
+        }
+      ]
+    }
+  ]
+}

@@ -15,6 +15,7 @@ import {
   strategyEvaluateReport,
   strategyPlanReport,
   paperBacktestReport,
+  paperBacktestLintReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -310,17 +311,35 @@ program
   )
   .option("--scenario <path>", "local JSON backtest scenario (config + caps + steps)")
   .option("--out <path>", "write ONLY the report JSON to this file (never a journal/fills)")
+  .option(
+    "--seed-journal <path>",
+    "seed the starting state from an external JSONL journal (mutually exclusive with embedded initialJournal)",
+  )
   .option("--json", "emit the report as stable JSON")
-  .action((opts: { scenario?: string; out?: string; json?: boolean }) => {
+  .action((opts: { scenario?: string; out?: string; seedJournal?: string; json?: boolean }) => {
     printResult(
       paperBacktestReport(
         {},
         {
           scenarioPath: opts.scenario,
           outPath: opts.out,
+          seedJournalPath: opts.seedJournal,
           json: Boolean(opts.json),
         },
       ),
+    );
+  });
+
+program
+  .command("paper:backtest:lint")
+  .description(
+    "Validate/lint a local JSON backtest scenario WITHOUT running it (PAPER ONLY; errors block a run, warnings flag suspicious design)",
+  )
+  .option("--scenario <path>", "local JSON backtest scenario to lint")
+  .option("--json", "emit the lint result as stable JSON")
+  .action((opts: { scenario?: string; json?: boolean }) => {
+    printResult(
+      paperBacktestLintReport({}, { scenarioPath: opts.scenario, json: Boolean(opts.json) }),
     );
   });
 

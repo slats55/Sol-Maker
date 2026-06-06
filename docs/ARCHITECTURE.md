@@ -28,7 +28,7 @@ packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.j
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
-packages/backtest @soulmaker/backtest  deterministic simulated replay (Sprint 8)  [strategy, paper, security]
+packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint (Sprint 8–9)  [strategy, paper, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -302,15 +302,31 @@ injected `at`, so a given scenario yields **byte-stable** output.
 
 - `types.ts` — `BacktestScenario` (a self-contained artifact: embedded
   `strategyConfig` + `caps` + ordered `steps` + optional seed `initialJournal`),
-  `BacktestStep`, `BacktestStepResult`, `BacktestReport`.
-- `backtest.ts` — `validateScenario` (strict; refuses a malformed/empty scenario
-  with a clear, non-secret message) and `runBacktest`: seed (optional, via
-  `deriveStateFromJournalText`) → per step `planStrategyBatch` → `runPaperSession`
-  (continued) → final `reduceJournal` + `markFinalUnrealized` + `summarize`. The
-  scenario is never mutated.
-- `report.ts` — `formatBacktestReport` (redacted human block) + the required
-  labels: **SIMULATED PAPER-ONLY REPORT**, *uses injected historical data only*,
-  *not a live result*, *not financial advice*, *not a profitability claim*.
+  `BacktestStep`, `BacktestStepResult`, `BacktestReport`, plus the Sprint 9 lint
+  types (`BacktestLintIssue`, `BacktestScenarioLintResult`/`…Summary`) and report
+  aggregates (`BacktestEquityPoint`, `BacktestPerMintAggregate`).
+- `lint.ts` (Sprint 9) — the shared structural-validation **core**
+  (`collectScenarioIssues`, non-throwing, collects every blocking problem and, when
+  clean, returns the narrowed scenario), `computeScenarioWarnings` (suspicious-but-
+  allowed design), and `lintBacktestScenario` → `{ valid, errors, warnings, summary }`.
+  Pure, deterministic, non-mutating; never runs the backtest.
+- `digest.ts` (Sprint 9) — `canonicalize` (recursive key-sorted JSON) + `digestContent`
+  (a dependency-free, **non-cryptographic** FNV-1a content digest — for
+  reproducibility/traceability only, never security; no `node:crypto`, keeping the
+  package pure).
+- `backtest.ts` — `validateBacktestScenario` (the throwing wrapper over the lint
+  core; `validateScenario` is a back-compatible alias) and `runBacktest`: seed
+  (optional, via `deriveStateFromJournalText`) → per step `planStrategyBatch` →
+  `runPaperSession` (continued) → final `reduceJournal` + `markFinalUnrealized` +
+  `summarize`. It now also emits the `equityCurve` (one sample per step), **exact**
+  `perMint` aggregates (realized PnL recomputed from each mint's own fills), the
+  `scenarioDigest`, `schemaVersion`, and the scenario `warnings`. The scenario is
+  never mutated.
+- `report.ts` — `formatBacktestReport` (sectioned, redacted human block:
+  Scenario / Warnings / Summary / Equity curve / Per-mint / Open positions / Steps /
+  Notes) + the required labels: **SIMULATED PAPER-ONLY REPORT**, *uses injected
+  historical data only*, *not a live result*, *not financial advice*, *not a
+  profitability claim*.
 
 **Data flow:**
 
@@ -334,7 +350,18 @@ it is **not** a live result, a profitability claim, or financial advice. The
 command lives beside the other `paper:*` commands because its artifact is a
 paper-simulation report; the strategy layer is an internal driver. A
 **forbidden-import regression test** asserts the package imports no
-`@solana/web3*`, `fs`/`node:fs`, `http(s)`, or `ws`. See
+`@solana/web3*`, `fs`/`node:fs`, `http(s)`, or `ws`.
+
+**Sprint 9 CLI surface.** `paper:backtest:lint --scenario <path> [--json]`
+validates/lints a scenario **without** running it (errors refuse with exit 1;
+warnings stay runnable). `paper:backtest --seed-journal <path>` seeds the run from
+an external JSONL journal — composed onto a scenario **copy** at the CLI layer so
+the pure engine stays scenario-driven; it is mutually exclusive with an embedded
+`initialJournal` (both ⇒ refuse), read strictly, never written, and the scenario
+file is never modified. All local JSON readers (and journal reads) tolerate a
+single leading UTF-8 **BOM** via `stripJsonBom` (malformed JSON still refuses; a
+mid-content BOM is never stripped). Copyable, **injected** example scenarios live
+under `examples/backtest/` (fixtures, not market truth). See
 [`PAPER_TRADING_MODEL.md`](PAPER_TRADING_MODEL.md).
 
 ## Configuration

@@ -1,0 +1,90 @@
+# Backtest example scenarios
+
+These are **small, deterministic, INJECTED fixtures** for the paper-only backtest
+engine (`@soulmaker/backtest`). They exist as copyable starting points and as test
+fixtures.
+
+> **What these are NOT.** They are **not** historical market data, **not** real
+> token prices, and **not** a record of anything that happened on-chain. Every
+> mint here is a fake, obviously-dummy placeholder (`FakeAAA…`, `FakeBBB…`,
+> `FakeCCC…`), and every price is an injected number with `"source":
+> "injected-fixture"`. The simulated PnL they produce is bookkeeping arithmetic
+> over those injected numbers — **not a live result, not a profitability claim,
+> and not financial advice.** Nothing here builds, signs, simulates, or sends a
+> transaction, and there is no wallet, key, or network anywhere in the pipeline.
+
+## The scenarios
+
+| File | What it shows |
+| --- | --- |
+| [`single-mint-buy-hold.scenario.json`](single-mint-buy-hold.scenario.json) | One mint, one simulated buy, **held** to the end — final unrealized PnL is marked at the last injected price. |
+| [`single-mint-buy-full-exit.scenario.json`](single-mint-buy-full-exit.scenario.json) | One mint bought then **fully exited** by a take-profit sweep — deterministic realized PnL, position closed. |
+| [`multi-mint-partial-exit.scenario.json`](multi-mint-partial-exit.scenario.json) | Three mints: one **partial-exits** (scales out half), one is **held**, one is **rejected** by the advisory risk gate (the skip path). |
+| [`seed-journal-continuation.scenario.json`](seed-journal-continuation.scenario.json) | Starts from an **embedded `initialJournal`** that already holds an open simulated position, then continues the replay (and opens a new entry). |
+
+## How to run
+
+From the repository root:
+
+```bash
+# 1) Lint a scenario WITHOUT running it (errors block a run; warnings flag
+#    suspicious-but-allowed design). Add --json for a stable, redacted result.
+pnpm soulmaker paper:backtest:lint --scenario examples/backtest/single-mint-buy-full-exit.scenario.json
+
+# 2) Run the deterministic, simulated replay and print the human report.
+pnpm soulmaker paper:backtest --scenario examples/backtest/single-mint-buy-full-exit.scenario.json
+
+# 3) Emit the stable JSON report (machine-readable).
+pnpm soulmaker paper:backtest --scenario examples/backtest/single-mint-buy-hold.scenario.json --json
+
+# 4) Write ONLY the report JSON to a file (never a journal or fills).
+pnpm soulmaker paper:backtest --scenario examples/backtest/single-mint-buy-hold.scenario.json --json --out report.json
+```
+
+The `seed-journal-continuation` example embeds its starting journal in the
+scenario file. You can also seed a backtest from a **separate** JSONL journal
+without editing the scenario:
+
+```bash
+pnpm soulmaker paper:backtest --scenario some.scenario.json --seed-journal path/to/journal.jsonl
+```
+
+`--seed-journal` is mutually exclusive with an embedded `initialJournal` (supplying
+both is refused, so there is no hidden override). The seed journal is read strictly
+and **never written**, and the scenario file is **never modified**.
+
+## What the reports mean (and do not mean)
+
+A backtest report is a deterministic summary of a simulated replay:
+
+- **`schemaVersion`** — the report shape (`backtest.report.v1`).
+- **`scenarioDigest`** — a non-cryptographic content digest of the scenario, for
+  reproducibility/traceability only (two scenarios that differ only in key order
+  share a digest). It is **not** a security or integrity guarantee.
+- **`warnings`** — scenario-linter findings, surfaced so suspicious design is
+  visible rather than hidden.
+- **`equityCurve`** — one sample per step (cumulative realized/unrealized/total
+  PnL, open/closed counts, simulated turnover), marked at that step's injected
+  prices.
+- **`perMint`** — exact per-mint aggregates (fill counts, open quantity, realized
+  and unrealized PnL, turnover). Realized PnL is recomputed exactly from each
+  mint's own fills — never estimated.
+
+Every number is **simulated bookkeeping from injected prices**. The report
+explicitly carries `SIMULATED PAPER-ONLY REPORT`, "Uses injected historical data
+only", "Not a live result", "Not financial advice", and "Not a profitability
+claim". Treat these examples as a way to learn the tool and to author your own
+scenarios — never as evidence that any strategy is profitable.
+
+## Authoring your own
+
+Copy one of these files, change the mints/prices/steps, then **lint before you
+run**:
+
+```bash
+pnpm soulmaker paper:backtest:lint --scenario my.scenario.json
+```
+
+The linter explains structural errors (which prevent a run) and warnings (which
+flag suspicious design, e.g. a missing trade size, non-monotonic timestamps,
+duplicate step ids, or a kill switch that silently disables all trading).

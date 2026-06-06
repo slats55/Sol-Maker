@@ -16,7 +16,7 @@ all pass.
 
 ---
 
-## ⚠️ Status: Phases 0–1 done; Phase 2 read-only core complete; Phase 3 advisory risk engine complete; Phase 4 simulated paper engine complete; Phase 5 paper-only strategy rules engine complete (Sprint 5 single-candidate + Sprint 6 batch plan pipeline + Sprint 7 journal-aware planning & richer simulated exits + Sprint 8 journal-continuing paper runs & deterministic simulated backtest). No live trading. By design.
+## ⚠️ Status: Phases 0–1 done; Phase 2 read-only core complete; Phase 3 advisory risk engine complete; Phase 4 simulated paper engine complete; Phase 5 paper-only strategy rules engine complete (Sprint 5 single-candidate + Sprint 6 batch plan pipeline + Sprint 7 journal-aware planning & richer simulated exits + Sprint 8 journal-continuing paper runs & deterministic simulated backtest + Sprint 9 scenario linting, example fixtures, stabler/richer backtest reports & BOM-tolerant JSON parsing). No live trading. By design.
 
 Nothing in this repository can move funds. There is **no transaction signing or
 sending code anywhere in it yet** — the read-only Solana watcher (Phase 2) and
@@ -34,9 +34,16 @@ the journal actually finds its open position — and a new `@soulmaker/backtest`
 package + `paper:backtest` command replay injected, local-only steps through the
 **same** `plan → paper` code paths into a deterministic, **simulated** report. It
 is **injected historical data only**: not a live result, not a profitability
-claim, not advice. None of this begins transaction planning (roadmap Phase 6
-remains not started). The default mode is `PAPER`. See
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
+claim, not advice. Sprint 9 hardens that backtest foundation: a scenario
+**linter** (`paper:backtest:lint`) flags structural errors and
+suspicious-but-allowed design before a run; copyable **example fixtures** live
+under [`examples/backtest/`](examples/backtest/); the report gains a stable
+`schemaVersion`, a reproducibility `scenarioDigest`, a per-step `equityCurve`, and
+**exact** `perMint` aggregates (all bookkeeping from injected prices); the CLI's
+local JSON readers tolerate a leading UTF-8 **BOM**; and `paper:backtest
+--seed-journal` can seed a run from an external JSONL journal. None of this begins
+transaction planning (roadmap Phase 6 remains not started). The default mode is
+`PAPER`. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Non-negotiable security rules (summary)
 
@@ -66,7 +73,7 @@ soulmaker/
     cli/        # @soulmaker/cli  — read-only CLI (doctor, config:check, mode, paper:status,
                 #                    solana:doctor, wallet:watch, token:inspect/accounts/risk,
                 #                    paper:run/journal, strategy:evaluate, strategy:plan,
-                #                    paper:backtest)
+                #                    paper:backtest, paper:backtest:lint)
     web/        # Phase 8 dashboard (placeholder)
   packages/
     core/       # @soulmaker/core      — config schema, modes, risk caps, LIVE GATE
@@ -79,8 +86,11 @@ soulmaker/
                 #            Sprint 6 adds the batch plan pipeline → PaperCandidate[];
                 #            Sprint 7 adds journal-aware planning + richer simulated exits
     backtest/   # @soulmaker/backtest  — Sprint 8 deterministic, injected-only simulated
-                #            replay over plan → paper (not a live result; not advice)
+                #            replay over plan → paper; Sprint 9 adds scenario lint/validate,
+                #            a content digest, and stabler/richer reports (not a live result)
     adapters/   # Phase 6+ — audited external integrations (placeholder)
+  examples/
+    backtest/   # injected, copyable example scenarios + fixtures (NOT historical market data)
   docs/         # ARCHITECTURE, ROADMAP, WALLET_SAFETY_MODEL, RISK_MODEL, REFERENCE_REPO_AUDIT
   scripts/      # thin operational scripts
   tests/        # cross-package integration tests (unit tests live beside code)
@@ -147,6 +157,15 @@ pnpm soulmaker paper:run --candidates <paper-candidates.json> --prices <prices.j
 # file embedding its own strategy config + caps + ordered steps:
 pnpm soulmaker paper:backtest --scenario <scenario.json>
 pnpm soulmaker paper:backtest --scenario <scenario.json> --json --out <report.json>
+# seed the starting state from an EXTERNAL journal (mutually exclusive with an
+# embedded initialJournal; read-only — the journal is never written):
+pnpm soulmaker paper:backtest --scenario <scenario.json> --seed-journal <journal.jsonl>
+
+# lint/validate a scenario WITHOUT running it (Sprint 9): errors block a run,
+# warnings flag suspicious-but-allowed design. Local JSON readers tolerate a
+# leading UTF-8 BOM. Copyable example scenarios live in examples/backtest/:
+pnpm soulmaker paper:backtest:lint --scenario examples/backtest/single-mint-buy-full-exit.scenario.json
+pnpm soulmaker paper:backtest:lint --scenario <scenario.json> --json
 ```
 
 Configuration comes from `soulmaker.config.json` (copy
@@ -157,11 +176,12 @@ gitignored. Defaults are safe: `PAPER` mode, kill switch off, redaction on.
 ## Documentation
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system design & boundaries
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — phased plan (0 → 7)
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — phased plan (Phases 0 → 8)
 - [`docs/WALLET_SAFETY_MODEL.md`](docs/WALLET_SAFETY_MODEL.md) — key handling & live gate
 - [`docs/RISK_MODEL.md`](docs/RISK_MODEL.md) — caps, kill switch, token risk flags
-- [`docs/PAPER_TRADING_MODEL.md`](docs/PAPER_TRADING_MODEL.md) — simulated paper engine (Phase 4)
+- [`docs/PAPER_TRADING_MODEL.md`](docs/PAPER_TRADING_MODEL.md) — simulated paper engine (Phase 4) + backtest
 - [`docs/STRATEGY_MODEL.md`](docs/STRATEGY_MODEL.md) — paper-only strategy rules engine (Phase 5)
+- [`examples/backtest/README.md`](examples/backtest/README.md) — injected example scenarios (fixtures, not market truth)
 - [`docs/REFERENCE_REPO_AUDIT.md`](docs/REFERENCE_REPO_AUDIT.md) — audit of reference repos
 - [`SECURITY.md`](SECURITY.md) — the authoritative security rules
 

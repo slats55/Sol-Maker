@@ -18,12 +18,26 @@
 
 export const BACKTEST_PACKAGE_PHASE = 5 as const;
 
-export { runBacktest, validateScenario, BacktestScenarioError } from "./backtest.js";
+export {
+  runBacktest,
+  validateBacktestScenario,
+  validateScenario,
+  BacktestScenarioError,
+} from "./backtest.js";
+
+export {
+  lintBacktestScenario,
+  collectScenarioIssues,
+  computeScenarioWarnings,
+} from "./lint.js";
+
+export { canonicalize, digestContent } from "./digest.js";
 
 export {
   formatBacktestReport,
   BACKTEST_BANNER,
   BACKTEST_DISCLAIMERS,
+  BACKTEST_REPORT_SCHEMA_VERSION,
 } from "./report.js";
 
 export type {
@@ -31,4 +45,9 @@ export type {
   BacktestStep,
   BacktestStepResult,
   BacktestReport,
+  BacktestLintIssue,
+  BacktestScenarioLintResult,
+  BacktestScenarioLintSummary,
+  BacktestEquityPoint,
+  BacktestPerMintAggregate,
 } from "./types.js";

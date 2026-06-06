@@ -67,6 +67,92 @@ export interface BacktestScenario {
   defaultPaperSizeUsd?: number;
 }
 
+/** A single lint finding. `code` is stable (assertable); `message` is human + redaction-safe. */
+export interface BacktestLintIssue {
+  /** Stable kebab-case identifier (e.g. "duplicate-step-id"). */
+  code: string;
+  /** One-sentence human explanation. Never contains a secret (injected data only). */
+  message: string;
+  /** Optional dotted/bracketed path into the scenario (e.g. "steps[2].id"). */
+  path?: string;
+}
+
+/** A compact, deterministic overview of the scenario the linter inspected. */
+export interface BacktestScenarioLintSummary {
+  /** Scenario name if it is a non-empty string, else null. */
+  name: string | null;
+  /** Number of steps (0 when `steps` is missing/not an array). */
+  stepCount: number;
+  /** Total injected candidates across all steps. */
+  candidateCount: number;
+  /** Total injected price points across all steps. */
+  priceCount: number;
+  /** Whether an embedded `initialJournal` string is present. */
+  hasInitialJournal: boolean;
+  errorCount: number;
+  warningCount: number;
+}
+
+/** The structured result of linting one scenario. Deterministic + JSON-serializable. */
+export interface BacktestScenarioLintResult {
+  /** True iff there are zero errors (a run is possible; warnings may still exist). */
+  valid: boolean;
+  /** Blocking problems: structural validation failures + a malformed embedded journal. */
+  errors: BacktestLintIssue[];
+  /** Suspicious-but-allowed designs. A warning never blocks a run. */
+  warnings: BacktestLintIssue[];
+  summary: BacktestScenarioLintSummary;
+}
+
+/**
+ * One deterministic equity-curve sample, taken after a replay step from the
+ * carried-forward simulated state. Every value is simulated bookkeeping marked at
+ * that step's injected prices — never a live result. There is exactly one entry
+ * per step, in replay order.
+ */
+export interface BacktestEquityPoint {
+  /** The step id this sample was taken after. */
+  stepId: string;
+  /** The step's injected timestamp. */
+  at: string;
+  /** Cumulative realized simulated PnL after this step (USD). */
+  realizedPnlUsd: number;
+  /** Unrealized simulated PnL marked at this step's injected prices (USD). */
+  unrealizedPnlUsd: number;
+  /** realized + unrealized (USD). */
+  totalPnlUsd: number;
+  /** Gross simulated turnover so far (USD). */
+  simulatedNotionalUsd: number;
+  /** Open simulated positions after this step. */
+  openPositionCount: number;
+  /** Closed simulated trades so far. */
+  closedTradeCount: number;
+}
+
+/**
+ * Deterministic per-mint aggregate over the final reconstructed simulated state.
+ * Every field is EXACT bookkeeping derived from the injected fills (realized PnL
+ * is recomputed by replaying that mint's own fills through the same weighted-average
+ * engine; it is never estimated). Sorted by mint in the report.
+ */
+export interface BacktestPerMintAggregate {
+  mint: string;
+  /** Simulated BUY fills for this mint. */
+  buyFillCount: number;
+  /** Simulated SELL fills for this mint. */
+  sellFillCount: number;
+  /** Remaining open simulated quantity (0 when flat/closed). */
+  openQuantity: number;
+  /** Exact realized simulated PnL for this mint (USD). */
+  realizedPnlUsd: number;
+  /** Unrealized simulated PnL at the final step's injected price (USD; 0 when flat). */
+  unrealizedPnlUsd: number;
+  /** realized + unrealized (USD). */
+  totalPnlUsd: number;
+  /** Gross simulated turnover for this mint (USD). */
+  simulatedNotionalUsd: number;
+}
+
 /** Deterministic, JSON-serializable per-step breakdown. Counts are this step only. */
 export interface BacktestStepResult {
   id: string;
@@ -96,6 +182,8 @@ export interface BacktestStepResult {
  * live result, never a profitability claim, never advice.
  */
 export interface BacktestReport {
+  /** Stable report schema identifier (e.g. "backtest.report.v1"). */
+  schemaVersion: string;
   banner: string;
   paperOnly: true;
   simulated: true;
@@ -104,7 +192,18 @@ export interface BacktestReport {
   notProfitabilityClaim: true;
   /** The required disclaimer statements (stable order). */
   disclaimers: string[];
+  /**
+   * Scenario linter warnings (suspicious-but-allowed design), surfaced so a
+   * questionable scenario is visible rather than hidden. Never blocks the run.
+   */
+  warnings: BacktestLintIssue[];
   scenarioName: string;
+  /**
+   * Deterministic, non-cryptographic 16-hex-char content digest of the
+   * canonicalized scenario. For reproducibility/traceability only — NOT security.
+   * Two scenarios that differ only in key order share a digest.
+   */
+  scenarioDigest: string;
   stepCount: number;
   /** Sum of `step.candidates.length` across all steps. */
   totalCandidateCount: number;
@@ -128,6 +227,10 @@ export interface BacktestReport {
   simulatedNotionalUsd: number;
   /** The production paper-run summary of the final reconstructed state. */
   finalSummary: PaperRunSummary;
+  /** One deterministic equity sample per step, in replay order (length === stepCount). */
+  equityCurve: BacktestEquityPoint[];
+  /** Exact per-mint aggregates, sorted by mint. */
+  perMint: BacktestPerMintAggregate[];
   /** Final open simulated positions (deterministic mint order). */
   openPositions: PaperPosition[];
   /** Per-step deterministic breakdown, in replay order. */

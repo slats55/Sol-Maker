@@ -104,11 +104,12 @@ Implemented in `@soulmaker/paper` + the CLI (Sprint 4; Sprint 8 journal continua
 - ⬜ Snipe-list **ingestion** wiring (candidates are supplied as fixtures today;
   a live snipe-list source is a later sprint). Still **no real sends**.
 
-## Phase 5 — Strategy rules engine 🟡 (deterministic, paper-only — single + batch + journal-aware + journal-continuing loop + backtest)
+## Phase 5 — Strategy rules engine 🟡 (deterministic, paper-only — single + batch + journal-aware + journal-continuing loop + backtest + scenario linting/report stability)
 
 Implemented in `@soulmaker/strategy` + `@soulmaker/backtest` + the CLI (Sprint 5
 single-candidate engine; Sprint 6 batch plan pipeline; Sprint 7 journal-aware
-planning + richer exits; Sprint 8 journal-continuing loop + deterministic backtest):
+planning + richer exits; Sprint 8 journal-continuing loop + deterministic backtest;
+Sprint 9 scenario linting, example fixtures, report stability + BOM-tolerant JSON):
 
 - ✅ Deterministic, **paper-only** rules engine: turns an advisory
   `@soulmaker/risk` report + injected, read-only metrics into a single decision —
@@ -175,6 +176,36 @@ planning + richer exits; Sprint 8 journal-continuing loop + deterministic backte
   a profitability claim*. A new package because the backtest orchestrates BOTH
   strategy and paper (it sits above each); neither depends on it, so there is no
   cycle and `@soulmaker/strategy` keeps its "never runs a paper session" contract.
+- ✅ **(Sprint 9) Scenario validator + linter** — `@soulmaker/backtest` exports
+  `validateBacktestScenario` (throwing) and `lintBacktestScenario` (structured
+  `{ valid, errors, warnings, summary }`), both built on one shared collecting core
+  so they never disagree. **Errors** block a run (structural problems + a malformed
+  embedded journal); **warnings** flag suspicious-but-allowed design (missing trade
+  sizing, non-monotonic timestamps, duplicate step ids, duplicate mints, empty
+  candidate/price arrays, kill switch on, zero caps, `allowCaution`, extreme exit
+  thresholds, a seed journal with open positions/realized PnL, …). Pure,
+  deterministic, non-mutating. CLI `paper:backtest:lint --scenario <path> [--json]`
+  (errors refuse, exit 1; warnings stay runnable).
+- ✅ **(Sprint 9) Report stability + richer structure** — `BacktestReport` gains a
+  stable `schemaVersion` (`backtest.report.v1`), a deterministic non-cryptographic
+  `scenarioDigest` (canonical content hash, for reproducibility — **not** security),
+  a per-step `equityCurve`, **exact** per-mint aggregates (`perMint`; realized PnL
+  recomputed from each mint's own fills — never invented), and the scenario
+  `warnings`. The human report is sectioned (Scenario / Warnings / Summary / Equity
+  curve / Per-mint / Open positions / Steps / Notes) and JSON stays byte-stable.
+- ✅ **(Sprint 9) BOM-tolerant JSON parsing** — the CLI's local JSON readers (and
+  journal reads) tolerate a single leading UTF-8 BOM (`stripJsonBom`) so files saved
+  by Windows editors / `Set-Content -Encoding utf8` parse; malformed JSON still
+  refuses (no loose normalization, never strips a mid-content BOM).
+- ✅ **(Sprint 9) External seed journal** — `paper:backtest --seed-journal <path>`
+  seeds the starting state from a separate JSONL journal, composed onto a scenario
+  copy at the CLI layer (the pure engine stays scenario-driven). Mutually exclusive
+  with an embedded `initialJournal` (both ⇒ refuse); read strictly; never written;
+  the scenario file is never modified.
+- ✅ **(Sprint 9) Example fixtures** — `examples/backtest/` ships small, INJECTED,
+  deterministic example scenarios (buy & hold, buy & full exit, multi-mint partial
+  exit + hold + reject, seed-journal continuation) with a README. They are fixtures,
+  **not** historical market truth.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 
