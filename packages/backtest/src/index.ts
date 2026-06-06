@@ -204,6 +204,25 @@ export {
   BACKTEST_SENSITIVITY_DIFF_DISCLAIMERS,
 } from "./sensitivity-diff.js";
 
+export {
+  summarizeBacktestSuiteCoverage,
+  validateBacktestSuiteCoverage,
+  formatBacktestSuiteCoverage,
+  BacktestCoverageError,
+  BACKTEST_COVERAGE_SCHEMA_VERSION,
+  BACKTEST_COVERAGE_BANNER,
+  BACKTEST_COVERAGE_DISCLAIMERS,
+} from "./coverage.js";
+
+export type {
+  BacktestSuiteCoverageReport,
+  BacktestCoverageCounts,
+  BacktestCoverageFlags,
+  BacktestCoverageScenarioLists,
+  BacktestPathBehaviourCoverage,
+  FormatBacktestSuiteCoverageOptions,
+} from "./coverage.js";
+
 export type {
   ScenarioVariantSensitivityDiff,
   SensitivityDiffCompatibility,

@@ -35,6 +35,7 @@ import {
   paperBacktestDiffSuiteReport,
   paperBacktestSensitivityReport,
   paperBacktestDiffSensitivityReport,
+  paperBacktestSuiteCoverageReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -4018,6 +4019,98 @@ describe("paperBacktestDiffSensitivityReport (Sprint 14, Slice C)", () => {
       const malformed = paperBacktestDiffSensitivityReport({ cwd, env: {} }, { basePath: "a.json", nextPath: "bad.json" });
       expect(malformed.text).toMatch(/^Refusing:/);
       expect(malformed.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperBacktestSuiteCoverageReport (Sprint 14, Slice E)", () => {
+  function covBase(): unknown {
+    return {
+      name: "coverage base — INJECTED FIXTURE (simulated)",
+      strategyConfig: STRATEGY_CONFIG,
+      caps: { maxTradeSizeUsd: 1000, maxDailyLossUsd: 1000, maxOpenPositions: 5, killSwitch: false },
+      defaultPaperSizeUsd: 100,
+      steps: [
+        {
+          id: "step-1",
+          at: PAPER_TIME,
+          candidates: [{ mint: MINT_A, riskReport: passReport(MINT_A) }],
+          prices: [
+            { mint: MINT_A, priceUsd: 2, observedAt: PAPER_TIME, source: "injected-fixture" },
+            { mint: MINT_A, priceUsd: 3, observedAt: PAPER_TIME, source: "injected-fixture" },
+          ],
+        },
+      ],
+    };
+  }
+
+  const PLAN = {
+    name: "cov-sweep",
+    variants: [
+      { suffix: "up10", perturbations: [{ target: "price", op: "multiply", value: 1.1, min: 0 }] },
+      { suffix: "plus1", perturbations: [{ target: "price", op: "add", value: 1, min: 0, max: 1000000 }] },
+    ],
+  };
+
+  /** Produce a real reports/suite-index.json via the Sprint 13 sensitivity command. */
+  function makeSuiteIndex(cwd: string): string {
+    writeFileSync(join(cwd, "base.scenario.json"), JSON.stringify(covBase(), null, 2));
+    writeFileSync(join(cwd, "plan.json"), JSON.stringify(PLAN, null, 2));
+    paperBacktestSensitivityReport(
+      { cwd, env: {} },
+      { basePath: "base.scenario.json", planPath: "plan.json", outDir: "out" },
+    );
+    return join("out", "reports", "suite-index.json");
+  }
+
+  it("refuses when --suite-index is missing", () => {
+    expect(paperBacktestSuiteCoverageReport({}, {})).toMatch(/^Refusing: --suite-index/);
+  });
+
+  it("reports coverage (human) with the PAPER-only / not-market-coverage labels", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const indexPath = makeSuiteIndex(cwd);
+      const out = paperBacktestSuiteCoverageReport({ cwd, env: {} }, { suiteIndexPath: indexPath });
+      expect(out).toContain("SIMULATED PAPER-ONLY COVERAGE");
+      expect(out).toContain("PAPER ONLY");
+      expect(out.toLowerCase()).toContain("not market coverage");
+      expect(out.toLowerCase()).toContain("not a live result");
+      expect(out.toLowerCase()).toContain("not a profitability claim");
+      expect(out).toContain("Path-behaviour coverage:");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("emits a stable, parseable coverage report with --json", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const indexPath = makeSuiteIndex(cwd);
+      const out = paperBacktestSuiteCoverageReport({ cwd, env: {} }, { suiteIndexPath: indexPath, json: true });
+      const cov = JSON.parse(out) as { schemaVersion: string; counts: { scenarioCount: number }; notMarketCoverage: boolean };
+      expect(cov.schemaVersion).toBe("backtest.coverage.v1");
+      expect(cov.notMarketCoverage).toBe(true);
+      // baseline + 2 variants ran in the suite index.
+      expect(cov.counts.scenarioCount).toBe(3);
+      const out2 = paperBacktestSuiteCoverageReport({ cwd, env: {} }, { suiteIndexPath: indexPath, json: true });
+      expect(out2).toBe(out);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a non-index or malformed JSON file (and writes nothing)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "notindex.json"), JSON.stringify({ hello: "world" }));
+      writeFileSync(join(cwd, "bad.json"), "{ not json");
+      const before = readdirSync(cwd).sort();
+      expect(paperBacktestSuiteCoverageReport({ cwd, env: {} }, { suiteIndexPath: "notindex.json" })).toMatch(/^Refusing:/);
+      expect(paperBacktestSuiteCoverageReport({ cwd, env: {} }, { suiteIndexPath: "bad.json" })).toMatch(/^Refusing:/);
+      expect(readdirSync(cwd).sort()).toEqual(before);
     } finally {
       cleanup();
     }

@@ -99,6 +99,8 @@ import {
   formatScenarioVariantSensitivityReport,
   diffScenarioVariantSensitivityReports,
   formatScenarioVariantSensitivityDiff,
+  summarizeBacktestSuiteCoverage,
+  formatBacktestSuiteCoverage,
   type BacktestReport,
   type BacktestReportDiff,
   type BacktestScenario,
@@ -112,6 +114,7 @@ import {
   type ScenarioVariantSensitivityRun,
   type ScenarioVariantPlanExplanation,
   type ScenarioVariantSensitivityDiff,
+  type BacktestSuiteCoverageReport,
 } from "@soulmaker/backtest";
 
 export interface CommandContext {
@@ -2446,6 +2449,56 @@ export function paperBacktestDiffSensitivityReport(
     text: formatScenarioVariantSensitivityDiff(diff, { baseLabel: opts.basePath, nextLabel: opts.nextPath }),
     exitCode,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 14 (Slice E) — paper:backtest:suite:coverage
+//   Read ONE suite-index.json and report which simulated paper-trading paths the
+//   suite exercised (behavioural bookkeeping coverage — NOT market/test coverage).
+// ---------------------------------------------------------------------------
+
+export interface PaperBacktestSuiteCoverageCommandOptions {
+  /** Path to a suite-index.json (or a sensitivity run's reports/suite-index.json) (required). */
+  suiteIndexPath?: string;
+  json?: boolean;
+}
+
+/**
+ * `soulmaker paper:backtest:suite:coverage` — summarize the BEHAVIOURAL coverage of a
+ * suite from its `suite-index.json`. Reads ONLY the one named local file (BOM-tolerant;
+ * a missing/malformed/non-index file refuses), runs no backtest, and writes nothing. It
+ * reports per-behaviour scenario counts, which simulated paths were exercised anywhere,
+ * the scenario id lists, and a transparently-derived path-behaviour coverage ratio.
+ * This is behavioural bookkeeping coverage — NOT market coverage, NOT test coverage,
+ * NOT a profitability claim. `--json` emits the stable, redacted coverage report. No
+ * chain access, no wallet, no RPC, no network.
+ */
+export function paperBacktestSuiteCoverageReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestSuiteCoverageCommandOptions = {},
+): string {
+  if (!opts.suiteIndexPath) return "Refusing: --suite-index <path> is required.";
+
+  let value: unknown;
+  try {
+    value = readJsonValue(ctx, opts.suiteIndexPath, "suite index");
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  let report: BacktestSuiteCoverageReport;
+  try {
+    // Validates the input as a suite index; a non-index refuses.
+    report = summarizeBacktestSuiteCoverage(value);
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  if (opts.json) {
+    // redactValue is a backstop; the report carries only injected scenario identifiers.
+    return JSON.stringify(redactValue(report), null, 2);
+  }
+  return formatBacktestSuiteCoverage(report, { label: opts.suiteIndexPath });
 }
 
 function yesNo(value: boolean): string {

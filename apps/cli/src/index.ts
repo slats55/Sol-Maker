@@ -25,6 +25,7 @@ import {
   paperBacktestDiffSuiteReport,
   paperBacktestSensitivityReport,
   paperBacktestDiffSensitivityReport,
+  paperBacktestSuiteCoverageReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -541,6 +542,19 @@ program
           json: Boolean(opts.json),
         },
       ),
+    );
+  });
+
+program
+  .command("paper:backtest:suite:coverage")
+  .description(
+    "Summarize which simulated paper-trading paths a suite exercised from its suite-index.json (PAPER ONLY; behavioural bookkeeping coverage, NOT market coverage, NOT test coverage, NOT a profitability claim)",
+  )
+  .option("--suite-index <path>", "path to a suite-index.json (e.g. a suite or sensitivity run's reports/suite-index.json)")
+  .option("--json", "emit the coverage report as stable JSON")
+  .action((opts: { suiteIndex?: string; json?: boolean }) => {
+    printResult(
+      paperBacktestSuiteCoverageReport({}, { suiteIndexPath: opts.suiteIndex, json: Boolean(opts.json) }),
     );
   });
 

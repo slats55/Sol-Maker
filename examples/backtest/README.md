@@ -359,3 +359,31 @@ schema mismatch are also regressions. A **changed-digest** variant (different sc
 content, e.g. an edited base) is reported as *changed*, **not** a regression. Every
 value is a bookkeeping delta between two **simulations** — not profit, loss, a
 prediction, or advice.
+
+## Reviewing suite coverage (Sprint 14)
+
+`paper:backtest:suite:coverage` answers a different question: *did this suite actually
+exercise different simulated paper-trading paths, or did every scenario do the same
+thing?* It reads **one** `suite-index.json` (from `paper:backtest:suite --out-dir` or a
+sensitivity run's `reports/suite-index.json`), runs no backtest, and writes nothing:
+
+```bash
+pnpm soulmaker paper:backtest:suite --dir examples/backtest --out-dir reports/
+pnpm soulmaker paper:backtest:suite:coverage --suite-index reports/suite-index.json
+# --json for a stable machine-readable report (schema backtest.coverage.v1).
+```
+
+It reports, using **only** counts the index already carries: per-behaviour scenario
+counts (buy fills, sell fills, no-fills, rejects, warnings, open positions, closed
+trades, realized/unrealized PnL), which behaviours were exercised **anywhere**, the
+scenario id lists per behaviour, the unique run/entry statuses, and a transparently
+defined **path-behaviour coverage ratio** = (tracked behaviours exercised by ≥1
+scenario) / (7 tracked behaviours). For example, the all-buy-and-hold
+`price-sensitivity` sweep covers `3/7` (it never sells, rejects, closes, or realizes
+PnL), and the report names exactly which paths are **missing** so you can add a
+scenario that exercises them.
+
+> **This is NOT market coverage and NOT test/code coverage.** It is **behavioural
+> bookkeeping** coverage over **injected, simulated** data — which paper paths the
+> suite touched — not a measure of market conditions, code quality, or profitability.
+> The ratio is a plainly-defined fraction, not a score and not advice.
