@@ -1,27 +1,32 @@
 /**
  * Deterministic scenario VARIANT generation: produce several injected scenario
  * variants from one base scenario plus a small, declarative plan of BOUNDED
- * numeric perturbations applied to its injected prices and candidate metrics.
+ * numeric perturbations applied to its injected prices, candidate metrics, and a
+ * conservative allowlist of numeric config fields.
  *
  * This is the relative-perturbation complement to {@link expandScenarioMatrix}
  * (`matrix.ts`). Where the matrix SETS config-only fields (strategyConfig / caps
  * / defaultPaperSizeUsd) to absolute values, this MULTIPLIES or ADDS a bounded
  * delta to the *data a scenario replays* — the injected per-step price points
  * (`steps[].prices[].priceUsd`) and the injected per-candidate market metrics
- * (`steps[].candidates[].metrics.*`). The canonical use is a price-sensitivity
- * sweep ("all prices ×1.1", "all prices ×0.9") whose variants are then run as a
- * suite and compared with a suite diff.
+ * (`steps[].candidates[].metrics.*`) — and, via `"config.<field>"`, to a small
+ * ALLOWLIST of numeric config fields (e.g. `config.maxTradeSizeUsd`,
+ * `config.takeProfitPct`). The canonical use is a price-sensitivity sweep ("all
+ * prices ×1.1", "all prices ×0.9") whose variants are run as a suite and compared
+ * with a suite diff.
  *
  * The plan is intentionally tiny and SAFE. A perturbation is plain arithmetic
  * over an ALLOWLIST of numeric targets: never arbitrary deep merging, never code
  * or `eval`/expression evaluation, never a free-form dotted path into arbitrary
- * structure, and never a structural or labelling field. It can only touch numbers
- * that ALREADY EXIST (an absent field is never created, and a perturbation that
- * matches nothing is refused, not silently ignored). `name`, the `steps`
- * structure, `initialJournal`, and config are never edited, so the base's
- * "INJECTED FIXTURE" labelling always survives — each variant's name is derived
- * from the base name plus the variant suffix and can never be edited into
- * something misleading.
+ * structure, and never a structural or labelling field. A `config.<field>` target
+ * resolves ONLY through a closed allowlist of unambiguous numeric config fields —
+ * an arbitrary dotted path like `config.any.deep.path` is refused. It can only
+ * touch numbers that ALREADY EXIST (an absent field is never created, and a
+ * perturbation that matches nothing is refused, not silently ignored). `name`, the
+ * `steps` structure, `initialJournal`, and every non-allowlisted config field are
+ * never edited, so the base's "INJECTED FIXTURE" labelling always survives — each
+ * variant's name is derived from the base name plus the variant suffix and can
+ * never be edited into something misleading.
  *
  * Pure (no network, no RPC, no filesystem, no `Date.now`, no `Math.random`, NO
  * RNG of any kind) and non-mutating: the base scenario is never modified and each
@@ -66,16 +71,45 @@ const METRIC_FIELDS = [
 ] as const;
 type MetricField = (typeof METRIC_FIELDS)[number];
 
+/** Where an allowlisted config field lives within a {@link BacktestScenario}. */
+type ConfigSection = "caps" | "strategyConfig" | "root";
+
+/**
+ * The CLOSED allowlist of numeric config fields a `"config.<field>"` perturbation
+ * may target, each mapped to its exact location. Deliberately conservative: only
+ * stable, meaningful, UNAMBIGUOUS numeric fields (every name resolves to exactly one
+ * location — `maxOpenPositions`, which exists in BOTH `caps` and `strategyConfig`, is
+ * intentionally excluded). An arbitrary dotted path or any field not listed here is
+ * refused — there is no path traversal and no structural editing.
+ */
+const CONFIG_FIELDS: Readonly<Record<string, { section: ConfigSection; key: string }>> = {
+  // caps (simulated risk caps)
+  maxTradeSizeUsd: { section: "caps", key: "maxTradeSizeUsd" },
+  maxDailyLossUsd: { section: "caps", key: "maxDailyLossUsd" },
+  maxPositionSizeUsd: { section: "caps", key: "maxPositionSizeUsd" },
+  // strategyConfig (gates + exit thresholds)
+  minScoreForPaperBuy: { section: "strategyConfig", key: "minScoreForPaperBuy" },
+  maxRiskScore: { section: "strategyConfig", key: "maxRiskScore" },
+  takeProfitPct: { section: "strategyConfig", key: "takeProfitPct" },
+  stopLossPct: { section: "strategyConfig", key: "stopLossPct" },
+  trailingStopPct: { section: "strategyConfig", key: "trailingStopPct" },
+  // top-level fallback simulated size
+  defaultPaperSizeUsd: { section: "root", key: "defaultPaperSizeUsd" },
+};
+const CONFIG_FIELD_NAMES = Object.keys(CONFIG_FIELDS);
+
 /** The only keys a perturbation object may carry (typos / smuggling are refused). */
 const PERTURBATION_KEYS = ["target", "op", "value", "min", "max", "mint"] as const;
 type PerturbationKey = (typeof PERTURBATION_KEYS)[number];
 
 /**
  * One declared perturbation. `target` is `"price"` (every injected price point's
- * `priceUsd`) or `"metric.<field>"` (every candidate's `metrics.<field>`). `op`
- * with `value` is `oldValue * value` (multiply) or `oldValue + value` (add). The
- * result is clamped to the explicit `[min, max]` bounds when present. An optional
- * `mint` restricts the perturbation to values for that one mint.
+ * `priceUsd`), `"metric.<field>"` (every candidate's `metrics.<field>`), or
+ * `"config.<field>"` (one allowlisted numeric config field). `op` with `value` is
+ * `oldValue * value` (multiply) or `oldValue + value` (add). The result is clamped to
+ * the explicit `[min, max]` bounds when present. An optional `mint` restricts a
+ * price/metric perturbation to values for that one mint (not valid for a `config`
+ * target, whose value is global).
  */
 export interface ScenarioPerturbation {
   target: string;
@@ -142,7 +176,10 @@ function isSafeSuffix(value: unknown): value is string {
 
 // --- normalized (validated) perturbation -------------------------------------
 
-type NormalizedTarget = { kind: "price" } | { kind: "metric"; field: MetricField };
+type NormalizedTarget =
+  | { kind: "price" }
+  | { kind: "metric"; field: MetricField }
+  | { kind: "config"; section: ConfigSection; key: string; name: string };
 
 interface NormalizedPerturbation {
   target: NormalizedTarget;
@@ -156,6 +193,7 @@ interface NormalizedPerturbation {
 }
 
 const METRIC_PREFIX = "metric.";
+const CONFIG_PREFIX = "config.";
 
 function parseTarget(target: unknown, where: string): NormalizedTarget {
   if (!nonEmptyString(target)) {
@@ -171,8 +209,18 @@ function parseTarget(target: unknown, where: string): NormalizedTarget {
       `${where}.target "${target}" is not allowed — metric field must be one of ${METRIC_FIELDS.join(", ")}`,
     );
   }
+  if (target.startsWith(CONFIG_PREFIX)) {
+    // The whole remainder must be ONE allowlisted field name — no dotted traversal.
+    const name = target.slice(CONFIG_PREFIX.length);
+    const entry = CONFIG_FIELDS[name];
+    if (entry) return { kind: "config", section: entry.section, key: entry.key, name };
+    throw new ScenarioVariantError(
+      `${where}.target "${target}" is not allowed — config field must be one of ${CONFIG_FIELD_NAMES.join(", ")} ` +
+        "(an arbitrary dotted path is never allowed)",
+    );
+  }
   throw new ScenarioVariantError(
-    `${where}.target "${target}" is not allowed — use "price" or "metric.<field>"`,
+    `${where}.target "${target}" is not allowed — use "price", "metric.<field>", or "config.<field>"`,
   );
 }
 
@@ -222,6 +270,12 @@ function normalizePerturbation(raw: unknown, where: string): NormalizedPerturbat
     if (!nonEmptyString(raw.mint)) {
       throw new ScenarioVariantError(`${where}.mint must be a non-empty string when present`);
     }
+    // A config field is a single global value — a mint filter would be meaningless.
+    if (target.kind === "config") {
+      throw new ScenarioVariantError(
+        `${where}.mint is not allowed for a "config.*" target (a config field is a single global value)`,
+      );
+    }
     result.mint = raw.mint;
   }
   return result;
@@ -241,6 +295,37 @@ function perturbNumber(old: number, p: NormalizedPerturbation): number {
 }
 
 /**
+ * Apply one ALLOWLISTED config perturbation to the (already cloned) working scenario
+ * IN PLACE; returns 1 if the single targeted numeric value was changed, else 0 (an
+ * absent or non-numeric field is never created — it just matches nothing). The target
+ * key comes from the closed {@link CONFIG_FIELDS} allowlist, so this never traverses
+ * an arbitrary path. Throws if the arithmetic would produce a non-finite number.
+ */
+function applyConfigPerturbation(
+  scenario: BacktestScenario,
+  p: NormalizedPerturbation,
+  target: { section: ConfigSection; key: string; name: string },
+  where: string,
+): number {
+  const container: Record<string, unknown> =
+    target.section === "caps"
+      ? (scenario.caps as unknown as Record<string, unknown>)
+      : target.section === "strategyConfig"
+        ? (scenario.strategyConfig as unknown as Record<string, unknown>)
+        : (scenario as unknown as Record<string, unknown>);
+  const cur = container[target.key];
+  if (!isFiniteNumber(cur)) return 0; // absent / non-numeric ⇒ matches nothing (refused upstream)
+  const next = perturbNumber(cur, p);
+  if (!Number.isFinite(next)) {
+    throw new ScenarioVariantError(
+      `${where} produced a non-finite config.${target.name} — add an explicit max bound`,
+    );
+  }
+  container[target.key] = next;
+  return 1;
+}
+
+/**
  * Apply one perturbation to the (already cloned) working scenario IN PLACE and
  * return how many numeric values it changed. Only finite values that already
  * exist are touched; an absent field is never created. Throws if the arithmetic
@@ -251,9 +336,13 @@ function applyPerturbation(
   p: NormalizedPerturbation,
   where: string,
 ): number {
+  const t = p.target;
+  if (t.kind === "config") {
+    return applyConfigPerturbation(scenario, p, t, where);
+  }
   let count = 0;
   for (const step of scenario.steps) {
-    if (p.target.kind === "price") {
+    if (t.kind === "price") {
       for (const price of step.prices) {
         if (p.mint !== undefined && price.mint !== p.mint) continue;
         if (!isFiniteNumber(price.priceUsd)) continue;
@@ -267,7 +356,7 @@ function applyPerturbation(
         count += 1;
       }
     } else {
-      const field = p.target.field;
+      const field = t.field;
       for (const candidate of step.candidates) {
         if (p.mint !== undefined && candidate.mint !== p.mint) continue;
         const metrics = candidate.metrics;
@@ -465,7 +554,8 @@ export interface ScenarioVariantPlanExplanation {
 /** Stable string form of a normalized target for the explanation. */
 function describeTarget(target: NormalizedTarget): string {
   if (target.kind === "price") return "price";
-  return `${METRIC_PREFIX}${target.field}`;
+  if (target.kind === "metric") return `${METRIC_PREFIX}${target.field}`;
+  return `${CONFIG_PREFIX}${target.name}`;
 }
 
 /**

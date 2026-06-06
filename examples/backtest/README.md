@@ -184,12 +184,14 @@ difference, **not** a regression by default.
 To explore a base scenario across bounded "what-ifs" (e.g. *all prices ±10%*),
 generate **variants** from it with a small, declarative **plan** of numeric
 perturbations, then run the variants as a suite. Each perturbation `multiply`s or
-`add`s a finite delta to a `price` (every injected `priceUsd`) or a `metric.<field>`
-(an allowlisted candidate metric), clamped to explicit `[min, max]` bounds and
-optionally restricted to one `mint`. There is **no RNG, no code/expressions, no live
-data**, and a perturbation that matches **nothing** is refused (never silently
-ignored). The base's `name`, `steps` structure, `initialJournal`, and config are
-protected, so each variant's name is derived from the base name + its `suffix`:
+`add`s a finite delta to a `price` (every injected `priceUsd`), a `metric.<field>`
+(an allowlisted candidate metric), or a `config.<field>` (an allowlisted numeric
+config field — see below), clamped to explicit `[min, max]` bounds and (for
+price/metric) optionally restricted to one `mint`. There is **no RNG, no
+code/expressions, no live data**, and a perturbation that matches **nothing** is
+refused (never silently ignored). The base's `name`, `steps` structure,
+`initialJournal`, and every non-allowlisted config field are protected, so each
+variant's name is derived from the base name + its `suffix`:
 
 ```bash
 # Generate one INJECTED variant file per plan entry (refuses overwrite without --force):
@@ -211,6 +213,37 @@ inversely more units at a lower entry); an *additive* shift moves the entry and 
 moves the simulated PnL. Every variant is **simulated local scenario data** — fake
 mints, injected prices — **not a live result, not advice, and not a profitability
 claim.**
+
+### Config perturbations (Sprint 14)
+
+Beyond prices and metrics, a perturbation can target a **`config.<field>`** to sweep a
+strategy/cap parameter — e.g. *how sensitive are the simulated outputs to a ±50%
+change in the trade-size cap or the take-profit threshold?* The allowlist is closed,
+conservative, and **unambiguous** (every name resolves to exactly one location):
+
+| `config.<field>` | Location |
+| --- | --- |
+| `config.maxTradeSizeUsd` · `config.maxDailyLossUsd` · `config.maxPositionSizeUsd` | `caps.*` |
+| `config.minScoreForPaperBuy` · `config.maxRiskScore` · `config.takeProfitPct` · `config.stopLossPct` · `config.trailingStopPct` | `strategyConfig.*` |
+| `config.defaultPaperSizeUsd` | top-level |
+
+```json
+{
+  "variants": [
+    { "suffix": "cap-up-50pct",  "perturbations": [{ "target": "config.maxTradeSizeUsd", "op": "multiply", "value": 1.5 }] },
+    { "suffix": "tp-tighter",    "perturbations": [{ "target": "config.takeProfitPct",   "op": "multiply", "value": 0.5, "min": 1 }] }
+  ]
+}
+```
+
+Only these exact field names are accepted: an **arbitrary dotted path** (e.g.
+`config.any.deep.path` or even `config.caps.maxTradeSizeUsd`) is **refused** — there is
+no path traversal and no structural editing. `maxOpenPositions` is deliberately **not**
+allowlisted because it exists in *both* `caps` and `strategyConfig` (ambiguous). A
+`mint` filter is not allowed on a `config` target (the value is global). The targeted
+field must already exist as a finite number (an absent optional field matches nothing
+and is refused), and the perturbed variant must still validate — so a config
+perturbation that would produce an invalid scenario (e.g. a negative cap) is refused.
 
 ## Inspecting a variant plan before generating (Sprint 14)
 

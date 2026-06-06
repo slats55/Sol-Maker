@@ -12,6 +12,7 @@ import { buildExampleBacktestScenario } from "./templates.js";
 import { runBacktest } from "./backtest.js";
 import { lintBacktestScenario } from "./lint.js";
 import { digestContent } from "./digest.js";
+import { runScenarioVariantSensitivity } from "./sensitivity.js";
 import type { BacktestScenario } from "./types.js";
 
 const MINT_A = "FakeAAA1111111111111111111111111111111111111";
@@ -167,12 +168,13 @@ describe("generateScenarioVariants — safety + refusals", () => {
     ).toThrow(/perturbations must be a non-empty array/);
   });
 
-  it("refuses an unknown target", () => {
+  it("refuses an unknown target (a bare section prefix is not a config target)", () => {
+    // "caps.*" is NOT a valid target — config fields are reached via "config.<field>".
     expect(() =>
       generateScenarioVariants(priceBase(), {
         variants: [{ suffix: "x", perturbations: [{ target: "caps.maxTradeSizeUsd", op: "add", value: 1 }] }],
       }),
-    ).toThrow(/is not allowed — use "price" or "metric/);
+    ).toThrow(/is not allowed — use "price", "metric/);
   });
 
   it("refuses an unknown metric field", () => {
@@ -423,5 +425,160 @@ describe("explainScenarioVariantPlan — dry-run inspection (Sprint 14, Slice B)
     const text = formatScenarioVariantPlanExplanation(ex);
     expect(text).toContain("Refusals:");
     expect(text).toContain("MATCHES NOTHING");
+  });
+});
+
+describe("generateScenarioVariants — config perturbations (Sprint 14, Slice D)", () => {
+  /** A base that carries the optional exit/cap fields so config targets have something to perturb. */
+  function configBase(): BacktestScenario {
+    const s = priceBase();
+    s.caps.maxTradeSizeUsd = 1000;
+    s.strategyConfig.takeProfitPct = 20;
+    s.strategyConfig.stopLossPct = 10;
+    s.defaultPaperSizeUsd = 100;
+    return s;
+  }
+
+  it("applies an `add` op to an allowlisted caps field (one value changed)", () => {
+    const result = generateScenarioVariants(configBase(), {
+      variants: [{ suffix: "bigger-cap", perturbations: [{ target: "config.maxTradeSizeUsd", op: "add", value: 500 }] }],
+    });
+    expect(result.variants[0]?.changeCount).toBe(1);
+    expect(result.variants[0]?.scenario.caps.maxTradeSizeUsd).toBe(1500);
+    // The strategyConfig and steps are untouched.
+    expect(result.variants[0]?.scenario.strategyConfig.takeProfitPct).toBe(20);
+  });
+
+  it("applies a `multiply` op to an allowlisted strategyConfig field", () => {
+    const result = generateScenarioVariants(configBase(), {
+      variants: [{ suffix: "tp-up", perturbations: [{ target: "config.takeProfitPct", op: "multiply", value: 1.5 }] }],
+    });
+    expect(result.variants[0]?.scenario.strategyConfig.takeProfitPct).toBe(30);
+    expect(result.variants[0]?.changeCount).toBe(1);
+  });
+
+  it("perturbs the top-level defaultPaperSizeUsd", () => {
+    const result = generateScenarioVariants(configBase(), {
+      variants: [{ suffix: "size-up", perturbations: [{ target: "config.defaultPaperSizeUsd", op: "multiply", value: 2 }] }],
+    });
+    expect(result.variants[0]?.scenario.defaultPaperSizeUsd).toBe(200);
+  });
+
+  it("clamps a config perturbation to explicit [min, max] bounds", () => {
+    const result = generateScenarioVariants(configBase(), {
+      variants: [{ suffix: "capped", perturbations: [{ target: "config.maxTradeSizeUsd", op: "multiply", value: 10, max: 5000 }] }],
+    });
+    // 1000*10 = 10000 → clamped to 5000.
+    expect(result.variants[0]?.scenario.caps.maxTradeSizeUsd).toBe(5000);
+  });
+
+  it("refuses an unknown config field", () => {
+    expect(() =>
+      generateScenarioVariants(configBase(), {
+        variants: [{ suffix: "x", perturbations: [{ target: "config.totallyBogus", op: "add", value: 1 }] }],
+      }),
+    ).toThrow(/config field must be one of/);
+  });
+
+  it("refuses an arbitrary dotted path under config.*", () => {
+    expect(() =>
+      generateScenarioVariants(configBase(), {
+        variants: [{ suffix: "x", perturbations: [{ target: "config.caps.maxTradeSizeUsd", op: "add", value: 1 }] }],
+      }),
+    ).toThrow(/config field must be one of/);
+    expect(() =>
+      generateScenarioVariants(configBase(), {
+        variants: [{ suffix: "y", perturbations: [{ target: "config.any.deep.path", op: "add", value: 1 }] }],
+      }),
+    ).toThrow(/config field must be one of/);
+  });
+
+  it("refuses the ambiguous maxOpenPositions field (intentionally not allowlisted)", () => {
+    expect(() =>
+      generateScenarioVariants(configBase(), {
+        variants: [{ suffix: "x", perturbations: [{ target: "config.maxOpenPositions", op: "add", value: 1 }] }],
+      }),
+    ).toThrow(/config field must be one of/);
+  });
+
+  it("refuses (matches nothing) when an allowlisted-but-ABSENT optional field is targeted", () => {
+    const noTp = priceBase(); // has no takeProfitPct
+    delete noTp.strategyConfig.takeProfitPct;
+    expect(() =>
+      generateScenarioVariants(noTp, {
+        variants: [{ suffix: "x", perturbations: [{ target: "config.takeProfitPct", op: "multiply", value: 1.1 }] }],
+      }),
+    ).toThrow(/matched no values/);
+  });
+
+  it("refuses a mint filter on a config target", () => {
+    expect(() =>
+      generateScenarioVariants(configBase(), {
+        variants: [{ suffix: "x", perturbations: [{ target: "config.maxTradeSizeUsd", op: "add", value: 1, mint: MINT_A }] }],
+      }),
+    ).toThrow(/mint is not allowed for a "config/);
+  });
+
+  it("refuses a config perturbation that produces an invalid scenario", () => {
+    // A negative max trade size is structurally invalid → variant validation refuses.
+    expect(() =>
+      generateScenarioVariants(configBase(), {
+        variants: [{ suffix: "x", perturbations: [{ target: "config.maxTradeSizeUsd", op: "multiply", value: -1 }] }],
+      }),
+    ).toThrow(ScenarioVariantError);
+  });
+
+  it("does not mutate the base scenario", () => {
+    const base = configBase();
+    const before = JSON.stringify(base);
+    generateScenarioVariants(base, {
+      variants: [{ suffix: "x", perturbations: [{ target: "config.maxTradeSizeUsd", op: "add", value: 500 }] }],
+    });
+    expect(JSON.stringify(base)).toBe(before);
+  });
+
+  it("produces a scenario that lints valid and runs", () => {
+    const result = generateScenarioVariants(configBase(), {
+      variants: [{ suffix: "tp-up", perturbations: [{ target: "config.takeProfitPct", op: "multiply", value: 1.25 }] }],
+    });
+    const variant = result.variants[0]!.scenario;
+    expect(lintBacktestScenario(variant).valid).toBe(true);
+    expect(() => runBacktest(variant)).not.toThrow();
+  });
+
+  it("explainScenarioVariantPlan reports a config target accurately (Slice B integration)", () => {
+    const ex = explainScenarioVariantPlan(configBase(), {
+      variants: [{ suffix: "cap", perturbations: [{ target: "config.maxTradeSizeUsd", op: "add", value: 500, max: 9000 }] }],
+    });
+    const p = ex.variants[0]?.perturbations[0];
+    expect(p?.target).toBe("config.maxTradeSizeUsd");
+    expect(p?.targetKind).toBe("config");
+    expect(p?.max).toBe(9000);
+    expect(p?.matchedValueCount).toBe(1);
+    expect(ex.valid).toBe(true);
+  });
+});
+
+describe("runScenarioVariantSensitivity — config variants (Sprint 14, Slice D)", () => {
+  it("runs a sensitivity sweep over a config perturbation", () => {
+    const base = priceBase();
+    base.caps.maxTradeSizeUsd = 1000;
+    base.strategyConfig.takeProfitPct = 20;
+    const { report } = runScenarioVariantSensitivity({
+      base,
+      plan: {
+        name: "config-sweep",
+        variants: [
+          { suffix: "tp-up", perturbations: [{ target: "config.takeProfitPct", op: "multiply", value: 1.5 }] },
+          { suffix: "cap-down", perturbations: [{ target: "config.maxTradeSizeUsd", op: "multiply", value: 0.5 }] },
+        ],
+      },
+    });
+    expect(report.variantCount).toBe(2);
+    expect(report.variants.map((v) => v.suffix)).toEqual(["tp-up", "cap-down"]);
+    for (const v of report.variants) {
+      expect(v.status).toBe("passed");
+      expect(v.changeCount).toBe(1); // one config value changed per variant
+    }
   });
 });
