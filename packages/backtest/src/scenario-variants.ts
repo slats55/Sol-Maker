@@ -34,6 +34,7 @@
  */
 
 import { validateBacktestScenario } from "./backtest.js";
+import { digestContent } from "./digest.js";
 import type { BacktestScenario } from "./types.js";
 
 /** Thrown for an invalid base, plan, perturbation, or produced variant. */
@@ -365,4 +366,392 @@ export function generateScenarioVariants(base: unknown, plan: unknown): Scenario
   });
 
   return { name: plan.name ?? null, variants };
+}
+
+// --- variant plan EXPLAIN (dry-run inspection) -------------------------------
+
+/** Stable schema id for a variant-plan explanation. Bump only on a breaking change. */
+export const BACKTEST_VARIANT_PLAN_EXPLAIN_SCHEMA_VERSION = "backtest.variant-plan.explain.v1";
+
+/** The banner that prefixes every variant-plan explanation (required label). */
+export const BACKTEST_VARIANT_PLAN_EXPLAIN_BANNER = "SIMULATED PAPER-ONLY VARIANT PLAN (DRY RUN)";
+
+/** Required disclaimers carried by every variant-plan explanation (stable order). */
+export const BACKTEST_VARIANT_PLAN_EXPLAIN_DISCLAIMERS: readonly string[] = [
+  "SIMULATED PAPER-ONLY VARIANT PLAN (DRY RUN) — explains a plan without generating or running anything.",
+  "Reads injected, simulated local scenario data only.",
+  "Writes nothing, generates no variant files, and runs no backtest.",
+  "Not a live result.",
+  "Not financial advice.",
+  "Not a profitability claim.",
+  "A matched-value count is how many injected numbers a perturbation WOULD change, not a result.",
+];
+
+/**
+ * One perturbation, explained: its normalized target/op/value/bounds/mint filter and
+ * how many injected values it WOULD change against the base (a dry-run count). Bounds
+ * are `number | null` (null = no clamp) so the JSON stays finite and stable.
+ */
+export interface PerturbationExplanation {
+  /** Position within the variant's `perturbations` array. */
+  index: number;
+  /** Normalized target string: `"price"` or `"metric.<field>"`. */
+  target: string;
+  /** Normalized target kind. */
+  targetKind: NormalizedTarget["kind"];
+  op: PerturbationOp;
+  value: number;
+  /** Explicit lower clamp, or null when unbounded. */
+  min: number | null;
+  /** Explicit upper clamp, or null when unbounded. */
+  max: number | null;
+  /** Mint filter, or null when the perturbation applies to every matching value. */
+  mint: string | null;
+  /** How many injected values this perturbation would change against the base (dry run). */
+  matchedValueCount: number;
+  /** True when `matchedValueCount === 0` — generation would REFUSE this perturbation. */
+  matchesNothing: boolean;
+}
+
+/** One variant, explained: its derived name, its perturbations, and its dry-run validity. */
+export interface VariantExplanation {
+  /** Plan order (0-based). */
+  index: number;
+  suffix: string;
+  /** Variant name derived from the base name + suffix (never user-editable). */
+  variantName: string;
+  perturbations: PerturbationExplanation[];
+  /** Sum of `matchedValueCount` across this variant's perturbations. */
+  totalMatchedValueCount: number;
+  /** False when any perturbation matches nothing (generation would refuse it). */
+  valid: boolean;
+  /** Human, redaction-safe refusal reasons for this variant (stable order). */
+  refusals: string[];
+}
+
+/**
+ * The full, deterministic, byte-stable explanation of a variant plan applied to a
+ * base scenario — a DRY RUN that writes nothing and runs no backtest. It carries the
+ * required PAPER-ONLY / not-a-live-result / not-advice / not-a-profit language. It is
+ * a description of what generation WOULD do, never a result.
+ */
+export interface ScenarioVariantPlanExplanation {
+  schemaVersion: string;
+  banner: string;
+  paperOnly: true;
+  simulated: true;
+  dryRun: true;
+  notLiveResult: true;
+  notFinancialAdvice: true;
+  notProfitabilityClaim: true;
+  disclaimers: string[];
+  planName: string | null;
+  /** The validated base scenario name (always present for a valid base). */
+  baseScenarioName: string;
+  /** Content digest of the validated base scenario (matches what a real run reports). */
+  baseScenarioDigest: string;
+  variantCount: number;
+  totalPerturbationCount: number;
+  /** Total injected values all perturbations would change across every variant. */
+  totalMatchedValueCount: number;
+  variants: VariantExplanation[];
+  /** Overall validity: true iff every perturbation matches at least one value. */
+  valid: boolean;
+  /** Aggregate refusal reasons (prefixed by variant suffix), stable order. */
+  refusals: string[];
+  notes: string[];
+}
+
+/** Stable string form of a normalized target for the explanation. */
+function describeTarget(target: NormalizedTarget): string {
+  if (target.kind === "price") return "price";
+  return `${METRIC_PREFIX}${target.field}`;
+}
+
+/**
+ * Explain a variant plan applied to a base scenario WITHOUT generating files or
+ * running a backtest. Validates the base and the plan with the SAME rules as
+ * {@link generateScenarioVariants} (an invalid base, plan, suffix, key, target, op,
+ * value, bounds, mint, or a non-finite result all throw {@link ScenarioVariantError}),
+ * but instead of refusing a perturbation that matches no values, it REPORTS it
+ * (`matchesNothing: true`, `valid: false` for that variant and overall) so the whole
+ * plan can be inspected at once. Pure, deterministic, and non-mutating — the dry-run
+ * counts are computed against a throwaway deep copy; `base`/`plan` are never touched.
+ */
+export function explainScenarioVariantPlan(
+  base: unknown,
+  plan: unknown,
+): ScenarioVariantPlanExplanation {
+  let baseScenario: BacktestScenario;
+  try {
+    baseScenario = validateBacktestScenario(base);
+  } catch (err) {
+    throw new ScenarioVariantError(`base scenario is invalid: ${(err as Error).message}`);
+  }
+
+  if (!isObject(plan)) {
+    throw new ScenarioVariantError("plan must be a JSON object");
+  }
+  if (plan.name !== undefined && typeof plan.name !== "string") {
+    throw new ScenarioVariantError("plan.name must be a string when present");
+  }
+  if (!Array.isArray(plan.variants) || plan.variants.length === 0) {
+    throw new ScenarioVariantError("plan.variants must be a non-empty array");
+  }
+
+  const seenSuffixes = new Set<string>();
+  const variants: VariantExplanation[] = [];
+  const refusals: string[] = [];
+  let totalPerturbationCount = 0;
+  let totalMatchedValueCount = 0;
+
+  plan.variants.forEach((rawVariant, i) => {
+    const where = `plan.variants[${i}]`;
+    if (!isObject(rawVariant)) {
+      throw new ScenarioVariantError(`${where} must be an object`);
+    }
+    if (!isSafeSuffix(rawVariant.suffix)) {
+      throw new ScenarioVariantError(
+        `${where}.suffix must be a non-empty token of [A-Za-z0-9._-] with no path separators or ".."`,
+      );
+    }
+    if (seenSuffixes.has(rawVariant.suffix)) {
+      throw new ScenarioVariantError(`${where}.suffix "${rawVariant.suffix}" is duplicated`);
+    }
+    seenSuffixes.add(rawVariant.suffix);
+
+    if (!Array.isArray(rawVariant.perturbations) || rawVariant.perturbations.length === 0) {
+      throw new ScenarioVariantError(`${where}.perturbations must be a non-empty array`);
+    }
+
+    // A throwaway working copy: perturbations are applied IN SEQUENCE to it exactly as
+    // generation would, so each matched count reflects the prior perturbations' effects.
+    // It is never returned, validated, or written — `base`/`plan` are never mutated.
+    const working = cloneScenario(baseScenario);
+    const perturbations: PerturbationExplanation[] = [];
+    const variantRefusals: string[] = [];
+    let variantMatched = 0;
+
+    rawVariant.perturbations.forEach((rawP, j) => {
+      const pWhere = `${where}.perturbations[${j}]`;
+      const norm = normalizePerturbation(rawP, pWhere);
+      const matched = applyPerturbation(working, norm, pWhere);
+      const matchesNothing = matched === 0;
+      if (matchesNothing) {
+        variantRefusals.push(
+          `perturbations[${j}] matched no values to perturb (check its target and mint filter)`,
+        );
+      }
+      perturbations.push({
+        index: j,
+        target: describeTarget(norm.target),
+        targetKind: norm.target.kind,
+        op: norm.op,
+        value: norm.value,
+        min: norm.min === -Infinity ? null : norm.min,
+        max: norm.max === Infinity ? null : norm.max,
+        mint: norm.mint ?? null,
+        matchedValueCount: matched,
+        matchesNothing,
+      });
+      variantMatched += matched;
+    });
+
+    totalPerturbationCount += perturbations.length;
+    totalMatchedValueCount += variantMatched;
+    for (const r of variantRefusals) refusals.push(`[${rawVariant.suffix}] ${r}`);
+
+    variants.push({
+      index: i,
+      suffix: rawVariant.suffix,
+      variantName: `${baseScenario.name} [${rawVariant.suffix}]`,
+      perturbations,
+      totalMatchedValueCount: variantMatched,
+      valid: variantRefusals.length === 0,
+      refusals: variantRefusals,
+    });
+  });
+
+  const valid = refusals.length === 0;
+  const notes = [
+    `${variants.length} variant(s), ${totalPerturbationCount} perturbation(s); ` +
+      `${totalMatchedValueCount} injected value(s) would change.`,
+    "DRY RUN — no variant files were generated, no backtest was run, and nothing was written.",
+    valid
+      ? "Every perturbation matches at least one injected value; paper:backtest:scenario:variants would generate these."
+      : "At least one perturbation matches no values — generation would REFUSE it (fix the target or mint filter).",
+  ];
+
+  return {
+    schemaVersion: BACKTEST_VARIANT_PLAN_EXPLAIN_SCHEMA_VERSION,
+    banner: BACKTEST_VARIANT_PLAN_EXPLAIN_BANNER,
+    paperOnly: true,
+    simulated: true,
+    dryRun: true,
+    notLiveResult: true,
+    notFinancialAdvice: true,
+    notProfitabilityClaim: true,
+    disclaimers: [...BACKTEST_VARIANT_PLAN_EXPLAIN_DISCLAIMERS],
+    planName: plan.name ?? null,
+    baseScenarioName: baseScenario.name,
+    baseScenarioDigest: digestContent(baseScenario),
+    variantCount: variants.length,
+    totalPerturbationCount,
+    totalMatchedValueCount,
+    variants,
+    valid,
+    refusals,
+    notes,
+  };
+}
+
+// --- explanation validation (backstop) ---------------------------------------
+
+function isPerturbationExplanation(value: unknown): value is PerturbationExplanation {
+  return (
+    isObject(value) &&
+    nonEmptyString(value.target) &&
+    (value.targetKind === "price" || value.targetKind === "metric" || value.targetKind === "config") &&
+    typeof value.op === "string" &&
+    typeof value.value === "number" &&
+    (value.min === null || typeof value.min === "number") &&
+    (value.max === null || typeof value.max === "number") &&
+    (value.mint === null || typeof value.mint === "string") &&
+    typeof value.matchedValueCount === "number" &&
+    typeof value.matchesNothing === "boolean"
+  );
+}
+
+/**
+ * Strictly validate a value as a {@link ScenarioVariantPlanExplanation} and return it
+ * narrowed. Mirrors the other backtest validators: checks the schema version, the
+ * required PAPER-ONLY / dry-run labelling, the disclaimers, and the variant +
+ * perturbation shapes. Throws {@link ScenarioVariantError} on the first problem. Pure.
+ */
+export function validateScenarioVariantPlanExplanation(
+  value: unknown,
+): ScenarioVariantPlanExplanation {
+  if (!isObject(value)) {
+    throw new ScenarioVariantError("explanation must be a JSON object");
+  }
+  if (value.schemaVersion !== BACKTEST_VARIANT_PLAN_EXPLAIN_SCHEMA_VERSION) {
+    throw new ScenarioVariantError(
+      `explanation.schemaVersion must be "${BACKTEST_VARIANT_PLAN_EXPLAIN_SCHEMA_VERSION}"`,
+    );
+  }
+  if (value.banner !== BACKTEST_VARIANT_PLAN_EXPLAIN_BANNER) {
+    throw new ScenarioVariantError(`explanation.banner must be "${BACKTEST_VARIANT_PLAN_EXPLAIN_BANNER}"`);
+  }
+  for (const flag of [
+    "paperOnly",
+    "simulated",
+    "dryRun",
+    "notLiveResult",
+    "notFinancialAdvice",
+    "notProfitabilityClaim",
+  ] as const) {
+    if (value[flag] !== true) {
+      throw new ScenarioVariantError(`explanation.${flag} must be true`);
+    }
+  }
+  if (!Array.isArray(value.disclaimers) || value.disclaimers.length === 0) {
+    throw new ScenarioVariantError("explanation.disclaimers must be a non-empty array");
+  }
+  if (typeof value.valid !== "boolean") {
+    throw new ScenarioVariantError("explanation.valid must be a boolean");
+  }
+  if (!Array.isArray(value.variants)) {
+    throw new ScenarioVariantError("explanation.variants must be an array");
+  }
+  value.variants.forEach((v, i) => {
+    if (!isObject(v)) {
+      throw new ScenarioVariantError(`explanation.variants[${i}] must be an object`);
+    }
+    if (!nonEmptyString(v.suffix)) {
+      throw new ScenarioVariantError(`explanation.variants[${i}].suffix must be a non-empty string`);
+    }
+    if (typeof v.valid !== "boolean") {
+      throw new ScenarioVariantError(`explanation.variants[${i}].valid must be a boolean`);
+    }
+    if (!Array.isArray(v.perturbations)) {
+      throw new ScenarioVariantError(`explanation.variants[${i}].perturbations must be an array`);
+    }
+    v.perturbations.forEach((p, j) => {
+      if (!isPerturbationExplanation(p)) {
+        throw new ScenarioVariantError(`explanation.variants[${i}].perturbations[${j}] is malformed`);
+      }
+    });
+  });
+  return value as unknown as ScenarioVariantPlanExplanation;
+}
+
+// --- human formatter ---------------------------------------------------------
+
+/** Options for {@link formatScenarioVariantPlanExplanation}. */
+export interface FormatScenarioVariantPlanExplanationOptions {
+  /** Optional label (e.g. the base file path) echoed into the header. */
+  baseLabel?: string;
+  /** Optional label (e.g. the plan file path) echoed into the header. */
+  planLabel?: string;
+}
+
+/** Render one bound for the human output ("none" when unbounded). */
+function boundStr(value: number | null): string {
+  return value === null ? "none" : String(value);
+}
+
+/**
+ * Render a stable, human-readable variant-plan explanation. Deterministic and
+ * path-stable (no timestamps). Leads with the PAPER-ONLY / DRY RUN banner and closes
+ * with the not-live / not-advice / not-a-profitability-claim disclaimers so it can
+ * never be mistaken for a live result or a generated artifact.
+ */
+export function formatScenarioVariantPlanExplanation(
+  explanation: ScenarioVariantPlanExplanation,
+  opts: FormatScenarioVariantPlanExplanationOptions = {},
+): string {
+  const title = explanation.planName ?? "variant plan";
+  const header = `${explanation.banner} — ${title} (PAPER ONLY)`;
+  const lines: string[] = [header, "=".repeat(header.length)];
+
+  if (opts.baseLabel) lines.push(`base:        ${opts.baseLabel}`);
+  if (opts.planLabel) lines.push(`plan file:   ${opts.planLabel}`);
+  lines.push(`base name:   ${explanation.baseScenarioName}`);
+  lines.push(`base digest: ${explanation.baseScenarioDigest}`);
+  lines.push(`plan:        ${explanation.planName ?? "(unnamed)"}`);
+  lines.push(
+    `variants:    ${explanation.variantCount} ` +
+      `(${explanation.totalPerturbationCount} perturbation(s), ` +
+      `${explanation.totalMatchedValueCount} injected value(s) would change)`,
+  );
+  lines.push(`valid:       ${explanation.valid ? "yes" : "NO — see refusals below"}`);
+
+  for (const v of explanation.variants) {
+    lines.push("");
+    lines.push(
+      `- ${v.suffix} → "${v.variantName}" ` +
+        `[${v.valid ? "VALID" : "REFUSED"}, ${v.totalMatchedValueCount} value(s) would change]`,
+    );
+    v.perturbations.forEach((p) => {
+      const mint = p.mint ? `, mint ${p.mint}` : "";
+      const matched = p.matchesNothing ? "MATCHES NOTHING" : `${p.matchedValueCount} value(s)`;
+      lines.push(
+        `    • [${p.index}] ${p.target} ${p.op} ${p.value} ` +
+          `(min ${boundStr(p.min)}, max ${boundStr(p.max)}${mint}) → ${matched}`,
+      );
+    });
+  }
+
+  if (!explanation.valid) {
+    lines.push("");
+    lines.push("Refusals:");
+    for (const r of explanation.refusals) lines.push(`- ${r}`);
+  }
+
+  lines.push("");
+  lines.push("Notes:");
+  for (const note of explanation.notes) lines.push(`- ${note}`);
+  lines.push("");
+  for (const d of explanation.disclaimers) lines.push(d);
+  return lines.join("\n");
 }

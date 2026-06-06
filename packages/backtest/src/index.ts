@@ -61,7 +61,16 @@ export {
 
 export { expandScenarioMatrix, ScenarioMatrixError } from "./matrix.js";
 
-export { generateScenarioVariants, ScenarioVariantError } from "./scenario-variants.js";
+export {
+  generateScenarioVariants,
+  explainScenarioVariantPlan,
+  validateScenarioVariantPlanExplanation,
+  formatScenarioVariantPlanExplanation,
+  ScenarioVariantError,
+  BACKTEST_VARIANT_PLAN_EXPLAIN_SCHEMA_VERSION,
+  BACKTEST_VARIANT_PLAN_EXPLAIN_BANNER,
+  BACKTEST_VARIANT_PLAN_EXPLAIN_DISCLAIMERS,
+} from "./scenario-variants.js";
 
 export {
   runBacktestSuite,
@@ -149,6 +158,10 @@ export type {
   ScenarioVariantPlan,
   GeneratedScenarioVariant,
   ScenarioVariantsResult,
+  PerturbationExplanation,
+  VariantExplanation,
+  ScenarioVariantPlanExplanation,
+  FormatScenarioVariantPlanExplanationOptions,
 } from "./scenario-variants.js";
 
 export type {

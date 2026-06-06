@@ -20,6 +20,7 @@ import {
   paperBacktestScenarioNewReport,
   paperBacktestScenarioMatrixReport,
   paperBacktestScenarioVariantsReport,
+  paperBacktestVariantPlanExplainReport,
   paperBacktestSuiteReport,
   paperBacktestDiffSuiteReport,
   paperBacktestSensitivityReport,
@@ -446,6 +447,23 @@ program
         },
       ),
     );
+  });
+
+program
+  .command("paper:backtest:scenario:variants:explain")
+  .description(
+    "Explain (DRY RUN) what paper:backtest:scenario:variants would do for a base + plan: each perturbation's target/op/value/bounds/mint and how many injected values it would change (PAPER ONLY; writes nothing, generates no variants, runs no backtest)",
+  )
+  .option("--base <path>", "base scenario JSON")
+  .option("--plan <path>", "variant plan JSON: { name?, variants: [{ suffix, perturbations }] }")
+  .option("--json", "emit the explanation as stable JSON")
+  .action((opts: { base?: string; plan?: string; json?: boolean }) => {
+    const { text, exitCode } = paperBacktestVariantPlanExplainReport(
+      {},
+      { basePath: opts.base, planPath: opts.plan, json: Boolean(opts.json) },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
   });
 
 program

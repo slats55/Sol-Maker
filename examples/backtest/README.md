@@ -212,6 +212,37 @@ moves the simulated PnL. Every variant is **simulated local scenario data** — 
 mints, injected prices — **not a live result, not advice, and not a profitability
 claim.**
 
+## Inspecting a variant plan before generating (Sprint 14)
+
+Before you generate variant files (or run a sensitivity sweep), **dry-run** the plan
+to see exactly what it would do. `paper:backtest:scenario:variants:explain` reads the
+same `--base` + `--plan` files, validates them with the **same** rules as generation,
+and explains every variant's perturbations — target, `op`, `value`, `[min, max]`
+bounds, `mint` filter, and **how many injected values each would change** — without
+writing anything, generating any variant, or running a backtest:
+
+```bash
+# Human dry-run report (writes nothing; runs nothing):
+pnpm soulmaker paper:backtest:scenario:variants:explain \
+  --base examples/backtest/single-mint-buy-hold.scenario.json \
+  --plan examples/backtest/price-sensitivity.variant-plan.json
+
+# Stable machine-readable explanation (schema backtest.variant-plan.explain.v1):
+pnpm soulmaker paper:backtest:scenario:variants:explain \
+  --base examples/backtest/single-mint-buy-hold.scenario.json \
+  --plan examples/backtest/price-sensitivity.variant-plan.json --json
+```
+
+For the shipped example it reports three variants, each changing **2** injected price
+points (6 total), all valid. An invalid base, an invalid plan, or malformed JSON is
+**refused** (exit 1), exactly like generation. The one difference: where generation
+**throws** on a perturbation that matches **no** values, explain **reports** it
+(`matchesNothing: true`, `valid: false`) and exits non-zero — so you can see *every*
+problem at once and fix the plan before generating. It is a dry-run inspection only:
+it carries `SIMULATED PAPER-ONLY VARIANT PLAN (DRY RUN)`, "Reads injected, simulated
+local scenario data only", "Writes nothing…", "Not a live result", "Not financial
+advice", and "Not a profitability claim".
+
 ## The whole sweep in one step (Sprint 13)
 
 `paper:backtest:sensitivity` runs the entire sweep above as **one** deterministic

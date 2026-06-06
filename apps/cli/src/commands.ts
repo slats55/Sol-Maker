@@ -88,6 +88,8 @@ import {
   listBacktestScenarioTemplates,
   expandScenarioMatrix,
   generateScenarioVariants,
+  explainScenarioVariantPlan,
+  formatScenarioVariantPlanExplanation,
   runBacktestSuite,
   buildBacktestSuiteIndex,
   formatBacktestSuiteIndex,
@@ -106,6 +108,7 @@ import {
   type BacktestSuiteIndex,
   type BacktestSuiteDiff,
   type ScenarioVariantSensitivityRun,
+  type ScenarioVariantPlanExplanation,
 } from "@soulmaker/backtest";
 
 export interface CommandContext {
@@ -1851,6 +1854,79 @@ export function paperBacktestScenarioVariantsReport(
   lines.push("- Variants are simulated local scenario data, not live results and not a profitability claim.");
   lines.push("- Every variant validates; run them as a suite: paper:backtest:suite --dir <out-dir>.");
   return redactString(lines.join("\n"));
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 14 (Slice B) — paper:backtest:scenario:variants:explain
+//   Dry-run inspection of a variant plan against a base scenario: reads the two
+//   local JSON files, explains every perturbation (target / op / value / bounds /
+//   mint filter / how many injected values it WOULD change), and reports validity.
+//   It writes nothing, generates no variants, and runs no backtest.
+// ---------------------------------------------------------------------------
+
+export interface PaperBacktestVariantPlanExplainCommandOptions {
+  /** Path to the base scenario JSON (required). */
+  basePath?: string;
+  /** Path to the variant plan JSON (required). */
+  planPath?: string;
+  json?: boolean;
+}
+
+/**
+ * `soulmaker paper:backtest:scenario:variants:explain` — explain what
+ * `paper:backtest:scenario:variants` (Sprint 12) WOULD do, without doing it. Reads
+ * ONLY the two named local JSON files (BOM-tolerant; missing args / malformed JSON /
+ * invalid base / invalid plan all refuse), validates them with the SAME rules as
+ * generation, and reports each variant's perturbations and how many injected values
+ * each would change (a dry-run count). It writes nothing, generates no variant files,
+ * and runs no backtest. `--json` emits the stable, redacted explanation. The exit code
+ * is non-zero only when the plan is invalid (some perturbation matches no values),
+ * mirroring that generation would refuse it. No chain access, no wallet, no network.
+ */
+export function paperBacktestVariantPlanExplainReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestVariantPlanExplainCommandOptions = {},
+): CliReport {
+  if (!opts.basePath) return { text: "Refusing: --base <path> is required.", exitCode: 1 };
+  if (!opts.planPath) return { text: "Refusing: --plan <path> is required.", exitCode: 1 };
+
+  let baseValue: unknown;
+  try {
+    baseValue = readJsonValue(ctx, opts.basePath, "base scenario");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let planValue: unknown;
+  try {
+    planValue = readJsonValue(ctx, opts.planPath, "variant plan");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let explanation: ScenarioVariantPlanExplanation;
+  try {
+    explanation = explainScenarioVariantPlan(baseValue, planValue);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // A plan with a matched-nothing perturbation is reported (not thrown) but still
+  // refused at the exit-code level, mirroring that generation would refuse it.
+  const exitCode = explanation.valid ? 0 : 1;
+  if (opts.json) {
+    // redactValue is a backstop; the explanation carries only injected scenario identifiers.
+    return { text: JSON.stringify(redactValue(explanation), null, 2), exitCode };
+  }
+  return {
+    text: redactString(
+      formatScenarioVariantPlanExplanation(explanation, {
+        baseLabel: opts.basePath,
+        planLabel: opts.planPath,
+      }),
+    ),
+    exitCode,
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -30,6 +30,7 @@ import {
   paperBacktestScenarioNewReport,
   paperBacktestScenarioMatrixReport,
   paperBacktestScenarioVariantsReport,
+  paperBacktestVariantPlanExplainReport,
   paperBacktestSuiteReport,
   paperBacktestDiffSuiteReport,
   paperBacktestSensitivityReport,
@@ -3746,6 +3747,148 @@ describe("paperBacktestDiffSuiteReport (Sprint 11)", () => {
       const r = paperBacktestDiffSuiteReport({ cwd, env: {} }, { baseDir: base, nextDir: next });
       expect(r.text).not.toMatch(/^Refusing/);
       expect(r.text).toContain("Backtest suite diff");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperBacktestVariantPlanExplainReport (Sprint 14, Slice B)", () => {
+  function explainBase(): unknown {
+    return {
+      name: "explain base — INJECTED FIXTURE (simulated)",
+      strategyConfig: STRATEGY_CONFIG,
+      caps: { maxTradeSizeUsd: 1000, maxDailyLossUsd: 1000, maxOpenPositions: 5, killSwitch: false },
+      defaultPaperSizeUsd: 100,
+      steps: [
+        {
+          id: "step-1",
+          at: PAPER_TIME,
+          candidates: [{ mint: MINT_A, riskReport: passReport(MINT_A) }],
+          prices: [
+            { mint: MINT_A, priceUsd: 2, observedAt: PAPER_TIME, source: "injected-fixture" },
+            { mint: MINT_A, priceUsd: 3, observedAt: PAPER_TIME, source: "injected-fixture" },
+          ],
+        },
+      ],
+    };
+  }
+
+  const PLAN = {
+    name: "explain-sweep",
+    variants: [
+      { suffix: "up10", perturbations: [{ target: "price", op: "multiply", value: 1.1, min: 0 }] },
+      { suffix: "plus1", perturbations: [{ target: "price", op: "add", value: 1, min: 0, max: 1000000 }] },
+    ],
+  };
+
+  function writeBaseAndPlan(cwd: string, plan: unknown = PLAN): void {
+    writeFileSync(join(cwd, "base.scenario.json"), JSON.stringify(explainBase(), null, 2));
+    writeFileSync(join(cwd, "plan.json"), JSON.stringify(plan, null, 2));
+  }
+
+  const baseOpts = { basePath: "base.scenario.json", planPath: "plan.json" };
+
+  it("refuses when --base or --plan is missing", () => {
+    expect(paperBacktestVariantPlanExplainReport({}, {}).text).toMatch(/^Refusing: --base/);
+    expect(paperBacktestVariantPlanExplainReport({}, { basePath: "b.json" }).text).toMatch(/^Refusing: --plan/);
+    expect(paperBacktestVariantPlanExplainReport({}, {}).exitCode).toBe(1);
+  });
+
+  it("prints a PAPER-only DRY-RUN human report and writes nothing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd);
+      const r = paperBacktestVariantPlanExplainReport({ cwd, env: {} }, baseOpts);
+      expect(r.exitCode).toBe(0);
+      expect(r.text).toContain("SIMULATED PAPER-ONLY VARIANT PLAN (DRY RUN)");
+      expect(r.text).toContain("PAPER ONLY");
+      expect(r.text.toLowerCase()).toContain("injected");
+      expect(r.text.toLowerCase()).toContain("not a live result");
+      expect(r.text.toLowerCase()).toContain("not financial advice");
+      expect(r.text.toLowerCase()).toContain("not a profitability claim");
+      expect(r.text).toContain("up10");
+      expect(r.text).toContain("plus1");
+      // A dry run writes nothing.
+      expect(readdirSync(cwd).sort()).toEqual(["base.scenario.json", "plan.json", "soulmaker.config.json"]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("emits a stable, parseable JSON explanation with --json", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd);
+      const r = paperBacktestVariantPlanExplainReport({ cwd, env: {} }, { ...baseOpts, json: true });
+      expect(r.exitCode).toBe(0);
+      const ex = JSON.parse(r.text) as {
+        schemaVersion: string;
+        valid: boolean;
+        variantCount: number;
+        totalMatchedValueCount: number;
+        variants: { suffix: string; perturbations: { matchedValueCount: number }[] }[];
+      };
+      expect(ex.schemaVersion).toBe("backtest.variant-plan.explain.v1");
+      expect(ex.valid).toBe(true);
+      expect(ex.variantCount).toBe(2);
+      expect(ex.totalMatchedValueCount).toBe(4);
+      expect(ex.variants.map((v) => v.suffix)).toEqual(["up10", "plus1"]);
+      // Byte-stable across two runs.
+      const r2 = paperBacktestVariantPlanExplainReport({ cwd, env: {} }, { ...baseOpts, json: true });
+      expect(r2.text).toBe(r.text);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("does not mutate the base or plan files", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd);
+      const baseBefore = readFileSync(join(cwd, "base.scenario.json"), "utf8");
+      const planBefore = readFileSync(join(cwd, "plan.json"), "utf8");
+      paperBacktestVariantPlanExplainReport({ cwd, env: {} }, baseOpts);
+      expect(readFileSync(join(cwd, "base.scenario.json"), "utf8")).toBe(baseBefore);
+      expect(readFileSync(join(cwd, "plan.json"), "utf8")).toBe(planBefore);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses an invalid base, an invalid plan, and malformed JSON", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "bad-base.json"), JSON.stringify({ name: "x", steps: [] }));
+      writeFileSync(join(cwd, "plan.json"), JSON.stringify(PLAN));
+      writeFileSync(join(cwd, "not-json.json"), "{ this is not json");
+      const badBase = paperBacktestVariantPlanExplainReport({ cwd, env: {} }, { basePath: "bad-base.json", planPath: "plan.json" });
+      expect(badBase.text).toMatch(/^Refusing:/);
+      expect(badBase.exitCode).toBe(1);
+
+      writeFileSync(join(cwd, "base.scenario.json"), JSON.stringify(explainBase()));
+      const badPlan = paperBacktestVariantPlanExplainReport({ cwd, env: {} }, { basePath: "base.scenario.json", planPath: "not-json.json" });
+      expect(badPlan.text).toMatch(/^Refusing:/);
+      expect(badPlan.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("reports (and refuses with exit 1) a perturbation that matches no values", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd, {
+        variants: [{ suffix: "nomatch", perturbations: [{ target: "price", op: "multiply", value: 1.1, mint: "FakeZZZ9999999999999999999999999999999999999" }] }],
+      });
+      const r = paperBacktestVariantPlanExplainReport({ cwd, env: {} }, baseOpts);
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toContain("MATCHES NOTHING");
+      expect(r.text).toContain("Refusals:");
+      // JSON form also reports valid:false with exit 1.
+      const rj = paperBacktestVariantPlanExplainReport({ cwd, env: {} }, { ...baseOpts, json: true });
+      expect(rj.exitCode).toBe(1);
+      expect((JSON.parse(rj.text) as { valid: boolean }).valid).toBe(false);
     } finally {
       cleanup();
     }

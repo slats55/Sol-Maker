@@ -1,8 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { generateScenarioVariants, ScenarioVariantError } from "./scenario-variants.js";
+import {
+  generateScenarioVariants,
+  explainScenarioVariantPlan,
+  validateScenarioVariantPlanExplanation,
+  formatScenarioVariantPlanExplanation,
+  ScenarioVariantError,
+  BACKTEST_VARIANT_PLAN_EXPLAIN_SCHEMA_VERSION,
+  BACKTEST_VARIANT_PLAN_EXPLAIN_BANNER,
+} from "./scenario-variants.js";
 import { buildExampleBacktestScenario } from "./templates.js";
 import { runBacktest } from "./backtest.js";
 import { lintBacktestScenario } from "./lint.js";
+import { digestContent } from "./digest.js";
 import type { BacktestScenario } from "./types.js";
 
 const MINT_A = "FakeAAA1111111111111111111111111111111111111";
@@ -258,5 +267,161 @@ describe("generateScenarioVariants — safety + refusals", () => {
     const snapshot = JSON.stringify(b);
     expect(() => generateScenarioVariants(b, PRICE_UP)).not.toThrow();
     expect(JSON.stringify(b)).toBe(snapshot);
+  });
+});
+
+describe("explainScenarioVariantPlan — dry-run inspection (Sprint 14, Slice B)", () => {
+  it("explains a valid plan with matched counts, bounds, and a base digest — without running anything", () => {
+    const base = priceBase();
+    const baseDigest = digestContent(base);
+    const ex = explainScenarioVariantPlan(base, PRICE_UP);
+
+    expect(ex.schemaVersion).toBe(BACKTEST_VARIANT_PLAN_EXPLAIN_SCHEMA_VERSION);
+    expect(ex.banner).toBe(BACKTEST_VARIANT_PLAN_EXPLAIN_BANNER);
+    expect(ex.paperOnly).toBe(true);
+    expect(ex.dryRun).toBe(true);
+    expect(ex.planName).toBe("price-sensitivity");
+    expect(ex.baseScenarioName).toBe("variants base — INJECTED FIXTURE");
+    expect(ex.baseScenarioDigest).toBe(baseDigest); // matches a real run's scenarioDigest
+    expect(ex.variantCount).toBe(2);
+    expect(ex.totalPerturbationCount).toBe(2);
+    // Two MINT_A price points per variant ⇒ 2 each ⇒ 4 total.
+    expect(ex.totalMatchedValueCount).toBe(4);
+    expect(ex.valid).toBe(true);
+
+    const up = ex.variants[0];
+    expect(up?.suffix).toBe("price-up-10pct");
+    expect(up?.variantName).toBe("variants base — INJECTED FIXTURE [price-up-10pct]");
+    expect(up?.valid).toBe(true);
+    const p = up?.perturbations[0];
+    expect(p?.target).toBe("price");
+    expect(p?.targetKind).toBe("price");
+    expect(p?.op).toBe("multiply");
+    expect(p?.value).toBe(1.1);
+    expect(p?.min).toBe(0);
+    expect(p?.max).toBeNull();
+    expect(p?.mint).toBeNull();
+    expect(p?.matchedValueCount).toBe(2);
+    expect(p?.matchesNothing).toBe(false);
+  });
+
+  it("explains a metric perturbation and reports its target accurately", () => {
+    const ex = explainScenarioVariantPlan(metricBase(), {
+      name: "metric-sweep",
+      variants: [
+        { suffix: "liq-up", perturbations: [{ target: "metric.liquidityUsd", op: "multiply", value: 2, max: 1_000_000 }] },
+      ],
+    });
+    const p = ex.variants[0]?.perturbations[0];
+    expect(p?.target).toBe("metric.liquidityUsd");
+    expect(p?.targetKind).toBe("metric");
+    expect(p?.min).toBeNull();
+    expect(p?.max).toBe(1_000_000);
+    expect(p?.matchedValueCount).toBe(1);
+    expect(ex.valid).toBe(true);
+  });
+
+  it("reports a mint filter and an accurate restricted match count", () => {
+    const ex = explainScenarioVariantPlan(multiMintBase(), {
+      variants: [{ suffix: "a-only", perturbations: [{ target: "price", op: "multiply", value: 1.1, min: 0, mint: MINT_A }] }],
+    });
+    const p = ex.variants[0]?.perturbations[0];
+    expect(p?.mint).toBe(MINT_A);
+    // The mint-filtered count equals what generation actually changes for MINT_A.
+    const generated = generateScenarioVariants(multiMintBase(), {
+      variants: [{ suffix: "a-only", perturbations: [{ target: "price", op: "multiply", value: 1.1, min: 0, mint: MINT_A }] }],
+    });
+    expect(p?.matchedValueCount).toBe(generated.variants[0]?.changeCount);
+    expect(p?.matchesNothing).toBe(false);
+  });
+
+  it("REPORTS (does not throw on) a perturbation that matches no values, marking it invalid", () => {
+    const ex = explainScenarioVariantPlan(priceBase(), {
+      variants: [{ suffix: "nomatch", perturbations: [{ target: "price", op: "multiply", value: 1.1, mint: "FakeZZZ9999999999999999999999999999999999999" }] }],
+    });
+    const p = ex.variants[0]?.perturbations[0];
+    expect(p?.matchedValueCount).toBe(0);
+    expect(p?.matchesNothing).toBe(true);
+    expect(ex.variants[0]?.valid).toBe(false);
+    expect(ex.valid).toBe(false);
+    expect(ex.refusals.length).toBeGreaterThan(0);
+    // Generation, by contrast, REFUSES the same plan by throwing.
+    expect(() =>
+      generateScenarioVariants(priceBase(), {
+        variants: [{ suffix: "nomatch", perturbations: [{ target: "price", op: "multiply", value: 1.1, mint: "FakeZZZ9999999999999999999999999999999999999" }] }],
+      }),
+    ).toThrow(ScenarioVariantError);
+  });
+
+  it("is deterministic (byte-stable) and never mutates the base or plan", () => {
+    const base = priceBase();
+    const plan = JSON.parse(JSON.stringify(PRICE_UP));
+    const baseBefore = JSON.stringify(base);
+    const planBefore = JSON.stringify(plan);
+    const a = explainScenarioVariantPlan(base, plan);
+    const b = explainScenarioVariantPlan(priceBase(), PRICE_UP);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+    expect(JSON.stringify(base)).toBe(baseBefore);
+    expect(JSON.stringify(plan)).toBe(planBefore);
+  });
+
+  it("refuses an invalid base scenario", () => {
+    expect(() => explainScenarioVariantPlan({ name: "x", steps: [] }, PRICE_UP)).toThrow(ScenarioVariantError);
+  });
+
+  it("refuses an invalid plan (not an object / empty variants / bad perturbation)", () => {
+    expect(() => explainScenarioVariantPlan(priceBase(), "nope")).toThrow(ScenarioVariantError);
+    expect(() => explainScenarioVariantPlan(priceBase(), { variants: [] })).toThrow(ScenarioVariantError);
+    expect(() =>
+      explainScenarioVariantPlan(priceBase(), {
+        variants: [{ suffix: "bad", perturbations: [{ target: "price", op: "divide", value: 2 }] }],
+      }),
+    ).toThrow(ScenarioVariantError);
+    expect(() =>
+      explainScenarioVariantPlan(priceBase(), {
+        variants: [{ suffix: "../escape", perturbations: [{ target: "price", op: "multiply", value: 2 }] }],
+      }),
+    ).toThrow(ScenarioVariantError);
+  });
+
+  it("validates a produced explanation and rejects a malformed one", () => {
+    const ex = explainScenarioVariantPlan(priceBase(), PRICE_UP);
+    expect(validateScenarioVariantPlanExplanation(ex)).toBe(ex);
+
+    const badSchema = { ...ex, schemaVersion: "backtest.variant-plan.explain.v999" };
+    expect(() => validateScenarioVariantPlanExplanation(badSchema)).toThrow(ScenarioVariantError);
+
+    const badFlag = { ...ex, dryRun: false };
+    expect(() => validateScenarioVariantPlanExplanation(badFlag)).toThrow(ScenarioVariantError);
+
+    const badPerturbation = JSON.parse(JSON.stringify(ex));
+    badPerturbation.variants[0].perturbations[0] = { target: "price" }; // missing fields
+    expect(() => validateScenarioVariantPlanExplanation(badPerturbation)).toThrow(ScenarioVariantError);
+
+    expect(() => validateScenarioVariantPlanExplanation(7)).toThrow(ScenarioVariantError);
+  });
+
+  it("formats a human report with the PAPER-only / dry-run / not-advice labels", () => {
+    const ex = explainScenarioVariantPlan(priceBase(), PRICE_UP);
+    const text = formatScenarioVariantPlanExplanation(ex, { baseLabel: "base.json", planLabel: "plan.json" });
+    expect(text).toContain(BACKTEST_VARIANT_PLAN_EXPLAIN_BANNER);
+    expect(text).toContain("PAPER ONLY");
+    expect(text).toContain("DRY RUN");
+    expect(text.toLowerCase()).toContain("injected");
+    expect(text.toLowerCase()).toContain("not a live result");
+    expect(text.toLowerCase()).toContain("not financial advice");
+    expect(text.toLowerCase()).toContain("not a profitability claim");
+    expect(text).toContain("price-up-10pct");
+    // Deterministic.
+    expect(formatScenarioVariantPlanExplanation(ex)).toBe(formatScenarioVariantPlanExplanation(ex));
+  });
+
+  it("a refused explanation surfaces a Refusals section in the human report", () => {
+    const ex = explainScenarioVariantPlan(priceBase(), {
+      variants: [{ suffix: "nomatch", perturbations: [{ target: "price", op: "multiply", value: 1.1, mint: "FakeZZZ9999999999999999999999999999999999999" }] }],
+    });
+    const text = formatScenarioVariantPlanExplanation(ex);
+    expect(text).toContain("Refusals:");
+    expect(text).toContain("MATCHES NOTHING");
   });
 });
