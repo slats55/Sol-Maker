@@ -88,3 +88,42 @@ pnpm soulmaker paper:backtest:lint --scenario my.scenario.json
 The linter explains structural errors (which prevent a run) and warnings (which
 flag suspicious design, e.g. a missing trade size, non-monotonic timestamps,
 duplicate step ids, or a kill switch that silently disables all trading).
+
+## Generating scenarios from a template (Sprint 10)
+
+Instead of copying a file by hand, you can deterministically generate a scenario
+**skeleton** from a built-in template. These are the same shapes as the examples
+above — small, **INJECTED** fixtures (fake mints + injected prices), **not** real
+historical data:
+
+```bash
+# Templates: buy-hold | buy-full-exit | partial-exit | seed-journal-continuation
+pnpm soulmaker paper:backtest:scenario:new --template buy-hold --out my.scenario.json
+# It refuses to overwrite an existing file unless you pass --force.
+
+# Produce several variants from a base scenario + a small, SAFE patch matrix
+# (a patch may only set strategyConfig / caps / defaultPaperSizeUsd — never steps,
+# name, or initialJournal, and never code/expressions). One file per variant:
+pnpm soulmaker paper:backtest:scenario:matrix --base my.scenario.json --matrix matrix.json --out-dir variants/
+```
+
+Every generated scenario validates immediately — lint and run it exactly as above.
+
+## Diffing two reports (Sprint 10)
+
+To **review** or **regression-test** a change, diff two report JSON files you
+produced earlier with `paper:backtest --out`:
+
+```bash
+pnpm soulmaker paper:backtest --scenario a.scenario.json --json --out base-report.json
+pnpm soulmaker paper:backtest --scenario b.scenario.json --json --out next-report.json
+pnpm soulmaker paper:backtest:diff --base base-report.json --next next-report.json
+# --json for a stable machine-readable diff; --fail-on-regression to exit non-zero
+# only when the diff flags a (bookkeeping) regression.
+```
+
+`paper:backtest:diff` reads **only** the two report files — it runs no backtest and
+writes nothing. Every value it prints is a **bookkeeping delta between two
+simulations**: a negative or positive delta is **not** profit, loss, a prediction,
+or advice. A different `scenarioDigest` is reported as a *different scenario*, not a
+regression; regressions are conservative and bookkeeping-oriented.

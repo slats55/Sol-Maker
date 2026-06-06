@@ -115,7 +115,7 @@ entirely within the no-custody model:
   evaluation** — never "safe", "approved for live trading", "profitable", or a
   reason to send anything.
 
-## Phase 5 (Sprints 5–9): the strategy engine is paper-only and key-free
+## Phase 5 (Sprints 5–10): the strategy engine is paper-only and key-free
 
 The Phase 5 strategy engine (`@soulmaker/strategy` + the `strategy:evaluate` and
 `strategy:plan` commands) stays entirely within the no-custody model:
@@ -171,6 +171,18 @@ The Phase 5 strategy engine (`@soulmaker/strategy` + the `strategy:evaluate` and
   [`examples/backtest/`](../examples/backtest/) scenarios are **injected fixtures**,
   not real market data, and carry no key/secret/real wallet. None of this begins
   transaction planning/simulation (Phase 6) or live sending (Phase 7).
+- **Sprint 10 — report diffing + scenario helpers** stays inside the same model.
+  `paper:backtest:diff` only **reads** two existing report JSON files (it writes
+  nothing, runs no backtest, reads no scenario) and emits bookkeeping deltas over
+  two **simulations** — explicitly not a prediction, profit/loss, or advice. The
+  scenario builders (`paper:backtest:scenario:new`/`:matrix`) write only INJECTED
+  scenario files of **fake** mints + injected prices (never a real token, key, seed,
+  or wallet); the pure builders hold no key/seed/wallet/signer/RPC/network and the
+  matrix patch system is config-only (no code, no `steps`/`name`/`initialJournal`).
+  `@soulmaker/backtest` stays a **pure** package (its forbidden-import regression
+  test covers the new modules). None of this begins transaction
+  planning/simulation (Phase 6) or live sending (Phase 7), which remain **not
+  started**.
 - The report is **paper-only** and explicitly **not** financial advice, a buy
   recommendation, or live-trading authorization; it makes no profitability claim.
   A `PAPER_BUY_CANDIDATE` means a candidate for *simulated* paper evaluation.

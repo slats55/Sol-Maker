@@ -18,10 +18,14 @@ import {
   strategyPlanReport,
   paperBacktestReport,
   paperBacktestLintReport,
+  paperBacktestDiffReport,
+  paperBacktestScenarioNewReport,
+  paperBacktestScenarioMatrixReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
 import { parseJournal, reduceJournal } from "@soulmaker/paper";
+import { runBacktest } from "@soulmaker/backtest";
 import type {
   ReadOnlyClientConfig,
   ReadOnlySolanaClient,
@@ -2465,6 +2469,423 @@ describe("paperBacktestReport — --seed-journal (Sprint 9)", () => {
         { scenarioPath: "scenario.json", seedJournalPath: "seed.jsonl" },
       );
       expect(out).toMatch(/^Refusing: supply only one seed source/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 10 — paper:backtest:diff (deterministic report diffing)
+// ---------------------------------------------------------------------------
+
+describe("paperBacktestDiffReport (Sprint 10)", () => {
+  /** Write a real backtest report JSON to `name`, returning the report object. */
+  function writeReport(cwd: string, name: string, scenario: unknown): Record<string, unknown> {
+    const report = runBacktest(scenario) as unknown as Record<string, unknown>;
+    writeFileSync(join(cwd, name), JSON.stringify(report, null, 2));
+    return report;
+  }
+
+  it("refuses when --base or --next is missing", () => {
+    expect(paperBacktestDiffReport({}, {}).text).toMatch(/^Refusing: --base/);
+    expect(paperBacktestDiffReport({}, { basePath: "a.json" }).text).toMatch(/^Refusing: --next/);
+    expect(paperBacktestDiffReport({}, { basePath: "a.json" }).exitCode).toBe(1);
+  });
+
+  it("diffs two identical reports to a zero diff with no regression (exit 0)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeReport(cwd, "base.json", buyScenario());
+      writeReport(cwd, "next.json", buyScenario());
+      const { text, exitCode } = paperBacktestDiffReport(
+        { cwd, env: {} },
+        { basePath: "base.json", nextPath: "next.json" },
+      );
+      expect(text).toContain("status:     same-scenario");
+      expect(text).toContain("Regression: no");
+      expect(text).toContain("Not a live result. Not financial advice. Not a profitability claim.");
+      expect(exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("emits stable, parseable, redacted JSON with --json", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeReport(cwd, "base.json", buyScenario());
+      writeReport(cwd, "next.json", buyScenario());
+      const a = paperBacktestDiffReport({ cwd, env: {} }, { basePath: "base.json", nextPath: "next.json", json: true });
+      const b = paperBacktestDiffReport({ cwd, env: {} }, { basePath: "base.json", nextPath: "next.json", json: true });
+      expect(a.text).toBe(b.text); // byte-stable for the same input pair
+      const parsed = JSON.parse(a.text) as { schemaVersion: string; hasRegression: boolean };
+      expect(parsed.schemaVersion).toBe("backtest.diff.v1");
+      expect(parsed.hasRegression).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed report file (not valid JSON)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeReport(cwd, "base.json", buyScenario());
+      writeFileSync(join(cwd, "next.json"), "{ not json");
+      const { text, exitCode } = paperBacktestDiffReport(
+        { cwd, env: {} },
+        { basePath: "base.json", nextPath: "next.json" },
+      );
+      expect(text).toMatch(/^Refusing: next report file is not valid JSON/);
+      expect(exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a JSON file that is not a backtest report", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeReport(cwd, "base.json", buyScenario());
+      writeFileSync(join(cwd, "next.json"), JSON.stringify({ not: "a report" }));
+      const { text, exitCode } = paperBacktestDiffReport(
+        { cwd, env: {} },
+        { basePath: "base.json", nextPath: "next.json" },
+      );
+      expect(text).toMatch(/^Refusing: invalid backtest report/);
+      expect(exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("accepts a BOM-prefixed report file (reconciled BOM reader)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const report = writeReport(cwd, "base.json", buyScenario());
+      // Re-write base with a leading BOM; the diff must still parse it.
+      writeFileSync(join(cwd, "base.json"), withBom(JSON.stringify(report, null, 2)));
+      writeReport(cwd, "next.json", buyScenario());
+      const { text, exitCode } = paperBacktestDiffReport(
+        { cwd, env: {} },
+        { basePath: "base.json", nextPath: "next.json" },
+      );
+      expect(text).not.toMatch(/^Refusing/);
+      expect(text).toContain("status:     same-scenario");
+      expect(exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-regression exits non-zero for a regression (same digest, worse PnL)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = writeReport(cwd, "base.json", buyScenario());
+      // Craft a worse "next": SAME scenarioDigest, lower simulated PnL.
+      const pnl = base.pnl as { realizedUsd: number; unrealizedUsd: number; totalUsd: number };
+      const worse = { ...base, pnl: { ...pnl, realizedUsd: pnl.realizedUsd - 10, totalUsd: pnl.totalUsd - 10 } };
+      writeFileSync(join(cwd, "worse.json"), JSON.stringify(worse, null, 2));
+
+      const guarded = paperBacktestDiffReport(
+        { cwd, env: {} },
+        { basePath: "base.json", nextPath: "worse.json", failOnRegression: true },
+      );
+      expect(guarded.text).toContain("Regression: YES");
+      expect(guarded.exitCode).toBe(1);
+
+      // Without the flag, the same negative diff exits 0 (still reports the regression).
+      const unguarded = paperBacktestDiffReport(
+        { cwd, env: {} },
+        { basePath: "base.json", nextPath: "worse.json" },
+      );
+      expect(unguarded.text).toContain("Regression: YES");
+      expect(unguarded.exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-regression exits zero when there is no regression", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeReport(cwd, "base.json", buyScenario());
+      writeReport(cwd, "next.json", buyScenario());
+      const { exitCode } = paperBacktestDiffReport(
+        { cwd, env: {} },
+        { basePath: "base.json", nextPath: "next.json", failOnRegression: true },
+      );
+      expect(exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 10 — paper:backtest:scenario:new (deterministic scenario skeletons)
+// ---------------------------------------------------------------------------
+
+describe("paperBacktestScenarioNewReport (Sprint 10)", () => {
+  it("refuses when --template or --out is missing", () => {
+    expect(paperBacktestScenarioNewReport({}, {}).startsWith("Refusing: --template")).toBe(true);
+    expect(
+      paperBacktestScenarioNewReport({}, { template: "buy-hold" }).startsWith("Refusing: --out"),
+    ).toBe(true);
+  });
+
+  it("refuses an unknown template", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const out = paperBacktestScenarioNewReport(
+        { cwd, env: {} },
+        { template: "nope", outPath: "s.json" },
+      );
+      expect(out).toMatch(/^Refusing: unknown template/);
+      expect(readdirSync(cwd)).not.toContain("s.json"); // nothing written
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("writes ONLY the scenario file, and it lints VALID + runs through the CLI", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const before = readdirSync(cwd);
+      const out = paperBacktestScenarioNewReport(
+        { cwd, env: {} },
+        { template: "buy-hold", outPath: "gen.scenario.json" },
+      );
+      expect(out).toContain("Wrote backtest scenario — buy-hold");
+      expect(out).toContain("lints:     VALID");
+
+      // Exactly one new file appeared (no journal/report side effects).
+      const after = readdirSync(cwd).filter((f) => !before.includes(f));
+      expect(after).toEqual(["gen.scenario.json"]);
+
+      // The written scenario lints VALID and runs through the real backtest CLI.
+      const lint = paperBacktestLintReport({ cwd, env: {} }, { scenarioPath: "gen.scenario.json" });
+      expect(lint).toContain("(VALID)");
+      const bt = paperBacktestReport({ cwd, env: {} }, { scenarioPath: "gen.scenario.json" });
+      expect(bt).toContain("SIMULATED PAPER-ONLY REPORT");
+      expect(bt).toContain("simulated fills:   1 buy / 0 sell");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses to overwrite an existing file unless --force is given", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const first = paperBacktestScenarioNewReport(
+        { cwd, env: {} },
+        { template: "buy-hold", outPath: "s.json" },
+      );
+      expect(first).toContain("Wrote backtest scenario");
+
+      const blocked = paperBacktestScenarioNewReport(
+        { cwd, env: {} },
+        { template: "buy-full-exit", outPath: "s.json" },
+      );
+      expect(blocked).toMatch(/^Refusing: .* already exists \(pass --force/);
+
+      const forced = paperBacktestScenarioNewReport(
+        { cwd, env: {} },
+        { template: "buy-full-exit", outPath: "s.json", force: true },
+      );
+      expect(forced).toContain("Wrote backtest scenario — buy-full-exit");
+      // The file now holds the full-exit scenario (a sell occurs).
+      const bt = paperBacktestReport({ cwd, env: {} }, { scenarioPath: "s.json" });
+      expect(bt).toContain("simulated fills:   1 buy / 1 sell");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("applies a custom --name to the generated scenario", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      paperBacktestScenarioNewReport(
+        { cwd, env: {} },
+        { template: "buy-hold", outPath: "s.json", name: "my fixture" },
+      );
+      const written = JSON.parse(readFileSync(join(cwd, "s.json"), "utf8")) as { name: string };
+      expect(written.name).toBe("my fixture");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("seed-journal-continuation generates a scenario that lints with its expected warning", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const out = paperBacktestScenarioNewReport(
+        { cwd, env: {} },
+        { template: "seed-journal-continuation", outPath: "s.json", json: true },
+      );
+      const env = JSON.parse(out) as { template: string; lint: { valid: boolean; warnings: string[] } };
+      expect(env.template).toBe("seed-journal-continuation");
+      expect(env.lint.valid).toBe(true);
+      expect(env.lint.warnings).toEqual(["initial-journal-open-positions"]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("a generated scenario re-saved WITH a leading BOM still lints + runs", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      paperBacktestScenarioNewReport(
+        { cwd, env: {} },
+        { template: "buy-full-exit", outPath: "s.json" },
+      );
+      const raw = readFileSync(join(cwd, "s.json"), "utf8");
+      writeFileSync(join(cwd, "s.json"), withBom(raw)); // simulate a Windows re-save
+      const lint = paperBacktestLintReport({ cwd, env: {} }, { scenarioPath: "s.json" });
+      expect(lint).not.toMatch(/^Refusing/);
+      const bt = paperBacktestReport({ cwd, env: {} }, { scenarioPath: "s.json" });
+      expect(bt).toContain("simulated fills:   1 buy / 1 sell");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 10 — paper:backtest:scenario:matrix (deterministic variant expansion)
+// ---------------------------------------------------------------------------
+
+describe("paperBacktestScenarioMatrixReport (Sprint 10)", () => {
+  const MATRIX = {
+    name: "sizing-sweep",
+    variants: [
+      { suffix: "size-25", patch: { defaultPaperSizeUsd: 25 } },
+      { suffix: "size-50", patch: { defaultPaperSizeUsd: 50 } },
+    ],
+  };
+
+  function writeBaseAndMatrix(cwd: string, matrix: unknown = MATRIX): void {
+    writeFileSync(join(cwd, "base.scenario.json"), JSON.stringify(buyScenario(), null, 2));
+    writeFileSync(join(cwd, "matrix.json"), JSON.stringify(matrix, null, 2));
+  }
+
+  it("refuses when --base, --matrix, or --out-dir is missing", () => {
+    expect(paperBacktestScenarioMatrixReport({}, {})).toMatch(/^Refusing: --base/);
+    expect(paperBacktestScenarioMatrixReport({}, { basePath: "b.json" })).toMatch(/^Refusing: --matrix/);
+    expect(
+      paperBacktestScenarioMatrixReport({}, { basePath: "b.json", matrixPath: "m.json" }),
+    ).toMatch(/^Refusing: --out-dir/);
+  });
+
+  it("writes one validating, runnable scenario file per variant", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndMatrix(cwd);
+      const out = paperBacktestScenarioMatrixReport(
+        { cwd, env: {} },
+        { basePath: "base.scenario.json", matrixPath: "matrix.json", outDir: "out" },
+      );
+      expect(out).toContain("Wrote 2 scenario variant(s) — sizing-sweep");
+
+      const files = readdirSync(join(cwd, "out")).sort();
+      expect(files).toEqual(["base.size-25.scenario.json", "base.size-50.scenario.json"]);
+
+      // Each variant has its patched size, derives its name from the base + suffix
+      // (so the base's labelling is retained, never replaced), and runs.
+      for (const [file, size, suffix] of [
+        ["base.size-25.scenario.json", 25, "size-25"],
+        ["base.size-50.scenario.json", 50, "size-50"],
+      ] as const) {
+        const v = JSON.parse(readFileSync(join(cwd, "out", file), "utf8")) as {
+          name: string;
+          defaultPaperSizeUsd: number;
+        };
+        expect(v.defaultPaperSizeUsd).toBe(size);
+        expect(v.name).toBe(`cli-backtest [${suffix}]`); // base name + suffix
+        const lint = paperBacktestLintReport({ cwd, env: {} }, { scenarioPath: `out/${file}` });
+        expect(lint).toContain("(VALID)");
+      }
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("does not mutate the base scenario file", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndMatrix(cwd);
+      const before = readFileSync(join(cwd, "base.scenario.json"), "utf8");
+      paperBacktestScenarioMatrixReport(
+        { cwd, env: {} },
+        { basePath: "base.scenario.json", matrixPath: "matrix.json", outDir: "out" },
+      );
+      expect(readFileSync(join(cwd, "base.scenario.json"), "utf8")).toBe(before);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses to overwrite existing variant files unless --force is given", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndMatrix(cwd);
+      const opts = { basePath: "base.scenario.json", matrixPath: "matrix.json", outDir: "out" };
+      expect(paperBacktestScenarioMatrixReport({ cwd, env: {} }, opts)).toContain("Wrote 2");
+      expect(paperBacktestScenarioMatrixReport({ cwd, env: {} }, opts)).toMatch(
+        /^Refusing: .* already exist \(pass --force/,
+      );
+      expect(
+        paperBacktestScenarioMatrixReport({ cwd, env: {} }, { ...opts, force: true }),
+      ).toContain("Wrote 2");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a patch that touches a protected key (no partial writes)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndMatrix(cwd, {
+        variants: [{ suffix: "x", patch: { steps: [] } }],
+      });
+      const out = paperBacktestScenarioMatrixReport(
+        { cwd, env: {} },
+        { basePath: "base.scenario.json", matrixPath: "matrix.json", outDir: "out" },
+      );
+      expect(out).toMatch(/^Refusing: matrix.variants\[0\].patch may only set/);
+      // Nothing was written.
+      expect(readdirSync(cwd)).not.toContain("out");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed matrix file", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "base.scenario.json"), JSON.stringify(buyScenario()));
+      writeFileSync(join(cwd, "matrix.json"), "{ not json");
+      const out = paperBacktestScenarioMatrixReport(
+        { cwd, env: {} },
+        { basePath: "base.scenario.json", matrixPath: "matrix.json", outDir: "out" },
+      );
+      expect(out).toMatch(/^Refusing: matrix file is not valid JSON/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("emits a stable JSON envelope with --json", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndMatrix(cwd);
+      const out = paperBacktestScenarioMatrixReport(
+        { cwd, env: {} },
+        { basePath: "base.scenario.json", matrixPath: "matrix.json", outDir: "out", json: true },
+      );
+      const env = JSON.parse(out) as { name: string; variants: { suffix: string }[] };
+      expect(env.name).toBe("sizing-sweep");
+      expect(env.variants.map((v) => v.suffix)).toEqual(["size-25", "size-50"]);
     } finally {
       cleanup();
     }

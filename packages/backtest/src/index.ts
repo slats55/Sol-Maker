@@ -40,6 +40,27 @@ export {
   BACKTEST_REPORT_SCHEMA_VERSION,
 } from "./report.js";
 
+export {
+  validateBacktestReport,
+  collectReportIssues,
+  isBacktestReport,
+  BacktestReportError,
+} from "./report-validate.js";
+
+export {
+  diffBacktestReports,
+  formatBacktestReportDiff,
+  BACKTEST_DIFF_SCHEMA_VERSION,
+  BACKTEST_DIFF_DISCLAIMERS,
+} from "./diff.js";
+
+export {
+  buildExampleBacktestScenario,
+  listBacktestScenarioTemplates,
+} from "./templates.js";
+
+export { expandScenarioMatrix, ScenarioMatrixError } from "./matrix.js";
+
 export type {
   BacktestScenario,
   BacktestStep,
@@ -51,3 +72,32 @@ export type {
   BacktestEquityPoint,
   BacktestPerMintAggregate,
 } from "./types.js";
+
+export type {
+  BacktestReportDiff,
+  BacktestNumberDelta,
+  BacktestDiffStringField,
+  BacktestDiffCompatibility,
+  BacktestDiffCompatibilityStatus,
+  BacktestSummaryDiff,
+  BacktestWarningsDiff,
+  BacktestEquityStepDiff,
+  BacktestEquityCurveDiff,
+  BacktestPerMintDelta,
+  BacktestPerMintDiff,
+  FormatBacktestReportDiffOptions,
+} from "./diff.js";
+
+export type {
+  BacktestScenarioTemplate,
+  BacktestScenarioTemplateInfo,
+  BuildBacktestScenarioOptions,
+} from "./templates.js";
+
+export type {
+  ScenarioMatrix,
+  ScenarioMatrixVariant,
+  ScenarioPatch,
+  ExpandedScenarioVariant,
+  ScenarioMatrixResult,
+} from "./matrix.js";

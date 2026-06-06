@@ -9,8 +9,8 @@
  * injected data and touch no wallet, key, or network.
  */
 
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, isAbsolute, join } from "node:path";
 import {
   loadConfig,
   evaluateLiveGate,
@@ -74,7 +74,15 @@ import {
   runBacktest,
   formatBacktestReport,
   lintBacktestScenario,
+  diffBacktestReports,
+  formatBacktestReportDiff,
+  buildExampleBacktestScenario,
+  listBacktestScenarioTemplates,
+  expandScenarioMatrix,
   type BacktestReport,
+  type BacktestReportDiff,
+  type BacktestScenario,
+  type BacktestScenarioTemplate,
   type BacktestLintIssue,
   type BacktestScenarioLintResult,
 } from "@soulmaker/backtest";
@@ -1386,6 +1394,301 @@ export function paperBacktestLintReport(
     return JSON.stringify(redactValue(result), null, 2);
   }
   return formatScenarioLintReport(result);
+}
+
+export interface PaperBacktestDiffCommandOptions {
+  /** Path to the BASE backtest report JSON (the reference). */
+  basePath?: string;
+  /** Path to the NEXT backtest report JSON (compared against base). */
+  nextPath?: string;
+  json?: boolean;
+  /** Exit non-zero when the diff reports a (bookkeeping) regression. */
+  failOnRegression?: boolean;
+}
+
+/**
+ * A CLI report plus the exit code the caller should set. Most commands signal a
+ * refusal through their first output line; `paper:backtest:diff` additionally
+ * needs a clean (parseable) success body with a non-zero exit under
+ * `--fail-on-regression`, so it returns the exit code explicitly.
+ */
+export interface CliReport {
+  text: string;
+  exitCode: number;
+}
+
+/**
+ * `soulmaker paper:backtest:diff` — deterministically diff TWO existing backtest
+ * report JSON files. Reads ONLY the two named files (BOM-tolerant, malformed JSON
+ * refused); it runs no backtest, reads no scenario, writes nothing, and never
+ * touches the network/RPC/wallet/filesystem beyond those two reads. `--json` emits
+ * the stable, redacted {@link BacktestReportDiff}; `--fail-on-regression` sets a
+ * non-zero exit only when `diff.hasRegression` is true. A delta is simulated
+ * bookkeeping — never profit, loss, a prediction, or advice.
+ */
+export function paperBacktestDiffReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestDiffCommandOptions = {},
+): CliReport {
+  if (!opts.basePath) return { text: "Refusing: --base <path> is required.", exitCode: 1 };
+  if (!opts.nextPath) return { text: "Refusing: --next <path> is required.", exitCode: 1 };
+
+  let baseValue: unknown;
+  try {
+    baseValue = readJsonValue(ctx, opts.basePath, "base report");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let nextValue: unknown;
+  try {
+    nextValue = readJsonValue(ctx, opts.nextPath, "next report");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let diff: BacktestReportDiff;
+  try {
+    // Validates both reports strictly; a non-report or schema-missing file refuses.
+    diff = diffBacktestReports(baseValue, nextValue);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const exitCode = opts.failOnRegression && diff.hasRegression ? 1 : 0;
+
+  if (opts.json) {
+    // redactValue is a backstop; the diff carries only injected scenario identifiers.
+    return { text: JSON.stringify(redactValue(diff), null, 2), exitCode };
+  }
+  return {
+    text: formatBacktestReportDiff(diff, { baseLabel: opts.basePath, nextLabel: opts.nextPath }),
+    exitCode,
+  };
+}
+
+export interface PaperBacktestScenarioNewCommandOptions {
+  /** Built-in template name (see `listBacktestScenarioTemplates`). */
+  template?: string;
+  /** Local path to write the generated scenario JSON to (required). */
+  outPath?: string;
+  /** Optional scenario name override (must be non-empty when provided). */
+  name?: string;
+  /** Overwrite an existing `--out` file (refused by default). */
+  force?: boolean;
+  json?: boolean;
+}
+
+/** Render the human confirmation for a freshly written scenario (deterministic, redacted). */
+function formatScenarioNewReport(
+  template: BacktestScenarioTemplate,
+  scenario: BacktestScenario,
+  resolved: string,
+  lint: BacktestScenarioLintResult,
+  outArg: string,
+): string {
+  const status =
+    lint.warnings.length > 0 ? `RUNNABLE (with ${lint.warnings.length} warning(s))` : "VALID";
+  const header = `Wrote backtest scenario — ${template} (PAPER ONLY)`;
+  const lines: string[] = [header, "=".repeat(header.length)];
+  lines.push(`template:  ${template}`);
+  lines.push(`name:      ${scenario.name}`);
+  lines.push(`out:       ${resolved}`);
+  lines.push(`steps:     ${scenario.steps.length}`);
+  lines.push(`lints:     ${status}`);
+  for (const w of lint.warnings) lines.push(`  - [${w.code}] ${w.message}`);
+  lines.push("");
+  lines.push("Notes:");
+  lines.push("- Injected fixture — fake mints + injected prices, NOT real market data, NOT advice.");
+  lines.push(`- Lint it:  soulmaker paper:backtest:lint --scenario ${outArg}`);
+  lines.push(`- Run it:   soulmaker paper:backtest --scenario ${outArg}`);
+  return redactString(lines.join("\n"));
+}
+
+/**
+ * `soulmaker paper:backtest:scenario:new` — write a deterministic, INJECTED
+ * backtest scenario SKELETON from a built-in template. It builds the scenario with
+ * the pure `@soulmaker/backtest` builder (fake mints, injected prices — never real
+ * data, keys, or wallets), confirms it lints valid, then writes ONLY that one JSON
+ * file. It refuses to overwrite an existing file unless `--force` is given, and
+ * touches no network/RPC/wallet. Lint/run the result with `paper:backtest:lint` /
+ * `paper:backtest`.
+ */
+export function paperBacktestScenarioNewReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestScenarioNewCommandOptions = {},
+): string {
+  if (!opts.template) return "Refusing: --template <name> is required.";
+  if (!opts.outPath) return "Refusing: --out <path> is required.";
+
+  const templates = listBacktestScenarioTemplates();
+  const info = templates.find((t) => t.template === opts.template);
+  if (!info) {
+    return redactString(
+      `Refusing: unknown template "${opts.template}". ` +
+        `Known templates: ${templates.map((t) => t.template).join(", ")}.`,
+    );
+  }
+
+  let scenario: BacktestScenario;
+  try {
+    scenario = buildExampleBacktestScenario(
+      info.template,
+      opts.name !== undefined ? { name: opts.name } : {},
+    );
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  // Defensive backstop: a built-in template must lint valid before we write it.
+  const lint = lintBacktestScenario(scenario);
+  if (!lint.valid) {
+    return redactString(
+      `Refusing: generated scenario unexpectedly failed validation (${lint.errors.length} error(s)).`,
+    );
+  }
+
+  const resolved = resolvePath(ctx, opts.outPath);
+  if (!opts.force && existsSync(resolved)) {
+    return redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`);
+  }
+  try {
+    writeFileSync(resolved, JSON.stringify(redactValue(scenario), null, 2) + "\n");
+  } catch {
+    return redactString(`Refusing: cannot write scenario file at ${resolved}`);
+  }
+
+  if (opts.json) {
+    const envelope = {
+      command: "paper:backtest:scenario:new",
+      template: info.template,
+      name: scenario.name,
+      out: resolved,
+      stepCount: scenario.steps.length,
+      lint: { valid: lint.valid, warnings: lint.warnings.map((w) => w.code) },
+    };
+    return JSON.stringify(redactValue(envelope), null, 2);
+  }
+  return formatScenarioNewReport(info.template, scenario, resolved, lint, opts.outPath);
+}
+
+export interface PaperBacktestScenarioMatrixCommandOptions {
+  /** Path to the base scenario JSON (required). */
+  basePath?: string;
+  /** Path to the matrix JSON ({ name?, variants: [{ suffix, patch }] }) (required). */
+  matrixPath?: string;
+  /** Directory to write one scenario file per variant into (required; created if absent). */
+  outDir?: string;
+  /** Overwrite existing variant files (refused by default). */
+  force?: boolean;
+  json?: boolean;
+}
+
+/** Strip a scenario file's extension(s) to a stem used to name variant files. */
+function scenarioStem(path: string): string {
+  const stem = basename(path).replace(/\.scenario\.json$/i, "").replace(/\.json$/i, "");
+  return stem.length > 0 ? stem : "scenario";
+}
+
+/**
+ * `soulmaker paper:backtest:scenario:matrix` — expand a base scenario by a small
+ * declarative matrix of SAFE, config-only patches into one validated INJECTED
+ * scenario file per variant. It reads ONLY the two named JSON files (BOM-tolerant,
+ * malformed refused), runs the pure `expandScenarioMatrix` (no code/expressions —
+ * patches may only set strategyConfig/caps/defaultPaperSizeUsd; steps/name/journal
+ * are protected), then writes one file per variant into `--out-dir`. It refuses to
+ * overwrite any existing variant file unless `--force` is given (it checks every
+ * target BEFORE writing any), and touches no network/RPC/wallet.
+ */
+export function paperBacktestScenarioMatrixReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestScenarioMatrixCommandOptions = {},
+): string {
+  if (!opts.basePath) return "Refusing: --base <path> is required.";
+  if (!opts.matrixPath) return "Refusing: --matrix <path> is required.";
+  if (!opts.outDir) return "Refusing: --out-dir <path> is required.";
+
+  let baseValue: unknown;
+  try {
+    baseValue = readJsonValue(ctx, opts.basePath, "base scenario");
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  let matrixValue: unknown;
+  try {
+    matrixValue = readJsonValue(ctx, opts.matrixPath, "matrix");
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  let result: ReturnType<typeof expandScenarioMatrix>;
+  try {
+    result = expandScenarioMatrix(baseValue, matrixValue);
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  const outDir = resolvePath(ctx, opts.outDir);
+  const stem = scenarioStem(opts.basePath);
+  const targets = result.variants.map((v) => ({
+    suffix: v.suffix,
+    scenario: v.scenario,
+    path: join(outDir, `${stem}.${v.suffix}.scenario.json`),
+  }));
+
+  // Refuse if ANY target already exists (check all before writing any — no partial writes).
+  if (!opts.force) {
+    const existing = targets.filter((t) => existsSync(t.path));
+    if (existing.length > 0) {
+      return redactString(
+        `Refusing: ${existing.length} output file(s) already exist (pass --force to overwrite): ` +
+          existing.map((t) => t.path).join(", "),
+      );
+    }
+  }
+
+  try {
+    mkdirSync(outDir, { recursive: true });
+  } catch {
+    return redactString(`Refusing: cannot create output directory at ${outDir}`);
+  }
+  for (const t of targets) {
+    try {
+      writeFileSync(t.path, JSON.stringify(redactValue(t.scenario), null, 2) + "\n");
+    } catch {
+      return redactString(`Refusing: cannot write scenario file at ${t.path}`);
+    }
+  }
+
+  if (opts.json) {
+    const envelope = {
+      command: "paper:backtest:scenario:matrix",
+      name: result.name,
+      base: opts.basePath,
+      outDir,
+      variants: targets.map((t) => ({ suffix: t.suffix, name: t.scenario.name, out: t.path })),
+    };
+    return JSON.stringify(redactValue(envelope), null, 2);
+  }
+
+  const title = result.name ?? scenarioStem(opts.basePath);
+  const header = `Wrote ${targets.length} scenario variant(s) — ${title} (PAPER ONLY)`;
+  const lines: string[] = [header, "=".repeat(header.length)];
+  lines.push(`base:      ${opts.basePath}`);
+  lines.push(`matrix:    ${result.name ?? "(unnamed)"}`);
+  lines.push(`out-dir:   ${outDir}`);
+  lines.push(`variants:  ${targets.length}`);
+  for (const t of targets) {
+    const lint = lintBacktestScenario(t.scenario);
+    const status = lint.warnings.length > 0 ? `RUNNABLE (+${lint.warnings.length} warning(s))` : "VALID";
+    lines.push(`- ${t.suffix}: ${t.path}  [${status}]`);
+  }
+  lines.push("");
+  lines.push("Notes:");
+  lines.push("- Injected fixtures — fake mints + injected prices, NOT real market data, NOT advice.");
+  lines.push("- Every variant validates; lint/run with paper:backtest:lint / paper:backtest.");
+  return redactString(lines.join("\n"));
 }
 
 function yesNo(value: boolean): string {

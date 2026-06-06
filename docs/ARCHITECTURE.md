@@ -28,7 +28,7 @@ packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.j
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
-packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint (Sprint 8–9)  [strategy, paper, security]
+packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders (Sprint 8–10)  [strategy, paper, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -70,6 +70,16 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   contract — the backtest is the orchestrator that drives a session. It is pure
   (no `core`, `solana`, `@solana/web3.js`, RPC, filesystem, network, `Date.now`,
   or `Math.random`).
+- **(Sprint 10)** `@soulmaker/backtest` also exports pure, offline helpers that sit
+  *beside* the replay engine rather than driving it: `validateBacktestReport` +
+  `diffBacktestReports`/`formatBacktestReportDiff` (compare two already-produced
+  report objects), and the scenario-authoring builders
+  `buildExampleBacktestScenario`/`listBacktestScenarioTemplates` +
+  `expandScenarioMatrix` (deterministic INJECTED scenario skeletons/variants). All
+  are pure and non-mutating; the CLI (`paper:backtest:diff`,
+  `paper:backtest:scenario:new`/`:matrix`) is the only layer that reads/writes
+  files. A report diff is bookkeeping over two **simulations** — not a live result,
+  prediction, or advice; generated scenarios are fixtures, not market data.
 
 ## The live boundary
 

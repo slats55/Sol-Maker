@@ -16,6 +16,9 @@ import {
   strategyPlanReport,
   paperBacktestReport,
   paperBacktestLintReport,
+  paperBacktestDiffReport,
+  paperBacktestScenarioNewReport,
+  paperBacktestScenarioMatrixReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -340,6 +343,79 @@ program
   .action((opts: { scenario?: string; json?: boolean }) => {
     printResult(
       paperBacktestLintReport({}, { scenarioPath: opts.scenario, json: Boolean(opts.json) }),
+    );
+  });
+
+program
+  .command("paper:backtest:diff")
+  .description(
+    "Deterministically diff TWO existing backtest report JSON files (PAPER ONLY; deltas are simulated bookkeeping, not a live result, not advice, not a profitability claim)",
+  )
+  .option("--base <path>", "BASE backtest report JSON (the reference)")
+  .option("--next <path>", "NEXT backtest report JSON (compared against base)")
+  .option("--json", "emit the diff as stable JSON")
+  .option("--fail-on-regression", "exit non-zero when the diff reports a regression")
+  .action((opts: { base?: string; next?: string; json?: boolean; failOnRegression?: boolean }) => {
+    const { text, exitCode } = paperBacktestDiffReport(
+      {},
+      {
+        basePath: opts.base,
+        nextPath: opts.next,
+        json: Boolean(opts.json),
+        failOnRegression: Boolean(opts.failOnRegression),
+      },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("paper:backtest:scenario:new")
+  .description(
+    "Write a deterministic, INJECTED backtest scenario skeleton from a built-in template (PAPER ONLY; fake mints + injected prices, not real market data)",
+  )
+  .option("--template <name>", "template: buy-hold | buy-full-exit | partial-exit | seed-journal-continuation")
+  .option("--out <path>", "write ONLY the generated scenario JSON to this file")
+  .option("--name <name>", "override the scenario name")
+  .option("--force", "overwrite the --out file if it already exists")
+  .option("--json", "emit a stable JSON envelope (template, out, lint status)")
+  .action((opts: { template?: string; out?: string; name?: string; force?: boolean; json?: boolean }) => {
+    printResult(
+      paperBacktestScenarioNewReport(
+        {},
+        {
+          template: opts.template,
+          outPath: opts.out,
+          name: opts.name,
+          force: Boolean(opts.force),
+          json: Boolean(opts.json),
+        },
+      ),
+    );
+  });
+
+program
+  .command("paper:backtest:scenario:matrix")
+  .description(
+    "Expand a base scenario by a small matrix of SAFE config-only patches into one INJECTED scenario file per variant (PAPER ONLY; no code/expressions; steps/name/journal protected)",
+  )
+  .option("--base <path>", "base scenario JSON")
+  .option("--matrix <path>", "matrix JSON: { name?, variants: [{ suffix, patch }] }")
+  .option("--out-dir <path>", "directory to write one scenario file per variant (created if absent)")
+  .option("--force", "overwrite existing variant files")
+  .option("--json", "emit a stable JSON envelope of what was written")
+  .action((opts: { base?: string; matrix?: string; outDir?: string; force?: boolean; json?: boolean }) => {
+    printResult(
+      paperBacktestScenarioMatrixReport(
+        {},
+        {
+          basePath: opts.base,
+          matrixPath: opts.matrix,
+          outDir: opts.outDir,
+          force: Boolean(opts.force),
+          json: Boolean(opts.json),
+        },
+      ),
     );
   });
 

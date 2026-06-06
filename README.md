@@ -16,7 +16,7 @@ all pass.
 
 ---
 
-## ⚠️ Status: Phases 0–1 done; Phase 2 read-only core complete; Phase 3 advisory risk engine complete; Phase 4 simulated paper engine complete; Phase 5 paper-only strategy rules engine complete (Sprint 5 single-candidate + Sprint 6 batch plan pipeline + Sprint 7 journal-aware planning & richer simulated exits + Sprint 8 journal-continuing paper runs & deterministic simulated backtest + Sprint 9 scenario linting, example fixtures, stabler/richer backtest reports & BOM-tolerant JSON parsing). No live trading. By design.
+## ⚠️ Status: Phases 0–1 done; Phase 2 read-only core complete; Phase 3 advisory risk engine complete; Phase 4 simulated paper engine complete; Phase 5 paper-only strategy rules engine complete (Sprint 5 single-candidate + Sprint 6 batch plan pipeline + Sprint 7 journal-aware planning & richer simulated exits + Sprint 8 journal-continuing paper runs & deterministic simulated backtest + Sprint 9 scenario linting, example fixtures, stabler/richer backtest reports & BOM-tolerant JSON parsing + Sprint 10 backtest report diffing & deterministic scenario-authoring helpers). No live trading. By design.
 
 Nothing in this repository can move funds. There is **no transaction signing or
 sending code anywhere in it yet** — the read-only Solana watcher (Phase 2) and
@@ -41,9 +41,18 @@ under [`examples/backtest/`](examples/backtest/); the report gains a stable
 `schemaVersion`, a reproducibility `scenarioDigest`, a per-step `equityCurve`, and
 **exact** `perMint` aggregates (all bookkeeping from injected prices); the CLI's
 local JSON readers tolerate a leading UTF-8 **BOM**; and `paper:backtest
---seed-journal` can seed a run from an external JSONL journal. None of this begins
-transaction planning (roadmap Phase 6 remains not started). The default mode is
-`PAPER`. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+--seed-journal` can seed a run from an external JSONL journal. Sprint 10 makes the
+backtest easier to review and regression-test, **still injected-only**:
+`paper:backtest:diff` deterministically compares **two existing** report JSON files
+(metadata/compatibility, summary deltas, warning/equity/per-mint diffs, and a
+conservative `hasRegression` flag) — every delta is a bookkeeping difference between
+two **simulations**, never a prediction, profit/loss, or advice; and
+`paper:backtest:scenario:new` / `paper:backtest:scenario:matrix` deterministically
+author injected scenario **skeletons** (fake mints, injected prices — not real
+historical data) from built-in templates and safe, config-only patches. None of
+this fetches live data or begins transaction planning (roadmap Phase 6 remains not
+started; Phase 7 burner live remains not started). The default mode is `PAPER`. See
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Non-negotiable security rules (summary)
 
@@ -73,7 +82,8 @@ soulmaker/
     cli/        # @soulmaker/cli  — read-only CLI (doctor, config:check, mode, paper:status,
                 #                    solana:doctor, wallet:watch, token:inspect/accounts/risk,
                 #                    paper:run/journal, strategy:evaluate, strategy:plan,
-                #                    paper:backtest, paper:backtest:lint)
+                #                    paper:backtest, paper:backtest:lint, paper:backtest:diff,
+                #                    paper:backtest:scenario:new, paper:backtest:scenario:matrix)
     web/        # Phase 8 dashboard (placeholder)
   packages/
     core/       # @soulmaker/core      — config schema, modes, risk caps, LIVE GATE
@@ -87,7 +97,8 @@ soulmaker/
                 #            Sprint 7 adds journal-aware planning + richer simulated exits
     backtest/   # @soulmaker/backtest  — Sprint 8 deterministic, injected-only simulated
                 #            replay over plan → paper; Sprint 9 adds scenario lint/validate,
-                #            a content digest, and stabler/richer reports (not a live result)
+                #            a content digest, and stabler/richer reports (not a live result);
+                #            Sprint 10 adds report diffing + scenario template/matrix builders
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
     backtest/   # injected, copyable example scenarios + fixtures (NOT historical market data)
@@ -166,6 +177,21 @@ pnpm soulmaker paper:backtest --scenario <scenario.json> --seed-journal <journal
 # leading UTF-8 BOM. Copyable example scenarios live in examples/backtest/:
 pnpm soulmaker paper:backtest:lint --scenario examples/backtest/single-mint-buy-full-exit.scenario.json
 pnpm soulmaker paper:backtest:lint --scenario <scenario.json> --json
+
+# Sprint 10 — deterministically DIFF two existing SIMULATED report JSON files
+# (reads only the two files; runs no backtest; deltas are bookkeeping, not advice
+# or a prediction). --fail-on-regression exits non-zero only on a regression:
+pnpm soulmaker paper:backtest:diff --base <base-report.json> --next <next-report.json>
+pnpm soulmaker paper:backtest:diff --base <base.json> --next <next.json> --json
+pnpm soulmaker paper:backtest:diff --base <base.json> --next <next.json> --fail-on-regression
+
+# Sprint 10 — author INJECTED scenario skeletons (fake mints + injected prices,
+# NOT real historical data). Templates: buy-hold | buy-full-exit | partial-exit |
+# seed-journal-continuation. Refuses to overwrite without --force:
+pnpm soulmaker paper:backtest:scenario:new --template buy-hold --out <scenario.json>
+# expand a base scenario by a SAFE, config-only matrix into one file per variant
+# (patches may only set strategyConfig/caps/defaultPaperSizeUsd; no code/expressions):
+pnpm soulmaker paper:backtest:scenario:matrix --base <base.json> --matrix <matrix.json> --out-dir <dir>
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

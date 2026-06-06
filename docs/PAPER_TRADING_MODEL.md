@@ -1,4 +1,4 @@
-# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability)
+# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers)
 
 The paper engine (`@soulmaker/paper` + the `paper:*` CLI commands) is a
 **deterministic, offline, simulated-only** trading sandbox. It exists to prove
@@ -230,6 +230,45 @@ trust — and harder to misread as real performance. Everything stays
   They are copyable starting points and test fixtures — **not** historical market
   truth, not real prices, not a track record.
 
+## Report diffing & scenario helpers (Sprint 10)
+
+Sprint 10 makes the backtest easier to **review** and **regression-test**.
+Everything stays **injected-only and simulated**; nothing fetches live data and
+nothing touches a wallet, key, or transaction.
+
+- **Report diff.** `@soulmaker/backtest` exports `validateBacktestReport`,
+  `diffBacktestReports(base, next)`, and `formatBacktestReportDiff`; the CLI adds
+  `paper:backtest:diff --base <a> --next <b> [--json] [--fail-on-regression]`. It
+  reads **only** the two report JSON files (BOM-tolerant; malformed/non-report JSON
+  refused), runs **no** backtest, reads no scenario, and writes nothing. The diff
+  reports metadata/**compatibility** (schema/digest/name match; same-scenario vs
+  different-scenario vs schema-mismatch), **summary deltas** (steps, candidates,
+  fills, rejects, realized/unrealized/total PnL, positions, turnover), a
+  warning/equity/per-mint **set-diff** (sorted deterministically), and a
+  **conservative** `hasRegression` flag. Every value is a bookkeeping difference
+  between two **simulations** — a negative or positive delta is **not** profit,
+  loss, a prediction, or advice. `hasRegression` is bookkeeping-oriented: schema
+  problems always flag; PnL/fills/rejects/warning regressions flag only for the
+  **same** `scenarioDigest` (a deterministic replay should reproduce identical
+  numbers), and a *different* digest is treated as "different scenario", not a
+  regression. `--fail-on-regression` exits non-zero only when `hasRegression` is
+  true; without it the command exits 0 even on negative deltas.
+
+- **Scenario helpers.** `buildExampleBacktestScenario(template)` +
+  `listBacktestScenarioTemplates()` build deterministic INJECTED scenario skeletons
+  from built-in templates (`buy-hold`, `buy-full-exit`, `partial-exit`,
+  `seed-journal-continuation`); `expandScenarioMatrix(base, matrix)` produces
+  variants from a base scenario plus a small, **safe, config-only** patch matrix.
+  CLI: `paper:backtest:scenario:new --template <name> --out <path> [--name <name>]
+  [--force]` and `paper:backtest:scenario:matrix --base <a> --matrix <m> --out-dir
+  <d> [--force]`. The builders are **pure** (the CLI does the writing); generated
+  scenarios use fake mints and injected prices (never real tokens/keys/wallets),
+  validate immediately, and are not overwritten without `--force`. The matrix patch
+  system is intentionally tiny: a patch may only set
+  `strategyConfig`/`caps`/`defaultPaperSizeUsd` — never `steps`, `name`, or
+  `initialJournal` (so the injected labelling can never be edited into something
+  misleading), and never code or expressions.
+
 ## PnL reporting
 
 `PaperRunSummary`: realized PnL, unrealized PnL, total PnL, open position count,
@@ -247,6 +286,9 @@ simulated, or sent" disclaimer.
 | `paper:status` | real status from an optional journal (clean empty state otherwise) |
 | `paper:backtest` | deterministic, injected-only simulated replay of a local scenario (Sprint 8; Sprint 9 adds `--seed-journal` + richer report) |
 | `paper:backtest:lint` | validate/lint a scenario **without** running it (Sprint 9): errors block a run, warnings flag suspicious design |
+| `paper:backtest:diff` | deterministically diff **two existing** report JSON files (Sprint 10): compatibility + deltas + conservative `hasRegression`; deltas are bookkeeping, not advice |
+| `paper:backtest:scenario:new` | write a deterministic INJECTED scenario skeleton from a built-in template (Sprint 10); refuses overwrite without `--force` |
+| `paper:backtest:scenario:matrix` | expand a base scenario by a safe, config-only patch matrix into one INJECTED file per variant (Sprint 10) |
 
 `paper:run` options: `--candidates <path>` `--prices <path>` `--journal <path>`
 `--max-trade-size-usd` `--max-daily-loss-usd` `--max-open-positions`

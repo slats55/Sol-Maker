@@ -104,12 +104,13 @@ Implemented in `@soulmaker/paper` + the CLI (Sprint 4; Sprint 8 journal continua
 - ⬜ Snipe-list **ingestion** wiring (candidates are supplied as fixtures today;
   a live snipe-list source is a later sprint). Still **no real sends**.
 
-## Phase 5 — Strategy rules engine 🟡 (deterministic, paper-only — single + batch + journal-aware + journal-continuing loop + backtest + scenario linting/report stability)
+## Phase 5 — Strategy rules engine 🟡 (deterministic, paper-only — single + batch + journal-aware + journal-continuing loop + backtest + scenario linting/report stability + report diffing & scenario helpers)
 
 Implemented in `@soulmaker/strategy` + `@soulmaker/backtest` + the CLI (Sprint 5
 single-candidate engine; Sprint 6 batch plan pipeline; Sprint 7 journal-aware
 planning + richer exits; Sprint 8 journal-continuing loop + deterministic backtest;
-Sprint 9 scenario linting, example fixtures, report stability + BOM-tolerant JSON):
+Sprint 9 scenario linting, example fixtures, report stability + BOM-tolerant JSON;
+Sprint 10 backtest report diffing + deterministic scenario-authoring helpers):
 
 - ✅ Deterministic, **paper-only** rules engine: turns an advisory
   `@soulmaker/risk` report + injected, read-only metrics into a single decision —
@@ -206,6 +207,27 @@ Sprint 9 scenario linting, example fixtures, report stability + BOM-tolerant JSO
   deterministic example scenarios (buy & hold, buy & full exit, multi-mint partial
   exit + hold + reject, seed-journal continuation) with a README. They are fixtures,
   **not** historical market truth.
+- ✅ **(Sprint 10) Backtest report diffing** — `@soulmaker/backtest` exports
+  `validateBacktestReport`, `diffBacktestReports(base, next)`, and
+  `formatBacktestReportDiff`; the CLI adds `paper:backtest:diff --base <a> --next <b>
+  [--json] [--fail-on-regression]`. It reads ONLY the two report files (BOM-tolerant,
+  malformed refused), runs no backtest, and produces metadata/compatibility, summary
+  deltas, a warning/equity/per-mint diff, and a **conservative** `hasRegression`
+  flag. Every delta is a bookkeeping difference between two **simulations** — not a
+  prediction, not profit/loss, not advice. `--fail-on-regression` exits non-zero only
+  when `hasRegression` is true; a different `scenarioDigest` is "different scenario",
+  not a regression.
+- ✅ **(Sprint 10) Deterministic scenario-authoring helpers** — `@soulmaker/backtest`
+  exports `listBacktestScenarioTemplates`, `buildExampleBacktestScenario(template)`,
+  and `expandScenarioMatrix(base, matrix)`; the CLI adds
+  `paper:backtest:scenario:new --template <name> --out <path>` (built-in templates:
+  buy-hold, buy-full-exit, partial-exit, seed-journal-continuation) and
+  `paper:backtest:scenario:matrix --base <a> --matrix <m> --out-dir <d>`. These are
+  deterministic INJECTED fixtures (fake mints + injected prices — **not** real
+  historical data, no keys/wallets); the matrix patch system is intentionally tiny
+  and safe (config-only: `strategyConfig`/`caps`/`defaultPaperSizeUsd`; never code,
+  never `steps`/`name`/`initialJournal`). Every generated scenario validates; files
+  are not overwritten without `--force`.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 
@@ -220,7 +242,7 @@ Sprint 9 scenario linting, example fixtures, report stability + BOM-tolerant JSO
 - ⬜ Simulation interface (`simulateTransaction`).
 - ⬜ **Still no sending.** Tests prove unsafe plans are rejected.
 
-## Phase 7 — Burner-wallet live mode ⬜
+## Phase 7 — Burner-wallet live mode ⬜ (NOT started)
 
 - ⬜ Only after Phases 0–6 are green.
 - ⬜ Live sending behind explicit `DANGEROUS_BURNER_LIVE`.
