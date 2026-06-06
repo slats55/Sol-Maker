@@ -245,7 +245,21 @@ pnpm soulmaker paper:backtest:sensitivity \
 For the shipped example the baseline buys $100 and holds to a 50%-higher price
 (total simulated PnL `50`); `price-up-10pct` / `price-down-10pct` leave that PnL
 unchanged (Δ`0`, the multiplier invariance noted above) while `price-plus-1usd`
-moves it (Δ ≈ `-16.67`). The report carries `SIMULATED PAPER-ONLY SENSITIVITY`,
+moves it (Δ ≈ `-16.67`).
+
+The report also carries a deterministic **`rankings`** block (schema `backtest.sensitivity.v1`)
+that orders the diffable (passed) variants by the **size** of each simulated
+bookkeeping delta versus the baseline — `byTotalSimulatedPnlDelta`,
+`byRealizedSimulatedPnlDelta`, `byUnrealizedSimulatedPnlDelta`, `byFillDelta`,
+`byRejectDelta`, `byWarningDelta`, and `byNotionalDelta`. Each entry carries the
+variant `suffix`, its `scenarioDigest`, the signed `value`, and its `magnitude`
+(`|value|`, the sort key). Lists are ordered by `magnitude` descending and ties
+resolve stably by `suffix` then `scenarioDigest`, so the order **never** depends on
+plan order (a list is empty only when no variant is diffable, e.g. the baseline
+failed). The human report prints a concise "Largest … delta" line per dimension. A
+ranking surfaces the **largest simulated movement** in either direction — it is
+**not** a "best", "winner", or "most profitable" ordering, and a delta is not a
+profit, a loss, or a prediction. The report carries `SIMULATED PAPER-ONLY SENSITIVITY`,
 "Uses injected, simulated local scenario data only", "Not a live result", "Not
 financial advice", and "Not a profitability claim", and writes only after every
 output path is preflighted — so it never writes partial output. A delta is the

@@ -151,6 +151,50 @@ export interface ScenarioVariantSensitivityEntry {
 }
 
 /**
+ * One ranked variant under a single ranking dimension. `value` is the variant's
+ * signed delta versus the baseline for that dimension (e.g. its total-PnL delta);
+ * `magnitude` is `|value|`, the sort key, so a ranking surfaces the LARGEST movement
+ * regardless of direction. It is a bookkeeping delta between two simulated runs —
+ * never a profit, a loss, a winner, or a recommendation.
+ */
+export interface SensitivityRankingEntry {
+  /** The variant suffix (its underlying suite entry id). */
+  suffix: string;
+  /** The variant's scenario digest when it ran, else null. */
+  scenarioDigest: string | null;
+  /** The signed delta (variant − baseline) for this ranking's dimension. */
+  value: number;
+  /** `|value|` — the deterministic sort key (largest movement first). */
+  magnitude: number;
+}
+
+/**
+ * Deterministic rankings of the diffable variants by the size of each simulated
+ * bookkeeping delta versus the baseline. Every dimension maps to a REAL per-field
+ * delta already in the report — no metric is invented. Each list is ordered by
+ * `magnitude` descending (largest movement first), ties broken stably by `suffix`
+ * then `scenarioDigest`, so the order never depends on plan/input order. A list is
+ * empty when no variant is diffable (e.g. the baseline failed). These are NOT a
+ * "best"/"winner"/"most profitable" ordering — only the largest simulated movement.
+ */
+export interface SensitivityRankings {
+  /** By total simulated PnL delta (realized + unrealized). */
+  byTotalSimulatedPnlDelta: SensitivityRankingEntry[];
+  /** By realized simulated PnL delta. */
+  byRealizedSimulatedPnlDelta: SensitivityRankingEntry[];
+  /** By unrealized simulated PnL delta. */
+  byUnrealizedSimulatedPnlDelta: SensitivityRankingEntry[];
+  /** By total simulated fill-count delta (buy + sell). */
+  byFillDelta: SensitivityRankingEntry[];
+  /** By paper reject-count delta. */
+  byRejectDelta: SensitivityRankingEntry[];
+  /** By lint warning-count change (variant − baseline). */
+  byWarningDelta: SensitivityRankingEntry[];
+  /** By simulated notional (turnover) delta. */
+  byNotionalDelta: SensitivityRankingEntry[];
+}
+
+/**
  * The full, deterministic, byte-stable sensitivity report. JSON-serializable as-is.
  * Carries the required PAPER-ONLY / not-a-live-result / not-advice / not-a-profit
  * language so it survives serialization. It is simulated bookkeeping — never a live
@@ -177,6 +221,12 @@ export interface ScenarioVariantSensitivityReport {
   warningCount: number;
   baseline: ScenarioVariantSensitivityBaseline;
   variants: ScenarioVariantSensitivityEntry[];
+  /**
+   * Deterministic rankings of the diffable variants by the magnitude of each
+   * simulated bookkeeping delta vs the baseline (largest movement first). Bookkeeping
+   * ordering only — never a "best"/"winner"/"most profitable" ranking.
+   */
+  rankings: SensitivityRankings;
   /** The aggregate suite summary over baseline + variants (Sprint 11 shape). */
   suiteSummary: BacktestSuiteSummary;
   /** Bookkeeping-only notes (never profitability claims). */
@@ -243,6 +293,69 @@ function buildDeltas(
     openPositions: numberDelta(base.openPositions, next.openPositions),
     closedTrades: numberDelta(base.closedTrades, next.closedTrades),
     simulatedNotionalUsd: numberDelta(base.simulatedNotionalUsd, next.simulatedNotionalUsd),
+  };
+}
+
+/** Magnitude (|value|) normalized to kill -0 and float noise, for a stable sort key. */
+function magnitudeOf(value: number): number {
+  return round6(Math.abs(value));
+}
+
+/**
+ * Rank the diffable variants (those with non-null per-field deltas) by the size of
+ * one chosen simulated delta, largest movement first. Pure and deterministic:
+ * `select` maps a variant + its (non-null) deltas to a signed value for this
+ * dimension; the result is sorted by `magnitude` descending then by `suffix` then
+ * `scenarioDigest` (both ascending), so the order never depends on plan/input order
+ * and ties resolve stably. A failed variant (null deltas) never appears.
+ */
+function rankBy(
+  variants: ScenarioVariantSensitivityEntry[],
+  select: (deltas: SensitivitySummaryDeltas, v: ScenarioVariantSensitivityEntry) => number,
+): SensitivityRankingEntry[] {
+  const entries: SensitivityRankingEntry[] = [];
+  for (const v of variants) {
+    if (v.deltas === null) continue; // narrows v.deltas for the select call below
+    const value = round6(select(v.deltas, v));
+    entries.push({
+      suffix: v.suffix,
+      scenarioDigest: v.scenarioDigest,
+      value,
+      magnitude: magnitudeOf(value),
+    });
+  }
+  entries.sort((a, b) => {
+    if (b.magnitude !== a.magnitude) return b.magnitude - a.magnitude;
+    if (a.suffix !== b.suffix) return a.suffix < b.suffix ? -1 : 1;
+    // Stable digest tie-break (null sorts last); suffixes are unique so this is a backstop.
+    if (a.scenarioDigest !== b.scenarioDigest) {
+      if (a.scenarioDigest === null) return 1;
+      if (b.scenarioDigest === null) return -1;
+      return a.scenarioDigest < b.scenarioDigest ? -1 : 1;
+    }
+    return 0;
+  });
+  return entries;
+}
+
+/**
+ * Build the deterministic {@link SensitivityRankings} over the variant entries. Each
+ * dimension reuses an EXISTING per-field delta (or the baseline-relative warning-count
+ * change) — nothing is invented. The warning-count delta is `variant − baseline`
+ * warning counts; only diffable (passed) variants are ranked. Pure; never mutates.
+ */
+function buildSensitivityRankings(
+  variants: ScenarioVariantSensitivityEntry[],
+  baselineWarningCount: number,
+): SensitivityRankings {
+  return {
+    byTotalSimulatedPnlDelta: rankBy(variants, (d) => d.totalPnlUsd.delta),
+    byRealizedSimulatedPnlDelta: rankBy(variants, (d) => d.realizedPnlUsd.delta),
+    byUnrealizedSimulatedPnlDelta: rankBy(variants, (d) => d.unrealizedPnlUsd.delta),
+    byFillDelta: rankBy(variants, (d) => d.buyFills.delta + d.sellFills.delta),
+    byRejectDelta: rankBy(variants, (d) => d.rejects.delta),
+    byWarningDelta: rankBy(variants, (_d, v) => v.warningCount - baselineWarningCount),
+    byNotionalDelta: rankBy(variants, (d) => d.simulatedNotionalUsd.delta),
   };
 }
 
@@ -357,6 +470,7 @@ export function buildScenarioVariantSensitivityReport(
     warningCount,
     baseline,
     variants,
+    rankings: buildSensitivityRankings(variants, baselineEntry.warnings.length),
     suiteSummary: suiteIndex.summary,
     notes,
   };
@@ -415,6 +529,27 @@ function isNumberDelta(value: unknown): value is SensitivityNumberDelta {
     typeof value.base === "number" &&
     typeof value.next === "number" &&
     typeof value.delta === "number"
+  );
+}
+
+/** The fixed set of ranking dimensions a {@link SensitivityRankings} must carry. */
+const RANKING_KEYS: readonly (keyof SensitivityRankings)[] = [
+  "byTotalSimulatedPnlDelta",
+  "byRealizedSimulatedPnlDelta",
+  "byUnrealizedSimulatedPnlDelta",
+  "byFillDelta",
+  "byRejectDelta",
+  "byWarningDelta",
+  "byNotionalDelta",
+];
+
+function isRankingEntry(value: unknown): value is SensitivityRankingEntry {
+  return (
+    isObject(value) &&
+    nonEmptyString(value.suffix) &&
+    (value.scenarioDigest === null || typeof value.scenarioDigest === "string") &&
+    typeof value.value === "number" &&
+    typeof value.magnitude === "number"
   );
 }
 
@@ -506,6 +641,20 @@ export function validateScenarioVariantSensitivityReport(
       }
     }
   });
+  if (!isObject(value.rankings)) {
+    throw new ScenarioVariantSensitivityError("report.rankings must be an object");
+  }
+  for (const key of RANKING_KEYS) {
+    const list = value.rankings[key];
+    if (!Array.isArray(list)) {
+      throw new ScenarioVariantSensitivityError(`report.rankings.${key} must be an array`);
+    }
+    list.forEach((entry, i) => {
+      if (!isRankingEntry(entry)) {
+        throw new ScenarioVariantSensitivityError(`report.rankings.${key}[${i}] is malformed`);
+      }
+    });
+  }
   return value as unknown as ScenarioVariantSensitivityReport;
 }
 
@@ -521,6 +670,18 @@ export interface FormatScenarioVariantSensitivityOptions {
 function signed(n: number): string {
   if (n > 0) return `+${n}`;
   return String(n === 0 ? 0 : n);
+}
+
+/**
+ * One concise ranked line: the largest-magnitude entry for a ranking dimension, or a
+ * neutral "(no diffable variant)" when the list is empty. `usd` appends the simulated
+ * USD unit. Deliberately neutral wording — the LARGEST movement, never the "best".
+ */
+function topRankLine(label: string, list: SensitivityRankingEntry[], usd: boolean): string {
+  const top = list[0];
+  if (!top) return `- ${label}: (no diffable variant)`;
+  const unit = usd ? " USD (sim)" : "";
+  return `- ${label}: ${top.suffix} (Δ${signed(top.value)}${unit})`;
 }
 
 /**
@@ -580,6 +741,19 @@ export function formatScenarioVariantSensitivityReport(
       );
     }
   }
+
+  lines.push("");
+  lines.push(
+    "Rankings (largest simulated bookkeeping movement vs baseline — not a best/winner/profit ranking):",
+  );
+  const r = report.rankings;
+  lines.push(topRankLine("Largest simulated total-PnL delta", r.byTotalSimulatedPnlDelta, true));
+  lines.push(topRankLine("Largest realized-PnL delta", r.byRealizedSimulatedPnlDelta, true));
+  lines.push(topRankLine("Largest unrealized-PnL delta", r.byUnrealizedSimulatedPnlDelta, true));
+  lines.push(topRankLine("Largest fill-count change", r.byFillDelta, false));
+  lines.push(topRankLine("Largest reject-count change", r.byRejectDelta, false));
+  lines.push(topRankLine("Largest warning-count change", r.byWarningDelta, false));
+  lines.push(topRankLine("Largest simulated-notional delta", r.byNotionalDelta, true));
 
   lines.push("");
   lines.push("Notes:");

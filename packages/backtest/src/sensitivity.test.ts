@@ -372,6 +372,145 @@ describe("validateScenarioVariantSensitivityReport", () => {
   });
 });
 
+describe("runScenarioVariantSensitivity — deterministic rankings (Sprint 14, Slice A)", () => {
+  /**
+   * Three variants whose suffixes are intentionally out of plan order vs. sort order:
+   * `c-plus1` moves the held PnL (Δ ≈ −16.67) while the two multiply variants are
+   * PnL-invariant (Δ 0). So the total-PnL ranking must put `c-plus1` first and then
+   * break the 0-magnitude tie by suffix (`a-down10` before `b-up10`), proving the
+   * order never depends on plan/input order.
+   */
+  function rankPlan(): Record<string, unknown> {
+    return {
+      name: "rank-sweep — INJECTED, simulated (not live, not advice)",
+      variants: [
+        { suffix: "b-up10", perturbations: [{ target: "price", op: "multiply", value: 1.1, min: 0 }] },
+        { suffix: "a-down10", perturbations: [{ target: "price", op: "multiply", value: 0.9, min: 0 }] },
+        { suffix: "c-plus1", perturbations: [{ target: "price", op: "add", value: 1, min: 0, max: 1000000 }] },
+      ],
+    };
+  }
+
+  it("exposes all seven ranking dimensions as arrays", () => {
+    const { report } = runScenarioVariantSensitivity({ base: buyHoldScenario(), plan: rankPlan() });
+    const r = report.rankings;
+    for (const key of [
+      "byTotalSimulatedPnlDelta",
+      "byRealizedSimulatedPnlDelta",
+      "byUnrealizedSimulatedPnlDelta",
+      "byFillDelta",
+      "byRejectDelta",
+      "byWarningDelta",
+      "byNotionalDelta",
+    ] as const) {
+      expect(Array.isArray(r[key])).toBe(true);
+      // Every diffable (passed) variant appears in every dimension.
+      expect(r[key]).toHaveLength(3);
+    }
+  });
+
+  it("orders by |delta| descending and breaks ties stably by suffix (not plan order)", () => {
+    const { report } = runScenarioVariantSensitivity({ base: buyHoldScenario(), plan: rankPlan() });
+    const total = report.rankings.byTotalSimulatedPnlDelta;
+    // c-plus1 (the only PnL-mover) first; then the 0-magnitude tie resolves a-down10 < b-up10.
+    expect(total.map((e) => e.suffix)).toEqual(["c-plus1", "a-down10", "b-up10"]);
+    // Magnitudes are non-increasing and equal |value|.
+    for (let i = 0; i < total.length; i += 1) {
+      const e = total[i];
+      expect(e?.magnitude).toBe(Math.abs(e?.value ?? NaN));
+      if (i > 0) expect((total[i - 1]?.magnitude ?? 0) >= (e?.magnitude ?? 0)).toBe(true);
+    }
+  });
+
+  it("ranks a NEGATIVE movement first by magnitude (direction kept in the signed value)", () => {
+    const { report } = runScenarioVariantSensitivity({ base: buyHoldScenario(), plan: rankPlan() });
+    const top = report.rankings.byTotalSimulatedPnlDelta[0];
+    expect(top?.suffix).toBe("c-plus1");
+    expect(top?.value).toBeLessThan(0); // the largest movement is a negative delta
+    expect(top?.magnitude).toBeGreaterThan(0);
+  });
+
+  it("breaks an all-zero ranking purely by suffix (notional is invariant here)", () => {
+    const { report } = runScenarioVariantSensitivity({ base: buyHoldScenario(), plan: rankPlan() });
+    // Every variant buys the same $100 notional, so every notional delta is 0 → suffix order.
+    const notional = report.rankings.byNotionalDelta;
+    expect(notional.map((e) => e.value)).toEqual([0, 0, 0]);
+    expect(notional.map((e) => e.suffix)).toEqual(["a-down10", "b-up10", "c-plus1"]);
+  });
+
+  it("keeps rankings byte-stable across two identical runs", () => {
+    const a = runScenarioVariantSensitivity({ base: buyHoldScenario(), plan: rankPlan() }).report.rankings;
+    const b = runScenarioVariantSensitivity({ base: buyHoldScenario(), plan: rankPlan() }).report.rankings;
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+
+  it("produces empty rankings when the baseline did not run (no diffable variant)", () => {
+    // Hand-built: a FAILED baseline (null summary) ⇒ every variant delta is null ⇒ no ranking entries.
+    const suiteResult: BacktestSuiteResult = {
+      name: null,
+      entries: [
+        {
+          index: 0, id: "base", file: null, scenarioName: null, scenarioDigest: null,
+          status: "failed", lintStatus: "valid", runStatus: "failed",
+          errors: [{ code: "run-error", message: "synthetic baseline failure" }],
+          warnings: [], summary: null, report: null, reportFile: null,
+        },
+        {
+          index: 1, id: "v1", file: null, scenarioName: "v1", scenarioDigest: "abc123abc123abc1",
+          status: "passed", lintStatus: "valid", runStatus: "passed",
+          errors: [], warnings: [],
+          summary: {
+            stepCount: 1, candidateCount: 1, buyFills: 1, sellFills: 0, rejects: 0,
+            realizedPnlUsd: 0, unrealizedPnlUsd: 50, totalPnlUsd: 50,
+            openPositions: 1, closedTrades: 0, simulatedNotionalUsd: 100,
+          },
+          report: null, reportFile: null,
+        },
+      ],
+    };
+    const variantsResult: ScenarioVariantsResult = {
+      name: null,
+      variants: [{ suffix: "v1", changeCount: 1, scenario: { name: "x", steps: [] } as never }],
+    };
+    const report = buildScenarioVariantSensitivityReport(suiteResult, variantsResult);
+    for (const list of Object.values(report.rankings)) {
+      expect(list).toHaveLength(0);
+    }
+  });
+
+  it("validates valid rankings and rejects malformed rankings", () => {
+    const { report } = runScenarioVariantSensitivity({ base: buyHoldScenario(), plan: rankPlan() });
+    expect(validateScenarioVariantSensitivityReport(report)).toBe(report);
+
+    const missingDim = JSON.parse(JSON.stringify(report));
+    delete missingDim.rankings.byRejectDelta;
+    expect(() => validateScenarioVariantSensitivityReport(missingDim)).toThrow(ScenarioVariantSensitivityError);
+
+    const badEntry = JSON.parse(JSON.stringify(report));
+    badEntry.rankings.byTotalSimulatedPnlDelta[0] = { suffix: "x" }; // missing value/magnitude
+    expect(() => validateScenarioVariantSensitivityReport(badEntry)).toThrow(ScenarioVariantSensitivityError);
+
+    const notObject = JSON.parse(JSON.stringify(report));
+    notObject.rankings = [];
+    expect(() => validateScenarioVariantSensitivityReport(notObject)).toThrow(ScenarioVariantSensitivityError);
+  });
+
+  it("renders a concise ranked summary in the human report with neutral wording", () => {
+    const { report } = runScenarioVariantSensitivity({ base: buyHoldScenario(), plan: rankPlan() });
+    const text = formatScenarioVariantSensitivityReport(report);
+    expect(text).toContain("Rankings (largest simulated bookkeeping movement vs baseline");
+    expect(text).toContain("Largest simulated total-PnL delta: c-plus1");
+    // The header explicitly disclaims a best/winner/profit framing.
+    expect(text).toContain("not a best/winner/profit ranking");
+    // No AFFIRMATIVE profit/advice framing (the guardrails' forbidden phrasings).
+    const lower = text.toLowerCase();
+    expect(lower).not.toContain("most profitable");
+    expect(lower).not.toContain("buy this");
+    expect(lower).not.toContain("trading edge");
+    expect(lower).not.toContain("profit prediction");
+  });
+});
+
 describe("formatScenarioVariantSensitivityReport", () => {
   it("renders the banner and the required not-live / not-advice / not-profit labels", () => {
     const { report } = runScenarioVariantSensitivity({ base: buyHoldScenario(), plan: plan() });

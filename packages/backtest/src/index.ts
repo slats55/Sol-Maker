@@ -190,5 +190,7 @@ export type {
   ScenarioVariantSensitivityEntry,
   SensitivitySummaryDeltas,
   SensitivityNumberDelta,
+  SensitivityRankings,
+  SensitivityRankingEntry,
   FormatScenarioVariantSensitivityOptions,
 } from "./sensitivity.js";
