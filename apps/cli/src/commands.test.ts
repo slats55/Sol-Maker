@@ -29,6 +29,7 @@ import {
   paperBacktestDiffReport,
   paperBacktestScenarioNewReport,
   paperBacktestScenarioMatrixReport,
+  paperBacktestScenarioVariantsReport,
   paperBacktestSuiteReport,
   paperBacktestDiffSuiteReport,
   stripJsonBom,
@@ -2896,6 +2897,245 @@ describe("paperBacktestScenarioMatrixReport (Sprint 10)", () => {
       const env = JSON.parse(out) as { name: string; variants: { suffix: string }[] };
       expect(env.name).toBe("sizing-sweep");
       expect(env.variants.map((v) => v.suffix)).toEqual(["size-25", "size-50"]);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 12 — paper:backtest:scenario:variants (bounded perturbation variants)
+// ---------------------------------------------------------------------------
+
+describe("paperBacktestScenarioVariantsReport (Sprint 12)", () => {
+  const PLAN = {
+    name: "price-sweep",
+    variants: [
+      { suffix: "x2", perturbations: [{ target: "price", op: "multiply", value: 2 }] },
+      { suffix: "half", perturbations: [{ target: "price", op: "multiply", value: 0.5 }] },
+    ],
+  };
+
+  /** A buy scenario with TWO MINT_A price points so a perturbation visibly moves PnL. */
+  function twoPriceBuyScenario(name: string): unknown {
+    return {
+      name,
+      strategyConfig: STRATEGY_CONFIG,
+      caps: { maxTradeSizeUsd: 1000, maxDailyLossUsd: 1000, maxOpenPositions: 5, killSwitch: false },
+      defaultPaperSizeUsd: 100,
+      steps: [
+        {
+          id: "step-1",
+          at: PAPER_TIME,
+          candidates: [{ mint: MINT_A, riskReport: passReport(MINT_A) }],
+          prices: [
+            { mint: MINT_A, priceUsd: 2, observedAt: PAPER_TIME, source: "injected-fixture" },
+            { mint: MINT_A, priceUsd: 3, observedAt: PAPER_TIME, source: "injected-fixture" },
+          ],
+        },
+      ],
+    };
+  }
+
+  function writeBaseAndPlan(cwd: string, plan: unknown = PLAN): void {
+    writeFileSync(join(cwd, "base.scenario.json"), JSON.stringify(buyScenario(), null, 2));
+    writeFileSync(join(cwd, "plan.json"), JSON.stringify(plan, null, 2));
+  }
+
+  it("refuses when --base, --plan, or --out-dir is missing", () => {
+    expect(paperBacktestScenarioVariantsReport({}, {})).toMatch(/^Refusing: --base/);
+    expect(paperBacktestScenarioVariantsReport({}, { basePath: "b.json" })).toMatch(/^Refusing: --plan/);
+    expect(
+      paperBacktestScenarioVariantsReport({}, { basePath: "b.json", planPath: "p.json" }),
+    ).toMatch(/^Refusing: --out-dir/);
+  });
+
+  it("writes one validating, perturbed scenario file per variant", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd);
+      const out = paperBacktestScenarioVariantsReport(
+        { cwd, env: {} },
+        { basePath: "base.scenario.json", planPath: "plan.json", outDir: "out" },
+      );
+      expect(out).toContain("Wrote 2 scenario variant(s) — price-sweep");
+      // Required PAPER-only / simulated labelling in human output.
+      expect(out).toContain("PAPER ONLY");
+      expect(out).toContain("simulated local scenario data");
+
+      const files = readdirSync(join(cwd, "out")).sort();
+      expect(files).toEqual(["base.half.scenario.json", "base.x2.scenario.json"]);
+
+      // buyScenario has one MINT_A price point at 2 ⇒ ×2 → 4, ×0.5 → 1.
+      for (const [file, price, suffix] of [
+        ["base.x2.scenario.json", 4, "x2"],
+        ["base.half.scenario.json", 1, "half"],
+      ] as const) {
+        const v = JSON.parse(readFileSync(join(cwd, "out", file), "utf8")) as {
+          name: string;
+          steps: { prices: { priceUsd: number }[] }[];
+        };
+        expect(v.name).toBe(`cli-backtest [${suffix}]`); // base name + suffix
+        expect(v.steps[0]?.prices[0]?.priceUsd).toBe(price);
+        const lint = paperBacktestLintReport({ cwd, env: {} }, { scenarioPath: `out/${file}` });
+        expect(lint).toContain("(VALID)");
+      }
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("does not mutate the base scenario file", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd);
+      const before = readFileSync(join(cwd, "base.scenario.json"), "utf8");
+      paperBacktestScenarioVariantsReport(
+        { cwd, env: {} },
+        { basePath: "base.scenario.json", planPath: "plan.json", outDir: "out" },
+      );
+      expect(readFileSync(join(cwd, "base.scenario.json"), "utf8")).toBe(before);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses to overwrite existing variant files unless --force is given", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd);
+      const opts = { basePath: "base.scenario.json", planPath: "plan.json", outDir: "out" };
+      expect(paperBacktestScenarioVariantsReport({ cwd, env: {} }, opts)).toContain("Wrote 2");
+      expect(paperBacktestScenarioVariantsReport({ cwd, env: {} }, opts)).toMatch(
+        /^Refusing: .* already exist \(pass --force/,
+      );
+      expect(
+        paperBacktestScenarioVariantsReport({ cwd, env: {} }, { ...opts, force: true }),
+      ).toContain("Wrote 2");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a disallowed perturbation and writes nothing (no partial output)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd, {
+        variants: [{ suffix: "x", perturbations: [{ target: "caps.maxTradeSizeUsd", op: "add", value: 1 }] }],
+      });
+      const out = paperBacktestScenarioVariantsReport(
+        { cwd, env: {} },
+        { basePath: "base.scenario.json", planPath: "plan.json", outDir: "out" },
+      );
+      expect(out).toMatch(/^Refusing: plan.variants\[0\].perturbations\[0\].target/);
+      expect(readdirSync(cwd)).not.toContain("out"); // nothing written
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a perturbation that matches no values (no partial output)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd, {
+        variants: [{ suffix: "x", perturbations: [{ target: "metric.liquidityUsd", op: "add", value: 1 }] }],
+      });
+      const out = paperBacktestScenarioVariantsReport(
+        { cwd, env: {} },
+        { basePath: "base.scenario.json", planPath: "plan.json", outDir: "out" },
+      );
+      expect(out).toMatch(/^Refusing: .* matched no values/);
+      expect(readdirSync(cwd)).not.toContain("out");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed plan file", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "base.scenario.json"), JSON.stringify(buyScenario()));
+      writeFileSync(join(cwd, "plan.json"), "{ not json");
+      const out = paperBacktestScenarioVariantsReport(
+        { cwd, env: {} },
+        { basePath: "base.scenario.json", planPath: "plan.json", outDir: "out" },
+      );
+      expect(out).toMatch(/^Refusing: variant plan file is not valid JSON/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("emits a stable JSON envelope with --json (suffix + changeCount)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd);
+      const out = paperBacktestScenarioVariantsReport(
+        { cwd, env: {} },
+        { basePath: "base.scenario.json", planPath: "plan.json", outDir: "out", json: true },
+      );
+      const env = JSON.parse(out) as {
+        command: string;
+        name: string;
+        variants: { suffix: string; changeCount: number }[];
+      };
+      expect(env.command).toBe("paper:backtest:scenario:variants");
+      expect(env.name).toBe("price-sweep");
+      expect(env.variants.map((v) => v.suffix)).toEqual(["x2", "half"]);
+      expect(env.variants.every((v) => v.changeCount === 1)).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("wires into the suite flow: generate variants → suite → diff:suite (deterministic)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "base.scenario.json"), JSON.stringify(twoPriceBuyScenario("wire base")));
+      // Two plans share the suffix "shift" (⇒ matching suite ids) but differ in delta,
+      // so diff:suite pairs them and reports a deterministic, simulated diff.
+      writeFileSync(
+        join(cwd, "plan-a.json"),
+        JSON.stringify({ name: "a", variants: [{ suffix: "shift", perturbations: [{ target: "price", op: "add", value: 1, min: 0 }] }] }),
+      );
+      writeFileSync(
+        join(cwd, "plan-b.json"),
+        JSON.stringify({ name: "b", variants: [{ suffix: "shift", perturbations: [{ target: "price", op: "add", value: 2, min: 0 }] }] }),
+      );
+
+      expect(
+        paperBacktestScenarioVariantsReport(
+          { cwd, env: {} },
+          { basePath: "base.scenario.json", planPath: "plan-a.json", outDir: "var-a" },
+        ),
+      ).toContain("Wrote 1");
+      expect(
+        paperBacktestScenarioVariantsReport(
+          { cwd, env: {} },
+          { basePath: "base.scenario.json", planPath: "plan-b.json", outDir: "var-b" },
+        ),
+      ).toContain("Wrote 1");
+
+      // The suite runner picks up the generated *.scenario.json files.
+      const sa = paperBacktestSuiteReport({ cwd, env: {} }, { dir: "var-a", outDir: "suite-a" });
+      const sb = paperBacktestSuiteReport({ cwd, env: {} }, { dir: "var-b", outDir: "suite-b" });
+      expect(sa.exitCode).toBe(0);
+      expect(sb.exitCode).toBe(0);
+      expect(readdirSync(join(cwd, "suite-a"))).toContain("base.shift.report.json");
+
+      const diff = paperBacktestDiffSuiteReport(
+        { cwd, env: {} },
+        { baseDir: "suite-a", nextDir: "suite-b", json: true },
+      );
+      const parsed = JSON.parse(diff.text) as { schemaVersion: string };
+      expect(parsed.schemaVersion).toBe("backtest.suite.diff.v1");
+      expect(diff.exitCode).toBe(0);
+      // Determinism: identical inputs ⇒ byte-identical diff.
+      const diff2 = paperBacktestDiffSuiteReport(
+        { cwd, env: {} },
+        { baseDir: "suite-a", nextDir: "suite-b", json: true },
+      );
+      expect(diff2.text).toBe(diff.text);
     } finally {
       cleanup();
     }

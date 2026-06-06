@@ -58,9 +58,18 @@ output directories by their indexes (added/removed/changed scenarios, aggregate
 deltas, and a conservative `hasRegression` flag). A suite total is simulated
 bookkeeping summed over injected prices — not a live result, not advice, not a
 profitability claim; a *changed* scenario (different content) is a bookkeeping
-difference, never a recommendation. None of this fetches live data or begins
-transaction planning (roadmap Phase 6 remains not started; Phase 7 burner live
-remains not started). The default mode is `PAPER`. See
+difference, never a recommendation. Sprint 12 adds
+`paper:backtest:scenario:variants`: it generates injected scenario variants from a
+base by applying a small, declarative plan of **bounded numeric perturbations**
+(`multiply`/`add`, clamped to explicit bounds) to the injected `price` points and
+candidate `metric.<field>` values — no code, no expressions, no RNG; the steps
+structure, name, journal, and config are protected, and a perturbation that
+matches nothing is refused rather than silently ignored. Its output dir feeds
+straight into `paper:backtest:suite` + `paper:backtest:diff:suite` for a
+price-sensitivity sweep, and every variant is simulated local scenario data — not
+a live result, not advice, not a profitability claim. None of this fetches live
+data or begins transaction planning (roadmap Phase 6 remains not started; Phase 7
+burner live remains not started). The default mode is `PAPER`. See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Non-negotiable security rules (summary)
@@ -93,6 +102,7 @@ soulmaker/
                 #                    paper:run/journal, strategy:evaluate, strategy:plan,
                 #                    paper:backtest, paper:backtest:lint, paper:backtest:diff,
                 #                    paper:backtest:scenario:new, paper:backtest:scenario:matrix,
+                #                    paper:backtest:scenario:variants,
                 #                    paper:backtest:suite, paper:backtest:diff:suite)
     web/        # Phase 8 dashboard (placeholder)
   packages/
@@ -220,6 +230,17 @@ pnpm soulmaker paper:backtest:suite --dir examples/backtest --out-dir <reports/>
 pnpm soulmaker paper:backtest:diff:suite --base-dir <reportsA/> --next-dir <reportsB/>
 pnpm soulmaker paper:backtest:diff:suite --base-dir <reportsA/> --next-dir <reportsB/> --json
 pnpm soulmaker paper:backtest:diff:suite --base-dir <reportsA/> --next-dir <reportsB/> --fail-on-regression
+
+# Sprint 12 — generate INJECTED scenario VARIANTS from a base by applying a plan of
+# BOUNDED numeric perturbations (multiply/add, clamped) to its injected prices/metrics.
+# No code/expressions, no RNG; steps/name/journal/config are protected; a perturbation
+# that matches nothing is refused. Writes one validated file per variant (--force to
+# overwrite). Feed the out-dir into a suite + suite diff for a price-sensitivity sweep:
+pnpm soulmaker paper:backtest:scenario:variants \
+  --base examples/backtest/single-mint-buy-hold.scenario.json \
+  --plan examples/backtest/price-sensitivity.variant-plan.json --out-dir <variants/>
+pnpm soulmaker paper:backtest:suite --dir <variants/> --out-dir <variant-reports/>
+pnpm soulmaker paper:backtest:diff:suite --base-dir <baseline-reports/> --next-dir <variant-reports/>
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

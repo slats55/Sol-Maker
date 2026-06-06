@@ -19,6 +19,7 @@ import {
   paperBacktestDiffReport,
   paperBacktestScenarioNewReport,
   paperBacktestScenarioMatrixReport,
+  paperBacktestScenarioVariantsReport,
   paperBacktestSuiteReport,
   paperBacktestDiffSuiteReport,
 } from "./commands.js";
@@ -413,6 +414,31 @@ program
         {
           basePath: opts.base,
           matrixPath: opts.matrix,
+          outDir: opts.outDir,
+          force: Boolean(opts.force),
+          json: Boolean(opts.json),
+        },
+      ),
+    );
+  });
+
+program
+  .command("paper:backtest:scenario:variants")
+  .description(
+    "Generate INJECTED scenario variants from a base by applying a plan of BOUNDED numeric perturbations (multiply/add, clamped) to its injected prices/metrics — one validated scenario file per variant (PAPER ONLY; no code/expressions; no RNG; steps/name/journal/config protected)",
+  )
+  .option("--base <path>", "base scenario JSON")
+  .option("--plan <path>", "variant plan JSON: { name?, variants: [{ suffix, perturbations }] }")
+  .option("--out-dir <path>", "directory to write one scenario file per variant (created if absent)")
+  .option("--force", "overwrite existing variant files")
+  .option("--json", "emit a stable JSON envelope of what was written")
+  .action((opts: { base?: string; plan?: string; outDir?: string; force?: boolean; json?: boolean }) => {
+    printResult(
+      paperBacktestScenarioVariantsReport(
+        {},
+        {
+          basePath: opts.base,
+          planPath: opts.plan,
           outDir: opts.outDir,
           force: Boolean(opts.force),
           json: Boolean(opts.json),

@@ -79,6 +79,7 @@ describe("@soulmaker/backtest — forbidden-import regression", () => {
     expect(names).toContain("report.ts");
     expect(names).toContain("types.ts");
     expect(names).toContain("index.ts");
+    expect(names).toContain("scenario-variants.ts");
   });
 
   it("imports no chain/network/filesystem/socket capability module", () => {

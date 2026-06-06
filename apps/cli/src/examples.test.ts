@@ -10,7 +10,7 @@ import { readFileSync, readdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { runBacktest, lintBacktestScenario } from "@soulmaker/backtest";
+import { runBacktest, lintBacktestScenario, generateScenarioVariants } from "@soulmaker/backtest";
 import { paperBacktestReport, paperBacktestLintReport } from "./commands.js";
 
 const EXAMPLES_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../examples/backtest");
@@ -78,6 +78,33 @@ describe("examples/backtest — fixtures validate, lint, and run", () => {
     const r = runBacktest(readExample("seed-journal-continuation.scenario.json"));
     expect(r.fillCounts.sellCount).toBe(1); // seeded A fully exited
     expect(r.pnl.realizedUsd).toBe(50);
+  });
+
+  it("price-sensitivity variant plan generates valid, runnable variants from the buy-hold base", () => {
+    const base = readExample("single-mint-buy-hold.scenario.json");
+    const plan = readExample("price-sensitivity.variant-plan.json");
+    const result = generateScenarioVariants(base, plan);
+    expect(result.variants.map((v) => v.suffix)).toEqual([
+      "price-up-10pct",
+      "price-down-10pct",
+      "price-plus-1usd",
+    ]);
+    for (const v of result.variants) {
+      // Each variant changed both injected MINT_A price points.
+      expect(v.changeCount).toBe(2);
+      // Names retain the base's INJECTED labelling; nothing claims a live result.
+      expect(v.scenario.name).toContain("INJECTED FIXTURE");
+      expect(lintBacktestScenario(v.scenario).valid).toBe(true);
+      expect(() => runBacktest(v.scenario)).not.toThrow();
+    }
+    // A uniform price multiplier is PnL-invariant (fixed-USD sizing buys inversely
+    // more units at a lower entry), but a +$1 additive shift raises the entry and
+    // lowers simulated unrealized PnL. Both are bookkeeping from injected prices —
+    // never a live result.
+    const up = runBacktest(result.variants[0]!.scenario); // ×1.1
+    const plus = runBacktest(result.variants[2]!.scenario); // +$1
+    expect(up.pnl.unrealizedUsd).toBeCloseTo(50);
+    expect(plus.pnl.unrealizedUsd).toBeLessThan(up.pnl.unrealizedUsd);
   });
 });
 

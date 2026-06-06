@@ -87,6 +87,7 @@ import {
   buildExampleBacktestScenario,
   listBacktestScenarioTemplates,
   expandScenarioMatrix,
+  generateScenarioVariants,
   runBacktestSuite,
   buildBacktestSuiteIndex,
   formatBacktestSuiteIndex,
@@ -1705,6 +1706,147 @@ export function paperBacktestScenarioMatrixReport(
   lines.push("Notes:");
   lines.push("- Injected fixtures — fake mints + injected prices, NOT real market data, NOT advice.");
   lines.push("- Every variant validates; lint/run with paper:backtest:lint / paper:backtest.");
+  return redactString(lines.join("\n"));
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 12 — paper:backtest:scenario:variants (bounded perturbation variants)
+// ---------------------------------------------------------------------------
+
+export interface PaperBacktestScenarioVariantsCommandOptions {
+  /** Path to the base scenario JSON (required). */
+  basePath?: string;
+  /** Path to the variant plan JSON ({ name?, variants: [{ suffix, perturbations }] }) (required). */
+  planPath?: string;
+  /** Directory to write one scenario file per variant into (required; created if absent). */
+  outDir?: string;
+  /** Overwrite existing variant files (refused by default). */
+  force?: boolean;
+  json?: boolean;
+}
+
+/**
+ * `soulmaker paper:backtest:scenario:variants` — generate INJECTED scenario
+ * variants from a base scenario by applying a small, declarative plan of BOUNDED
+ * numeric perturbations (multiply/add, clamped to explicit bounds) to its injected
+ * prices and candidate metrics. It reads ONLY the two named JSON files (BOM-tolerant,
+ * malformed refused), runs the pure `generateScenarioVariants` (no code/expressions,
+ * no RNG — perturbations may only touch `price` / `metric.<field>` numbers that
+ * already exist; steps structure, name, journal, and config are protected), then
+ * writes one validated file per variant into `--out-dir`. It preflights EVERY target
+ * (internal name collisions, and — without `--force` — pre-existing files) before
+ * writing any, so a detectable problem refuses with no partial output. It touches no
+ * network/RPC/wallet. Feed the output dir into `paper:backtest:suite`, then compare
+ * with `paper:backtest:diff:suite`.
+ */
+export function paperBacktestScenarioVariantsReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestScenarioVariantsCommandOptions = {},
+): string {
+  if (!opts.basePath) return "Refusing: --base <path> is required.";
+  if (!opts.planPath) return "Refusing: --plan <path> is required.";
+  if (!opts.outDir) return "Refusing: --out-dir <path> is required.";
+
+  let baseValue: unknown;
+  try {
+    baseValue = readJsonValue(ctx, opts.basePath, "base scenario");
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  let planValue: unknown;
+  try {
+    planValue = readJsonValue(ctx, opts.planPath, "variant plan");
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  let result: ReturnType<typeof generateScenarioVariants>;
+  try {
+    result = generateScenarioVariants(baseValue, planValue);
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  const outDir = resolvePath(ctx, opts.outDir);
+  const stem = scenarioStem(opts.basePath);
+  const targets = result.variants.map((v) => ({
+    suffix: v.suffix,
+    scenario: v.scenario,
+    changeCount: v.changeCount,
+    path: join(outDir, `${stem}.${v.suffix}.scenario.json`),
+  }));
+
+  // Preflight: refuse on any internal filename collision (case-insensitive, so a
+  // case-only suffix difference cannot clobber a sibling on a case-insensitive FS).
+  const seen = new Set<string>();
+  for (const t of targets) {
+    const key = t.path.toLowerCase();
+    if (seen.has(key)) {
+      return redactString(
+        `Refusing: output filename collision at ${t.path} — rename a variant suffix`,
+      );
+    }
+    seen.add(key);
+  }
+
+  // Refuse if ANY target already exists (check all before writing any — no partial writes).
+  if (!opts.force) {
+    const existing = targets.filter((t) => existsSync(t.path));
+    if (existing.length > 0) {
+      return redactString(
+        `Refusing: ${existing.length} output file(s) already exist (pass --force to overwrite): ` +
+          existing.map((t) => t.path).join(", "),
+      );
+    }
+  }
+
+  try {
+    mkdirSync(outDir, { recursive: true });
+  } catch {
+    return redactString(`Refusing: cannot create output directory at ${outDir}`);
+  }
+  for (const t of targets) {
+    try {
+      writeFileSync(t.path, JSON.stringify(redactValue(t.scenario), null, 2) + "\n");
+    } catch {
+      return redactString(`Refusing: cannot write scenario file at ${t.path}`);
+    }
+  }
+
+  if (opts.json) {
+    const envelope = {
+      command: "paper:backtest:scenario:variants",
+      name: result.name,
+      base: opts.basePath,
+      outDir,
+      variants: targets.map((t) => ({
+        suffix: t.suffix,
+        name: t.scenario.name,
+        changeCount: t.changeCount,
+        out: t.path,
+      })),
+    };
+    return JSON.stringify(redactValue(envelope), null, 2);
+  }
+
+  const title = result.name ?? scenarioStem(opts.basePath);
+  const header = `Wrote ${targets.length} scenario variant(s) — ${title} (PAPER ONLY)`;
+  const lines: string[] = [header, "=".repeat(header.length)];
+  lines.push(`base:      ${opts.basePath}`);
+  lines.push(`plan:      ${result.name ?? "(unnamed)"}`);
+  lines.push(`out-dir:   ${outDir}`);
+  lines.push(`variants:  ${targets.length}`);
+  for (const t of targets) {
+    const lint = lintBacktestScenario(t.scenario);
+    const status = lint.warnings.length > 0 ? `RUNNABLE (+${lint.warnings.length} warning(s))` : "VALID";
+    lines.push(`- ${t.suffix}: ${t.path}  [${status}, ${t.changeCount} value(s) changed]`);
+  }
+  lines.push("");
+  lines.push("Notes:");
+  lines.push("- Injected fixtures — bounded perturbations of injected prices/metrics, NOT real market data, NOT advice.");
+  lines.push("- Variants are simulated local scenario data, not live results and not a profitability claim.");
+  lines.push("- Every variant validates; run them as a suite: paper:backtest:suite --dir <out-dir>.");
   return redactString(lines.join("\n"));
 }
 

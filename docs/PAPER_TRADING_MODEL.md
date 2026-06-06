@@ -1,4 +1,4 @@
-# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing)
+# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation)
 
 The paper engine (`@soulmaker/paper` + the `paper:*` CLI commands) is a
 **deterministic, offline, simulated-only** trading sandbox. It exists to prove
@@ -312,6 +312,44 @@ and **not** a profitability claim.
   expected to differ. `--fail-on-regression` exits non-zero only when `hasRegression`
   is true; without it the command exits 0 even when regressions are reported.
 
+## Scenario variant generation (Sprint 12)
+
+Sprint 12 adds a deterministic **variant generator** so a base scenario can be swept
+across bounded what-ifs (e.g. "all prices ±10%") and the variants run as a suite.
+Where `expandScenarioMatrix` SETS config-only fields to absolute values, this
+applies **relative, bounded perturbations** to the *data a scenario replays*.
+
+`@soulmaker/backtest` exports `generateScenarioVariants(base, plan)`; the CLI adds
+`paper:backtest:scenario:variants --base <a> --plan <p> --out-dir <d> [--force]
+[--json]`. The plan is `{ name?, variants: [{ suffix, perturbations: [...] }] }`. A
+perturbation is `{ target, op, value, min?, max?, mint? }`:
+
+- **`target`** is `"price"` (every injected price point's `priceUsd`) or
+  `"metric.<field>"` for an allowlisted candidate metric (`priceUsd`, `liquidityUsd`,
+  `volumeUsd`, `ageSeconds`, `holderCount`, `priceChangePct`, `peakPriceChangePct`,
+  `drawdownFromPeakPct`, `positionSizeUsd`). No free-form dotted paths.
+- **`op`** is `multiply` (`old * value`, a factor) or `add` (`old + value`, an integer
+  or numeric delta). `value` must be finite.
+- **`min`/`max`** are explicit, optional clamp bounds; the result is clamped into
+  `[min, max]` (`min > max` is refused, and arithmetic that overflows to a non-finite
+  number with no usable bound is refused).
+- **`mint`** optionally restricts the perturbation to one mint's values.
+
+It is **pure**: no RNG of any kind, no `Date.now`, no live/historical data, no
+network, no expression/`eval`, no input mutation; output is byte-stable and emitted
+in plan order. It only touches numbers that **already exist** — an absent field is
+never created, and a perturbation that matches **nothing** is refused rather than
+silently ignored. `name`, the `steps` structure, `initialJournal`, and config are
+protected, so each variant's name is derived from the base name + the variant
+`suffix` and the base's INJECTED labelling always survives. Every generated variant
+validates through the same `validateBacktestScenario` path; the CLI preflights every
+output path (internal name collisions, case-insensitive, plus pre-existing files)
+**before** writing any, so it never writes partial output and never overwrites
+without `--force`. A generated variant is **simulated local scenario data** — not a
+live result, not advice, not a profitability claim — and its `--out-dir` feeds
+straight into `paper:backtest:suite` + `paper:backtest:diff:suite` for a
+price-sensitivity sweep.
+
 ## PnL reporting
 
 `PaperRunSummary`: realized PnL, unrealized PnL, total PnL, open position count,
@@ -332,6 +370,7 @@ simulated, or sent" disclaimer.
 | `paper:backtest:diff` | deterministically diff **two existing** report JSON files (Sprint 10): compatibility + deltas + conservative `hasRegression`; deltas are bookkeeping, not advice |
 | `paper:backtest:scenario:new` | write a deterministic INJECTED scenario skeleton from a built-in template (Sprint 10); refuses overwrite without `--force` |
 | `paper:backtest:scenario:matrix` | expand a base scenario by a safe, config-only patch matrix into one INJECTED file per variant (Sprint 10) |
+| `paper:backtest:scenario:variants` | generate INJECTED variants from a base by applying a plan of **bounded numeric perturbations** (multiply/add, clamped) to its injected prices/metrics (Sprint 12); no code/RNG; steps/name/journal/config protected; refuses overwrite without `--force` |
 | `paper:backtest:suite` | run a **directory** of `*.scenario.json` files as one deterministic suite and aggregate a byte-stable `suite-index.json` (Sprint 11); `--out-dir` also writes one report per passed scenario; `--fail-on-error` exits non-zero on any failure |
 | `paper:backtest:diff:suite` | diff **two** suite output directories by their `suite-index.json` (Sprint 11): added/removed/changed scenarios + aggregate deltas + conservative `hasRegression`; a changed scenario is not a regression |
 

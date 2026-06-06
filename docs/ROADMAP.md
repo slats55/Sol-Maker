@@ -111,7 +111,8 @@ single-candidate engine; Sprint 6 batch plan pipeline; Sprint 7 journal-aware
 planning + richer exits; Sprint 8 journal-continuing loop + deterministic backtest;
 Sprint 9 scenario linting, example fixtures, report stability + BOM-tolerant JSON;
 Sprint 10 backtest report diffing + deterministic scenario-authoring helpers;
-Sprint 11 backtest suite runs + suite diffing over directories of injected scenarios):
+Sprint 11 backtest suite runs + suite diffing over directories of injected scenarios;
+Sprint 12 deterministic scenario variant generation + suite-over-variants):
 
 - ✅ Deterministic, **paper-only** rules engine: turns an advisory
   `@soulmaker/risk` report + injected, read-only metrics into a single decision —
@@ -252,10 +253,25 @@ Sprint 11 backtest suite runs + suite diffing over directories of injected scena
   drift is a regression (a deterministic replay should be byte-identical); a different
   scenario (different content) is "changed", **not** a regression. `--fail-on-regression`
   exits non-zero only when `hasRegression` is true.
-- ⬜ **(Sprint 11, deferred)** Deterministic scenario **variant/fuzzer** generator
-  (`paper:backtest:scenario:variants`) — perturb injected prices/metrics within
-  explicit, injected bounds (no RNG, no live data). Deferred to keep the Sprint 11
-  commit focused and reviewable; the suite + suite-diff layer ships first.
+- ✅ **(Sprint 12) Deterministic scenario variant generator** — `@soulmaker/backtest`
+  exports `generateScenarioVariants(base, plan)`; the CLI adds
+  `paper:backtest:scenario:variants --base <a> --plan <p> --out-dir <d> [--force]
+  [--json]`. It applies a small, declarative plan of **bounded numeric perturbations**
+  to a base scenario's injected data: each perturbation `multiply`s or `add`s a finite
+  delta to a `price` (every injected `priceUsd`) or `metric.<field>` (an allowlisted
+  candidate metric), clamped to explicit `[min, max]` bounds, optionally filtered by
+  `mint`. It is **pure** — no RNG of any kind, no `Date.now`, no live/historical data,
+  no network, no expression/`eval`, no input mutation; output is byte-stable and in
+  plan order. It only touches numbers that already exist (an absent field is never
+  created and a perturbation that matches nothing is **refused**, not silently
+  ignored); `name`, the `steps` structure, `initialJournal`, and config are protected,
+  so each variant's name derives from the base name + suffix and the base's INJECTED
+  labelling always survives. Every variant validates through the same scenario path;
+  the CLI preflights all targets (internal collisions + pre-existing files) before
+  writing any (no partial output, no overwrite without `--force`). Variants are
+  simulated local scenario data — not a live result, not advice, not a profitability
+  claim — and feed straight into `paper:backtest:suite` + `paper:backtest:diff:suite`
+  (a deferred Sprint 11 Part-5 item, now shipped as its own focused sprint).
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

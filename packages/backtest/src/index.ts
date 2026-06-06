@@ -61,6 +61,8 @@ export {
 
 export { expandScenarioMatrix, ScenarioMatrixError } from "./matrix.js";
 
+export { generateScenarioVariants, ScenarioVariantError } from "./scenario-variants.js";
+
 export {
   runBacktestSuite,
   buildBacktestSuiteIndex,
@@ -127,6 +129,15 @@ export type {
   ExpandedScenarioVariant,
   ScenarioMatrixResult,
 } from "./matrix.js";
+
+export type {
+  PerturbationOp,
+  ScenarioPerturbation,
+  ScenarioVariantSpec,
+  ScenarioVariantPlan,
+  GeneratedScenarioVariant,
+  ScenarioVariantsResult,
+} from "./scenario-variants.js";
 
 export type {
   BacktestSuiteScenario,

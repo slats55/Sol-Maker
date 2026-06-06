@@ -1,0 +1,23 @@
+{
+  "name": "price-sensitivity — INJECTED, simulated local scenario variants (not live, not advice, not a profitability claim)",
+  "variants": [
+    {
+      "suffix": "price-up-10pct",
+      "perturbations": [
+        { "target": "price", "op": "multiply", "value": 1.1, "min": 0 }
+      ]
+    },
+    {
+      "suffix": "price-down-10pct",
+      "perturbations": [
+        { "target": "price", "op": "multiply", "value": 0.9, "min": 0 }
+      ]
+    },
+    {
+      "suffix": "price-plus-1usd",
+      "perturbations": [
+        { "target": "price", "op": "add", "value": 1, "min": 0, "max": 1000000 }
+      ]
+    }
+  ]
+}

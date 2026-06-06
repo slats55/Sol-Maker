@@ -90,6 +90,17 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   and file I/O and hands the package already-parsed scenarios/indexes. A suite total
   is simulated bookkeeping summed over injected prices; a suite diff is the change
   between two simulated suites — never a live result, prediction, or advice.
+- **(Sprint 12)** `@soulmaker/backtest` adds `generateScenarioVariants(base, plan)`:
+  the relative-perturbation complement to `expandScenarioMatrix`. It applies a small,
+  declarative plan of **bounded numeric perturbations** (`multiply`/`add`, clamped to
+  explicit `[min, max]`) to a base scenario's injected `price` points and allowlisted
+  candidate `metric.<field>` values, producing one validated variant per `suffix`. It
+  is pure and non-mutating (no RNG, no `Date.now`, no expression/`eval`), touches only
+  numbers that already exist (an empty match is refused), and protects `name`/`steps`/
+  `initialJournal`/config so the INJECTED labelling survives. The CLI
+  (`paper:backtest:scenario:variants`) owns all file I/O and preflights every output
+  path before writing any; variants feed straight into the Sprint 11 suite + suite
+  diff. Variants are simulated local scenario data — not a live result, not advice.
 
 ## The live boundary
 
@@ -360,6 +371,11 @@ injected `at`, so a given scenario yields **byte-stable** output.
   (`backtest.suite.diff.v1`: pair by digest → name → file, aggregate deltas, a
   conservative `hasRegression`). All still pure — the package never scans a directory
   or reads/writes a file.
+- `scenario-variants.ts` (Sprint 12) — the pure variant generator
+  `generateScenarioVariants(base, plan)`: bounded numeric perturbations
+  (`multiply`/`add`, clamped) over the allowlisted `price` / `metric.<field>` targets,
+  one validated variant per `suffix`. No RNG, no clock, no I/O; protects
+  `name`/`steps`/`initialJournal`/config; refuses an empty match.
 
 **Data flow:**
 
@@ -392,6 +408,20 @@ CLI paper:backtest:diff:suite --base-dir <a/> --next-dir <b/>
         │  read each dir's suite-index.json (BOM-tolerant; missing/malformed ⇒ refuse)
         ▼
   diffBacktestSuites(base, next)  ─► added/removed/changed + aggregate deltas + hasRegression
+```
+
+**Variant data flow (Sprint 12):**
+
+```
+CLI paper:backtest:scenario:variants --base <a> --plan <p> --out-dir <d>
+        │  read+parse base scenario + variant plan (BOM-tolerant; malformed ⇒ refuse)
+        ▼
+  generateScenarioVariants(base, plan)   per variant: clone → apply bounded
+        │                                 perturbations (price / metric.<field>) → validate
+        ▼
+  preflight every <stem>.<suffix>.scenario.json (collisions + existing) ⇒ no partial writes
+        ▼
+  write one validated INJECTED scenario per variant  →  feed paper:backtest:suite
 ```
 
 The CLI's `paper:backtest` reads ONE local JSON scenario, refuses malformed input

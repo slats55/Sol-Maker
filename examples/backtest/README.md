@@ -22,6 +22,12 @@ fixtures.
 | [`multi-mint-partial-exit.scenario.json`](multi-mint-partial-exit.scenario.json) | Three mints: one **partial-exits** (scales out half), one is **held**, one is **rejected** by the advisory risk gate (the skip path). |
 | [`seed-journal-continuation.scenario.json`](seed-journal-continuation.scenario.json) | Starts from an **embedded `initialJournal`** that already holds an open simulated position, then continues the replay (and opens a new entry). |
 
+There is also one **variant plan** (a different kind of artifact — not a scenario):
+
+| File | What it is |
+| --- | --- |
+| [`price-sensitivity.variant-plan.json`](price-sensitivity.variant-plan.json) | A Sprint 12 **variant plan**: bounded ±10% (`multiply`) and +$1 (`add`) perturbations of the injected `price`, for `paper:backtest:scenario:variants` (see below). |
+
 ## How to run
 
 From the repository root:
@@ -172,3 +178,36 @@ digest → name → file and reports added / removed / **changed** scenarios plu
 aggregate deltas. A SAME-digest result drift is a regression (a deterministic replay
 should be byte-identical); a *changed* scenario (different content) is a bookkeeping
 difference, **not** a regression by default.
+
+## Sweeping a scenario into variants (Sprint 12)
+
+To explore a base scenario across bounded "what-ifs" (e.g. *all prices ±10%*),
+generate **variants** from it with a small, declarative **plan** of numeric
+perturbations, then run the variants as a suite. Each perturbation `multiply`s or
+`add`s a finite delta to a `price` (every injected `priceUsd`) or a `metric.<field>`
+(an allowlisted candidate metric), clamped to explicit `[min, max]` bounds and
+optionally restricted to one `mint`. There is **no RNG, no code/expressions, no live
+data**, and a perturbation that matches **nothing** is refused (never silently
+ignored). The base's `name`, `steps` structure, `initialJournal`, and config are
+protected, so each variant's name is derived from the base name + its `suffix`:
+
+```bash
+# Generate one INJECTED variant file per plan entry (refuses overwrite without --force):
+pnpm soulmaker paper:backtest:scenario:variants \
+  --base examples/backtest/single-mint-buy-hold.scenario.json \
+  --plan examples/backtest/price-sensitivity.variant-plan.json \
+  --out-dir variants/
+
+# Run the generated variants as a suite, then diff against a baseline suite:
+pnpm soulmaker paper:backtest:suite --dir variants/ --out-dir variant-reports/
+pnpm soulmaker paper:backtest:diff:suite --base-dir baseline-reports/ --next-dir variant-reports/
+```
+
+The shipped [`price-sensitivity.variant-plan.json`](price-sensitivity.variant-plan.json)
+produces three variants from the buy-hold base: `price-up-10pct` (×1.1),
+`price-down-10pct` (×0.9), and `price-plus-1usd` (+$1, clamped to `[0, 1000000]`).
+A uniform price *multiplier* is PnL-invariant under fixed-USD sizing (you buy
+inversely more units at a lower entry); an *additive* shift moves the entry and so
+moves the simulated PnL. Every variant is **simulated local scenario data** — fake
+mints, injected prices — **not a live result, not advice, and not a profitability
+claim.**
