@@ -24,6 +24,7 @@ import {
   paperBacktestSuiteReport,
   paperBacktestDiffSuiteReport,
   paperBacktestSensitivityReport,
+  paperBacktestDiffSensitivityReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -541,6 +542,29 @@ program
         },
       ),
     );
+  });
+
+program
+  .command("paper:backtest:diff:sensitivity")
+  .description(
+    "Deterministically diff TWO sensitivity report JSON files (PAPER ONLY; pairs variants by suffix; deltas are simulated bookkeeping, a changed variant is not a regression, not a live result, not advice)",
+  )
+  .option("--base <path>", "BASE sensitivity report JSON (the reference)")
+  .option("--next <path>", "NEXT sensitivity report JSON (compared against base)")
+  .option("--json", "emit the sensitivity diff as stable JSON")
+  .option("--fail-on-regression", "exit non-zero when the diff reports a regression")
+  .action((opts: { base?: string; next?: string; json?: boolean; failOnRegression?: boolean }) => {
+    const { text, exitCode } = paperBacktestDiffSensitivityReport(
+      {},
+      {
+        basePath: opts.base,
+        nextPath: opts.next,
+        json: Boolean(opts.json),
+        failOnRegression: Boolean(opts.failOnRegression),
+      },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
   });
 
 program.parseAsync(process.argv);

@@ -297,3 +297,32 @@ output path is preflighted — so it never writes partial output. A delta is the
 change between two **simulated** runs — **not** a forecast, a real backtest, or a
 profitability claim. (Phases 6 and 7 remain **not started**; nothing here touches a
 wallet, key, signing, sending, or the network.)
+
+## Diffing two sensitivity reports (Sprint 14)
+
+To regression-review a sweep across two runs — e.g. before vs. after an engine or
+config change — diff two `sensitivity-report.json` files you produced earlier with
+`paper:backtest:sensitivity --out-dir`:
+
+```bash
+pnpm soulmaker paper:backtest:sensitivity --base base.scenario.json --plan plan.json --out-dir runA/
+pnpm soulmaker paper:backtest:sensitivity --base base.scenario.json --plan plan.json --out-dir runB/
+pnpm soulmaker paper:backtest:diff:sensitivity \
+  --base runA/sensitivity-report.json \
+  --next runB/sensitivity-report.json
+# --json for a stable machine-readable diff (schema backtest.sensitivity.diff.v1);
+# --fail-on-regression to exit non-zero only when hasRegression is true.
+```
+
+`paper:backtest:diff:sensitivity` reads **only** the two report files — it runs no
+backtest, generates no variants, and writes nothing. It pairs variants by `suffix`
+and reports added / removed / **changed** variants, baseline + count deltas, and
+top-of-ranking movement. Regressions are **conservative** and bookkeeping-oriented: a
+**same-digest** variant (identical content) should replay byte-identically, so any
+simulated drift — total-PnL decrease, reject increase, warning increase, fill drop —
+is a regression; a **newly-failed** variant, a removed passed variant (lost
+coverage), an increased failed count, baseline drift for an identical base, or a
+schema mismatch are also regressions. A **changed-digest** variant (different scenario
+content, e.g. an edited base) is reported as *changed*, **not** a regression. Every
+value is a bookkeeping delta between two **simulations** — not profit, loss, a
+prediction, or advice.

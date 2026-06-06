@@ -97,6 +97,8 @@ import {
   formatBacktestSuiteDiff,
   runScenarioVariantSensitivity,
   formatScenarioVariantSensitivityReport,
+  diffScenarioVariantSensitivityReports,
+  formatScenarioVariantSensitivityDiff,
   type BacktestReport,
   type BacktestReportDiff,
   type BacktestScenario,
@@ -109,6 +111,7 @@ import {
   type BacktestSuiteDiff,
   type ScenarioVariantSensitivityRun,
   type ScenarioVariantPlanExplanation,
+  type ScenarioVariantSensitivityDiff,
 } from "@soulmaker/backtest";
 
 export interface CommandContext {
@@ -2375,6 +2378,74 @@ export function paperBacktestSensitivityReport(
   return redactString(
     formatScenarioVariantSensitivityReport(run.report, { label: opts.basePath }) + writtenNote,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 14 (Slice C) — paper:backtest:diff:sensitivity
+//   Deterministically diff TWO sensitivity report JSON files (the analogue of
+//   paper:backtest:diff:suite for the Sprint 13 sensitivity report). Reads only
+//   the two named files, runs no backtest, generates no variants, writes nothing.
+// ---------------------------------------------------------------------------
+
+export interface PaperBacktestDiffSensitivityCommandOptions {
+  /** Path to the BASE sensitivity report JSON (required). */
+  basePath?: string;
+  /** Path to the NEXT sensitivity report JSON (required). */
+  nextPath?: string;
+  json?: boolean;
+  /** Exit non-zero when the diff reports a conservative bookkeeping regression. */
+  failOnRegression?: boolean;
+}
+
+/**
+ * `soulmaker paper:backtest:diff:sensitivity` — deterministically diff TWO Sprint 13
+ * sensitivity report JSON files. Reads ONLY the two named local files (BOM-tolerant; a
+ * missing/malformed/non-report file refuses), runs no backtest, generates no variants,
+ * and writes nothing. It pairs variants by suffix and reports added/removed/changed
+ * variants, baseline + count deltas, ranking movement, and a conservative
+ * `hasRegression` flag. A delta is simulated bookkeeping — never profit, loss, a
+ * prediction, or advice; a changed (different-content) variant is not a regression.
+ * `--json` emits the stable, redacted diff; `--fail-on-regression` sets a non-zero exit
+ * only when `diff.hasRegression` is true. No chain access, no wallet, no RPC, no network.
+ */
+export function paperBacktestDiffSensitivityReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestDiffSensitivityCommandOptions = {},
+): CliReport {
+  if (!opts.basePath) return { text: "Refusing: --base <path> is required.", exitCode: 1 };
+  if (!opts.nextPath) return { text: "Refusing: --next <path> is required.", exitCode: 1 };
+
+  let baseValue: unknown;
+  try {
+    baseValue = readJsonValue(ctx, opts.basePath, "base sensitivity report");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let nextValue: unknown;
+  try {
+    nextValue = readJsonValue(ctx, opts.nextPath, "next sensitivity report");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let diff: ScenarioVariantSensitivityDiff;
+  try {
+    // Validates both reports structurally; a non-report refuses.
+    diff = diffScenarioVariantSensitivityReports(baseValue, nextValue);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const exitCode = opts.failOnRegression && diff.hasRegression ? 1 : 0;
+  if (opts.json) {
+    // redactValue is a backstop; the diff carries only injected scenario identifiers.
+    return { text: JSON.stringify(redactValue(diff), null, 2), exitCode };
+  }
+  return {
+    text: formatScenarioVariantSensitivityDiff(diff, { baseLabel: opts.basePath, nextLabel: opts.nextPath }),
+    exitCode,
+  };
 }
 
 function yesNo(value: boolean): string {

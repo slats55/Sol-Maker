@@ -34,6 +34,7 @@ import {
   paperBacktestSuiteReport,
   paperBacktestDiffSuiteReport,
   paperBacktestSensitivityReport,
+  paperBacktestDiffSensitivityReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -3889,6 +3890,134 @@ describe("paperBacktestVariantPlanExplainReport (Sprint 14, Slice B)", () => {
       const rj = paperBacktestVariantPlanExplainReport({ cwd, env: {} }, { ...baseOpts, json: true });
       expect(rj.exitCode).toBe(1);
       expect((JSON.parse(rj.text) as { valid: boolean }).valid).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperBacktestDiffSensitivityReport (Sprint 14, Slice C)", () => {
+  function diffBase(): unknown {
+    return {
+      name: "diff base — INJECTED FIXTURE (simulated)",
+      strategyConfig: STRATEGY_CONFIG,
+      caps: { maxTradeSizeUsd: 1000, maxDailyLossUsd: 1000, maxOpenPositions: 5, killSwitch: false },
+      defaultPaperSizeUsd: 100,
+      steps: [
+        {
+          id: "step-1",
+          at: PAPER_TIME,
+          candidates: [{ mint: MINT_A, riskReport: passReport(MINT_A) }],
+          prices: [
+            { mint: MINT_A, priceUsd: 2, observedAt: PAPER_TIME, source: "injected-fixture" },
+            { mint: MINT_A, priceUsd: 3, observedAt: PAPER_TIME, source: "injected-fixture" },
+          ],
+        },
+      ],
+    };
+  }
+
+  const PLAN = {
+    name: "diff-sweep",
+    variants: [
+      { suffix: "up10", perturbations: [{ target: "price", op: "multiply", value: 1.1, min: 0 }] },
+      { suffix: "plus1", perturbations: [{ target: "price", op: "add", value: 1, min: 0, max: 1000000 }] },
+    ],
+  };
+
+  /** Produce a sensitivity report JSON string via the real Sprint 13 command. */
+  function makeReportJson(cwd: string): string {
+    writeFileSync(join(cwd, "base.scenario.json"), JSON.stringify(diffBase(), null, 2));
+    writeFileSync(join(cwd, "plan.json"), JSON.stringify(PLAN, null, 2));
+    return paperBacktestSensitivityReport(
+      { cwd, env: {} },
+      { basePath: "base.scenario.json", planPath: "plan.json", json: true },
+    );
+  }
+
+  it("refuses when --base or --next is missing", () => {
+    expect(paperBacktestDiffSensitivityReport({}, {}).text).toMatch(/^Refusing: --base/);
+    expect(paperBacktestDiffSensitivityReport({}, { basePath: "a.json" }).text).toMatch(/^Refusing: --next/);
+    expect(paperBacktestDiffSensitivityReport({}, {}).exitCode).toBe(1);
+  });
+
+  it("diffs two identical reports with no regression (exit 0) and writes nothing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const report = makeReportJson(cwd);
+      writeFileSync(join(cwd, "a.json"), report);
+      writeFileSync(join(cwd, "b.json"), report);
+      const before = readdirSync(cwd).sort();
+      const r = paperBacktestDiffSensitivityReport({ cwd, env: {} }, { basePath: "a.json", nextPath: "b.json" });
+      expect(r.exitCode).toBe(0);
+      expect(r.text).toContain("Sensitivity report diff (SIMULATED PAPER-ONLY)");
+      expect(r.text).toContain("Regression: no");
+      expect(r.text.toLowerCase()).toContain("not a live result");
+      // The diff command writes nothing.
+      expect(readdirSync(cwd).sort()).toEqual(before);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("emits a stable JSON diff with --json", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const report = makeReportJson(cwd);
+      writeFileSync(join(cwd, "a.json"), report);
+      writeFileSync(join(cwd, "b.json"), report);
+      const r = paperBacktestDiffSensitivityReport({ cwd, env: {} }, { basePath: "a.json", nextPath: "b.json", json: true });
+      const parsed = JSON.parse(r.text) as { schemaVersion: string; hasRegression: boolean };
+      expect(parsed.schemaVersion).toBe("backtest.sensitivity.diff.v1");
+      expect(parsed.hasRegression).toBe(false);
+      const r2 = paperBacktestDiffSensitivityReport({ cwd, env: {} }, { basePath: "a.json", nextPath: "b.json", json: true });
+      expect(r2.text).toBe(r.text);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("detects a same-digest bookkeeping regression and honors --fail-on-regression", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const report = makeReportJson(cwd);
+      writeFileSync(join(cwd, "a.json"), report);
+      // Hand-drift a variant's bookkeeping while keeping its digest → same-digest regression.
+      const next = JSON.parse(report) as {
+        variants: { suffix: string; summary: { totalPnlUsd: number; unrealizedPnlUsd: number } }[];
+      };
+      const v = next.variants.find((x) => x.suffix === "up10")!;
+      v.summary.totalPnlUsd -= 10;
+      v.summary.unrealizedPnlUsd -= 10;
+      writeFileSync(join(cwd, "b.json"), JSON.stringify(next, null, 2));
+
+      const noFail = paperBacktestDiffSensitivityReport({ cwd, env: {} }, { basePath: "a.json", nextPath: "b.json" });
+      expect(noFail.exitCode).toBe(0); // regression present but not failing without the flag
+      expect(noFail.text).toContain("Regression: YES");
+
+      const withFail = paperBacktestDiffSensitivityReport(
+        { cwd, env: {} },
+        { basePath: "a.json", nextPath: "b.json", failOnRegression: true },
+      );
+      expect(withFail.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a non-report or malformed JSON file", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const report = makeReportJson(cwd);
+      writeFileSync(join(cwd, "a.json"), report);
+      writeFileSync(join(cwd, "notreport.json"), JSON.stringify({ hello: "world" }));
+      writeFileSync(join(cwd, "bad.json"), "{ not json");
+      const nonReport = paperBacktestDiffSensitivityReport({ cwd, env: {} }, { basePath: "a.json", nextPath: "notreport.json" });
+      expect(nonReport.text).toMatch(/^Refusing:/);
+      expect(nonReport.exitCode).toBe(1);
+      const malformed = paperBacktestDiffSensitivityReport({ cwd, env: {} }, { basePath: "a.json", nextPath: "bad.json" });
+      expect(malformed.text).toMatch(/^Refusing:/);
+      expect(malformed.exitCode).toBe(1);
     } finally {
       cleanup();
     }

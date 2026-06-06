@@ -195,6 +195,28 @@ export type {
   FormatBacktestSuiteDiffOptions,
 } from "./suite-diff.js";
 
+export {
+  diffScenarioVariantSensitivityReports,
+  validateScenarioVariantSensitivityDiff,
+  formatScenarioVariantSensitivityDiff,
+  ScenarioVariantSensitivityDiffError,
+  BACKTEST_SENSITIVITY_DIFF_SCHEMA_VERSION,
+  BACKTEST_SENSITIVITY_DIFF_DISCLAIMERS,
+} from "./sensitivity-diff.js";
+
+export type {
+  ScenarioVariantSensitivityDiff,
+  SensitivityDiffCompatibility,
+  SensitivityDiffCompatibilityStatus,
+  SensitivityDiffStringField,
+  SensitivitySummaryFieldDiff,
+  SensitivityBaselineDiff,
+  SensitivityVariantRef,
+  SensitivityVariantChange,
+  SensitivityRankingMovement,
+  FormatScenarioVariantSensitivityDiffOptions,
+} from "./sensitivity-diff.js";
+
 export type {
   ScenarioVariantSensitivityInput,
   ScenarioVariantSensitivityRun,
