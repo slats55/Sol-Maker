@@ -32,6 +32,7 @@ import {
   paperBacktestScenarioVariantsReport,
   paperBacktestSuiteReport,
   paperBacktestDiffSuiteReport,
+  paperBacktestSensitivityReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -3139,6 +3140,256 @@ describe("paperBacktestScenarioVariantsReport (Sprint 12)", () => {
     } finally {
       cleanup();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 13 — paper:backtest:sensitivity (variant-over-base sensitivity workflow)
+// ---------------------------------------------------------------------------
+
+describe("paperBacktestSensitivityReport (Sprint 13)", () => {
+  /** A two-price buy scenario so a price shift visibly moves the held PnL. */
+  function sensBaseScenario(name = "sens base"): unknown {
+    return {
+      name,
+      strategyConfig: STRATEGY_CONFIG,
+      caps: { maxTradeSizeUsd: 1000, maxDailyLossUsd: 1000, maxOpenPositions: 5, killSwitch: false },
+      defaultPaperSizeUsd: 100,
+      steps: [
+        {
+          id: "step-1",
+          at: PAPER_TIME,
+          candidates: [{ mint: MINT_A, riskReport: passReport(MINT_A) }],
+          prices: [
+            { mint: MINT_A, priceUsd: 2, observedAt: PAPER_TIME, source: "injected-fixture" },
+            { mint: MINT_A, priceUsd: 3, observedAt: PAPER_TIME, source: "injected-fixture" },
+          ],
+        },
+      ],
+    };
+  }
+
+  const PLAN = {
+    name: "sens-sweep",
+    variants: [
+      { suffix: "up10", perturbations: [{ target: "price", op: "multiply", value: 1.1, min: 0 }] },
+      { suffix: "plus1", perturbations: [{ target: "price", op: "add", value: 1, min: 0, max: 1000000 }] },
+    ],
+  };
+
+  function writeBaseAndPlan(cwd: string, plan: unknown = PLAN): void {
+    writeFileSync(join(cwd, "base.scenario.json"), JSON.stringify(sensBaseScenario(), null, 2));
+    writeFileSync(join(cwd, "plan.json"), JSON.stringify(plan, null, 2));
+  }
+
+  const baseOpts = { basePath: "base.scenario.json", planPath: "plan.json" };
+
+  it("refuses when --base or --plan is missing", () => {
+    expect(paperBacktestSensitivityReport({}, {})).toMatch(/^Refusing: --base/);
+    expect(paperBacktestSensitivityReport({}, { basePath: "b.json" })).toMatch(/^Refusing: --plan/);
+  });
+
+  it("prints a PAPER-only human report (banner + not-live/not-advice/not-profit) without --out-dir", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd);
+      const out = paperBacktestSensitivityReport({ cwd, env: {} }, baseOpts);
+      expect(out).toContain("SIMULATED PAPER-ONLY SENSITIVITY");
+      expect(out).toContain("PAPER ONLY");
+      expect(out).toContain("simulated local scenario data");
+      expect(out.toLowerCase()).toContain("not a live result");
+      expect(out.toLowerCase()).toContain("not financial advice");
+      expect(out.toLowerCase()).toContain("not a profitability claim");
+      expect(out).toContain("up10");
+      expect(out).toContain("plus1");
+      // No --out-dir ⇒ nothing written.
+      expect(existsSync(join(cwd, "sensitivity-report.json"))).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("emits a stable, parseable sensitivity report with --json (schema + counts)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd);
+      const out = paperBacktestSensitivityReport({ cwd, env: {} }, { ...baseOpts, json: true });
+      const report = JSON.parse(out) as {
+        schemaVersion: string;
+        variantCount: number;
+        baseline: { status: string };
+        variants: { suffix: string }[];
+      };
+      expect(report.schemaVersion).toBe("backtest.sensitivity.v1");
+      expect(report.variantCount).toBe(2);
+      expect(report.baseline.status).toBe("passed");
+      expect(report.variants.map((v) => v.suffix)).toEqual(["up10", "plus1"]);
+      // Byte-identical across two runs (no timestamps, deterministic).
+      const out2 = paperBacktestSensitivityReport({ cwd, env: {} }, { ...baseOpts, json: true });
+      expect(out2).toBe(out);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("does not mutate the base scenario file or the plan file", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd);
+      const baseBefore = readFileSync(join(cwd, "base.scenario.json"), "utf8");
+      const planBefore = readFileSync(join(cwd, "plan.json"), "utf8");
+      paperBacktestSensitivityReport({ cwd, env: {} }, { ...baseOpts, outDir: "out" });
+      expect(readFileSync(join(cwd, "base.scenario.json"), "utf8")).toBe(baseBefore);
+      expect(readFileSync(join(cwd, "plan.json"), "utf8")).toBe(planBefore);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("writes the full deterministic artifact tree under --out-dir", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd);
+      const out = paperBacktestSensitivityReport({ cwd, env: {} }, { ...baseOpts, outDir: "out" });
+      expect(out).toContain("Wrote ");
+
+      const top = readdirSync(join(cwd, "out")).sort();
+      expect(top).toEqual(["reports", "sensitivity-report.json", "variants"]);
+
+      const variants = readdirSync(join(cwd, "out", "variants")).sort();
+      expect(variants).toEqual(["base.plus1.scenario.json", "base.up10.scenario.json"]);
+
+      const reports = readdirSync(join(cwd, "out", "reports")).sort();
+      expect(reports).toEqual(["base.report.json", "plus1.report.json", "suite-index.json", "up10.report.json"]);
+
+      // Headline report is a valid backtest.sensitivity.v1 with a passed baseline.
+      const report = JSON.parse(readFileSync(join(cwd, "out", "sensitivity-report.json"), "utf8")) as {
+        schemaVersion: string;
+        baseline: { status: string; summary: { totalPnlUsd: number } };
+        variants: { suffix: string; deltas: { totalPnlUsd: { delta: number } } | null }[];
+      };
+      expect(report.schemaVersion).toBe("backtest.sensitivity.v1");
+      expect(report.baseline.status).toBe("passed");
+      // Flat +1 shift moves the held PnL; uniform ×1.1 does not.
+      expect(report.variants.find((v) => v.suffix === "plus1")?.deltas?.totalPnlUsd.delta).not.toBe(0);
+      expect(report.variants.find((v) => v.suffix === "up10")?.deltas?.totalPnlUsd.delta).toBe(0);
+
+      // The embedded suite index is the real Sprint 11 artifact.
+      const suiteIndex = JSON.parse(readFileSync(join(cwd, "out", "reports", "suite-index.json"), "utf8")) as {
+        schemaVersion: string;
+      };
+      expect(suiteIndex.schemaVersion).toBe("backtest.suite.v1");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("the written variant scenarios re-run through paper:backtest to the SAME report (reuses the path)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd);
+      paperBacktestSensitivityReport({ cwd, env: {} }, { ...baseOpts, outDir: "out" });
+      // Independently replay the written up10 variant scenario; it must byte-match the
+      // report the workflow wrote for that variant (same production backtest path).
+      const replay = paperBacktestReport(
+        { cwd, env: {} },
+        { scenarioPath: "out/variants/base.up10.scenario.json", json: true },
+      );
+      const written = readFileSync(join(cwd, "out", "reports", "up10.report.json"), "utf8").trimEnd();
+      expect(JSON.parse(replay)).toEqual(JSON.parse(written));
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses to overwrite existing outputs unless --force", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd);
+      const opts = { ...baseOpts, outDir: "out" };
+      expect(paperBacktestSensitivityReport({ cwd, env: {} }, opts)).toContain("Wrote ");
+      expect(paperBacktestSensitivityReport({ cwd, env: {} }, opts)).toMatch(
+        /^Refusing: .* already exist \(pass --force/,
+      );
+      expect(paperBacktestSensitivityReport({ cwd, env: {} }, { ...opts, force: true })).toContain("Wrote ");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a colliding 'base' variant suffix before writing anything", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd, {
+        name: "collide",
+        variants: [{ suffix: "base", perturbations: [{ target: "price", op: "add", value: 1, min: 0 }] }],
+      });
+      const out = paperBacktestSensitivityReport({ cwd, env: {} }, { ...baseOpts, outDir: "out" });
+      expect(out).toMatch(/^Refusing: output filename collision/);
+      // No partial output: the subdirs were never created.
+      expect(existsSync(join(cwd, "out", "reports"))).toBe(false);
+      expect(existsSync(join(cwd, "out", "variants"))).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("does not write partial output when a later target already exists (no --force)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeBaseAndPlan(cwd);
+      // Pre-create ONLY the headline file; the existence preflight must refuse the
+      // whole write so none of the variants/reports are created.
+      mkdirSync(join(cwd, "out"), { recursive: true });
+      writeFileSync(join(cwd, "out", "sensitivity-report.json"), "{}");
+      const out = paperBacktestSensitivityReport({ cwd, env: {} }, { ...baseOpts, outDir: "out" });
+      expect(out).toMatch(/^Refusing: .* already exist/);
+      expect(existsSync(join(cwd, "out", "variants"))).toBe(false);
+      expect(existsSync(join(cwd, "out", "reports"))).toBe(false);
+      expect(readFileSync(join(cwd, "out", "sensitivity-report.json"), "utf8")).toBe("{}"); // untouched
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses an invalid base scenario and a malformed plan", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      // Invalid base (empty steps).
+      writeFileSync(join(cwd, "bad-base.json"), JSON.stringify({ name: "x", steps: [] }));
+      writeFileSync(join(cwd, "plan.json"), JSON.stringify(PLAN));
+      expect(
+        paperBacktestSensitivityReport({ cwd, env: {} }, { basePath: "bad-base.json", planPath: "plan.json" }),
+      ).toMatch(/^Refusing: /);
+
+      // Malformed plan JSON.
+      writeFileSync(join(cwd, "base.scenario.json"), JSON.stringify(sensBaseScenario()));
+      writeFileSync(join(cwd, "bad-plan.json"), "{ not json");
+      expect(
+        paperBacktestSensitivityReport(
+          { cwd, env: {} },
+          { basePath: "base.scenario.json", planPath: "bad-plan.json" },
+        ),
+      ).toMatch(/^Refusing: variant plan file is not valid JSON/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("runs the shipped example base + variant plan end-to-end (real files)", () => {
+    // ctx defaults cwd to process.cwd() (the repo root), so the real examples resolve.
+    const out = paperBacktestSensitivityReport(
+      {},
+      {
+        basePath: "examples/backtest/single-mint-buy-hold.scenario.json",
+        planPath: "examples/backtest/price-sensitivity.variant-plan.json",
+        json: true,
+      },
+    );
+    const report = JSON.parse(out) as { schemaVersion: string; variantCount: number; baseline: { status: string } };
+    expect(report.schemaVersion).toBe("backtest.sensitivity.v1");
+    expect(report.variantCount).toBe(3); // the shipped plan has three variants
+    expect(report.baseline.status).toBe("passed");
   });
 });
 

@@ -28,7 +28,7 @@ packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.j
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
-packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing (Sprint 8–11)  [strategy, paper, security]
+packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation + variant-sensitivity workflow (Sprint 8–13)  [strategy, paper, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -101,6 +101,19 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   (`paper:backtest:scenario:variants`) owns all file I/O and preflights every output
   path before writing any; variants feed straight into the Sprint 11 suite + suite
   diff. Variants are simulated local scenario data — not a live result, not advice.
+- **(Sprint 13)** `@soulmaker/backtest` adds `runScenarioVariantSensitivity({ base,
+  plan })` (plus `buildScenarioVariantSensitivityReport`,
+  `validateScenarioVariantSensitivityReport`,
+  `formatScenarioVariantSensitivityReport`; schema `backtest.sensitivity.v1`): one
+  pure report layer ON TOP of Sprints 11 + 12 that re-implements nothing. It calls
+  `generateScenarioVariants` to build the variants, then runs the **base once as a
+  baseline** plus every variant through the SAME `runBacktestSuite` path (so it also
+  emits a real `suite-index.json`), and summarizes each variant's per-field **delta
+  versus the baseline** over the existing report fields. Pure and non-mutating (the
+  base runs on a deep copy) with **no timestamps**, so the report is byte-stable. The
+  CLI (`paper:backtest:sensitivity`) owns all file I/O and preflights every output
+  path before writing any. A delta is the change between two simulated runs — not a
+  prediction, not advice, not a profitability claim.
 
 ## The live boundary
 
@@ -376,6 +389,13 @@ injected `at`, so a given scenario yields **byte-stable** output.
   (`multiply`/`add`, clamped) over the allowlisted `price` / `metric.<field>` targets,
   one validated variant per `suffix`. No RNG, no clock, no I/O; protects
   `name`/`steps`/`initialJournal`/config; refuses an empty match.
+- `sensitivity.ts` (Sprint 13) — the pure **variant-sensitivity** workflow
+  `runScenarioVariantSensitivity({ base, plan })` (+ `build…Report`/`validate…Report`/
+  `format…Report`; schema `backtest.sensitivity.v1`). It composes the two layers
+  above: generate variants, run the base once as a baseline + every variant through
+  `runBacktestSuite`, and report each variant's per-field delta vs the baseline. No
+  RNG, no clock, no timestamps, no I/O, no input mutation → byte-stable report. No
+  backtest/suite/variant logic is re-implemented here.
 
 **Data flow:**
 
@@ -422,6 +442,23 @@ CLI paper:backtest:scenario:variants --base <a> --plan <p> --out-dir <d>
   preflight every <stem>.<suffix>.scenario.json (collisions + existing) ⇒ no partial writes
         ▼
   write one validated INJECTED scenario per variant  →  feed paper:backtest:suite
+```
+
+**Sensitivity data flow (Sprint 13):**
+
+```
+CLI paper:backtest:sensitivity --base <a> --plan <p> [--out-dir <d>]
+        │  read+parse base scenario + variant plan (BOM-tolerant; malformed ⇒ refuse)
+        ▼
+  runScenarioVariantSensitivity({ base, plan })
+        │   generateScenarioVariants(base, plan)            (Sprint 12; invalid base/plan ⇒ refuse)
+        │   runBacktestSuite({ base-as-baseline, ...variants })   (Sprint 11; lint→run→validate)
+        │   buildScenarioVariantSensitivityReport(suite, variants)  per-field Δ vs baseline
+        ▼
+  byte-stable sensitivity-report.json (backtest.sensitivity.v1) — no timestamps
+        ▼
+  --out-dir: preflight ALL targets (collisions + existing) ⇒ no partial writes, then write
+             variants/ + reports/<id>.report.json + reports/suite-index.json + sensitivity-report.json
 ```
 
 The CLI's `paper:backtest` reads ONE local JSON scenario, refuses malformed input

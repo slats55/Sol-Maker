@@ -22,6 +22,7 @@ import {
   paperBacktestScenarioVariantsReport,
   paperBacktestSuiteReport,
   paperBacktestDiffSuiteReport,
+  paperBacktestSensitivityReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -498,5 +499,30 @@ program
       if (exitCode !== 0) process.exitCode = exitCode;
     },
   );
+
+program
+  .command("paper:backtest:sensitivity")
+  .description(
+    "Run a base scenario plus bounded variants of it and report each variant's per-field delta vs the baseline (PAPER ONLY; deterministic; injected local data; simulated bookkeeping, not a live result, not advice, not a profitability claim)",
+  )
+  .option("--base <path>", "base scenario JSON (run once as the baseline)")
+  .option("--plan <path>", "variant plan JSON: { name?, variants: [{ suffix, perturbations }] }")
+  .option("--out-dir <path>", "optional dir to write variants/ + reports/ + sensitivity-report.json")
+  .option("--force", "overwrite existing output files")
+  .option("--json", "emit the sensitivity report as stable JSON")
+  .action((opts: { base?: string; plan?: string; outDir?: string; force?: boolean; json?: boolean }) => {
+    printResult(
+      paperBacktestSensitivityReport(
+        {},
+        {
+          basePath: opts.base,
+          planPath: opts.plan,
+          outDir: opts.outDir,
+          force: Boolean(opts.force),
+          json: Boolean(opts.json),
+        },
+      ),
+    );
+  });
 
 program.parseAsync(process.argv);

@@ -67,7 +67,16 @@ structure, name, journal, and config are protected, and a perturbation that
 matches nothing is refused rather than silently ignored. Its output dir feeds
 straight into `paper:backtest:suite` + `paper:backtest:diff:suite` for a
 price-sensitivity sweep, and every variant is simulated local scenario data — not
-a live result, not advice, not a profitability claim. None of this fetches live
+a live result, not advice, not a profitability claim. Sprint 13 adds
+`paper:backtest:sensitivity`, one workflow over the same two layers: it generates
+those variants, runs the **base scenario once as a baseline** plus every variant
+through the same suite path, and emits a stable, versioned
+(`backtest.sensitivity.v1`) report of each variant's **per-field delta versus the
+baseline** (fills, simulated PnL, notional, positions). With `--out-dir` it writes
+the variants, one report per scenario, the suite index, and `sensitivity-report.json`
+(preflighted so it never writes partial output; refuses to overwrite without
+`--force`). A delta is the change between two simulated runs — not a prediction, not
+advice, not a profitability claim. None of this fetches live
 data or begins transaction planning (roadmap Phase 6 remains not started; Phase 7
 burner live remains not started). The default mode is `PAPER`. See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
@@ -103,7 +112,8 @@ soulmaker/
                 #                    paper:backtest, paper:backtest:lint, paper:backtest:diff,
                 #                    paper:backtest:scenario:new, paper:backtest:scenario:matrix,
                 #                    paper:backtest:scenario:variants,
-                #                    paper:backtest:suite, paper:backtest:diff:suite)
+                #                    paper:backtest:suite, paper:backtest:diff:suite,
+                #                    paper:backtest:sensitivity)
     web/        # Phase 8 dashboard (placeholder)
   packages/
     core/       # @soulmaker/core      — config schema, modes, risk caps, LIVE GATE
@@ -119,7 +129,9 @@ soulmaker/
                 #            replay over plan → paper; Sprint 9 adds scenario lint/validate,
                 #            a content digest, and stabler/richer reports (not a live result);
                 #            Sprint 10 adds report diffing + scenario template/matrix builders;
-                #            Sprint 11 adds the pure suite runner/index + suite diffing
+                #            Sprint 11 adds the pure suite runner/index + suite diffing;
+                #            Sprint 12 adds the deterministic scenario variant generator;
+                #            Sprint 13 adds the pure variant-sensitivity workflow + report
                 #            (still pure: the package never scans dirs or reads/writes files)
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
@@ -241,6 +253,18 @@ pnpm soulmaker paper:backtest:scenario:variants \
   --plan examples/backtest/price-sensitivity.variant-plan.json --out-dir <variants/>
 pnpm soulmaker paper:backtest:suite --dir <variants/> --out-dir <variant-reports/>
 pnpm soulmaker paper:backtest:diff:suite --base-dir <baseline-reports/> --next-dir <variant-reports/>
+
+# Sprint 13 — the whole sensitivity sweep as ONE workflow: generate the variants,
+# run the BASE once as a baseline + every variant through the same suite path, and
+# emit a stable backtest.sensitivity.v1 report of each variant's per-field delta vs
+# the baseline. --out-dir writes variants/ + reports/ + sensitivity-report.json
+# (preflighted, no partial writes; --force to overwrite). Simulated bookkeeping only:
+pnpm soulmaker paper:backtest:sensitivity \
+  --base examples/backtest/single-mint-buy-hold.scenario.json \
+  --plan examples/backtest/price-sensitivity.variant-plan.json
+pnpm soulmaker paper:backtest:sensitivity \
+  --base examples/backtest/single-mint-buy-hold.scenario.json \
+  --plan examples/backtest/price-sensitivity.variant-plan.json --out-dir <sensitivity/> --json
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

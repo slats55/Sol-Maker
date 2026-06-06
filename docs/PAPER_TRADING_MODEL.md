@@ -1,4 +1,4 @@
-# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation)
+# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow)
 
 The paper engine (`@soulmaker/paper` + the `paper:*` CLI commands) is a
 **deterministic, offline, simulated-only** trading sandbox. It exists to prove
@@ -350,6 +350,47 @@ live result, not advice, not a profitability claim — and its `--out-dir` feeds
 straight into `paper:backtest:suite` + `paper:backtest:diff:suite` for a
 price-sensitivity sweep.
 
+## Variant-sensitivity workflow (Sprint 13)
+
+Sprint 13 folds the Sprint 11 + Sprint 12 pieces into **one** workflow that answers
+"how sensitive are the simulated outputs to a bounded perturbation of the injected
+data?" — without re-implementing anything. `@soulmaker/backtest` exports
+`runScenarioVariantSensitivity({ base, plan })`,
+`buildScenarioVariantSensitivityReport`, `validateScenarioVariantSensitivityReport`,
+and `formatScenarioVariantSensitivityReport` (schema `backtest.sensitivity.v1`); the
+CLI adds `paper:backtest:sensitivity --base <a> --plan <p> [--out-dir <d>] [--force]
+[--json]`.
+
+The workflow:
+
+1. generates the variants with the SAME `generateScenarioVariants` (Sprint 12) — so
+   an invalid base or invalid plan is refused up front;
+2. runs the **base scenario once as a baseline** AND every variant through the SAME
+   `runBacktestSuite` path (Sprint 11): lint → `runBacktest` → validate, with the
+   baseline as the suite's first entry (so it also yields a real `suite-index.json`);
+3. summarizes each variant's simulated outputs and its **per-field delta versus the
+   baseline** — `stepCount`, `candidateCount`, buy/sell fills, rejects, realized /
+   unrealized / total simulated PnL, simulated notional, open / closed positions.
+   Every summarized field is a real backtest-report field; no metric is invented.
+
+The baseline (**Option A**) is the most useful design: every variant has a concrete
+reference to diff against. The report carries the PAPER-ONLY banner, the
+not-live / not-advice / not-a-profitability-claim labelling, the base scenario's
+name + content digest, the plan name, per-variant rows, and the aggregate suite
+summary. It is **pure** and non-mutating (the base runs on an independent deep copy)
+and carries **no timestamps**, so an identical input yields a **byte-identical**
+report. A delta is the change between two simulated runs — not a prediction, not
+advice, not a profitability claim; a failed variant carries a null summary and null
+deltas and is counted, never silently dropped.
+
+With `--out-dir` the CLI writes the full artifact tree —
+`variants/<stem>.<suffix>.scenario.json`, one `reports/<id>.report.json` per
+scenario (the baseline as `reports/base.report.json`), `reports/suite-index.json`,
+and `sensitivity-report.json` — preflighting **every** target (internal name
+collisions, case-insensitive, plus pre-existing files) before writing any, so it
+never writes partial output and never overwrites without `--force`. Without
+`--out-dir` it writes nothing and just prints the report (human or `--json`).
+
 ## PnL reporting
 
 `PaperRunSummary`: realized PnL, unrealized PnL, total PnL, open position count,
@@ -373,6 +414,7 @@ simulated, or sent" disclaimer.
 | `paper:backtest:scenario:variants` | generate INJECTED variants from a base by applying a plan of **bounded numeric perturbations** (multiply/add, clamped) to its injected prices/metrics (Sprint 12); no code/RNG; steps/name/journal/config protected; refuses overwrite without `--force` |
 | `paper:backtest:suite` | run a **directory** of `*.scenario.json` files as one deterministic suite and aggregate a byte-stable `suite-index.json` (Sprint 11); `--out-dir` also writes one report per passed scenario; `--fail-on-error` exits non-zero on any failure |
 | `paper:backtest:diff:suite` | diff **two** suite output directories by their `suite-index.json` (Sprint 11): added/removed/changed scenarios + aggregate deltas + conservative `hasRegression`; a changed scenario is not a regression |
+| `paper:backtest:sensitivity` | run a base scenario (baseline) + bounded variants of it through the suite path and emit a stable `backtest.sensitivity.v1` report of each variant's per-field delta vs the baseline (Sprint 13); `--out-dir` writes variants/ + reports/ + `sensitivity-report.json` (preflighted, no partial writes, `--force` to overwrite); deltas are simulated bookkeeping, not a profitability claim |
 
 `paper:run` options: `--candidates <path>` `--prices <path>` `--journal <path>`
 `--max-trade-size-usd` `--max-daily-loss-usd` `--max-open-positions`
@@ -398,5 +440,9 @@ result. Errors refuse (exit 1); warnings stay runnable but suspicious.
   prediction or a track record.
 - There is no slippage, liquidity, partial-fill, or latency modeling beyond the
   simple price-point model; fills are exact at the injected price.
+- A sensitivity delta (Sprint 13) measures how a **bounded, injected** what-if moved
+  the **simulated** bookkeeping — it is not a forecast, a backtest of real history,
+  or any indication of live profitability.
 - Nothing here is wired to execution. Live sending remains Phase 7, behind every
-  gate in [`WALLET_SAFETY_MODEL.md`](WALLET_SAFETY_MODEL.md).
+  gate in [`WALLET_SAFETY_MODEL.md`](WALLET_SAFETY_MODEL.md). Phase 6 (transaction
+  planning) and Phase 7 (burner live mode) are still **not started**.

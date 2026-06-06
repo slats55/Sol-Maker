@@ -211,3 +211,44 @@ inversely more units at a lower entry); an *additive* shift moves the entry and 
 moves the simulated PnL. Every variant is **simulated local scenario data** — fake
 mints, injected prices — **not a live result, not advice, and not a profitability
 claim.**
+
+## The whole sweep in one step (Sprint 13)
+
+`paper:backtest:sensitivity` runs the entire sweep above as **one** deterministic
+workflow: it generates the variants, runs the **base scenario once as a baseline**
+plus every variant through the same `lint → backtest → validate` suite path, and
+prints a stable report of each variant's **per-field delta versus the baseline**
+(fills, simulated PnL, simulated notional, positions):
+
+```bash
+# Print the human report (PAPER-only; nothing is written without --out-dir):
+pnpm soulmaker paper:backtest:sensitivity \
+  --base examples/backtest/single-mint-buy-hold.scenario.json \
+  --plan examples/backtest/price-sensitivity.variant-plan.json
+
+# Stable machine-readable report (schema backtest.sensitivity.v1):
+pnpm soulmaker paper:backtest:sensitivity \
+  --base examples/backtest/single-mint-buy-hold.scenario.json \
+  --plan examples/backtest/price-sensitivity.variant-plan.json --json
+
+# Also write the full artifact tree (refuses overwrite without --force):
+#   <out>/variants/<stem>.<suffix>.scenario.json   (one per variant)
+#   <out>/reports/base.report.json                 (the baseline run)
+#   <out>/reports/<suffix>.report.json             (one per variant)
+#   <out>/reports/suite-index.json                 (the Sprint 11 suite index)
+#   <out>/sensitivity-report.json                  (the Sprint 13 report)
+pnpm soulmaker paper:backtest:sensitivity \
+  --base examples/backtest/single-mint-buy-hold.scenario.json \
+  --plan examples/backtest/price-sensitivity.variant-plan.json --out-dir sensitivity/
+```
+
+For the shipped example the baseline buys $100 and holds to a 50%-higher price
+(total simulated PnL `50`); `price-up-10pct` / `price-down-10pct` leave that PnL
+unchanged (Δ`0`, the multiplier invariance noted above) while `price-plus-1usd`
+moves it (Δ ≈ `-16.67`). The report carries `SIMULATED PAPER-ONLY SENSITIVITY`,
+"Uses injected, simulated local scenario data only", "Not a live result", "Not
+financial advice", and "Not a profitability claim", and writes only after every
+output path is preflighted — so it never writes partial output. A delta is the
+change between two **simulated** runs — **not** a forecast, a real backtest, or a
+profitability claim. (Phases 6 and 7 remain **not started**; nothing here touches a
+wallet, key, signing, sending, or the network.)

@@ -93,6 +93,8 @@ import {
   formatBacktestSuiteIndex,
   diffBacktestSuites,
   formatBacktestSuiteDiff,
+  runScenarioVariantSensitivity,
+  formatScenarioVariantSensitivityReport,
   type BacktestReport,
   type BacktestReportDiff,
   type BacktestScenario,
@@ -103,6 +105,7 @@ import {
   type BacktestSuiteResult,
   type BacktestSuiteIndex,
   type BacktestSuiteDiff,
+  type ScenarioVariantSensitivityRun,
 } from "@soulmaker/backtest";
 
 export interface CommandContext {
@@ -2131,6 +2134,171 @@ export function paperBacktestDiffSuiteReport(
     text: formatBacktestSuiteDiff(diff, { baseLabel: opts.baseDir, nextLabel: opts.nextDir }),
     exitCode,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 13 — paper:backtest:sensitivity
+//   Generate deterministic variants of a base scenario, run the base (baseline)
+//   plus every variant through the existing suite path, and emit a stable
+//   sensitivity report of how each variant moved the simulated outputs.
+// ---------------------------------------------------------------------------
+
+export interface PaperBacktestSensitivityCommandOptions {
+  /** Path to the base scenario JSON (required). */
+  basePath?: string;
+  /** Path to the variant plan JSON ({ name?, variants: [{ suffix, perturbations }] }) (required). */
+  planPath?: string;
+  /** Optional directory to write variants/ + reports/ + sensitivity-report.json into. */
+  outDir?: string;
+  /** Overwrite existing output files (refused by default). */
+  force?: boolean;
+  json?: boolean;
+}
+
+/**
+ * Write the full sensitivity artifact tree into `--out-dir`:
+ *
+ *   <out-dir>/variants/<stem>.<suffix>.scenario.json   (one per generated variant)
+ *   <out-dir>/reports/base.report.json                 (the baseline run)
+ *   <out-dir>/reports/<suffix>.report.json             (one per PASSED variant)
+ *   <out-dir>/reports/suite-index.json                 (Sprint 11 suite index)
+ *   <out-dir>/sensitivity-report.json                  (Sprint 13 report)
+ *
+ * EVERY target path is preflighted up front — internal collisions (case-insensitive,
+ * so a case-only suffix difference cannot clobber a sibling and a "base" suffix
+ * cannot clobber the baseline report) and, without `--force`, any pre-existing
+ * file — BEFORE a single file is written. So any detectable problem (including a
+ * later output that would fail) refuses with NO partial output. Reports/scenarios
+ * are written redacted, exactly like the suite/variants commands. Never writes a
+ * journal or fills.
+ */
+function writeSensitivityOutputs(
+  ctx: CommandContext,
+  outDirArg: string,
+  force: boolean,
+  run: ScenarioVariantSensitivityRun,
+  stem: string,
+): { ok: true; written: string[] } | { ok: false; reason: string } {
+  const outDir = resolvePath(ctx, outDirArg);
+  const variantsDir = join(outDir, "variants");
+  const reportsDir = join(outDir, "reports");
+
+  const targets: { path: string; value: unknown }[] = [];
+  // One scenario file per generated variant (suffix already validated [A-Za-z0-9._-]).
+  for (const v of run.variantsResult.variants) {
+    targets.push({ path: join(variantsDir, `${stem}.${v.suffix}.scenario.json`), value: v.scenario });
+  }
+  // The baseline report (entries[0]); a valid base always runs, so this is present.
+  const baselineEntry = run.suiteResult.entries[0];
+  if (baselineEntry?.report) {
+    targets.push({ path: join(reportsDir, "base.report.json"), value: baselineEntry.report });
+  }
+  // One report per PASSED variant (a failed variant produces no report).
+  for (const e of run.suiteResult.entries.slice(1)) {
+    if (e.report) targets.push({ path: join(reportsDir, `${e.id}.report.json`), value: e.report });
+  }
+  // The aggregate suite index and the headline sensitivity report.
+  targets.push({ path: join(reportsDir, "suite-index.json"), value: run.suiteIndex });
+  targets.push({ path: join(outDir, "sensitivity-report.json"), value: run.report });
+
+  // Preflight: refuse on any internal filename collision (no partial writes).
+  const seen = new Set<string>();
+  for (const t of targets) {
+    const key = t.path.toLowerCase();
+    if (seen.has(key)) {
+      return { ok: false, reason: `output filename collision at ${t.path} — rename a variant suffix` };
+    }
+    seen.add(key);
+  }
+  // Preflight: refuse to overwrite any existing target unless --force (check ALL first).
+  if (!force) {
+    const existing = targets.filter((t) => existsSync(t.path));
+    if (existing.length > 0) {
+      return {
+        ok: false,
+        reason:
+          `${existing.length} output file(s) already exist (pass --force to overwrite): ` +
+          existing.map((t) => t.path).join(", "),
+      };
+    }
+  }
+
+  try {
+    mkdirSync(variantsDir, { recursive: true });
+    mkdirSync(reportsDir, { recursive: true });
+  } catch {
+    return { ok: false, reason: `cannot create output directories under ${outDir}` };
+  }
+  const written: string[] = [];
+  for (const t of targets) {
+    try {
+      writeFileSync(t.path, JSON.stringify(redactValue(t.value), null, 2) + "\n");
+      written.push(t.path);
+    } catch {
+      return { ok: false, reason: `cannot write output file at ${t.path}` };
+    }
+  }
+  return { ok: true, written };
+}
+
+/**
+ * `soulmaker paper:backtest:sensitivity` — the Sprint 13 workflow. It reads ONLY the
+ * two named local JSON files (BOM-tolerant; missing args / malformed JSON / invalid
+ * base / invalid plan all refuse), generates deterministic variants via the Sprint
+ * 12 generator, runs the BASE (as a baseline) plus every variant through the Sprint
+ * 11 suite path, and emits a stable, versioned sensitivity report of each variant's
+ * per-field delta versus the baseline. With `--out-dir` it writes the variants, the
+ * per-scenario reports, the suite index, and `sensitivity-report.json` (preflighted
+ * so it never writes partial output; refuses to overwrite without `--force`).
+ * `--json` prints the report JSON; otherwise a human report led by the PAPER-ONLY
+ * banner. No chain access, no wallet, no RPC, no network — every number is simulated
+ * bookkeeping over injected prices, not a live result and not a profitability claim.
+ */
+export function paperBacktestSensitivityReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestSensitivityCommandOptions = {},
+): string {
+  if (!opts.basePath) return "Refusing: --base <path> is required.";
+  if (!opts.planPath) return "Refusing: --plan <path> is required.";
+
+  let baseValue: unknown;
+  try {
+    baseValue = readJsonValue(ctx, opts.basePath, "base scenario");
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  let planValue: unknown;
+  try {
+    planValue = readJsonValue(ctx, opts.planPath, "variant plan");
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  let run: ScenarioVariantSensitivityRun;
+  try {
+    run = runScenarioVariantSensitivity({ base: baseValue, plan: planValue });
+  } catch (err) {
+    return redactString(`Refusing: ${(err as Error).message}`);
+  }
+
+  let writtenNote = "";
+  if (opts.outDir) {
+    const stem = scenarioStem(opts.basePath);
+    const res = writeSensitivityOutputs(ctx, opts.outDir, Boolean(opts.force), run, stem);
+    if (!res.ok) return redactString(`Refusing: ${res.reason}`);
+    writtenNote =
+      `\n\nWrote ${res.written.length} file(s) to ${resolvePath(ctx, opts.outDir)}:\n` +
+      res.written.map((p) => `- ${p}`).join("\n");
+  }
+
+  if (opts.json) {
+    // redactValue is a backstop; the report carries only injected scenario identifiers.
+    return JSON.stringify(redactValue(run.report), null, 2);
+  }
+  return redactString(
+    formatScenarioVariantSensitivityReport(run.report, { label: opts.basePath }) + writtenNote,
+  );
 }
 
 function yesNo(value: boolean): string {

@@ -89,6 +89,18 @@ export {
   BACKTEST_SUITE_DIFF_DISCLAIMERS,
 } from "./suite-diff.js";
 
+export {
+  runScenarioVariantSensitivity,
+  buildScenarioVariantSensitivityReport,
+  validateScenarioVariantSensitivityReport,
+  formatScenarioVariantSensitivityReport,
+  ScenarioVariantSensitivityError,
+  BACKTEST_SENSITIVITY_SCHEMA_VERSION,
+  BACKTEST_SENSITIVITY_BANNER,
+  BACKTEST_SENSITIVITY_DISCLAIMERS,
+  SENSITIVITY_BASELINE_ID,
+} from "./sensitivity.js";
+
 export type {
   BacktestScenario,
   BacktestStep,
@@ -169,3 +181,14 @@ export type {
   BacktestSuiteWarningsDiff,
   FormatBacktestSuiteDiffOptions,
 } from "./suite-diff.js";
+
+export type {
+  ScenarioVariantSensitivityInput,
+  ScenarioVariantSensitivityRun,
+  ScenarioVariantSensitivityReport,
+  ScenarioVariantSensitivityBaseline,
+  ScenarioVariantSensitivityEntry,
+  SensitivitySummaryDeltas,
+  SensitivityNumberDelta,
+  FormatScenarioVariantSensitivityOptions,
+} from "./sensitivity.js";

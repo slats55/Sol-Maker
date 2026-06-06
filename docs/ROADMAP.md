@@ -112,7 +112,8 @@ planning + richer exits; Sprint 8 journal-continuing loop + deterministic backte
 Sprint 9 scenario linting, example fixtures, report stability + BOM-tolerant JSON;
 Sprint 10 backtest report diffing + deterministic scenario-authoring helpers;
 Sprint 11 backtest suite runs + suite diffing over directories of injected scenarios;
-Sprint 12 deterministic scenario variant generation + suite-over-variants):
+Sprint 12 deterministic scenario variant generation + suite-over-variants;
+Sprint 13 variant-sensitivity workflow + report over the base + its variants):
 
 - ✅ Deterministic, **paper-only** rules engine: turns an advisory
   `@soulmaker/risk` report + injected, read-only metrics into a single decision —
@@ -272,6 +273,24 @@ Sprint 12 deterministic scenario variant generation + suite-over-variants):
   simulated local scenario data — not a live result, not advice, not a profitability
   claim — and feed straight into `paper:backtest:suite` + `paper:backtest:diff:suite`
   (a deferred Sprint 11 Part-5 item, now shipped as its own focused sprint).
+- ✅ **(Sprint 13) Variant-sensitivity workflow** — `@soulmaker/backtest` exports
+  `runScenarioVariantSensitivity({ base, plan })`,
+  `buildScenarioVariantSensitivityReport`, `validateScenarioVariantSensitivityReport`,
+  and `formatScenarioVariantSensitivityReport` (schema `backtest.sensitivity.v1`); the
+  CLI adds `paper:backtest:sensitivity --base <a> --plan <p> [--out-dir <d>] [--force]
+  [--json]`. It ties Sprint 11 + Sprint 12 into one report layer: it generates the
+  variants with the SAME `generateScenarioVariants`, runs the **base scenario once as
+  a baseline** plus every variant through the SAME `runBacktestSuite` path (lint →
+  `runBacktest` → validate), and summarizes each variant's simulated outputs and its
+  **per-field delta versus the baseline** (fills, rejects, realized/unrealized/total
+  simulated PnL, notional, open/closed positions). It is **pure** and non-mutating —
+  no RNG, no `Date.now`, no network, no timestamps — so an identical input yields a
+  byte-identical report; no backtest/suite/variant logic is re-implemented. With
+  `--out-dir` the CLI writes `variants/`, one `reports/<id>.report.json` per scenario,
+  `reports/suite-index.json`, and `sensitivity-report.json`, preflighting every target
+  (internal collisions + pre-existing files) before writing any (no partial output, no
+  overwrite without `--force`). A delta is the change between two simulated runs — not
+  a prediction, not advice, not a profitability claim.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 
