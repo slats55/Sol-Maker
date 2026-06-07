@@ -28,7 +28,7 @@ packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.j
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
-packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff (Sprint 8–15)  [strategy, paper, security]
+packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff (Sprint 8–16)  [strategy, paper, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -152,6 +152,22 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   only layer that reads the scenarios directory and preflights/writes the matrix output
   tree (`sensitivity-matrix-report.json` + `bases/<id>.sensitivity-report.json`); it never
   writes a journal or fills.
+- **(Sprint 16)** `@soulmaker/backtest` adds the **research artifact manifest** —
+  `research-manifest.ts` (`classifyBacktestArtifact`, `buildBacktestResearchManifest`,
+  `validate…`, `format…`, `verifyBacktestResearchManifest`; schemas
+  `backtest.research.manifest.v1` / `backtest.research.verify.v1`) and
+  `research-manifest-diff.ts` (`diffBacktestResearchManifests`; schema
+  `backtest.research.manifest.diff.v1`). This is a reproducibility/audit layer over the
+  LOCAL artifacts the other commands emit. Crucially the pure package does **no file IO**: it
+  accepts already-loaded artifact descriptors (path + kind + schemaVersion + digest +
+  sizeBytes) and aggregates/validates/verifies them deterministically; the CLI
+  (`paper:backtest:research:manifest` / `:verify` / `paper:backtest:diff:research:manifest`)
+  is the only place that walks the directory, classifies each file, and computes the
+  non-cryptographic {@link digestContent} fingerprint. The digest is labelled honestly as
+  reproducibility-only (not security/anti-tamper); a malformed file is indexed as
+  `unknown-json`, never a crash; and research-manifest META files are excluded so a manifest
+  never indexes itself. It reads local files only — no backtest, no journal, no network, no
+  wallet.
 
 ## The live boundary
 

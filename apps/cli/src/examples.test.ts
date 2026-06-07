@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, readdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,8 @@ import {
   paperBacktestReport,
   paperBacktestLintReport,
   paperBacktestSensitivityMatrixReport,
+  paperBacktestResearchManifestReport,
+  paperBacktestResearchVerifyReport,
 } from "./commands.js";
 
 const EXAMPLES_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../examples/backtest");
@@ -190,6 +192,46 @@ describe("examples/backtest — CLI smoke", () => {
       expect(parsed.schemaVersion).toBe("backtest.report.v1");
       expect(written).not.toContain("PAPER_BUY_FILLED"); // a report is not a journal
       expect(readdirSync(tmp).some((f) => f.endsWith(".jsonl"))).toBe(false);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("packages a real matrix run into a manifest and verifies it (Sprint 16 round-trip)", () => {
+    const repoRoot = join(EXAMPLES_DIR, "../..");
+    const tmp = mkdtempSync(join(tmpdir(), "soulmaker-manifest-"));
+    try {
+      // 1) Produce a real research run (the cross-scenario matrix over the shipped examples).
+      const matrix = paperBacktestSensitivityMatrixReport(
+        { cwd: repoRoot, env: {} },
+        {
+          dir: "examples/backtest",
+          planPath: "examples/backtest/price-sensitivity.variant-plan.json",
+          outDir: tmp,
+        },
+      );
+      expect(matrix.exitCode).toBe(0);
+
+      // 2) Index it into a manifest written INTO the run dir.
+      const manifestPath = join(tmp, "research-manifest.json");
+      const built = paperBacktestResearchManifestReport({ cwd: tmp, env: {} }, { dir: ".", outPath: manifestPath, json: true });
+      expect(built.exitCode).toBe(0);
+      const manifest = JSON.parse(built.text) as { schemaVersion: string; artifactCount: number; artifacts: { path: string }[] };
+      expect(manifest.schemaVersion).toBe("backtest.research.manifest.v1");
+      // 1 matrix report + 4 per-base sensitivity reports; the manifest itself is excluded.
+      expect(manifest.artifactCount).toBe(5);
+      expect(manifest.artifacts.some((a) => a.path === "research-manifest.json")).toBe(false);
+
+      // 3) Verify the exact set: VALID, exit 0.
+      const ok = paperBacktestResearchVerifyReport({ cwd: tmp, env: {} }, { manifestPath, dir: "." });
+      expect(ok.exitCode).toBe(0);
+      expect(ok.text).toContain("(VALID)");
+
+      // 4) Mutate one artifact ⇒ verify is INVALID, exit 1.
+      writeFileSync(join(tmp, "sensitivity-matrix-report.json"), "{}");
+      const bad = paperBacktestResearchVerifyReport({ cwd: tmp, env: {} }, { manifestPath, dir: "." });
+      expect(bad.exitCode).toBe(1);
+      expect(bad.text).toContain("(INVALID)");
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

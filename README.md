@@ -96,9 +96,19 @@ mean & max magnitude), and neutral cross-base rankings (largest movement, never 
 "best"/"winner"). A base that is invalid or incompatible with the plan refuses the whole
 matrix (named) with no partial output; `--out-dir` writes the matrix report plus one
 per-base sensitivity report, and `paper:backtest:diff:sensitivity:matrix` diffs two matrix
-reports with a conservative `hasRegression` flag. None of this fetches live data or begins
-transaction planning (roadmap Phase 6 remains not started; Phase 7 burner live remains not
-started). The default mode is `PAPER`. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+reports with a conservative `hasRegression` flag. Sprint 16 adds a **reproducibility /
+audit** layer over all of these local artifacts: `paper:backtest:research:manifest --dir
+<artifacts>` indexes every local JSON artifact a research run produced — classifying each
+by schema and fingerprinting it with a **non-cryptographic, reproducibility-only** content
+digest — into a stable (`backtest.research.manifest.v1`) manifest;
+`paper:backtest:research:verify --manifest <m> --dir <d>` later re-reads the directory and
+reports any missing / changed / extra / schema-mismatched artifact (exit 1 if the set
+drifted); and `paper:backtest:diff:research:manifest` diffs two manifests. The manifest
+answers "what exactly did this local PAPER-only run produce, and can I verify it later?" —
+it is local bookkeeping, not a security/anti-tamper guarantee. None of this fetches live
+data or begins transaction planning (roadmap Phase 6 remains not started; Phase 7 burner
+live remains not started). The default mode is `PAPER`. See
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Non-negotiable security rules (summary)
 
@@ -135,7 +145,8 @@ soulmaker/
                 #                    paper:backtest:suite, paper:backtest:diff:suite,
                 #                    paper:backtest:suite:coverage,
                 #                    paper:backtest:sensitivity, paper:backtest:diff:sensitivity,
-                #                    paper:backtest:sensitivity:matrix, paper:backtest:diff:sensitivity:matrix)
+                #                    paper:backtest:sensitivity:matrix, paper:backtest:diff:sensitivity:matrix,
+                #                    paper:backtest:research:manifest/verify, paper:backtest:diff:research:manifest)
     web/        # Phase 8 dashboard (placeholder)
   packages/
     core/       # @soulmaker/core      — config schema, modes, risk caps, LIVE GATE
@@ -156,7 +167,8 @@ soulmaker/
                 #            Sprint 13 adds the pure variant-sensitivity workflow + report;
                 #            Sprint 14 adds sensitivity rankings, variant-plan explain,
                 #            sensitivity diff, config.<field> perturbations, and suite coverage;
-                #            Sprint 15 adds the multi-base sensitivity matrix + matrix diff
+                #            Sprint 15 adds the multi-base sensitivity matrix + matrix diff;
+                #            Sprint 16 adds the research artifact manifest (build/verify/diff)
                 #            (still pure: the package never scans dirs or reads/writes files)
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
@@ -317,6 +329,14 @@ pnpm soulmaker paper:backtest:sensitivity:matrix \
 # — a removed passed base or a same-digest drift is a regression, a changed base is not):
 pnpm soulmaker paper:backtest:diff:sensitivity:matrix \
   --base <runA/sensitivity-matrix-report.json> --next <runB/sensitivity-matrix-report.json> --fail-on-regression
+
+# Sprint 16 — REPRODUCIBILITY: index a research run's local artifacts into a manifest
+# (classify + a non-cryptographic, reproducibility-only content digest per file), then
+# verify the exact set later. Reads local files only; writes only the manifest with --out:
+pnpm soulmaker paper:backtest:research:manifest --dir <matrix/> --out <matrix/>/research-manifest.json
+pnpm soulmaker paper:backtest:research:verify --manifest <matrix/>/research-manifest.json --dir <matrix/>
+# (exit 1 if anything is missing/changed/extra). DIFF two manifests (--fail-on-change):
+pnpm soulmaker paper:backtest:diff:research:manifest --base <runA/manifest.json> --next <runB/manifest.json>
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

@@ -1,4 +1,4 @@
-# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow; Sprint 14 paper research lab — rankings, variant-plan explain, sensitivity diff, config perturbations, suite coverage; Sprint 15 cross-scenario sensitivity matrix + matrix diff)
+# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow; Sprint 14 paper research lab — rankings, variant-plan explain, sensitivity diff, config perturbations, suite coverage; Sprint 15 cross-scenario sensitivity matrix + matrix diff; Sprint 16 research run manifest — index/verify/diff a run's local artifacts)
 
 The paper engine (`@soulmaker/paper` + the `paper:*` CLI commands) is a
 **deterministic, offline, simulated-only** trading sandbox. It exists to prove
@@ -473,6 +473,40 @@ base and a cross-base aggregate change are descriptive, not regressions. Compari
 different base scenarios is a bookkeeping comparison, never a "which token is better"
 claim.
 
+## Research run manifest (Sprint 16)
+
+The research commands above each emit LOCAL JSON artifacts. Sprint 16 adds a
+**reproducibility/audit** layer that answers: *"what exactly did this local PAPER-only run
+produce, from what inputs, with what schemas, and can I verify the same set later?"*
+
+`@soulmaker/backtest` exports the pure `classifyBacktestArtifact`,
+`buildBacktestResearchManifest`, `validateBacktestResearchManifest`,
+`formatBacktestResearchManifest`, and `verifyBacktestResearchManifest` (schemas
+`backtest.research.manifest.v1` / `backtest.research.verify.v1`), plus
+`diffBacktestResearchManifests` (schema `backtest.research.manifest.diff.v1`). The CLI adds
+`paper:backtest:research:manifest --dir <d> [--out <m>] [--force] [--json] [--strict]`,
+`paper:backtest:research:verify --manifest <m> --dir <d> [--json]`, and
+`paper:backtest:diff:research:manifest --base <a> --next <b> [--json] [--fail-on-change]`.
+
+The pure package does **no file IO**: it accepts already-loaded artifact descriptors
+(`path` + `kind` + `schemaVersion` + `digest` + `sizeBytes`) and builds a deterministic,
+byte-stable manifest — sorted artifacts, per-kind and per-schema counts, total size, and
+reproducibility warnings (unknown schemas, duplicate-digest groups, versioned artifacts
+missing a version). The CLI is the only layer that walks `--dir` (real subdirectories only,
+symlinks skipped, BOM-tolerant, `*.json` only — never a `*.jsonl` journal), classifies each
+file via `classifyBacktestArtifact`, and fingerprints it with the existing **non-cryptographic**
+`digestContent`. That digest is labelled honestly as **reproducibility-only** — it detects
+"same content", NOT a security or anti-tamper guarantee. A malformed file is indexed as
+`unknown-json` (and reported), never a crash; a research-manifest META file is excluded so a
+manifest written into its own directory never indexes itself.
+
+`verify` re-reads the directory, recomputes each digest + size, and reports per artifact
+`ok` / `digest-changed` / `schema-changed` / `size-changed` / `missing` / `extra` with a
+VALID/INVALID verdict (exit 1 when the set drifted); it writes nothing. `diff` pairs two
+manifests by path and reports added/removed/changed artifacts plus count/size deltas. Every
+output is local bookkeeping over injected artifacts — not a live result, not advice, and not
+a profitability claim.
+
 ## PnL reporting
 
 `PaperRunSummary`: realized PnL, unrealized PnL, total PnL, open position count,
@@ -502,6 +536,9 @@ simulated, or sent" disclaimer.
 | `paper:backtest:diff:sensitivity` | diff **two** sensitivity report JSON files (Sprint 14): pairs variants by suffix → added/removed/changed + baseline/count deltas + ranking movement + conservative `hasRegression` (`backtest.sensitivity.diff.v1`); a same-digest drift is a regression, a changed-content variant is not |
 | `paper:backtest:sensitivity:matrix` | sweep a **directory** of injected base scenarios through **one** shared variant plan and aggregate every `(base × variant)` cell into a stable `backtest.sensitivity.matrix.v1` report (Sprint 15): per-base rows, per-variant cross-base delta aggregates, neutral cross-base rankings; `--out-dir` writes `sensitivity-matrix-report.json` + `bases/<id>.sensitivity-report.json` (preflighted, no partial writes, `--force`); an invalid/incompatible base refuses the whole matrix |
 | `paper:backtest:diff:sensitivity:matrix` | diff **two** matrix report JSON files (Sprint 15): pairs bases by id and cells by suffix → added/removed/changed bases + count deltas + cross-base aggregate changes + conservative `hasRegression` (`backtest.sensitivity.matrix.diff.v1`); a removed passed base or same-digest drift is a regression, a changed-content base is not |
+| `paper:backtest:research:manifest` | index a directory's LOCAL JSON artifacts into a reproducibility manifest (Sprint 16): classify each by schema/shape + a non-cryptographic, reproducibility-only content digest (`backtest.research.manifest.v1`); `--out` writes ONLY the manifest (`--force` to overwrite), `--strict` exits 1 on any unknown/malformed artifact; a malformed file is indexed as `unknown-json`, never a crash |
+| `paper:backtest:research:verify` | verify a manifest against the CURRENT local artifacts (Sprint 16): recompute digests/sizes → per-artifact `ok`/`digest-changed`/`schema-changed`/`size-changed`/`missing`/`extra` + VALID/INVALID (`backtest.research.verify.v1`); writes nothing, exit 1 when the set drifted |
+| `paper:backtest:diff:research:manifest` | diff **two** manifest JSON files (Sprint 16): pairs artifacts by path → added/removed/changed + count/size + per-kind/per-schema count deltas + `hasChange` (`backtest.research.manifest.diff.v1`); reads two files, writes nothing |
 
 `paper:run` options: `--candidates <path>` `--prices <path>` `--journal <path>`
 `--max-trade-size-usd` `--max-daily-loss-usd` `--max-open-positions`

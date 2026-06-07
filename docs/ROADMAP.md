@@ -117,7 +117,9 @@ Sprint 13 variant-sensitivity workflow + report over the base + its variants;
 Sprint 14 paper research lab — sensitivity rankings, variant-plan explain (dry-run),
 sensitivity-report diffing, allowlisted config-field perturbations, suite coverage;
 Sprint 15 cross-scenario sensitivity matrix — sweep many bases through one plan,
-aggregate every (base × variant) cell, diff two matrices):
+aggregate every (base × variant) cell, diff two matrices;
+Sprint 16 research run manifest — index/verify/diff a run's local artifacts for
+reproducibility):
 
 - ✅ Deterministic, **paper-only** rules engine: turns an advisory
   `@soulmaker/risk` report + injected, read-only metrics into a single decision —
@@ -356,6 +358,27 @@ aggregate every (base × variant) cell, diff two matrices):
   changed-content base and a cross-base aggregate change are not). The package stays pure
   (the CLI layer does all directory IO). Every number is simulated bookkeeping — not a
   live result, not advice, not a profitability claim.
+- ✅ **(Sprint 16) Research run manifest & artifact index** — a reproducibility/audit layer
+  over the local artifacts the PAPER-only research commands produce. `@soulmaker/backtest`
+  exports the pure `classifyBacktestArtifact`, `buildBacktestResearchManifest`,
+  `validate…`, `format…`, and `verifyBacktestResearchManifest` (schemas
+  `backtest.research.manifest.v1` and `backtest.research.verify.v1`), plus
+  `diffBacktestResearchManifests` (schema `backtest.research.manifest.diff.v1`); the CLI adds
+  `paper:backtest:research:manifest --dir <d> [--out <m>] [--force] [--json] [--strict]`,
+  `paper:backtest:research:verify --manifest <m> --dir <d> [--json]`, and
+  `paper:backtest:diff:research:manifest --base <a> --next <b> [--json] [--fail-on-change]`.
+  The pure package accepts already-loaded artifact DESCRIPTORS (path + kind + schemaVersion +
+  digest + sizeBytes) and aggregates a deterministic, byte-stable manifest (sorted artifacts,
+  kind/schema counts, reproducibility warnings); the CLI is the only layer that walks the
+  directory (real subdirs only, symlinks skipped, BOM-tolerant, `*.json` only — never a
+  `*.jsonl` journal), classifies each file, and fingerprints it with the existing
+  non-cryptographic {@link digestContent}. The digest is labelled honestly as
+  reproducibility-only (NOT a security/anti-tamper hash); a malformed file is indexed as
+  `unknown-json` (never a crash); and research-manifest META files are excluded so a manifest
+  written into its own directory never indexes itself (and verify never flags it as extra).
+  `verify` recomputes digests/sizes and reports missing/changed/extra/schema-mismatch with a
+  VALID/INVALID exit; everything is local bookkeeping — not a live result, not advice, not a
+  profitability claim.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

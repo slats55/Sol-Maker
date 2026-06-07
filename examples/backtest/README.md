@@ -492,3 +492,44 @@ or **same-digest-drifted** base/cell, an increased failed count, or a schema mis
 regression; a **changed-content** base and a cross-base aggregate change are descriptive,
 **not** regressions. (Phases 6 and 7 remain **not started**; nothing here touches a
 wallet, key, signing, sending, or the network.)
+
+## Packaging & verifying a research run (Sprint 16)
+
+A research run produces a directory of local JSON artifacts (reports, suite indexes,
+sensitivity/matrix reports, …). `paper:backtest:research:manifest` indexes that directory
+into a stable **manifest** — every artifact's path, detected kind + schema, byte size, and
+a **non-cryptographic, reproducibility-only** content digest — so you can answer "what did
+this run produce?" and verify the exact set later:
+
+```bash
+# Produce a research run (e.g. the cross-scenario matrix) into a directory:
+pnpm soulmaker paper:backtest:sensitivity:matrix \
+  --dir examples/backtest \
+  --plan examples/backtest/price-sensitivity.variant-plan.json --out-dir matrix-run/
+
+# Index it into a manifest (writes ONLY the manifest with --out; --force to overwrite):
+pnpm soulmaker paper:backtest:research:manifest --dir matrix-run/ --out matrix-run/research-manifest.json
+# --json for a stable machine-readable manifest (schema backtest.research.manifest.v1);
+# --strict exits non-zero if any artifact is unknown/malformed.
+
+# Verify the SAME directory later — re-reads every file, recomputes digests/sizes:
+pnpm soulmaker paper:backtest:research:verify --manifest matrix-run/research-manifest.json --dir matrix-run/
+# Prints VALID (exit 0) when the set matches; INVALID (exit 1) listing every
+# missing / digest-changed / schema-changed / size-changed / extra artifact otherwise.
+
+# Diff two manifests (e.g. two runs), failing on any change:
+pnpm soulmaker paper:backtest:diff:research:manifest --base runA/manifest.json --next runB/manifest.json --fail-on-change
+```
+
+The manifest command walks `--dir` deterministically (real subdirectories only, symlinks
+skipped, sorted, BOM-tolerant) and indexes only `*.json` files — **never** a `*.jsonl`
+journal. A **malformed** JSON file is indexed as `unknown-json` and reported, never a crash.
+A manifest written **into** the run directory is excluded on re-index, so a manifest never
+indexes itself (and verify never flags it as "extra").
+
+> **The digest is reproducibility-only, NOT a security guarantee.** It is the same
+> non-cryptographic content fingerprint used elsewhere — it detects "same content" and
+> traces an artifact, but it is **not** a cryptographic hash and **not** anti-tamper. The
+> manifest is local bookkeeping over injected, simulated artifacts — **not** a live result,
+> **not** advice, and **not** a profitability claim. Nothing here touches a wallet, key,
+> signing, sending, or the network; Phases 6 and 7 remain **not started**.
