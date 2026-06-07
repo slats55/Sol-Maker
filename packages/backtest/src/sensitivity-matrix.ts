@@ -540,9 +540,9 @@ export function buildScenarioVariantSensitivityMatrixReport(
 
   // Rectangular check: every base must carry the same ordered variant suffixes.
   const reference = bases[0]!.cells.map((c) => c.suffix);
-  const refKey = reference.join(" ");
+  const refKey = reference.join(" ");
   for (const base of bases) {
-    if (base.cells.map((c) => c.suffix).join(" ") !== refKey) {
+    if (base.cells.map((c) => c.suffix).join(" ") !== refKey) {
       throw new ScenarioVariantSensitivityMatrixError(
         `base "${base.id}" has a different variant set than base "${bases[0]!.id}" — ` +
           "every base must be swept through the same plan",
