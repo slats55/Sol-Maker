@@ -528,8 +528,14 @@ function readMatrixForDiff(value: unknown, side: string): ScenarioVariantSensiti
     if (b.baseScenarioDigest !== null && typeof b.baseScenarioDigest !== "string") {
       throw new ScenarioVariantSensitivityMatrixDiffError(`${where}.baseScenarioDigest must be a string or null`);
     }
-    if (!isFiniteNumber(b.warningCount)) {
-      throw new ScenarioVariantSensitivityMatrixDiffError(`${where}.warningCount must be a finite number`);
+    if (b.baseScenarioName !== null && typeof b.baseScenarioName !== "string") {
+      throw new ScenarioVariantSensitivityMatrixDiffError(`${where}.baseScenarioName must be a string or null`);
+    }
+    // Every numeric field the diff reads (refOf / count deltas / the human formatter) must be finite.
+    for (const f of ["variantCount", "passedVariantCount", "failedVariantCount", "warningCount"] as const) {
+      if (!isFiniteNumber(b[f])) {
+        throw new ScenarioVariantSensitivityMatrixDiffError(`${where}.${f} must be a finite number`);
+      }
     }
     checkSummary(b.baselineSummary, `${where}.baselineSummary`);
     if (!Array.isArray(b.cells)) throw new ScenarioVariantSensitivityMatrixDiffError(`${where}.cells must be an array`);
@@ -539,6 +545,16 @@ function readMatrixForDiff(value: unknown, side: string): ScenarioVariantSensiti
       if (!nonEmptyString(c.suffix)) throw new ScenarioVariantSensitivityMatrixDiffError(`${cWhere}.suffix must be a non-empty string`);
       if (typeof c.status !== "string" || !VALID_STATUS.has(c.status)) {
         throw new ScenarioVariantSensitivityMatrixDiffError(`${cWhere}.status must be "passed" or "failed"`);
+      }
+      // scenarioDigest drives digestMatch (the regression core); changeCount/warningCount
+      // gate isMeaningfulCellChange — both are read, so both must be strictly typed.
+      if (c.scenarioDigest !== null && typeof c.scenarioDigest !== "string") {
+        throw new ScenarioVariantSensitivityMatrixDiffError(`${cWhere}.scenarioDigest must be a string or null`);
+      }
+      for (const f of ["changeCount", "warningCount"] as const) {
+        if (!isFiniteNumber(c[f])) {
+          throw new ScenarioVariantSensitivityMatrixDiffError(`${cWhere}.${f} must be a finite number`);
+        }
       }
       checkSummary(c.summary, `${cWhere}.summary`);
     });

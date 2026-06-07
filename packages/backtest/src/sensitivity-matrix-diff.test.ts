@@ -241,6 +241,35 @@ describe("diffScenarioVariantSensitivityMatrixReports — refusals", () => {
       ScenarioVariantSensitivityMatrixDiffError,
     );
   });
+
+  it("refuses a malformed cell.scenarioDigest (drives the regression-core digestMatch)", () => {
+    const base = twoBaseMatrix();
+    const bad = clone(base);
+    (bad.bases[0]!.cells[0] as unknown as { scenarioDigest: unknown }).scenarioDigest = 42;
+    expect(() => diffScenarioVariantSensitivityMatrixReports(bad, base)).toThrow(/scenarioDigest must be a string or null/);
+  });
+
+  it("refuses a malformed cell.changeCount / warningCount", () => {
+    const base = twoBaseMatrix();
+    const badChange = clone(base);
+    (badChange.bases[0]!.cells[0] as unknown as { changeCount: unknown }).changeCount = "x";
+    expect(() => diffScenarioVariantSensitivityMatrixReports(badChange, base)).toThrow(/changeCount must be a finite number/);
+
+    const badWarn = clone(base);
+    delete (badWarn.bases[0]!.cells[0] as unknown as { warningCount?: unknown }).warningCount;
+    expect(() => diffScenarioVariantSensitivityMatrixReports(badWarn, base)).toThrow(/warningCount must be a finite number/);
+  });
+
+  it("refuses a malformed base.variantCount and base.baseScenarioName", () => {
+    const base = twoBaseMatrix();
+    const badCount = clone(base);
+    (badCount.bases[0] as unknown as { variantCount: unknown }).variantCount = null;
+    expect(() => diffScenarioVariantSensitivityMatrixReports(badCount, base)).toThrow(/variantCount must be a finite number/);
+
+    const badName = clone(base);
+    (badName.bases[0] as unknown as { baseScenarioName: unknown }).baseScenarioName = 7;
+    expect(() => diffScenarioVariantSensitivityMatrixReports(badName, base)).toThrow(/baseScenarioName must be a string or null/);
+  });
 });
 
 describe("validateScenarioVariantSensitivityMatrixDiff — backstop", () => {
