@@ -327,3 +327,20 @@ export type {
   BacktestResearchVerification,
   FormatBacktestResearchManifestOptions,
 } from "./research-manifest.js";
+
+export {
+  diffBacktestResearchManifests,
+  validateBacktestResearchManifestDiff,
+  formatBacktestResearchManifestDiff,
+  BacktestResearchManifestDiffError,
+  BACKTEST_RESEARCH_MANIFEST_DIFF_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_MANIFEST_DIFF_DISCLAIMERS,
+} from "./research-manifest-diff.js";
+
+export type {
+  ResearchManifestNumberDelta,
+  ResearchManifestArtifactChange,
+  ResearchManifestCountChange,
+  BacktestResearchManifestDiff,
+  FormatBacktestResearchManifestDiffOptions,
+} from "./research-manifest-diff.js";
