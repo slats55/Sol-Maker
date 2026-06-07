@@ -38,6 +38,9 @@ import {
   paperBacktestSensitivityMatrixReport,
   paperBacktestDiffSensitivityMatrixReport,
   paperBacktestSuiteCoverageReport,
+  paperBacktestResearchManifestReport,
+  paperBacktestResearchVerifyReport,
+  paperBacktestDiffResearchManifestReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -4571,6 +4574,266 @@ describe("paperBacktestDiffSensitivityMatrixReport (Sprint 15)", () => {
       writeFileSync(join(cwd, "a.json"), JSON.stringify({ not: "a matrix" }));
       writeFileSync(join(cwd, "b.json"), JSON.stringify({ not: "a matrix" }));
       const r = paperBacktestDiffSensitivityMatrixReport({ cwd, env: {} }, { basePath: "a.json", nextPath: "b.json" });
+      expect(r.text).toMatch(/^Refusing:/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 16 — paper:backtest:research:manifest / :verify / diff:research:manifest
+// ---------------------------------------------------------------------------
+
+describe("paperBacktestResearchManifestReport (Sprint 16)", () => {
+  /** Write a small artifact tree under <cwd>/<sub> and return the relative dir. */
+  function writeArtifactDir(cwd: string, sub: string): string {
+    const dir = join(cwd, sub);
+    mkdirSync(join(dir, "reports"), { recursive: true });
+    writeFileSync(join(dir, "reports", "a.report.json"), JSON.stringify({ schemaVersion: "backtest.report.v1", x: 1 }, null, 2));
+    writeFileSync(join(dir, "suite-index.json"), JSON.stringify({ schemaVersion: "backtest.suite.v1", y: 2 }, null, 2));
+    writeFileSync(join(dir, "my.scenario.json"), JSON.stringify({ name: "s", steps: [] }, null, 2));
+    return sub;
+  }
+
+  it("refuses when --dir is missing or not a directory", () => {
+    expect(paperBacktestResearchManifestReport({}, {}).text).toMatch(/^Refusing: --dir/);
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const r = paperBacktestResearchManifestReport({ cwd, env: {} }, { dir: "nope" });
+      expect(r.text).toMatch(/^Refusing: artifact directory not found/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("indexes a directory's artifacts with kinds, schemas, and a digest label", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeArtifactDir(cwd, "run");
+      const r = paperBacktestResearchManifestReport({ cwd, env: {} }, { dir, json: true });
+      expect(r.exitCode).toBe(0);
+      const manifest = JSON.parse(r.text) as {
+        schemaVersion: string;
+        artifactCount: number;
+        artifacts: { path: string; kind: string; schemaVersion: string | null }[];
+        kindCounts: { kind: string; count: number }[];
+        digestAlgorithm: string;
+      };
+      expect(manifest.schemaVersion).toBe("backtest.research.manifest.v1");
+      expect(manifest.artifactCount).toBe(3);
+      // Forward-slashed, sorted relative paths (nested reports/ included).
+      expect(manifest.artifacts.map((a) => a.path)).toEqual([
+        "my.scenario.json",
+        "reports/a.report.json",
+        "suite-index.json",
+      ]);
+      expect(manifest.artifacts.find((a) => a.path === "reports/a.report.json")!.kind).toBe("backtest-report");
+      expect(manifest.artifacts.find((a) => a.path === "my.scenario.json")!.kind).toBe("scenario");
+      expect(manifest.digestAlgorithm).toMatch(/non-cryptographic/);
+      // Byte-stable across two runs.
+      expect(paperBacktestResearchManifestReport({ cwd, env: {} }, { dir, json: true }).text).toBe(r.text);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("reports a malformed JSON file as unknown-json and --strict exits 1", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeArtifactDir(cwd, "run");
+      writeFileSync(join(cwd, "run", "broken.json"), "{ not json");
+      const human = paperBacktestResearchManifestReport({ cwd, env: {} }, { dir });
+      expect(human.text).toContain("Malformed (unparseable) JSON file(s)");
+      expect(human.text).toContain("broken.json");
+      expect(human.exitCode).toBe(0); // non-strict
+      const strict = paperBacktestResearchManifestReport({ cwd, env: {} }, { dir, strict: true });
+      expect(strict.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--out writes the manifest and refuses to overwrite without --force", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeArtifactDir(cwd, "run");
+      const first = paperBacktestResearchManifestReport({ cwd, env: {} }, { dir, outPath: "run/manifest.json" });
+      expect(first.text).toContain("Wrote manifest");
+      const written = JSON.parse(readFileSync(join(cwd, "run", "manifest.json"), "utf8")) as { schemaVersion: string };
+      expect(written.schemaVersion).toBe("backtest.research.manifest.v1");
+      const blocked = paperBacktestResearchManifestReport({ cwd, env: {} }, { dir, outPath: "run/manifest.json" });
+      expect(blocked.text).toMatch(/already exists \(pass --force/);
+      expect(blocked.exitCode).toBe(1);
+      expect(paperBacktestResearchManifestReport({ cwd, env: {} }, { dir, outPath: "run/manifest.json", force: true }).text).toContain("Wrote manifest");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("excludes a manifest written into the same dir (so it never indexes itself)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeArtifactDir(cwd, "run");
+      // Write the manifest INTO the run dir, then re-index: the manifest meta file is skipped.
+      paperBacktestResearchManifestReport({ cwd, env: {} }, { dir, outPath: "run/research-manifest.json" });
+      const r = paperBacktestResearchManifestReport({ cwd, env: {} }, { dir, json: true });
+      const manifest = JSON.parse(r.text) as { artifactCount: number; artifacts: { path: string }[] };
+      expect(manifest.artifactCount).toBe(3); // still 3 — the manifest itself is excluded
+      expect(manifest.artifacts.some((a) => a.path === "research-manifest.json")).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("redacts a secret-looking artifact path (backstop)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      mkdirSync(join(cwd, "run"), { recursive: true });
+      // An 80+ char base58-looking run in a FILENAME ⇒ redacted in the manifest's path field.
+      const secret = "S".repeat(90);
+      writeFileSync(join(cwd, "run", `${secret}.report.json`), JSON.stringify({ schemaVersion: "backtest.report.v1" }));
+      const r = paperBacktestResearchManifestReport({ cwd, env: {} }, { dir: "run", json: true });
+      expect(r.text).not.toContain(secret);
+      expect(r.text).toContain("[REDACTED]");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperBacktestResearchVerifyReport (Sprint 16)", () => {
+  function setup(cwd: string): string {
+    const dir = join(cwd, "run");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "a.report.json"), JSON.stringify({ schemaVersion: "backtest.report.v1", x: 1 }, null, 2));
+    writeFileSync(join(dir, "b.suite.json"), JSON.stringify({ schemaVersion: "backtest.suite.v1", y: 2 }, null, 2));
+    paperBacktestResearchManifestReport({ cwd, env: {} }, { dir: "run", outPath: "manifest.json" });
+    return "run";
+  }
+
+  it("refuses when --manifest or --dir is missing", () => {
+    expect(paperBacktestResearchVerifyReport({}, {}).text).toMatch(/^Refusing: --manifest/);
+    expect(paperBacktestResearchVerifyReport({}, { manifestPath: "m.json" }).text).toMatch(/^Refusing: --dir/);
+  });
+
+  it("verifies a clean directory as VALID (exit 0) and writes nothing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = setup(cwd);
+      const before = readdirSync(join(cwd, dir)).sort();
+      const r = paperBacktestResearchVerifyReport({ cwd, env: {} }, { manifestPath: "manifest.json", dir });
+      expect(r.exitCode).toBe(0);
+      expect(r.text).toContain("(VALID)");
+      expect(readdirSync(join(cwd, dir)).sort()).toEqual(before); // wrote nothing
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("detects a changed artifact as INVALID (exit 1)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = setup(cwd);
+      writeFileSync(join(cwd, dir, "a.report.json"), JSON.stringify({ schemaVersion: "backtest.report.v1", x: 999 }, null, 2));
+      const r = paperBacktestResearchVerifyReport({ cwd, env: {} }, { manifestPath: "manifest.json", dir });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toContain("(INVALID)");
+      expect(r.text).toContain("digest-changed");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("detects an extra and a missing artifact", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = setup(cwd);
+      writeFileSync(join(cwd, dir, "c.extra.json"), JSON.stringify({ schemaVersion: "backtest.coverage.v1" }));
+      rmSync(join(cwd, dir, "b.suite.json"));
+      const r = paperBacktestResearchVerifyReport({ cwd, env: {} }, { manifestPath: "manifest.json", dir, json: true });
+      const v = JSON.parse(r.text) as { valid: boolean; extraCount: number; missingCount: number };
+      expect(v.valid).toBe(false);
+      expect(v.extraCount).toBe(1);
+      expect(v.missingCount).toBe(1);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed manifest", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = setup(cwd);
+      writeFileSync(join(cwd, "bad.json"), JSON.stringify({ not: "a manifest" }));
+      const r = paperBacktestResearchVerifyReport({ cwd, env: {} }, { manifestPath: "bad.json", dir });
+      expect(r.text).toMatch(/^Refusing:/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperBacktestDiffResearchManifestReport (Sprint 16)", () => {
+  /** Produce a manifest JSON string over a freshly-written dir. */
+  function makeManifest(cwd: string, sub: string, extra?: { name: string; content: unknown }): string {
+    const dir = join(cwd, sub);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "a.report.json"), JSON.stringify({ schemaVersion: "backtest.report.v1", x: 1 }));
+    if (extra) writeFileSync(join(dir, extra.name), JSON.stringify(extra.content));
+    return paperBacktestResearchManifestReport({ cwd, env: {} }, { dir: sub, json: true }).text;
+  }
+
+  it("refuses when --base or --next is missing", () => {
+    expect(paperBacktestDiffResearchManifestReport({}, {}).text).toMatch(/^Refusing: --base/);
+    expect(paperBacktestDiffResearchManifestReport({}, { basePath: "a.json" }).text).toMatch(/^Refusing: --next/);
+  });
+
+  it("reports no change for two identical manifests (exit 0)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const m = makeManifest(cwd, "one");
+      writeFileSync(join(cwd, "a.json"), m);
+      writeFileSync(join(cwd, "b.json"), m);
+      const r = paperBacktestDiffResearchManifestReport({ cwd, env: {} }, { basePath: "a.json", nextPath: "b.json" });
+      expect(r.exitCode).toBe(0);
+      expect(r.text).toContain("Changed: no");
+      expect(r.text.toLowerCase()).toContain("not a live result");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("detects an added artifact and --fail-on-change exits 1", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const baseM = makeManifest(cwd, "base");
+      const nextM = makeManifest(cwd, "next", { name: "b.suite.json", content: { schemaVersion: "backtest.suite.v1" } });
+      writeFileSync(join(cwd, "base.json"), baseM);
+      writeFileSync(join(cwd, "next.json"), nextM);
+      const r = paperBacktestDiffResearchManifestReport(
+        { cwd, env: {} },
+        { basePath: "base.json", nextPath: "next.json", failOnChange: true, json: true },
+      );
+      const diff = JSON.parse(r.text) as { hasChange: boolean; added: { path: string }[] };
+      expect(diff.hasChange).toBe(true);
+      expect(diff.added.map((a) => a.path)).toEqual(["b.suite.json"]);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a non-manifest input", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "a.json"), JSON.stringify({ nope: true }));
+      writeFileSync(join(cwd, "b.json"), JSON.stringify({ nope: true }));
+      const r = paperBacktestDiffResearchManifestReport({ cwd, env: {} }, { basePath: "a.json", nextPath: "b.json" });
       expect(r.text).toMatch(/^Refusing:/);
       expect(r.exitCode).toBe(1);
     } finally {

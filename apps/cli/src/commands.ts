@@ -105,6 +105,17 @@ import {
   formatScenarioVariantSensitivityMatrixDiff,
   summarizeBacktestSuiteCoverage,
   formatBacktestSuiteCoverage,
+  classifyBacktestArtifact,
+  buildBacktestResearchManifest,
+  formatBacktestResearchManifest,
+  verifyBacktestResearchManifest,
+  formatBacktestResearchVerification,
+  diffBacktestResearchManifests,
+  formatBacktestResearchManifestDiff,
+  digestContent,
+  BACKTEST_RESEARCH_MANIFEST_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_VERIFY_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_MANIFEST_DIFF_SCHEMA_VERSION,
   type BacktestReport,
   type BacktestReportDiff,
   type BacktestScenario,
@@ -121,6 +132,11 @@ import {
   type ScenarioVariantSensitivityMatrixRun,
   type ScenarioVariantSensitivityMatrixDiff,
   type BacktestSuiteCoverageReport,
+  type BacktestArtifactDescriptor,
+  type BacktestArtifactKind,
+  type BacktestResearchManifest,
+  type BacktestResearchVerification,
+  type BacktestResearchManifestDiff,
 } from "@soulmaker/backtest";
 
 export interface CommandContext {
@@ -2775,6 +2791,302 @@ export function paperBacktestSuiteCoverageReport(
     return JSON.stringify(redactValue(report), null, 2);
   }
   return formatBacktestSuiteCoverage(report, { label: opts.suiteIndexPath });
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 16 — paper:backtest:research:manifest / :verify / diff:research:manifest
+//   Index, verify, and diff the LOCAL JSON artifacts a PAPER-only research run
+//   produced — a reproducibility/audit layer. Reads local files only; no backtest,
+//   no journal, no network, no wallet.
+// ---------------------------------------------------------------------------
+
+/** Research-manifest META schemas — these index/describe artifacts and are not themselves run artifacts. */
+const RESEARCH_META_SCHEMAS = new Set<string>([
+  BACKTEST_RESEARCH_MANIFEST_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_VERIFY_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_MANIFEST_DIFF_SCHEMA_VERSION,
+]);
+
+/**
+ * Deterministically list every top-level-and-nested `*.json` file under `rootDir`, as
+ * forward-slashed paths RELATIVE to `rootDir`, sorted. Recurses real subdirectories only
+ * (symlinks are skipped — no traversal outside the tree) to a bounded depth, so a research
+ * output tree (`bases/`, `reports/`, `variants/`) is covered without following links. Never
+ * includes `*.jsonl` journals.
+ */
+function listJsonArtifactPaths(rootDir: string): string[] {
+  const out: string[] = [];
+  const MAX_DEPTH = 8;
+  const walk = (dir: string, rel: string, depth: number): void => {
+    if (depth > MAX_DEPTH) return;
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue; // deterministic; never follow a link out of the tree
+      const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full, childRel, depth + 1);
+      else if (entry.isFile() && /\.json$/i.test(entry.name)) out.push(childRel);
+    }
+  };
+  walk(rootDir, "", 0);
+  return out.sort();
+}
+
+/**
+ * Read every `*.json` artifact under `rootDir` and build a descriptor per file: its
+ * forward-slashed relative path, detected kind + schema, a deterministic non-cryptographic
+ * content digest, and byte size. A malformed (unparseable) file is indexed as `unknown-json`
+ * (digest over its raw text) and recorded in `malformed` — never a crash. Research-manifest
+ * META files (a manifest/verify/diff written into the same dir) are EXCLUDED so a manifest
+ * never indexes itself (and verify never sees it as "extra"). Read-only.
+ */
+function collectArtifactDescriptors(rootDir: string): {
+  descriptors: BacktestArtifactDescriptor[];
+  malformed: string[];
+} {
+  const descriptors: BacktestArtifactDescriptor[] = [];
+  const malformed: string[] = [];
+  for (const rel of listJsonArtifactPaths(rootDir)) {
+    const full = join(rootDir, rel);
+    let raw: string;
+    try {
+      raw = stripJsonBom(readFileSync(full, "utf8"));
+    } catch {
+      continue; // unreadable file — skip (it cannot be part of a reproducible set)
+    }
+    let sizeBytes: number;
+    try {
+      sizeBytes = statSync(full).size;
+    } catch {
+      sizeBytes = Buffer.byteLength(raw, "utf8");
+    }
+    let kind: BacktestArtifactKind;
+    let schemaVersion: string | null;
+    let digest: string;
+    try {
+      const parsed = JSON.parse(raw);
+      const classified = classifyBacktestArtifact(parsed);
+      // Skip research-manifest meta files so a manifest never indexes itself.
+      if (classified.schemaVersion !== null && RESEARCH_META_SCHEMAS.has(classified.schemaVersion)) {
+        continue;
+      }
+      kind = classified.kind;
+      schemaVersion = classified.schemaVersion;
+      digest = digestContent(parsed);
+    } catch {
+      malformed.push(rel);
+      kind = "unknown-json";
+      schemaVersion = null;
+      digest = digestContent(raw);
+    }
+    descriptors.push({ path: rel, kind, schemaVersion, digest, sizeBytes });
+  }
+  return { descriptors, malformed };
+}
+
+/** Resolve `--dir` to an existing directory or a clean refusal reason. */
+function resolveArtifactDir(
+  ctx: CommandContext,
+  dirArg: string,
+  label: string,
+): { ok: true; dir: string } | { ok: false; reason: string } {
+  const dir = resolvePath(ctx, dirArg);
+  let isDir = false;
+  try {
+    isDir = statSync(dir).isDirectory();
+  } catch {
+    return { ok: false, reason: `${label} directory not found at ${dir}` };
+  }
+  if (!isDir) return { ok: false, reason: `${label} path ${dir} is not a directory` };
+  return { ok: true, dir };
+}
+
+export interface PaperBacktestResearchManifestCommandOptions {
+  /** Directory of local research artifacts to index (required). */
+  dir?: string;
+  /** Optional path to write the manifest JSON to (writes nothing without it). */
+  outPath?: string;
+  /** Overwrite the --out file if it exists (refused by default). */
+  force?: boolean;
+  json?: boolean;
+  /** Exit non-zero if any artifact is unknown/malformed. */
+  strict?: boolean;
+}
+
+/**
+ * `soulmaker paper:backtest:research:manifest` — build a reproducibility MANIFEST of the
+ * local JSON artifacts under `--dir` (recursing real subdirectories, BOM-tolerant, sorted).
+ * Each artifact is classified by schema/shape and fingerprinted with a non-cryptographic,
+ * reproducibility-only content digest; a malformed file is indexed as `unknown-json` and
+ * reported, never a crash. With `--out` it writes ONLY the manifest JSON (refuses to
+ * overwrite without `--force`; no other file is touched). `--json` prints the manifest;
+ * `--strict` exits non-zero when any unknown/malformed artifact is present. It reads local
+ * files only — no backtest, no journal, no network, no wallet. The manifest is local
+ * bookkeeping, not a live result, not advice, and not a profitability claim.
+ */
+export function paperBacktestResearchManifestReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestResearchManifestCommandOptions = {},
+): CliReport {
+  if (!opts.dir) return { text: "Refusing: --dir <path> is required.", exitCode: 1 };
+
+  const resolved = resolveArtifactDir(ctx, opts.dir, "artifact");
+  if (!resolved.ok) return { text: redactString(`Refusing: ${resolved.reason}`), exitCode: 1 };
+
+  const { descriptors, malformed } = collectArtifactDescriptors(resolved.dir);
+
+  let manifest: BacktestResearchManifest;
+  try {
+    manifest = buildBacktestResearchManifest({ runName: basename(resolved.dir), artifacts: descriptors });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // Write the manifest only when --out is given; refuse to overwrite without --force.
+  let writtenNote = "";
+  if (opts.outPath) {
+    const outPath = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(outPath)) {
+      return {
+        text: redactString(`Refusing: ${outPath} already exists (pass --force to overwrite).`),
+        exitCode: 1,
+      };
+    }
+    try {
+      writeFileSync(outPath, JSON.stringify(redactValue(manifest), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write manifest to ${outPath}`), exitCode: 1 };
+    }
+    writtenNote = `\n\nWrote manifest to ${outPath}`;
+  }
+
+  const unknownCount = manifest.artifacts.filter((a) => a.kind === "unknown-json").length;
+  const exitCode = opts.strict && (unknownCount > 0 || malformed.length > 0) ? 1 : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(manifest), null, 2), exitCode };
+  }
+  const malformedNote =
+    malformed.length > 0
+      ? `\n\nMalformed (unparseable) JSON file(s), indexed as unknown-json:\n` +
+        malformed.map((p) => `- ${p}`).join("\n")
+      : "";
+  return {
+    text: redactString(
+      formatBacktestResearchManifest(manifest, { label: opts.dir }) + malformedNote + writtenNote,
+    ),
+    exitCode,
+  };
+}
+
+export interface PaperBacktestResearchVerifyCommandOptions {
+  /** Path to a manifest JSON to verify against (required). */
+  manifestPath?: string;
+  /** Directory of current local artifacts (required). */
+  dir?: string;
+  json?: boolean;
+}
+
+/**
+ * `soulmaker paper:backtest:research:verify` — verify a previously-written MANIFEST against
+ * the CURRENT artifacts under `--dir`. Re-reads each local artifact, recomputes its digest +
+ * size, and reports missing / digest-changed / schema-changed / size-changed / extra / ok per
+ * artifact plus a VALID/INVALID verdict. It reads local files only and WRITES NOTHING. Exit 0
+ * when valid, 1 when invalid (or on a malformed/missing manifest). `--json` emits the stable,
+ * redacted verification. No backtest, no journal, no network, no wallet.
+ */
+export function paperBacktestResearchVerifyReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestResearchVerifyCommandOptions = {},
+): CliReport {
+  if (!opts.manifestPath) return { text: "Refusing: --manifest <path> is required.", exitCode: 1 };
+  if (!opts.dir) return { text: "Refusing: --dir <path> is required.", exitCode: 1 };
+
+  let manifestValue: unknown;
+  try {
+    manifestValue = readJsonValue(ctx, opts.manifestPath, "manifest");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const resolved = resolveArtifactDir(ctx, opts.dir, "artifact");
+  if (!resolved.ok) return { text: redactString(`Refusing: ${resolved.reason}`), exitCode: 1 };
+
+  const { descriptors } = collectArtifactDescriptors(resolved.dir);
+
+  let verification: BacktestResearchVerification;
+  try {
+    verification = verifyBacktestResearchManifest(manifestValue, descriptors);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const exitCode = verification.valid ? 0 : 1;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(verification), null, 2), exitCode };
+  }
+  return { text: redactString(formatBacktestResearchVerification(verification)), exitCode };
+}
+
+export interface PaperBacktestDiffResearchManifestCommandOptions {
+  /** Path to the BASE manifest JSON (required). */
+  basePath?: string;
+  /** Path to the NEXT manifest JSON (required). */
+  nextPath?: string;
+  json?: boolean;
+  /** Exit non-zero when the diff reports any change. */
+  failOnChange?: boolean;
+}
+
+/**
+ * `soulmaker paper:backtest:diff:research:manifest` — diff TWO manifest JSON files. Reads
+ * ONLY the two named local files (BOM-tolerant; a missing/malformed/non-manifest file
+ * refuses), runs no backtest, and writes nothing. It pairs artifacts by path and reports
+ * added/removed/changed artifacts, count + total-size deltas, and per-kind / per-schema count
+ * changes. `--json` emits the stable, redacted diff; `--fail-on-change` exits non-zero when
+ * `diff.hasChange` is true. No network, no wallet.
+ */
+export function paperBacktestDiffResearchManifestReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestDiffResearchManifestCommandOptions = {},
+): CliReport {
+  if (!opts.basePath) return { text: "Refusing: --base <path> is required.", exitCode: 1 };
+  if (!opts.nextPath) return { text: "Refusing: --next <path> is required.", exitCode: 1 };
+
+  let baseValue: unknown;
+  try {
+    baseValue = readJsonValue(ctx, opts.basePath, "base manifest");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let nextValue: unknown;
+  try {
+    nextValue = readJsonValue(ctx, opts.nextPath, "next manifest");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let diff: BacktestResearchManifestDiff;
+  try {
+    diff = diffBacktestResearchManifests(baseValue, nextValue);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const exitCode = opts.failOnChange && diff.hasChange ? 1 : 0;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(diff), null, 2), exitCode };
+  }
+  return {
+    text: formatBacktestResearchManifestDiff(diff, { baseLabel: opts.basePath, nextLabel: opts.nextPath }),
+    exitCode,
+  };
 }
 
 function yesNo(value: boolean): string {

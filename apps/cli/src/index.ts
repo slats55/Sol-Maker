@@ -28,6 +28,9 @@ import {
   paperBacktestSensitivityMatrixReport,
   paperBacktestDiffSensitivityMatrixReport,
   paperBacktestSuiteCoverageReport,
+  paperBacktestResearchManifestReport,
+  paperBacktestResearchVerifyReport,
+  paperBacktestDiffResearchManifestReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -629,6 +632,71 @@ program
         nextPath: opts.next,
         json: Boolean(opts.json),
         failOnRegression: Boolean(opts.failOnRegression),
+      },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("paper:backtest:research:manifest")
+  .description(
+    "Build a reproducibility manifest of the LOCAL JSON artifacts a paper research run produced (PAPER ONLY; classifies each artifact + a non-cryptographic reproducibility-only content digest; local artifacts only, not a live result, not advice)",
+  )
+  .option("--dir <path>", "directory of local research artifacts to index (recurses real subdirs)")
+  .option("--out <path>", "write ONLY the manifest JSON to this file")
+  .option("--force", "overwrite the --out file if it already exists")
+  .option("--json", "emit the manifest as stable JSON")
+  .option("--strict", "exit non-zero if any unknown/malformed artifact is present")
+  .action((opts: { dir?: string; out?: string; force?: boolean; json?: boolean; strict?: boolean }) => {
+    const { text, exitCode } = paperBacktestResearchManifestReport(
+      {},
+      {
+        dir: opts.dir,
+        outPath: opts.out,
+        force: Boolean(opts.force),
+        json: Boolean(opts.json),
+        strict: Boolean(opts.strict),
+      },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("paper:backtest:research:verify")
+  .description(
+    "Verify a previously-written research manifest against the CURRENT local artifacts (PAPER ONLY; recomputes digests/sizes → missing/changed/extra/schema-mismatch; writes nothing; exit 1 if invalid)",
+  )
+  .option("--manifest <path>", "manifest JSON to verify against")
+  .option("--dir <path>", "directory of current local artifacts")
+  .option("--json", "emit the verification as stable JSON")
+  .action((opts: { manifest?: string; dir?: string; json?: boolean }) => {
+    const { text, exitCode } = paperBacktestResearchVerifyReport(
+      {},
+      { manifestPath: opts.manifest, dir: opts.dir, json: Boolean(opts.json) },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("paper:backtest:diff:research:manifest")
+  .description(
+    "Deterministically diff TWO research manifest JSON files (PAPER ONLY; pairs artifacts by path → added/removed/changed + count/size deltas; reads two files, writes nothing)",
+  )
+  .option("--base <path>", "BASE manifest JSON (the reference)")
+  .option("--next <path>", "NEXT manifest JSON (compared against base)")
+  .option("--json", "emit the manifest diff as stable JSON")
+  .option("--fail-on-change", "exit non-zero when the diff reports any change")
+  .action((opts: { base?: string; next?: string; json?: boolean; failOnChange?: boolean }) => {
+    const { text, exitCode } = paperBacktestDiffResearchManifestReport(
+      {},
+      {
+        basePath: opts.base,
+        nextPath: opts.next,
+        json: Boolean(opts.json),
+        failOnChange: Boolean(opts.failOnChange),
       },
     );
     console.log(text);
