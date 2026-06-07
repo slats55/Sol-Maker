@@ -296,3 +296,34 @@ export type {
   MatrixRankingMovement,
   FormatScenarioVariantSensitivityMatrixDiffOptions,
 } from "./sensitivity-matrix-diff.js";
+
+export {
+  classifyBacktestArtifact,
+  buildBacktestResearchManifest,
+  validateBacktestResearchManifest,
+  formatBacktestResearchManifest,
+  verifyBacktestResearchManifest,
+  formatBacktestResearchVerification,
+  BacktestResearchManifestError,
+  BACKTEST_ARTIFACT_KINDS,
+  BACKTEST_RESEARCH_MANIFEST_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_VERIFY_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_MANIFEST_BANNER,
+  BACKTEST_RESEARCH_VERIFY_BANNER,
+  BACKTEST_RESEARCH_DIGEST_ALGORITHM,
+  BACKTEST_RESEARCH_MANIFEST_DISCLAIMERS,
+} from "./research-manifest.js";
+
+export type {
+  BacktestArtifactKind,
+  BacktestArtifactDescriptor,
+  BuildBacktestResearchManifestInput,
+  BacktestArtifactKindCount,
+  BacktestArtifactSchemaCount,
+  BacktestResearchManifest,
+  ResearchArtifactVerifyStatus,
+  ResearchArtifactSnapshot,
+  BacktestResearchArtifactVerification,
+  BacktestResearchVerification,
+  FormatBacktestResearchManifestOptions,
+} from "./research-manifest.js";
