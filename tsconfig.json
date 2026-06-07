@@ -6,6 +6,8 @@
   "include": [
     "packages/*/src/**/*",
     "apps/cli/src/**/*",
+    "apps/web/src/**/*",
+    "apps/web/tests/**/*",
     "vitest.config.ts",
     "eslint.config.mjs"
   ],

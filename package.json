@@ -15,6 +15,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "web:build": "tsx apps/web/src/build.ts",
     "check": "pnpm run typecheck && pnpm run lint && pnpm run test"
   },
   "devDependencies": {
