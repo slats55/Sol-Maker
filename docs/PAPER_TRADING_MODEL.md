@@ -1,4 +1,4 @@
-# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow; Sprint 14 paper research lab — rankings, variant-plan explain, sensitivity diff, config perturbations, suite coverage)
+# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow; Sprint 14 paper research lab — rankings, variant-plan explain, sensitivity diff, config perturbations, suite coverage; Sprint 15 cross-scenario sensitivity matrix + matrix diff)
 
 The paper engine (`@soulmaker/paper` + the `paper:*` CLI commands) is a
 **deterministic, offline, simulated-only** trading sandbox. It exists to prove
@@ -433,6 +433,46 @@ beyond the existing layers.
   **not** market coverage and **not** test/code coverage — derived only from counts the
   index already carries.
 
+## Cross-scenario sensitivity matrix (Sprint 15)
+
+Sprint 15 lifts the single-base sensitivity workflow to **many** bases at once: "how
+does the SAME bounded variant plan move the simulated bookkeeping across SEVERAL injected
+base scenarios?". `@soulmaker/backtest` exports the pure
+`runScenarioVariantSensitivityMatrix({ name?, bases, plan })`,
+`buildScenarioVariantSensitivityMatrixReport`, `validateScenarioVariantSensitivityMatrixReport`,
+and `formatScenarioVariantSensitivityMatrixReport` (schema `backtest.sensitivity.matrix.v1`);
+the CLI adds `paper:backtest:sensitivity:matrix --dir <scenarios> --plan <p> [--out-dir <d>]
+[--force] [--json] [--fail-on-error]`.
+
+The runner sweeps each base through the EXACT Sprint 13 workflow above (so an invalid or
+plan-incompatible base is refused, **named**, before any aggregate — no partial matrix),
+then aggregates every `(base × variant)` cell:
+
+1. **Per-base rows** — each base's baseline status/summary, passed/failed variant counts,
+   warning count, and one cell per variant suffix (status, digest, change count, and the
+   per-field delta vs that base's baseline).
+2. **Per-variant cross-base aggregates** — for each suffix, over the diffable cells:
+   `count`, `sum`, signed `min`/`max`, `meanMagnitude`, and `maxMagnitude` of each
+   simulated delta dimension (total/realized/unrealized PnL, fills, rejects, notional).
+3. **Cross-base rankings** — variant suffixes ordered by the size of each cross-base
+   movement (max/mean magnitude), largest first, ties by suffix. Neutral wording — the
+   *largest simulated movement*, **never** a "best"/"winner"/"most profitable" ordering.
+
+The matrix is **rectangular by construction** (the runner asserts every base produced the
+same ordered suffix set) and, like every layer here, **pure**, non-mutating, and
+**timestamp-free** — an identical input yields a byte-identical report. The package never
+reads a directory; the CLI owns all IO. With `--out-dir` it writes a preflighted
+`sensitivity-matrix-report.json` plus one `bases/<id>.sensitivity-report.json` per base
+(overwrite refused without `--force`; never a journal or fills). A companion
+`paper:backtest:diff:sensitivity:matrix --base <a> --next <b> [--json]
+[--fail-on-regression]` (pure `diffScenarioVariantSensitivityMatrixReports`; schema
+`backtest.sensitivity.matrix.diff.v1`) pairs bases by id and cells by suffix and applies
+the same **conservative** regression model: a removed passed base, a newly-failing or
+same-digest-drifted base/cell, or a schema mismatch is a regression; a changed-content
+base and a cross-base aggregate change are descriptive, not regressions. Comparing two
+different base scenarios is a bookkeeping comparison, never a "which token is better"
+claim.
+
 ## PnL reporting
 
 `PaperRunSummary`: realized PnL, unrealized PnL, total PnL, open position count,
@@ -460,6 +500,8 @@ simulated, or sent" disclaimer.
 | `paper:backtest:diff:suite` | diff **two** suite output directories by their `suite-index.json` (Sprint 11): added/removed/changed scenarios + aggregate deltas + conservative `hasRegression`; a changed scenario is not a regression |
 | `paper:backtest:sensitivity` | run a base scenario (baseline) + bounded variants of it through the suite path and emit a stable `backtest.sensitivity.v1` report of each variant's per-field delta vs the baseline + deterministic **rankings** (Sprint 13; **rankings Sprint 14**); `--out-dir` writes variants/ + reports/ + `sensitivity-report.json` (preflighted, no partial writes, `--force` to overwrite); deltas are simulated bookkeeping, not a profitability claim |
 | `paper:backtest:diff:sensitivity` | diff **two** sensitivity report JSON files (Sprint 14): pairs variants by suffix → added/removed/changed + baseline/count deltas + ranking movement + conservative `hasRegression` (`backtest.sensitivity.diff.v1`); a same-digest drift is a regression, a changed-content variant is not |
+| `paper:backtest:sensitivity:matrix` | sweep a **directory** of injected base scenarios through **one** shared variant plan and aggregate every `(base × variant)` cell into a stable `backtest.sensitivity.matrix.v1` report (Sprint 15): per-base rows, per-variant cross-base delta aggregates, neutral cross-base rankings; `--out-dir` writes `sensitivity-matrix-report.json` + `bases/<id>.sensitivity-report.json` (preflighted, no partial writes, `--force`); an invalid/incompatible base refuses the whole matrix |
+| `paper:backtest:diff:sensitivity:matrix` | diff **two** matrix report JSON files (Sprint 15): pairs bases by id and cells by suffix → added/removed/changed bases + count deltas + cross-base aggregate changes + conservative `hasRegression` (`backtest.sensitivity.matrix.diff.v1`); a removed passed base or same-digest drift is a regression, a changed-content base is not |
 
 `paper:run` options: `--candidates <path>` `--prices <path>` `--journal <path>`
 `--max-trade-size-usd` `--max-daily-loss-usd` `--max-open-positions`

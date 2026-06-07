@@ -427,3 +427,68 @@ Every artifact is **simulated bookkeeping over injected data** — not a live re
 a backtest of real history, not advice, and not a profitability claim. A delta is the
 change between two simulations; a ranking is the largest simulated movement, not a
 "winner"; coverage is behavioural, not market or test coverage.
+
+## Sweeping many bases at once: the sensitivity matrix (Sprint 15)
+
+Where `paper:backtest:sensitivity` sweeps **one** base scenario through a plan,
+`paper:backtest:sensitivity:matrix` sweeps a whole **directory** of base scenarios
+through **one shared plan** and aggregates the results into a single
+**cross-scenario** report. This very directory is a ready-made matrix: all four shipped
+`*.scenario.json` files are compatible with the shipped price plan, so it is a **4-base ×
+3-variant** matrix out of the box:
+
+```bash
+# Human report (PAPER-only; nothing written without --out-dir):
+pnpm soulmaker paper:backtest:sensitivity:matrix \
+  --dir examples/backtest \
+  --plan examples/backtest/price-sensitivity.variant-plan.json
+
+# Stable machine-readable report (schema backtest.sensitivity.matrix.v1):
+pnpm soulmaker paper:backtest:sensitivity:matrix \
+  --dir examples/backtest \
+  --plan examples/backtest/price-sensitivity.variant-plan.json --json
+
+# Also write the matrix tree (refuses overwrite without --force):
+#   <out>/sensitivity-matrix-report.json          (the Sprint 15 matrix report)
+#   <out>/bases/<id>.sensitivity-report.json      (one Sprint 13 report per base)
+pnpm soulmaker paper:backtest:sensitivity:matrix \
+  --dir examples/backtest \
+  --plan examples/backtest/price-sensitivity.variant-plan.json --out-dir matrix/
+# --fail-on-error exits non-zero if any base baseline or variant run failed.
+```
+
+The matrix reads every top-level `*.scenario.json` in `--dir` (sorted by filename,
+BOM-tolerant), derives a stable **base id** from each filename (two files that sanitize to
+the same id are refused), and runs each base through the SAME Sprint 13 workflow. It is
+**rectangular by construction** — every base is swept through the same plan, so each row
+has the same variant suffixes — and **conservative**: a base that is invalid or
+**incompatible** with the plan (a perturbation matching none of its injected values)
+refuses the **whole** matrix, named, before any aggregate is built (no partial output).
+
+For each variant suffix the report aggregates that one perturbation's effect **across all
+bases**: `count` / `sum` / signed `min`・`max` / `meanMagnitude` / `maxMagnitude` of each
+simulated delta (total/realized/unrealized PnL, fills, rejects, notional), plus neutral
+**cross-base rankings** ordered by the size of that movement. As with every layer here, a
+cross-base aggregate is **plain arithmetic over simulated deltas** — comparing two
+different base scenarios is a bookkeeping comparison, **never** a "which token is better"
+claim, a live result, or advice.
+
+To regression-review a matrix across two runs, diff two `sensitivity-matrix-report.json`
+files:
+
+```bash
+pnpm soulmaker paper:backtest:sensitivity:matrix --dir scenariosA/ --plan "$PLAN" --out-dir runA/
+pnpm soulmaker paper:backtest:sensitivity:matrix --dir scenariosB/ --plan "$PLAN" --out-dir runB/
+pnpm soulmaker paper:backtest:diff:sensitivity:matrix \
+  --base runA/sensitivity-matrix-report.json \
+  --next runB/sensitivity-matrix-report.json --fail-on-regression
+```
+
+`paper:backtest:diff:sensitivity:matrix` reads **only** the two report files (runs no
+backtest, writes nothing). It pairs bases by id and cells by suffix and reports
+added / removed / **changed** bases plus count and cross-base aggregate deltas.
+Regressions are conservative: a **removed passed base** (lost coverage), a newly-failing
+or **same-digest-drifted** base/cell, an increased failed count, or a schema mismatch is a
+regression; a **changed-content** base and a cross-base aggregate change are descriptive,
+**not** regressions. (Phases 6 and 7 remain **not started**; nothing here touches a
+wallet, key, signing, sending, or the network.)

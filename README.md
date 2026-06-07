@@ -86,10 +86,19 @@ injected values it would change) without generating or running anything;
 `hasRegression` flag; variant plans gained an allowlisted **`config.<field>`**
 perturbation target (e.g. `config.maxTradeSizeUsd`, no path traversal); and
 `paper:backtest:suite:coverage` reports which simulated paper-trading paths a suite
-exercised (behavioural bookkeeping coverage, **not** market or test coverage). None of
-this fetches live data or begins transaction planning (roadmap Phase 6 remains not
-started; Phase 7 burner live remains not started). The default mode is `PAPER`. See
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
+exercised (behavioural bookkeeping coverage, **not** market or test coverage). Sprint 15
+adds the **cross-scenario sensitivity matrix**: `paper:backtest:sensitivity:matrix --dir
+<scenarios> --plan <plan>` sweeps a whole directory of injected base scenarios through
+**one shared variant plan** (each base via the Sprint 13 workflow) and aggregates every
+`(base × variant)` cell into a stable, versioned (`backtest.sensitivity.matrix.v1`)
+report — per-base rows, per-variant cross-base delta aggregates (sum / signed min・max /
+mean & max magnitude), and neutral cross-base rankings (largest movement, never a
+"best"/"winner"). A base that is invalid or incompatible with the plan refuses the whole
+matrix (named) with no partial output; `--out-dir` writes the matrix report plus one
+per-base sensitivity report, and `paper:backtest:diff:sensitivity:matrix` diffs two matrix
+reports with a conservative `hasRegression` flag. None of this fetches live data or begins
+transaction planning (roadmap Phase 6 remains not started; Phase 7 burner live remains not
+started). The default mode is `PAPER`. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Non-negotiable security rules (summary)
 
@@ -125,7 +134,8 @@ soulmaker/
                 #                    paper:backtest:scenario:variants:explain,
                 #                    paper:backtest:suite, paper:backtest:diff:suite,
                 #                    paper:backtest:suite:coverage,
-                #                    paper:backtest:sensitivity, paper:backtest:diff:sensitivity)
+                #                    paper:backtest:sensitivity, paper:backtest:diff:sensitivity,
+                #                    paper:backtest:sensitivity:matrix, paper:backtest:diff:sensitivity:matrix)
     web/        # Phase 8 dashboard (placeholder)
   packages/
     core/       # @soulmaker/core      — config schema, modes, risk caps, LIVE GATE
@@ -145,7 +155,8 @@ soulmaker/
                 #            Sprint 12 adds the deterministic scenario variant generator;
                 #            Sprint 13 adds the pure variant-sensitivity workflow + report;
                 #            Sprint 14 adds sensitivity rankings, variant-plan explain,
-                #            sensitivity diff, config.<field> perturbations, and suite coverage
+                #            sensitivity diff, config.<field> perturbations, and suite coverage;
+                #            Sprint 15 adds the multi-base sensitivity matrix + matrix diff
                 #            (still pure: the package never scans dirs or reads/writes files)
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
@@ -294,6 +305,18 @@ pnpm soulmaker paper:backtest:diff:sensitivity \
 # (c) COVERAGE of a suite index — which simulated paper paths were exercised
 #     (behavioural bookkeeping coverage, NOT market/test coverage):
 pnpm soulmaker paper:backtest:suite:coverage --suite-index <reports/suite-index.json>
+
+# Sprint 15 — CROSS-SCENARIO sensitivity MATRIX: sweep a whole directory of injected
+# base scenarios through ONE shared variant plan and aggregate every (base × variant)
+# cell. The examples directory is a ready-made 4-base × 3-variant matrix. --out-dir
+# writes sensitivity-matrix-report.json + bases/<id>.sensitivity-report.json:
+pnpm soulmaker paper:backtest:sensitivity:matrix \
+  --dir examples/backtest \
+  --plan examples/backtest/price-sensitivity.variant-plan.json --out-dir <matrix/> --json
+# DIFF two matrix reports (pairs bases by id and cells by suffix; conservative regression
+# — a removed passed base or a same-digest drift is a regression, a changed base is not):
+pnpm soulmaker paper:backtest:diff:sensitivity:matrix \
+  --base <runA/sensitivity-matrix-report.json> --next <runB/sensitivity-matrix-report.json> --fail-on-regression
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

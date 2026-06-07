@@ -28,7 +28,7 @@ packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.j
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
-packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage (Sprint 8–14)  [strategy, paper, security]
+packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff (Sprint 8–15)  [strategy, paper, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -135,6 +135,23 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   The CLI adds `paper:backtest:scenario:variants:explain`,
   `paper:backtest:diff:sensitivity`, and `paper:backtest:suite:coverage`; all read only
   local JSON, write nothing, and run no backtest.
+- **(Sprint 15)** `@soulmaker/backtest` adds the **cross-scenario sensitivity matrix** —
+  `sensitivity-matrix.ts` (`runScenarioVariantSensitivityMatrix({ name?, bases, plan })`,
+  `buildScenarioVariantSensitivityMatrixReport`, `validate…`, `format…`; schema
+  `backtest.sensitivity.matrix.v1`) sweeps N injected bases through ONE shared plan by
+  calling the EXACT Sprint 13 `runScenarioVariantSensitivity` per base (no engine logic
+  re-implemented), then aggregates every `(base × variant)` cell into per-base rows,
+  per-variant cross-base delta aggregates, and neutral cross-base rankings. It is
+  rectangular by construction and refuses an invalid/incompatible base (named) before any
+  aggregate is built. `sensitivity-matrix-diff.ts`
+  (`diffScenarioVariantSensitivityMatrixReports`; schema
+  `backtest.sensitivity.matrix.diff.v1`) is the matrix analogue of `sensitivity-diff.ts`,
+  pairing bases by id and cells by suffix with the same conservative same-digest-drift /
+  removed-passed-base regression rules. The package stays **pure** — the CLI
+  (`paper:backtest:sensitivity:matrix`, `paper:backtest:diff:sensitivity:matrix`) is the
+  only layer that reads the scenarios directory and preflights/writes the matrix output
+  tree (`sensitivity-matrix-report.json` + `bases/<id>.sensitivity-report.json`); it never
+  writes a journal or fills.
 
 ## The live boundary
 

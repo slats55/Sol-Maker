@@ -11,7 +11,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runBacktest, lintBacktestScenario, generateScenarioVariants } from "@soulmaker/backtest";
-import { paperBacktestReport, paperBacktestLintReport } from "./commands.js";
+import {
+  paperBacktestReport,
+  paperBacktestLintReport,
+  paperBacktestSensitivityMatrixReport,
+} from "./commands.js";
 
 const EXAMPLES_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../examples/backtest");
 
@@ -125,6 +129,48 @@ describe("examples/backtest — CLI smoke", () => {
     );
     expect(out).toContain("SIMULATED PAPER-ONLY REPORT");
     expect(out).toContain("simulated fills:   1 buy / 1 sell");
+  });
+
+  it("paper:backtest:sensitivity:matrix sweeps ALL shipped scenarios through the shipped plan", () => {
+    // The four shipped *.scenario.json files are all compatible with the shipped price
+    // plan, so the examples directory IS a ready-made 4-base × 3-variant matrix. This
+    // locks that coherence: a future incompatible example would fail here loudly.
+    const r = paperBacktestSensitivityMatrixReport(
+      { cwd: join(EXAMPLES_DIR, "../.."), env: {} },
+      {
+        dir: "examples/backtest",
+        planPath: "examples/backtest/price-sensitivity.variant-plan.json",
+        json: true,
+      },
+    );
+    expect(r.exitCode).toBe(0);
+    const report = JSON.parse(r.text) as {
+      schemaVersion: string;
+      baseCount: number;
+      variantCount: number;
+      passedBaseCount: number;
+      bases: { id: string }[];
+    };
+    expect(report.schemaVersion).toBe("backtest.sensitivity.matrix.v1");
+    expect(report.baseCount).toBe(4);
+    expect(report.variantCount).toBe(3);
+    expect(report.passedBaseCount).toBe(4);
+    expect(report.bases.map((b) => b.id)).toEqual([
+      "multi-mint-partial-exit",
+      "seed-journal-continuation",
+      "single-mint-buy-full-exit",
+      "single-mint-buy-hold",
+    ]);
+    // Deterministic: a second sweep is byte-identical.
+    const r2 = paperBacktestSensitivityMatrixReport(
+      { cwd: join(EXAMPLES_DIR, "../.."), env: {} },
+      {
+        dir: "examples/backtest",
+        planPath: "examples/backtest/price-sensitivity.variant-plan.json",
+        json: true,
+      },
+    );
+    expect(r2.text).toBe(r.text);
   });
 
   it("paper:backtest --json --out writes ONLY a report JSON (no journal) to a temp dir", () => {

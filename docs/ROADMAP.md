@@ -115,7 +115,9 @@ Sprint 11 backtest suite runs + suite diffing over directories of injected scena
 Sprint 12 deterministic scenario variant generation + suite-over-variants;
 Sprint 13 variant-sensitivity workflow + report over the base + its variants;
 Sprint 14 paper research lab — sensitivity rankings, variant-plan explain (dry-run),
-sensitivity-report diffing, allowlisted config-field perturbations, suite coverage):
+sensitivity-report diffing, allowlisted config-field perturbations, suite coverage;
+Sprint 15 cross-scenario sensitivity matrix — sweep many bases through one plan,
+aggregate every (base × variant) cell, diff two matrices):
 
 - ✅ Deterministic, **paper-only** rules engine: turns an advisory
   `@soulmaker/risk` report + injected, read-only metrics into a single decision —
@@ -330,6 +332,30 @@ sensitivity-report diffing, allowlisted config-field perturbations, suite covera
     path-behaviour ratio) using ONLY existing index fields. Explicitly **behavioural
     bookkeeping** coverage — **not** market coverage, **not** test/code coverage, **not**
     a profitability claim.
+- ✅ **(Sprint 15) Cross-scenario sensitivity matrix** — `@soulmaker/backtest` exports
+  the pure `runScenarioVariantSensitivityMatrix({ name?, bases, plan })`,
+  `buildScenarioVariantSensitivityMatrixReport`, `validate…`, and `format…` (schema
+  `backtest.sensitivity.matrix.v1`); the CLI adds `paper:backtest:sensitivity:matrix
+  --dir <scenarios> --plan <p> [--out-dir <d>] [--force] [--json] [--fail-on-error]`. It
+  sweeps SEVERAL injected base scenarios through ONE shared variant plan — each base via
+  the EXACT Sprint 13 workflow — and aggregates every `(base × variant)` cell into one
+  deterministic, byte-stable, non-mutating report: per-base rows (baseline + cells),
+  per-variant **cross-base** delta aggregates (`count`/`sum`/signed `min`・`max`/
+  `meanMagnitude`/`maxMagnitude`), and neutral cross-base rankings (largest movement,
+  never a "best"/"winner"). It is rectangular by construction (the runner asserts every
+  base produced the same ordered suffix set) and conservative: a base that is invalid or
+  incompatible with the plan refuses the WHOLE matrix (named) before any aggregate is
+  built — no partial matrix. `--out-dir` writes a preflighted
+  `sensitivity-matrix-report.json` + `bases/<id>.sensitivity-report.json` tree (overwrite
+  refused without `--force`; never a journal). A companion matrix diff —
+  `diffScenarioVariantSensitivityMatrixReports` + `validate`/`format` (schema
+  `backtest.sensitivity.matrix.diff.v1`) and CLI `paper:backtest:diff:sensitivity:matrix
+  --base <a> --next <b> [--json] [--fail-on-regression]` — pairs bases by id and cells by
+  suffix with the same conservative regression model (a removed passed base, a
+  newly-failing or same-digest-drifted base/cell, or a schema mismatch is a regression; a
+  changed-content base and a cross-base aggregate change are not). The package stays pure
+  (the CLI layer does all directory IO). Every number is simulated bookkeeping — not a
+  live result, not advice, not a profitability claim.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 
