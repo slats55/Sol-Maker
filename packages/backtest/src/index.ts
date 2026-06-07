@@ -248,3 +248,29 @@ export type {
   SensitivityRankingEntry,
   FormatScenarioVariantSensitivityOptions,
 } from "./sensitivity.js";
+
+export {
+  runScenarioVariantSensitivityMatrix,
+  buildScenarioVariantSensitivityMatrixReport,
+  validateScenarioVariantSensitivityMatrixReport,
+  formatScenarioVariantSensitivityMatrixReport,
+  ScenarioVariantSensitivityMatrixError,
+  BACKTEST_SENSITIVITY_MATRIX_SCHEMA_VERSION,
+  BACKTEST_SENSITIVITY_MATRIX_BANNER,
+  BACKTEST_SENSITIVITY_MATRIX_DISCLAIMERS,
+} from "./sensitivity-matrix.js";
+
+export type {
+  ScenarioVariantSensitivityMatrixBase,
+  ScenarioVariantSensitivityMatrixInput,
+  ScenarioVariantSensitivityMatrixCell,
+  ScenarioVariantSensitivityMatrixBaseEntry,
+  ScenarioVariantSensitivityMatrixDeltaStat,
+  ScenarioVariantSensitivityMatrixVariantAggregate,
+  ScenarioVariantSensitivityMatrixRankingEntry,
+  ScenarioVariantSensitivityMatrixRankings,
+  ScenarioVariantSensitivityMatrixReport,
+  ScenarioVariantSensitivityMatrixRun,
+  BuildScenarioVariantSensitivityMatrixOptions,
+  FormatScenarioVariantSensitivityMatrixOptions,
+} from "./sensitivity-matrix.js";
