@@ -274,3 +274,25 @@ export type {
   BuildScenarioVariantSensitivityMatrixOptions,
   FormatScenarioVariantSensitivityMatrixOptions,
 } from "./sensitivity-matrix.js";
+
+export {
+  diffScenarioVariantSensitivityMatrixReports,
+  validateScenarioVariantSensitivityMatrixDiff,
+  formatScenarioVariantSensitivityMatrixDiff,
+  ScenarioVariantSensitivityMatrixDiffError,
+  BACKTEST_SENSITIVITY_MATRIX_DIFF_SCHEMA_VERSION,
+  BACKTEST_SENSITIVITY_MATRIX_DIFF_DISCLAIMERS,
+} from "./sensitivity-matrix-diff.js";
+
+export type {
+  ScenarioVariantSensitivityMatrixDiff,
+  MatrixDiffCompatibility,
+  MatrixDiffCompatibilityStatus,
+  MatrixDiffStringField,
+  MatrixBaseRef,
+  MatrixCellChange,
+  MatrixBaseChange,
+  MatrixVariantAggregateChange,
+  MatrixRankingMovement,
+  FormatScenarioVariantSensitivityMatrixDiffOptions,
+} from "./sensitivity-matrix-diff.js";
