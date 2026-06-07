@@ -35,6 +35,8 @@ import {
   paperBacktestDiffSuiteReport,
   paperBacktestSensitivityReport,
   paperBacktestDiffSensitivityReport,
+  paperBacktestSensitivityMatrixReport,
+  paperBacktestDiffSensitivityMatrixReport,
   paperBacktestSuiteCoverageReport,
   stripJsonBom,
 } from "./commands.js";
@@ -4111,6 +4113,466 @@ describe("paperBacktestSuiteCoverageReport (Sprint 14, Slice E)", () => {
       expect(paperBacktestSuiteCoverageReport({ cwd, env: {} }, { suiteIndexPath: "notindex.json" })).toMatch(/^Refusing:/);
       expect(paperBacktestSuiteCoverageReport({ cwd, env: {} }, { suiteIndexPath: "bad.json" })).toMatch(/^Refusing:/);
       expect(readdirSync(cwd).sort()).toEqual(before);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 15 — paper:backtest:sensitivity:matrix
+//   Sweep a directory of injected base scenarios through one shared plan.
+// ---------------------------------------------------------------------------
+
+describe("paperBacktestSensitivityMatrixReport (Sprint 15)", () => {
+  /** A two-price buy scenario so a price shift visibly moves the held PnL. */
+  function matrixBase(name: string, p0: number, p1: number): unknown {
+    return {
+      name,
+      strategyConfig: STRATEGY_CONFIG,
+      caps: { maxTradeSizeUsd: 1000, maxDailyLossUsd: 1000, maxOpenPositions: 5, killSwitch: false },
+      defaultPaperSizeUsd: 100,
+      steps: [
+        {
+          id: "step-1",
+          at: PAPER_TIME,
+          candidates: [{ mint: MINT_A, riskReport: passReport(MINT_A) }],
+          prices: [
+            { mint: MINT_A, priceUsd: p0, observedAt: PAPER_TIME, source: "injected-fixture" },
+            { mint: MINT_A, priceUsd: p1, observedAt: PAPER_TIME, source: "injected-fixture" },
+          ],
+        },
+      ],
+    };
+  }
+
+  const PLAN = {
+    name: "matrix-sweep",
+    variants: [
+      { suffix: "up10", perturbations: [{ target: "price", op: "multiply", value: 1.1, min: 0 }] },
+      { suffix: "plus1", perturbations: [{ target: "price", op: "add", value: 1, min: 0, max: 1000000 }] },
+    ],
+  };
+
+  /** Write a scenarios dir (two bases) + a plan file; return { dir, planPath }. */
+  function writeMatrixInputs(cwd: string, plan: unknown = PLAN): { dir: string; planPath: string } {
+    const dir = writeScenarioDir(cwd, "scenarios", {
+      "alpha.scenario.json": matrixBase("alpha", 2, 3),
+      "beta.scenario.json": matrixBase("beta", 4, 5),
+    });
+    writeFileSync(join(cwd, "plan.json"), JSON.stringify(plan, null, 2));
+    return { dir, planPath: "plan.json" };
+  }
+
+  it("refuses when --dir or --plan is missing", () => {
+    expect(paperBacktestSensitivityMatrixReport({}, {}).text).toMatch(/^Refusing: --dir/);
+    expect(paperBacktestSensitivityMatrixReport({}, { dir: "scenarios" }).text).toMatch(/^Refusing: --plan/);
+    expect(paperBacktestSensitivityMatrixReport({}, {}).exitCode).toBe(1);
+  });
+
+  it("refuses a missing scenario directory", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "plan.json"), JSON.stringify(PLAN));
+      const r = paperBacktestSensitivityMatrixReport({ cwd, env: {} }, { dir: "nope", planPath: "plan.json" });
+      expect(r.text).toMatch(/^Refusing: scenario directory not found/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses an empty directory", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeScenarioDir(cwd, "scenarios", {});
+      writeFileSync(join(cwd, "plan.json"), JSON.stringify(PLAN));
+      const r = paperBacktestSensitivityMatrixReport({ cwd, env: {} }, { dir, planPath: "plan.json" });
+      expect(r.text).toMatch(/^Refusing: no \*\.scenario\.json files/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses (the whole matrix) when a scenario file is malformed JSON", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeScenarioDir(cwd, "scenarios", {
+        "alpha.scenario.json": matrixBase("alpha", 2, 3),
+        "broken.scenario.json": "{ not json",
+      });
+      writeFileSync(join(cwd, "plan.json"), JSON.stringify(PLAN));
+      const r = paperBacktestSensitivityMatrixReport({ cwd, env: {} }, { dir, planPath: "plan.json" });
+      expect(r.text).toMatch(/^Refusing: scenario file broken\.scenario\.json is not valid JSON/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed plan", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeScenarioDir(cwd, "scenarios", { "alpha.scenario.json": matrixBase("alpha", 2, 3) });
+      writeFileSync(join(cwd, "bad-plan.json"), "{ not json");
+      const r = paperBacktestSensitivityMatrixReport({ cwd, env: {} }, { dir, planPath: "bad-plan.json" });
+      expect(r.text).toMatch(/^Refusing: variant plan file is not valid JSON/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses two base scenarios whose sanitized stems collide", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeScenarioDir(cwd, "scenarios", {
+        "a b.scenario.json": matrixBase("a", 2, 3),
+        "a_b.scenario.json": matrixBase("b", 4, 5),
+      });
+      writeFileSync(join(cwd, "plan.json"), JSON.stringify(PLAN));
+      const r = paperBacktestSensitivityMatrixReport({ cwd, env: {} }, { dir, planPath: "plan.json" });
+      expect(r.text).toMatch(/map to the same base id/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a base that is incompatible with the plan, naming the base", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeScenarioDir(cwd, "scenarios", { "alpha.scenario.json": matrixBase("alpha", 2, 3) });
+      // A mint-filtered perturbation that matches nothing in alpha.
+      writeFileSync(
+        join(cwd, "plan.json"),
+        JSON.stringify({
+          name: "ghost",
+          variants: [
+            {
+              suffix: "ghost",
+              perturbations: [{ target: "price", op: "multiply", value: 1.1, min: 0, mint: "FakeZZZ9999999999999999999999999999999999999" }],
+            },
+          ],
+        }),
+      );
+      const r = paperBacktestSensitivityMatrixReport({ cwd, env: {} }, { dir, planPath: "plan.json" });
+      expect(r.text).toMatch(/^Refusing: base "alpha" could not be swept through the plan/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("prints a PAPER-only human report (banner + not-live/not-advice/not-profit), exit 0", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { dir, planPath } = writeMatrixInputs(cwd);
+      const r = paperBacktestSensitivityMatrixReport({ cwd, env: {} }, { dir, planPath });
+      expect(r.exitCode).toBe(0);
+      expect(r.text).toContain("SIMULATED PAPER-ONLY SENSITIVITY MATRIX");
+      expect(r.text).toContain("PAPER ONLY");
+      expect(r.text.toLowerCase()).toContain("not a live result");
+      expect(r.text.toLowerCase()).toContain("not financial advice");
+      expect(r.text.toLowerCase()).toContain("not a profitability claim");
+      expect(r.text).toContain("alpha");
+      expect(r.text).toContain("beta");
+      // No --out-dir ⇒ nothing written.
+      expect(existsSync(join(cwd, "sensitivity-matrix-report.json"))).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("emits a stable, parseable matrix report with --json (schema + counts)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { dir, planPath } = writeMatrixInputs(cwd);
+      const out = paperBacktestSensitivityMatrixReport({ cwd, env: {} }, { dir, planPath, json: true });
+      expect(out.exitCode).toBe(0);
+      const report = JSON.parse(out.text) as {
+        schemaVersion: string;
+        baseCount: number;
+        variantCount: number;
+        bases: { id: string }[];
+        passedBaseCount: number;
+      };
+      expect(report.schemaVersion).toBe("backtest.sensitivity.matrix.v1");
+      expect(report.baseCount).toBe(2);
+      expect(report.variantCount).toBe(2);
+      expect(report.passedBaseCount).toBe(2);
+      expect(report.bases.map((b) => b.id)).toEqual(["alpha", "beta"]);
+      // Byte-identical across two runs (no timestamps, deterministic).
+      const out2 = paperBacktestSensitivityMatrixReport({ cwd, env: {} }, { dir, planPath, json: true });
+      expect(out2.text).toBe(out.text);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("writes the matrix report + one per-base sensitivity report under --out-dir (no journals)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { dir, planPath } = writeMatrixInputs(cwd);
+      const r = paperBacktestSensitivityMatrixReport({ cwd, env: {} }, { dir, planPath, outDir: "out" });
+      expect(r.exitCode).toBe(0);
+      expect(r.text).toContain("Wrote ");
+
+      const top = readdirSync(join(cwd, "out")).sort();
+      expect(top).toEqual(["bases", "sensitivity-matrix-report.json"]);
+      const bases = readdirSync(join(cwd, "out", "bases")).sort();
+      expect(bases).toEqual(["alpha.sensitivity-report.json", "beta.sensitivity-report.json"]);
+      // No journals ever.
+      expect(top.some((f) => f.endsWith(".jsonl"))).toBe(false);
+
+      // Headline is a valid matrix report; each base file is a sensitivity report.
+      const matrix = JSON.parse(readFileSync(join(cwd, "out", "sensitivity-matrix-report.json"), "utf8")) as {
+        schemaVersion: string;
+      };
+      expect(matrix.schemaVersion).toBe("backtest.sensitivity.matrix.v1");
+      const alpha = JSON.parse(readFileSync(join(cwd, "out", "bases", "alpha.sensitivity-report.json"), "utf8")) as {
+        schemaVersion: string;
+      };
+      expect(alpha.schemaVersion).toBe("backtest.sensitivity.v1");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses to overwrite existing outputs unless --force, with no partial write", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { dir, planPath } = writeMatrixInputs(cwd);
+      const opts = { dir, planPath, outDir: "out" };
+      expect(paperBacktestSensitivityMatrixReport({ cwd, env: {} }, opts).text).toContain("Wrote ");
+      const blocked = paperBacktestSensitivityMatrixReport({ cwd, env: {} }, opts);
+      expect(blocked.text).toMatch(/already exist \(pass --force/);
+      expect(blocked.exitCode).toBe(1);
+      expect(paperBacktestSensitivityMatrixReport({ cwd, env: {} }, { ...opts, force: true }).text).toContain("Wrote ");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("does not write partial output when a later target already exists (no --force)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { dir, planPath } = writeMatrixInputs(cwd);
+      mkdirSync(join(cwd, "out"), { recursive: true });
+      writeFileSync(join(cwd, "out", "sensitivity-matrix-report.json"), "{}");
+      const r = paperBacktestSensitivityMatrixReport({ cwd, env: {} }, { dir, planPath, outDir: "out" });
+      expect(r.text).toMatch(/^Refusing: .* already exist/);
+      expect(existsSync(join(cwd, "out", "bases"))).toBe(false);
+      expect(readFileSync(join(cwd, "out", "sensitivity-matrix-report.json"), "utf8")).toBe("{}"); // untouched
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("does not mutate the base scenario files or the plan file", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { dir, planPath } = writeMatrixInputs(cwd);
+      const alphaBefore = readFileSync(join(cwd, "scenarios", "alpha.scenario.json"), "utf8");
+      const planBefore = readFileSync(join(cwd, "plan.json"), "utf8");
+      paperBacktestSensitivityMatrixReport({ cwd, env: {} }, { dir, planPath, outDir: "out" });
+      expect(readFileSync(join(cwd, "scenarios", "alpha.scenario.json"), "utf8")).toBe(alphaBefore);
+      expect(readFileSync(join(cwd, "plan.json"), "utf8")).toBe(planBefore);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-error exits 0 when every base baseline and variant run passed", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { dir, planPath } = writeMatrixInputs(cwd);
+      const r = paperBacktestSensitivityMatrixReport({ cwd, env: {} }, { dir, planPath, failOnError: true });
+      expect(r.exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("accepts a BOM-prefixed base scenario", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeScenarioDir(cwd, "scenarios", {
+        "alpha.scenario.json": withBom(JSON.stringify(matrixBase("alpha", 2, 3))),
+      });
+      writeFileSync(join(cwd, "plan.json"), JSON.stringify(PLAN));
+      const r = paperBacktestSensitivityMatrixReport({ cwd, env: {} }, { dir, planPath: "plan.json", json: true });
+      const report = JSON.parse(r.text) as { baseCount: number };
+      expect(report.baseCount).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("redacts secret-looking content in the report output (backstop)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      // An 80+ char base58-looking run in the base scenario NAME ⇒ redacted in the
+      // report's baseScenarioName field.
+      const secret = "S".repeat(90);
+      const dir = writeScenarioDir(cwd, "scenarios", {
+        "alpha.scenario.json": matrixBase(secret, 2, 3),
+      });
+      writeFileSync(join(cwd, "plan.json"), JSON.stringify(PLAN));
+      const r = paperBacktestSensitivityMatrixReport({ cwd, env: {} }, { dir, planPath: "plan.json", json: true });
+      expect(r.text).not.toContain(secret);
+      expect(r.text).toContain("[REDACTED]");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("runs the shipped examples directory end-to-end as a 4-base × 3-variant matrix", () => {
+    // ctx defaults cwd to the repo root, so the real examples resolve.
+    const r = paperBacktestSensitivityMatrixReport(
+      {},
+      {
+        dir: "examples/backtest",
+        planPath: "examples/backtest/price-sensitivity.variant-plan.json",
+        json: true,
+      },
+    );
+    expect(r.exitCode).toBe(0);
+    const report = JSON.parse(r.text) as {
+      schemaVersion: string;
+      baseCount: number;
+      variantCount: number;
+      passedBaseCount: number;
+    };
+    expect(report.schemaVersion).toBe("backtest.sensitivity.matrix.v1");
+    expect(report.baseCount).toBe(4); // the four shipped scenarios
+    expect(report.variantCount).toBe(3); // the shipped plan's three variants
+    expect(report.passedBaseCount).toBe(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 15 — paper:backtest:diff:sensitivity:matrix
+//   Diff two matrix report JSON files; reads two files, writes nothing.
+// ---------------------------------------------------------------------------
+
+describe("paperBacktestDiffSensitivityMatrixReport (Sprint 15)", () => {
+  function matrixBase(name: string, p0: number, p1: number): unknown {
+    return {
+      name,
+      strategyConfig: STRATEGY_CONFIG,
+      caps: { maxTradeSizeUsd: 1000, maxDailyLossUsd: 1000, maxOpenPositions: 5, killSwitch: false },
+      defaultPaperSizeUsd: 100,
+      steps: [
+        {
+          id: "step-1",
+          at: PAPER_TIME,
+          candidates: [{ mint: MINT_A, riskReport: passReport(MINT_A) }],
+          prices: [
+            { mint: MINT_A, priceUsd: p0, observedAt: PAPER_TIME, source: "injected-fixture" },
+            { mint: MINT_A, priceUsd: p1, observedAt: PAPER_TIME, source: "injected-fixture" },
+          ],
+        },
+      ],
+    };
+  }
+
+  const PLAN = {
+    name: "matrix-sweep",
+    variants: [{ suffix: "plus1", perturbations: [{ target: "price", op: "add", value: 1, min: 0, max: 1000000 }] }],
+  };
+
+  /** Produce a matrix report JSON over `bases` via the real Sprint 15 command. */
+  function makeMatrixJson(cwd: string, sub: string, bases: Record<string, unknown>): string {
+    const dir = writeScenarioDir(cwd, sub, bases);
+    writeFileSync(join(cwd, `${sub}.plan.json`), JSON.stringify(PLAN, null, 2));
+    const r = paperBacktestSensitivityMatrixReport(
+      { cwd, env: {} },
+      { dir, planPath: `${sub}.plan.json`, json: true },
+    );
+    return r.text;
+  }
+
+  it("refuses when --base or --next is missing", () => {
+    expect(paperBacktestDiffSensitivityMatrixReport({}, {}).text).toMatch(/^Refusing: --base/);
+    expect(paperBacktestDiffSensitivityMatrixReport({}, { basePath: "a.json" }).text).toMatch(/^Refusing: --next/);
+    expect(paperBacktestDiffSensitivityMatrixReport({}, {}).exitCode).toBe(1);
+  });
+
+  it("diffs two identical matrices with no regression (exit 0) and writes nothing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const report = makeMatrixJson(cwd, "m", {
+        "alpha.scenario.json": matrixBase("alpha", 2, 3),
+        "beta.scenario.json": matrixBase("beta", 4, 5),
+      });
+      writeFileSync(join(cwd, "a.json"), report);
+      writeFileSync(join(cwd, "b.json"), report);
+      const before = readdirSync(cwd).sort();
+      const r = paperBacktestDiffSensitivityMatrixReport({ cwd, env: {} }, { basePath: "a.json", nextPath: "b.json" });
+      expect(r.exitCode).toBe(0);
+      expect(r.text).toContain("Sensitivity matrix diff (SIMULATED PAPER-ONLY)");
+      expect(r.text).toContain("Regression: no");
+      expect(r.text.toLowerCase()).toContain("not a live result");
+      expect(readdirSync(cwd).sort()).toEqual(before); // wrote nothing
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("flags a removed passed base as a regression and sets exit 1 with --fail-on-regression", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const baseReport = makeMatrixJson(cwd, "two", {
+        "alpha.scenario.json": matrixBase("alpha", 2, 3),
+        "beta.scenario.json": matrixBase("beta", 4, 5),
+      });
+      const nextReport = makeMatrixJson(cwd, "one", {
+        "alpha.scenario.json": matrixBase("alpha", 2, 3),
+      });
+      writeFileSync(join(cwd, "base.json"), baseReport);
+      writeFileSync(join(cwd, "next.json"), nextReport);
+
+      const r = paperBacktestDiffSensitivityMatrixReport(
+        { cwd, env: {} },
+        { basePath: "base.json", nextPath: "next.json", failOnRegression: true },
+      );
+      expect(r.text).toContain("Regression: YES");
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("emits a stable, parseable matrix diff with --json", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const report = makeMatrixJson(cwd, "m", {
+        "alpha.scenario.json": matrixBase("alpha", 2, 3),
+        "beta.scenario.json": matrixBase("beta", 4, 5),
+      });
+      writeFileSync(join(cwd, "a.json"), report);
+      writeFileSync(join(cwd, "b.json"), report);
+      const r = paperBacktestDiffSensitivityMatrixReport({ cwd, env: {} }, { basePath: "a.json", nextPath: "b.json", json: true });
+      const diff = JSON.parse(r.text) as { schemaVersion: string; hasRegression: boolean };
+      expect(diff.schemaVersion).toBe("backtest.sensitivity.matrix.diff.v1");
+      expect(diff.hasRegression).toBe(false);
+      const r2 = paperBacktestDiffSensitivityMatrixReport({ cwd, env: {} }, { basePath: "a.json", nextPath: "b.json", json: true });
+      expect(r2.text).toBe(r.text);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a non-matrix input file", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "a.json"), JSON.stringify({ not: "a matrix" }));
+      writeFileSync(join(cwd, "b.json"), JSON.stringify({ not: "a matrix" }));
+      const r = paperBacktestDiffSensitivityMatrixReport({ cwd, env: {} }, { basePath: "a.json", nextPath: "b.json" });
+      expect(r.text).toMatch(/^Refusing:/);
+      expect(r.exitCode).toBe(1);
     } finally {
       cleanup();
     }

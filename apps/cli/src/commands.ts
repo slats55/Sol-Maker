@@ -99,6 +99,10 @@ import {
   formatScenarioVariantSensitivityReport,
   diffScenarioVariantSensitivityReports,
   formatScenarioVariantSensitivityDiff,
+  runScenarioVariantSensitivityMatrix,
+  formatScenarioVariantSensitivityMatrixReport,
+  diffScenarioVariantSensitivityMatrixReports,
+  formatScenarioVariantSensitivityMatrixDiff,
   summarizeBacktestSuiteCoverage,
   formatBacktestSuiteCoverage,
   type BacktestReport,
@@ -114,6 +118,8 @@ import {
   type ScenarioVariantSensitivityRun,
   type ScenarioVariantPlanExplanation,
   type ScenarioVariantSensitivityDiff,
+  type ScenarioVariantSensitivityMatrixRun,
+  type ScenarioVariantSensitivityMatrixDiff,
   type BacktestSuiteCoverageReport,
 } from "@soulmaker/backtest";
 
@@ -2447,6 +2453,276 @@ export function paperBacktestDiffSensitivityReport(
   }
   return {
     text: formatScenarioVariantSensitivityDiff(diff, { baseLabel: opts.basePath, nextLabel: opts.nextPath }),
+    exitCode,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 15 — paper:backtest:sensitivity:matrix
+//   Sweep a DIRECTORY of injected base scenarios through ONE shared variant plan
+//   and aggregate every (base × variant) cell into a deterministic matrix report.
+// ---------------------------------------------------------------------------
+
+export interface PaperBacktestSensitivityMatrixCommandOptions {
+  /** Directory of local `*.scenario.json` base scenarios to sweep (required). */
+  dir?: string;
+  /** Path to the SHARED variant plan JSON applied to every base (required). */
+  planPath?: string;
+  /** Optional directory to write the matrix report + per-base sensitivity reports into. */
+  outDir?: string;
+  /** Overwrite existing output files (refused by default). */
+  force?: boolean;
+  json?: boolean;
+  /** Exit non-zero when any base baseline or variant run failed. */
+  failOnError?: boolean;
+}
+
+/**
+ * Write the matrix artifact tree into `--out-dir`:
+ *
+ *   <out-dir>/sensitivity-matrix-report.json          (Sprint 15 matrix report)
+ *   <out-dir>/bases/<id>.sensitivity-report.json      (one Sprint 13 report per base)
+ *
+ * EVERY target path is preflighted up front — internal collisions (case-insensitive) and,
+ * without `--force`, any pre-existing file — BEFORE a single file is written, so any
+ * detectable problem refuses with NO partial output. Base ids are already sanitized,
+ * collision-checked filename stems, so the per-base files cannot clobber each other. All
+ * JSON is written redacted, exactly like the suite/sensitivity commands. Never writes a
+ * journal or fills.
+ */
+function writeSensitivityMatrixOutputs(
+  ctx: CommandContext,
+  outDirArg: string,
+  force: boolean,
+  run: ScenarioVariantSensitivityMatrixRun,
+): { ok: true; written: string[] } | { ok: false; reason: string } {
+  const outDir = resolvePath(ctx, outDirArg);
+  const basesDir = join(outDir, "bases");
+
+  const targets: { path: string; value: unknown }[] = [
+    { path: join(outDir, "sensitivity-matrix-report.json"), value: run.report },
+  ];
+  for (const { id, run: baseRun } of run.baseRuns) {
+    targets.push({ path: join(basesDir, `${id}.sensitivity-report.json`), value: baseRun.report });
+  }
+
+  // Preflight: refuse on any internal filename collision (no partial writes).
+  const seen = new Set<string>();
+  for (const t of targets) {
+    const key = t.path.toLowerCase();
+    if (seen.has(key)) {
+      return { ok: false, reason: `output filename collision at ${t.path} — rename a base scenario` };
+    }
+    seen.add(key);
+  }
+  // Preflight: refuse to overwrite any existing target unless --force (check ALL first).
+  if (!force) {
+    const existing = targets.filter((t) => existsSync(t.path));
+    if (existing.length > 0) {
+      return {
+        ok: false,
+        reason:
+          `${existing.length} output file(s) already exist (pass --force to overwrite): ` +
+          existing.map((t) => t.path).join(", "),
+      };
+    }
+  }
+
+  try {
+    mkdirSync(basesDir, { recursive: true });
+  } catch {
+    return { ok: false, reason: `cannot create output directories under ${outDir}` };
+  }
+  const written: string[] = [];
+  for (const t of targets) {
+    try {
+      writeFileSync(t.path, JSON.stringify(redactValue(t.value), null, 2) + "\n");
+      written.push(t.path);
+    } catch {
+      return { ok: false, reason: `cannot write output file at ${t.path}` };
+    }
+  }
+  return { ok: true, written };
+}
+
+/**
+ * `soulmaker paper:backtest:sensitivity:matrix` — the Sprint 15 multi-base workflow. It
+ * reads ONLY local files: every top-level `*.scenario.json` in `--dir` (sorted by filename,
+ * BOM-tolerant) as a base, plus the one `--plan` JSON. A missing/non-directory/empty `--dir`,
+ * a malformed scenario, a duplicate sanitized base stem, a malformed plan, or a base that is
+ * invalid or incompatible with the plan all refuse the WHOLE matrix with NO output. It sweeps
+ * each base through the SAME plan via the Sprint 13 sensitivity workflow and aggregates every
+ * (base × variant) cell into a stable matrix report. With `--out-dir` it writes the matrix
+ * report and one per-base sensitivity report (preflighted; refuses to overwrite without
+ * `--force`; never a journal or fills). `--json` prints the matrix report JSON; otherwise a
+ * human report led by the PAPER-ONLY banner. `--fail-on-error` exits non-zero if any base
+ * baseline or variant run failed. No chain access, no wallet, no RPC, no network — every
+ * number is simulated bookkeeping over injected prices, not a live result.
+ */
+export function paperBacktestSensitivityMatrixReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestSensitivityMatrixCommandOptions = {},
+): CliReport {
+  if (!opts.dir) return { text: "Refusing: --dir <path> is required.", exitCode: 1 };
+  if (!opts.planPath) return { text: "Refusing: --plan <path> is required.", exitCode: 1 };
+
+  const dir = resolvePath(ctx, opts.dir);
+  let isDir = false;
+  try {
+    isDir = statSync(dir).isDirectory();
+  } catch {
+    return { text: redactString(`Refusing: scenario directory not found at ${dir}`), exitCode: 1 };
+  }
+  if (!isDir) {
+    return { text: redactString(`Refusing: ${dir} is not a directory`), exitCode: 1 };
+  }
+
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return { text: redactString(`Refusing: cannot read scenario directory at ${dir}`), exitCode: 1 };
+  }
+  // Deterministic: only top-level *.scenario.json files, sorted by filename.
+  const scenarioFiles = names.filter((f) => /\.scenario\.json$/i.test(f)).sort();
+  if (scenarioFiles.length === 0) {
+    return { text: redactString(`Refusing: no *.scenario.json files found in ${dir}`), exitCode: 1 };
+  }
+
+  // Read the shared plan first (BOM-tolerant); a missing/malformed plan refuses.
+  let planValue: unknown;
+  try {
+    planValue = readJsonValue(ctx, opts.planPath, "variant plan");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // Parse every base up front (BOM-tolerant). A malformed file or a sanitized-stem
+  // collision refuses the WHOLE matrix before anything runs.
+  const bases: { id: string; scenario: unknown }[] = [];
+  const stems = new Map<string, string>();
+  for (const file of scenarioFiles) {
+    const full = join(dir, file);
+    let text: string;
+    try {
+      text = stripJsonBom(readFileSync(full, "utf8"));
+    } catch {
+      return { text: redactString(`Refusing: cannot read scenario file at ${full}`), exitCode: 1 };
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return { text: redactString(`Refusing: scenario file ${file} is not valid JSON`), exitCode: 1 };
+    }
+    const stem = suiteScenarioStem(file);
+    const prior = stems.get(stem);
+    if (prior !== undefined) {
+      return {
+        text: redactString(
+          `Refusing: base scenario files "${prior}" and "${file}" map to the same base id ` +
+            `"${stem}" — rename one to avoid an ambiguous matrix row.`,
+        ),
+        exitCode: 1,
+      };
+    }
+    stems.set(stem, file);
+    bases.push({ id: stem, scenario: parsed });
+  }
+
+  let run: ScenarioVariantSensitivityMatrixRun;
+  try {
+    run = runScenarioVariantSensitivityMatrix({ name: basename(dir), bases, plan: planValue });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let writtenNote = "";
+  if (opts.outDir) {
+    const res = writeSensitivityMatrixOutputs(ctx, opts.outDir, Boolean(opts.force), run);
+    if (!res.ok) return { text: redactString(`Refusing: ${res.reason}`), exitCode: 1 };
+    writtenNote =
+      `\n\nWrote ${res.written.length} file(s) to ${resolvePath(ctx, opts.outDir)}:\n` +
+      res.written.map((p) => `- ${p}`).join("\n");
+  }
+
+  const failed = run.report.failedBaseCount > 0 || run.report.failedVariantRunCount > 0;
+  const exitCode = opts.failOnError && failed ? 1 : 0;
+  if (opts.json) {
+    // redactValue is a backstop; the report carries only injected scenario identifiers.
+    return { text: JSON.stringify(redactValue(run.report), null, 2), exitCode };
+  }
+  return {
+    text: redactString(
+      formatScenarioVariantSensitivityMatrixReport(run.report, { label: opts.dir }) + writtenNote,
+    ),
+    exitCode,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 15 — paper:backtest:diff:sensitivity:matrix
+//   Deterministically diff TWO sensitivity matrix report JSON files. Reads only the
+//   two named files, runs no backtest, sweeps no bases, writes nothing.
+// ---------------------------------------------------------------------------
+
+export interface PaperBacktestDiffSensitivityMatrixCommandOptions {
+  /** Path to the BASE matrix report JSON (required). */
+  basePath?: string;
+  /** Path to the NEXT matrix report JSON (required). */
+  nextPath?: string;
+  json?: boolean;
+  /** Exit non-zero when the diff reports a conservative bookkeeping regression. */
+  failOnRegression?: boolean;
+}
+
+/**
+ * `soulmaker paper:backtest:diff:sensitivity:matrix` — deterministically diff TWO Sprint 15
+ * matrix report JSON files. Reads ONLY the two named local files (BOM-tolerant; a
+ * missing/malformed/non-matrix file refuses), runs no backtest, sweeps no bases, and writes
+ * nothing. It pairs bases by id and cells by suffix and reports added/removed/changed bases,
+ * count deltas, descriptive cross-base aggregate changes, ranking movement, and a
+ * conservative `hasRegression` flag. A delta is simulated bookkeeping — never profit, loss, a
+ * prediction, or advice; a changed (different-content) base is not a regression. `--json`
+ * emits the stable, redacted diff; `--fail-on-regression` sets a non-zero exit only when
+ * `diff.hasRegression` is true. No chain access, no wallet, no RPC, no network.
+ */
+export function paperBacktestDiffSensitivityMatrixReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestDiffSensitivityMatrixCommandOptions = {},
+): CliReport {
+  if (!opts.basePath) return { text: "Refusing: --base <path> is required.", exitCode: 1 };
+  if (!opts.nextPath) return { text: "Refusing: --next <path> is required.", exitCode: 1 };
+
+  let baseValue: unknown;
+  try {
+    baseValue = readJsonValue(ctx, opts.basePath, "base matrix report");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let nextValue: unknown;
+  try {
+    nextValue = readJsonValue(ctx, opts.nextPath, "next matrix report");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let diff: ScenarioVariantSensitivityMatrixDiff;
+  try {
+    // Validates both reports structurally; a non-matrix refuses.
+    diff = diffScenarioVariantSensitivityMatrixReports(baseValue, nextValue);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const exitCode = opts.failOnRegression && diff.hasRegression ? 1 : 0;
+  if (opts.json) {
+    // redactValue is a backstop; the diff carries only injected scenario identifiers.
+    return { text: JSON.stringify(redactValue(diff), null, 2), exitCode };
+  }
+  return {
+    text: formatScenarioVariantSensitivityMatrixDiff(diff, { baseLabel: opts.basePath, nextLabel: opts.nextPath }),
     exitCode,
   };
 }

@@ -25,6 +25,8 @@ import {
   paperBacktestDiffSuiteReport,
   paperBacktestSensitivityReport,
   paperBacktestDiffSensitivityReport,
+  paperBacktestSensitivityMatrixReport,
+  paperBacktestDiffSensitivityMatrixReport,
   paperBacktestSuiteCoverageReport,
 } from "./commands.js";
 
@@ -543,6 +545,58 @@ program
         },
       ),
     );
+  });
+
+program
+  .command("paper:backtest:sensitivity:matrix")
+  .description(
+    "Sweep a directory of injected base scenarios through ONE shared variant plan and aggregate every (base × variant) cell into a stable matrix (PAPER ONLY; deterministic; injected local data; simulated bookkeeping, not a live result, not advice, not a profitability claim)",
+  )
+  .option("--dir <path>", "directory of local *.scenario.json base scenarios to sweep")
+  .option("--plan <path>", "shared variant plan JSON: { name?, variants: [{ suffix, perturbations }] }")
+  .option("--out-dir <path>", "optional dir to write sensitivity-matrix-report.json + bases/<id>.sensitivity-report.json")
+  .option("--force", "overwrite existing output files")
+  .option("--json", "emit the matrix report as stable JSON")
+  .option("--fail-on-error", "exit non-zero when any base baseline or variant run failed")
+  .action(
+    (opts: { dir?: string; plan?: string; outDir?: string; force?: boolean; json?: boolean; failOnError?: boolean }) => {
+      const { text, exitCode } = paperBacktestSensitivityMatrixReport(
+        {},
+        {
+          dir: opts.dir,
+          planPath: opts.plan,
+          outDir: opts.outDir,
+          force: Boolean(opts.force),
+          json: Boolean(opts.json),
+          failOnError: Boolean(opts.failOnError),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:backtest:diff:sensitivity:matrix")
+  .description(
+    "Deterministically diff TWO sensitivity matrix report JSON files (PAPER ONLY; pairs bases by id and cells by suffix; deltas are simulated bookkeeping, a changed base is not a regression, not a live result, not advice)",
+  )
+  .option("--base <path>", "BASE matrix report JSON (the reference)")
+  .option("--next <path>", "NEXT matrix report JSON (compared against base)")
+  .option("--json", "emit the matrix diff as stable JSON")
+  .option("--fail-on-regression", "exit non-zero when the diff reports a regression")
+  .action((opts: { base?: string; next?: string; json?: boolean; failOnRegression?: boolean }) => {
+    const { text, exitCode } = paperBacktestDiffSensitivityMatrixReport(
+      {},
+      {
+        basePath: opts.base,
+        nextPath: opts.next,
+        json: Boolean(opts.json),
+        failOnRegression: Boolean(opts.failOnRegression),
+      },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
   });
 
 program
