@@ -108,6 +108,15 @@ describe("diffBacktestResearchManifests", () => {
       BacktestResearchManifestDiffError,
     );
   });
+
+  it("refuses a manifest whose artifact has a fractional/negative sizeBytes (untrusted diff input)", () => {
+    const base = manifest([desc()]);
+    const bad = JSON.parse(JSON.stringify(manifest([desc()])));
+    bad.artifacts[0].sizeBytes = 1.5;
+    expect(() => diffBacktestResearchManifests(bad, base)).toThrow(/sizeBytes must be a non-negative integer/);
+    bad.artifacts[0].sizeBytes = -3;
+    expect(() => diffBacktestResearchManifests(bad, base)).toThrow(/sizeBytes must be a non-negative integer/);
+  });
 });
 
 describe("validateBacktestResearchManifestDiff", () => {
@@ -116,6 +125,29 @@ describe("validateBacktestResearchManifestDiff", () => {
     expect(validateBacktestResearchManifestDiff(JSON.parse(JSON.stringify(diff)))).toEqual(diff);
     expect(() => validateBacktestResearchManifestDiff({ ...diff, schemaVersion: "x" })).toThrow(/schemaVersion/);
     expect(() => validateBacktestResearchManifestDiff(7)).toThrow(/must be a JSON object/);
+  });
+
+  it("rejects a missing PAPER-ONLY flag", () => {
+    const diff = diffBacktestResearchManifests(manifest([desc()]), manifest([desc()]));
+    expect(() => validateBacktestResearchManifestDiff({ ...diff, paperOnly: false })).toThrow(/paperOnly must be true/);
+  });
+
+  it("rejects a malformed changed element and a malformed count change", () => {
+    const base = manifest([desc({ path: "a.json", digest: "1" })]);
+    const next = manifest([desc({ path: "a.json", digest: "2" })]);
+    const diff = diffBacktestResearchManifests(base, next);
+    const badChanged = JSON.parse(JSON.stringify(diff));
+    badChanged.changed[0].digestChanged = "yes"; // not a boolean
+    expect(() => validateBacktestResearchManifestDiff(badChanged)).toThrow(/digestChanged must be a boolean/);
+
+    const badCount = JSON.parse(JSON.stringify(diff));
+    badCount.kindCountChanges = [{ key: "backtest-report" }]; // missing base/next/delta
+    expect(() => validateBacktestResearchManifestDiff(badCount)).toThrow(/count change/);
+  });
+
+  it("rejects a non-{base,next,delta} artifactCount", () => {
+    const diff = diffBacktestResearchManifests(manifest([desc()]), manifest([desc()]));
+    expect(() => validateBacktestResearchManifestDiff({ ...diff, artifactCount: 3 })).toThrow(/number delta/);
   });
 });
 

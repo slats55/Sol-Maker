@@ -148,7 +148,9 @@ function readDescriptor(value: unknown, where: string): BacktestArtifactDescript
     throw new BacktestResearchManifestDiffError(`${where}.schemaVersion must be a string or null`);
   }
   if (!nonEmptyString(value.digest)) throw new BacktestResearchManifestDiffError(`${where}.digest must be a non-empty string`);
-  if (!isFiniteNumber(value.sizeBytes)) throw new BacktestResearchManifestDiffError(`${where}.sizeBytes must be a finite number`);
+  if (!isFiniteNumber(value.sizeBytes) || !Number.isInteger(value.sizeBytes) || value.sizeBytes < 0) {
+    throw new BacktestResearchManifestDiffError(`${where}.sizeBytes must be a non-negative integer`);
+  }
   return {
     path: value.path,
     kind: value.kind as BacktestArtifactKind,
@@ -312,12 +314,28 @@ export function diffBacktestResearchManifests(base: unknown, next: unknown): Bac
  * Checks the schema version, the disclaimers, the change flag/reasons, and the
  * added/removed/changed shapes. Throws {@link BacktestResearchManifestDiffError}. Pure.
  */
+function isNumberDelta(value: unknown): boolean {
+  return isObject(value) && isFiniteNumber(value.base) && isFiniteNumber(value.next) && isFiniteNumber(value.delta);
+}
+
 export function validateBacktestResearchManifestDiff(value: unknown): BacktestResearchManifestDiff {
   if (!isObject(value)) throw new BacktestResearchManifestDiffError("manifest diff must be a JSON object");
   if (value.schemaVersion !== BACKTEST_RESEARCH_MANIFEST_DIFF_SCHEMA_VERSION) {
     throw new BacktestResearchManifestDiffError(
       `manifest diff.schemaVersion must be "${BACKTEST_RESEARCH_MANIFEST_DIFF_SCHEMA_VERSION}"`,
     );
+  }
+  // The required PAPER-ONLY labelling must survive serialization (mirrors the other validators).
+  for (const flag of [
+    "paperOnly",
+    "simulated",
+    "notLiveResult",
+    "notFinancialAdvice",
+    "notProfitabilityClaim",
+  ] as const) {
+    if (value[flag] !== true) {
+      throw new BacktestResearchManifestDiffError(`manifest diff.${flag} must be true`);
+    }
   }
   if (!Array.isArray(value.disclaimers) || value.disclaimers.length === 0) {
     throw new BacktestResearchManifestDiffError("manifest diff.disclaimers must be a non-empty array");
@@ -328,10 +346,42 @@ export function validateBacktestResearchManifestDiff(value: unknown): BacktestRe
   if (!Array.isArray(value.changeReasons)) {
     throw new BacktestResearchManifestDiffError("manifest diff.changeReasons must be an array");
   }
-  for (const key of ["added", "removed", "changed", "kindCountChanges", "schemaCountChanges"] as const) {
+  for (const f of ["artifactCount", "totalSizeBytes"] as const) {
+    if (!isNumberDelta(value[f])) {
+      throw new BacktestResearchManifestDiffError(`manifest diff.${f} must be a {base,next,delta} number delta`);
+    }
+  }
+  // Every list the formatter reads must be an array of WELL-FORMED elements (strict backstop).
+  for (const key of ["added", "removed"] as const) {
     if (!Array.isArray(value[key])) {
       throw new BacktestResearchManifestDiffError(`manifest diff.${key} must be an array`);
     }
+    (value[key] as unknown[]).forEach((d, i) => readDescriptor(d, `manifest diff.${key}[${i}]`));
+  }
+  if (!Array.isArray(value.changed)) {
+    throw new BacktestResearchManifestDiffError("manifest diff.changed must be an array");
+  }
+  value.changed.forEach((c, i) => {
+    const where = `manifest diff.changed[${i}]`;
+    if (!isObject(c)) throw new BacktestResearchManifestDiffError(`${where} must be an object`);
+    if (!nonEmptyString(c.path)) throw new BacktestResearchManifestDiffError(`${where}.path must be a non-empty string`);
+    for (const b of ["kindChanged", "schemaChanged", "digestChanged"] as const) {
+      if (typeof c[b] !== "boolean") throw new BacktestResearchManifestDiffError(`${where}.${b} must be a boolean`);
+    }
+    if (!isNumberDelta(c.sizeBytes)) {
+      throw new BacktestResearchManifestDiffError(`${where}.sizeBytes must be a {base,next,delta} number delta`);
+    }
+  });
+  for (const key of ["kindCountChanges", "schemaCountChanges"] as const) {
+    if (!Array.isArray(value[key])) {
+      throw new BacktestResearchManifestDiffError(`manifest diff.${key} must be an array`);
+    }
+    (value[key] as unknown[]).forEach((c, i) => {
+      const where = `manifest diff.${key}[${i}]`;
+      if (!isObject(c) || !nonEmptyString(c.key) || !isFiniteNumber(c.base) || !isFiniteNumber(c.next) || !isFiniteNumber(c.delta)) {
+        throw new BacktestResearchManifestDiffError(`${where} must be a {key,base,next,delta} count change`);
+      }
+    });
   }
   return value as unknown as BacktestResearchManifestDiff;
 }
