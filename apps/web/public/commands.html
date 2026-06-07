@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="generator" content="Soulmaker apps/web/src/build.ts — generated, do not edit by hand" />
+  <meta name="description" content="The real CLI workflows that produce these local artifacts." />
+  <title>Command reference · Soulmaker</title>
+  <link rel="stylesheet" href="assets/theme.css" />
+</head>
+<body class="sm-body">
+  <a class="sm-skiplink" href="#main">Skip to content</a>
+  <div class="sm-shell">
+    <nav class="sm-sidebar" aria-label="Primary">
+    <a class="sm-brand" href="index.html">
+      <span class="sm-brand__mark" aria-hidden="true">◎</span>
+      <span class="sm-brand__text">
+        <span class="sm-brand__name">Soulmaker</span>
+        <span class="sm-brand__tag">PAPER-only · local · offline · no wallet</span>
+      </span>
+    </a>
+    <div class="sm-navgroup">
+        <p class="sm-navgroup__title">Cockpit</p>
+        <ul class="sm-navlist">
+          <li>
+    <a
+      class="sm-navlink"
+      href="index.html"
+      title="Dashboard cockpit — posture, modes, and where to look next."
+    >
+      <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+      <span class="sm-navlink__label">Overview</span>
+    </a>
+  </li><li>
+    <a
+      class="sm-navlink"
+      href="research.html"
+      title="The PAPER-only research lab: scenarios, backtests, suites, sensitivity."
+    >
+      <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3"/><path d="M7 16h10"/></svg></span>
+      <span class="sm-navlink__label">Research</span>
+    </a>
+  </li>
+        </ul>
+      </div><div class="sm-navgroup">
+        <p class="sm-navgroup__title">Research</p>
+        <ul class="sm-navlist">
+          <li>
+    <a
+      class="sm-navlink"
+      href="research-reports.html"
+      title="Inspect locally-generated backtest report artifacts (viewer foundation)."
+    >
+      <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 9h18M3 14h18M9 4v16M15 4v16"/></svg></span>
+      <span class="sm-navlink__label">Report viewer</span>
+    </a>
+  </li><li>
+    <a
+      class="sm-navlink"
+      href="research-matrix.html"
+      title="Cross-scenario sensitivity matrix viewer (foundation)."
+    >
+      <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+      <span class="sm-navlink__label">Sensitivity matrix</span>
+    </a>
+  </li><li>
+    <a
+      class="sm-navlink"
+      href="research-coverage.html"
+      title="Which simulated paper paths a backtest suite exercised (foundation)."
+    >
+      <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></span>
+      <span class="sm-navlink__label">Suite coverage</span>
+    </a>
+  </li>
+        </ul>
+      </div><div class="sm-navgroup">
+        <p class="sm-navgroup__title">Operate</p>
+        <ul class="sm-navlist">
+          <li>
+    <a
+      class="sm-navlink is-active"
+      href="commands.html" aria-current="page"
+      title="The real CLI workflows that produce these local artifacts."
+    >
+      <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M7 9l3 3-3 3M13 15h4"/></svg></span>
+      <span class="sm-navlink__label">Command reference</span>
+    </a>
+  </li><li>
+    <a
+      class="sm-navlink"
+      href="safety.html"
+      title="The wallet-safety model, modes, and hard guarantees."
+    >
+      <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v5c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg></span>
+      <span class="sm-navlink__label">Safety &amp; modes</span>
+    </a>
+  </li><li>
+    <a
+      class="sm-navlink"
+      href="settings.html"
+      title="Local display preferences (placeholder shell)."
+    >
+      <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></span>
+      <span class="sm-navlink__label">Settings</span>
+    </a>
+  </li>
+        </ul>
+      </div>
+  </nav>
+    <main class="sm-main" id="main">
+      <aside class="sm-banner" role="note" aria-label="Safety status">
+    <div class="sm-banner__lead">
+      <span class="sm-banner__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v5c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg></span>
+      <strong class="sm-banner__title">PAPER ONLY</strong>
+      <span class="sm-banner__sub">No live trading · no wallet connected · no signing or sending.</span>
+    </div>
+    <ul class="sm-banner__tags">
+      <li class="sm-pill sm-pill--safe">PAPER ONLY</li><li class="sm-pill sm-pill--safe">No live trading</li><li class="sm-pill sm-pill--safe">No wallet connected</li><li class="sm-pill sm-pill--safe">No signing or sending</li><li class="sm-pill sm-pill--safe">Local simulated reports only</li><li class="sm-pill sm-pill--safe">Not financial advice</li><li class="sm-pill sm-pill--safe">Not a profitability claim</li>
+    </ul>
+  </aside>
+      <div class="sm-content">
+        
+    <header class="sm-pagehead">
+    <div class="sm-pagehead__main">
+      <p class="sm-eyebrow">Operate</p>
+      <h1 class="sm-pagehead__title">Command reference</h1>
+      <p class="sm-pagehead__desc">The real CLI workflows that produce these local artifacts.</p>
+    </div>
+    <div class="sm-pagehead__aside"><code class="sm-codechip">pnpm soulmaker &lt;command&gt; [options]</code></div>
+  </header>
+
+    <div class="sm-notice sm-notice--caution" role="note">
+    <p class="sm-notice__title">Reference only — the dashboard never runs these.</p>
+    <div class="sm-notice__body">These commands are run by the operator in a terminal. Read-only chain commands accept
+        <strong>public keys only</strong> and, in PAPER mode, require an explicit
+        <code>--allow-paper-read</code>. Nothing here signs or sends.</div>
+  </div>
+
+    <section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Diagnostics</h2>
+              
+            </div>
+            
+          </div>
+    <div class="sm-section__body"><div class="sm-cmdgrid">
+          <article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker doctor</code>
+    <p class="sm-cmd__summary">Environment / config sanity check. No chain, no key.</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker config:check</code>
+    <p class="sm-cmd__summary">Validate soulmaker.config.json against the safety schema.</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker mode</code>
+    <p class="sm-cmd__summary">Show the configured mode and its capabilities (read/build/simulate/send).</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article>
+        </div></div>
+  </section><section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Read-only chain</h2>
+              
+            </div>
+            
+          </div>
+    <div class="sm-section__body"><div class="sm-cmdgrid">
+          <article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker solana:doctor</code>
+    <p class="sm-cmd__summary">Read-only RPC health / version check. Host-only endpoint display.</p>
+    <span
+            class="sm-pill sm-pill--caution"
+            title="Reads public chain state; in PAPER mode requires --allow-paper-read and accepts public keys only"
+            >reads chain · public keys only</span
+          >
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker wallet:watch &lt;pubkey&gt;</code>
+    <p class="sm-cmd__summary">Watch a public address: SOL balance + token accounts. Public keys only.</p>
+    <span
+            class="sm-pill sm-pill--caution"
+            title="Reads public chain state; in PAPER mode requires --allow-paper-read and accepts public keys only"
+            >reads chain · public keys only</span
+          >
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker token:inspect &lt;mint&gt;</code>
+    <p class="sm-cmd__summary">Inspect a token mint: decimals, supply, authorities, program, init state.</p>
+    <span
+            class="sm-pill sm-pill--caution"
+            title="Reads public chain state; in PAPER mode requires --allow-paper-read and accepts public keys only"
+            >reads chain · public keys only</span
+          >
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker token:accounts &lt;pubkey&gt;</code>
+    <p class="sm-cmd__summary">List SPL / Token-2022 accounts for a public address.</p>
+    <span
+            class="sm-pill sm-pill--caution"
+            title="Reads public chain state; in PAPER mode requires --allow-paper-read and accepts public keys only"
+            >reads chain · public keys only</span
+          >
+  </article>
+        </div></div>
+  </section><section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Risk</h2>
+              
+            </div>
+            
+          </div>
+    <div class="sm-section__body"><div class="sm-cmdgrid">
+          <article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker token:risk &lt;mint&gt;</code>
+    <p class="sm-cmd__summary">Advisory, read-only risk flags + score. Not a buy recommendation.</p>
+    <span
+            class="sm-pill sm-pill--caution"
+            title="Reads public chain state; in PAPER mode requires --allow-paper-read and accepts public keys only"
+            >reads chain · public keys only</span
+          >
+  </article>
+        </div></div>
+  </section><section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Paper trading</h2>
+              
+            </div>
+            
+          </div>
+    <div class="sm-section__body"><div class="sm-cmdgrid">
+          <article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:run</code>
+    <p class="sm-cmd__summary">Run a simulated paper session over injected candidates + prices.</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:journal</code>
+    <p class="sm-cmd__summary">Summarize an append-only paper trade journal (JSONL).</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:status</code>
+    <p class="sm-cmd__summary">Show simulated portfolio state derived from a paper journal.</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article>
+        </div></div>
+  </section><section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Strategy</h2>
+              
+            </div>
+            
+          </div>
+    <div class="sm-section__body"><div class="sm-cmdgrid">
+          <article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker strategy:evaluate</code>
+    <p class="sm-cmd__summary">Evaluate one candidate into a single paper-only decision.</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker strategy:plan</code>
+    <p class="sm-cmd__summary">Turn a candidate list into a PaperCandidate[] plan (manual hand-off only).</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article>
+        </div></div>
+  </section><section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Backtest research</h2>
+              
+            </div>
+            
+          </div>
+    <div class="sm-section__body"><div class="sm-cmdgrid">
+          <article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest</code>
+    <p class="sm-cmd__summary">Replay an injected scenario into a deterministic simulated report.</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:lint</code>
+    <p class="sm-cmd__summary">Validate / lint a scenario (errors block; warnings stay runnable).</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:diff</code>
+    <p class="sm-cmd__summary">Conservative delta between two backtest report files.</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:scenario:new</code>
+    <p class="sm-cmd__summary">Generate a deterministic example scenario from a built-in template.</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:scenario:matrix</code>
+    <p class="sm-cmd__summary">Expand a base scenario across a config-only patch matrix.</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:scenario:variants</code>
+    <p class="sm-cmd__summary">Generate bounded numeric perturbation variants of a base scenario.</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:scenario:variants:explain</code>
+    <p class="sm-cmd__summary">Dry-run: explain what a variant plan would change, without writing files.</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:suite</code>
+    <p class="sm-cmd__summary">Run a directory of scenarios and write a suite index.</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:diff:suite</code>
+    <p class="sm-cmd__summary">Conservative delta between two suite indexes.</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:sensitivity</code>
+    <p class="sm-cmd__summary">Run a base + variants and report per-variant deltas vs the baseline.</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:diff:sensitivity</code>
+    <p class="sm-cmd__summary">Conservative delta between two sensitivity reports.</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:suite:coverage</code>
+    <p class="sm-cmd__summary">Report which simulated paper behaviours a suite exercised.</p>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article>
+        </div></div>
+  </section>
+  
+      </div>
+      <footer class="sm-footer">
+    <p class="sm-footer__labels">
+      <span class="sm-pill sm-pill--muted">Placeholder UI shell</span>
+      <span class="sm-pill sm-pill--muted">Sample local fixture</span>
+      <span class="sm-pill sm-pill--muted">No live data</span>
+      <span class="sm-pill sm-pill--muted">PAPER-only display</span>
+    </p>
+    <p class="sm-footer__note">
+      Soulmaker dashboard foundation — local, offline, simulated. Not financial advice;
+      not a profitability claim. See <a href="safety.html">Safety &amp; modes</a>.
+    </p>
+  </footer>
+    </main>
+  </div>
+</body>
+</html>
+

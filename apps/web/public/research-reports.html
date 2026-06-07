@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="generator" content="Soulmaker apps/web/src/build.ts — generated, do not edit by hand" />
+  <meta name="description" content="Inspect locally-generated backtest report artifacts (viewer foundation)." />
+  <title>Report viewer · Soulmaker</title>
+  <link rel="stylesheet" href="assets/theme.css" />
+</head>
+<body class="sm-body">
+  <a class="sm-skiplink" href="#main">Skip to content</a>
+  <div class="sm-shell">
+    <nav class="sm-sidebar" aria-label="Primary">
+    <a class="sm-brand" href="index.html">
+      <span class="sm-brand__mark" aria-hidden="true">◎</span>
+      <span class="sm-brand__text">
+        <span class="sm-brand__name">Soulmaker</span>
+        <span class="sm-brand__tag">PAPER-only · local · offline · no wallet</span>
+      </span>
+    </a>
+    <div class="sm-navgroup">
+        <p class="sm-navgroup__title">Cockpit</p>
+        <ul class="sm-navlist">
+          <li>
+    <a
+      class="sm-navlink"
+      href="index.html"
+      title="Dashboard cockpit — posture, modes, and where to look next."
+    >
+      <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+      <span class="sm-navlink__label">Overview</span>
+    </a>
+  </li><li>
+    <a
+      class="sm-navlink"
+      href="research.html"
+      title="The PAPER-only research lab: scenarios, backtests, suites, sensitivity."
+    >
+      <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3"/><path d="M7 16h10"/></svg></span>
+      <span class="sm-navlink__label">Research</span>
+    </a>
+  </li>
+        </ul>
+      </div><div class="sm-navgroup">
+        <p class="sm-navgroup__title">Research</p>
+        <ul class="sm-navlist">
+          <li>
+    <a
+      class="sm-navlink is-active"
+      href="research-reports.html" aria-current="page"
+      title="Inspect locally-generated backtest report artifacts (viewer foundation)."
+    >
+      <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 9h18M3 14h18M9 4v16M15 4v16"/></svg></span>
+      <span class="sm-navlink__label">Report viewer</span>
+    </a>
+  </li><li>
+    <a
+      class="sm-navlink"
+      href="research-matrix.html"
+      title="Cross-scenario sensitivity matrix viewer (foundation)."
+    >
+      <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+      <span class="sm-navlink__label">Sensitivity matrix</span>
+    </a>
+  </li><li>
+    <a
+      class="sm-navlink"
+      href="research-coverage.html"
+      title="Which simulated paper paths a backtest suite exercised (foundation)."
+    >
+      <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></span>
+      <span class="sm-navlink__label">Suite coverage</span>
+    </a>
+  </li>
+        </ul>
+      </div><div class="sm-navgroup">
+        <p class="sm-navgroup__title">Operate</p>
+        <ul class="sm-navlist">
+          <li>
+    <a
+      class="sm-navlink"
+      href="commands.html"
+      title="The real CLI workflows that produce these local artifacts."
+    >
+      <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M7 9l3 3-3 3M13 15h4"/></svg></span>
+      <span class="sm-navlink__label">Command reference</span>
+    </a>
+  </li><li>
+    <a
+      class="sm-navlink"
+      href="safety.html"
+      title="The wallet-safety model, modes, and hard guarantees."
+    >
+      <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v5c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg></span>
+      <span class="sm-navlink__label">Safety &amp; modes</span>
+    </a>
+  </li><li>
+    <a
+      class="sm-navlink"
+      href="settings.html"
+      title="Local display preferences (placeholder shell)."
+    >
+      <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></span>
+      <span class="sm-navlink__label">Settings</span>
+    </a>
+  </li>
+        </ul>
+      </div>
+  </nav>
+    <main class="sm-main" id="main">
+      <aside class="sm-banner" role="note" aria-label="Safety status">
+    <div class="sm-banner__lead">
+      <span class="sm-banner__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v5c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg></span>
+      <strong class="sm-banner__title">PAPER ONLY</strong>
+      <span class="sm-banner__sub">No live trading · no wallet connected · no signing or sending.</span>
+    </div>
+    <ul class="sm-banner__tags">
+      <li class="sm-pill sm-pill--safe">PAPER ONLY</li><li class="sm-pill sm-pill--safe">No live trading</li><li class="sm-pill sm-pill--safe">No wallet connected</li><li class="sm-pill sm-pill--safe">No signing or sending</li><li class="sm-pill sm-pill--safe">Local simulated reports only</li><li class="sm-pill sm-pill--safe">Not financial advice</li><li class="sm-pill sm-pill--safe">Not a profitability claim</li>
+    </ul>
+  </aside>
+      <div class="sm-content">
+        
+    <header class="sm-pagehead">
+    <div class="sm-pagehead__main">
+      <p class="sm-eyebrow">Research</p>
+      <h1 class="sm-pagehead__title">Report viewer</h1>
+      <p class="sm-pagehead__desc">Inspect locally-generated backtest report artifacts (viewer foundation).</p>
+    </div>
+    
+  </header>
+
+    <section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Sample report</h2>
+              <p class="sm-section__desc">A representative backtest report summary, rendered from a labelled local fixture.</p>
+            </div>
+            
+          </div>
+    <div class="sm-section__body"><article class="sm-report">
+    <div class="sm-report__head">
+      <span class="sm-schema sm-schema--stable" title="A single deterministic, simulated paper backtest over one injected scenario.">
+    <code>backtest.report.v1</code>
+  </span>
+      <span class="sm-tag sm-tag--sample" title="Local sample fixture — not live data">SAMPLE</span>
+    </div>
+    <dl class="sm-report__grid">
+      <div class="sm-report__cell">
+          <dt>Steps</dt>
+          <dd>6</dd>
+        </div><div class="sm-report__cell">
+          <dt>Simulated fills</dt>
+          <dd>4</dd>
+        </div><div class="sm-report__cell">
+          <dt>Rejections</dt>
+          <dd>1</dd>
+        </div><div class="sm-report__cell">
+          <dt>Closed positions</dt>
+          <dd>2</dd>
+        </div><div class="sm-report__cell">
+          <dt>Open positions</dt>
+          <dd>1</dd>
+        </div><div class="sm-report__cell">
+          <dt>Total simulated PnL</dt>
+          <dd>+12.50 (simulated · not real · not advice)</dd>
+        </div>
+    </dl>
+    <p class="sm-report__digest">scenarioDigest: <code>sample-fixture-digest</code></p>
+    <p class="sm-report__note">
+      Simulated paper-only artifact. Not a live result, not advice, not a profitability claim.
+    </p>
+  </article></div>
+  </section>
+
+    <section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Local artifacts</h2>
+              <p class="sm-section__desc">How a list of generated report files would appear (sample fixture).</p>
+            </div>
+            
+          </div>
+    <div class="sm-section__body"><div class="sm-tablewrap">
+    <table class="sm-table">
+      
+      <thead>
+        <tr>
+          <th scope="col" class="sm-td--left">Artifact</th><th scope="col" class="sm-td--left">Kind</th><th scope="col" class="sm-td--left">Schema</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+                  <td class="sm-td--left"><code>buy-hold.report.json</code></td><td class="sm-td--left">Report</td><td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="A single deterministic, simulated paper backtest over one injected scenario.">
+    <code>backtest.report.v1</code>
+  </span></td>
+                </tr><tr>
+                  <td class="sm-td--left"><code>suite-index.json</code></td><td class="sm-td--left">Suite index</td><td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Aggregated index over a directory of injected scenarios (counts + summed simulated totals).">
+    <code>backtest.suite.v1</code>
+  </span></td>
+                </tr><tr>
+                  <td class="sm-td--left"><code>sensitivity-report.json</code></td><td class="sm-td--left">Sensitivity</td><td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Per-variant deltas vs a baseline over bounded numeric perturbations, with rankings by movement magnitude.">
+    <code>backtest.sensitivity.v1</code>
+  </span></td>
+                </tr>
+      </tbody>
+    </table>
+  </div></div>
+  </section>
+
+    <section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Load a report</h2>
+              <p class="sm-section__desc">Where a real artifact would render once a local read bridge is wired.</p>
+            </div>
+            
+          </div>
+    <div class="sm-section__body"><div class="sm-placeholder">
+    <div class="sm-placeholder__head">
+      <h3 class="sm-placeholder__title">No report loaded</h3>
+      <span class="sm-schema sm-schema--stable" title="A single deterministic, simulated paper backtest over one injected scenario.">
+    <code>backtest.report.v1</code>
+  </span>
+    </div>
+    <p class="sm-placeholder__message">Point a future local file bridge at a generated report JSON to render it here. No upload, network, or backend import is wired today.</p>
+    <p class="sm-placeholder__hint">
+      No file is loaded. This is a viewer foundation — file loading is intentionally
+      not wired yet (no upload, no network, no backend import).
+    </p>
+  </div></div>
+  </section>
+
+    <section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Known schemas</h2>
+              <p class="sm-section__desc">Every schema the viewer can label. Emerging schemas are backend work-in-progress.</p>
+            </div>
+            
+          </div>
+    <div class="sm-section__body"><div class="sm-tablewrap">
+    <table class="sm-table">
+      <caption class="sm-table__caption">Report artifact schemas the viewer foundation recognizes.</caption>
+      <thead>
+        <tr>
+          <th scope="col" class="sm-td--left">Schema</th><th scope="col" class="sm-td--left">Family</th><th scope="col" class="sm-td--left">Stability</th><th scope="col" class="sm-td--left">Emitted by</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="A single deterministic, simulated paper backtest over one injected scenario.">
+    <code>backtest.report.v1</code>
+  </span></td><td class="sm-td--left">report</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>paper:backtest</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Aggregated index over a directory of injected scenarios (counts + summed simulated totals).">
+    <code>backtest.suite.v1</code>
+  </span></td><td class="sm-td--left">suite</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>paper:backtest:suite</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Conservative delta between two suite indexes.">
+    <code>backtest.suite.diff.v1</code>
+  </span></td><td class="sm-td--left">suite</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>paper:backtest:diff:suite</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Per-variant deltas vs a baseline over bounded numeric perturbations, with rankings by movement magnitude.">
+    <code>backtest.sensitivity.v1</code>
+  </span></td><td class="sm-td--left">sensitivity</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>paper:backtest:sensitivity</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Conservative delta between two sensitivity reports (paired by suffix).">
+    <code>backtest.sensitivity.diff.v1</code>
+  </span></td><td class="sm-td--left">sensitivity</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>paper:backtest:diff:sensitivity</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Which simulated paper behaviours a suite exercised — behavioural bookkeeping, not market or test coverage.">
+    <code>backtest.coverage.v1</code>
+  </span></td><td class="sm-td--left">coverage</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>paper:backtest:suite:coverage</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Dry-run explanation of what a variant plan would change, without generating files.">
+    <code>backtest.variant-plan.explain.v1</code>
+  </span></td><td class="sm-td--left">plan</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>paper:backtest:scenario:variants:explain</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--emerging" title="Cross-scenario sensitivity matrix. Backend work in progress — viewer is a labelled placeholder.">
+    <code>backtest.sensitivity.matrix.v1</code> · emerging
+  </span></td><td class="sm-td--left">sensitivity</td><td class="sm-td--left"><span class="sm-pill sm-pill--caution">emerging</span></td><td class="sm-td--left"><code>(pending — backend research sprint)</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--emerging" title="Delta between two sensitivity matrices. Backend work in progress — viewer is a labelled placeholder.">
+    <code>backtest.sensitivity.matrix.diff.v1</code> · emerging
+  </span></td><td class="sm-td--left">sensitivity</td><td class="sm-td--left"><span class="sm-pill sm-pill--caution">emerging</span></td><td class="sm-td--left"><code>(pending — backend research sprint)</code></td>
+                </tr>
+      </tbody>
+    </table>
+  </div></div>
+  </section>
+  
+      </div>
+      <footer class="sm-footer">
+    <p class="sm-footer__labels">
+      <span class="sm-pill sm-pill--muted">Placeholder UI shell</span>
+      <span class="sm-pill sm-pill--muted">Sample local fixture</span>
+      <span class="sm-pill sm-pill--muted">No live data</span>
+      <span class="sm-pill sm-pill--muted">PAPER-only display</span>
+    </p>
+    <p class="sm-footer__note">
+      Soulmaker dashboard foundation — local, offline, simulated. Not financial advice;
+      not a profitability claim. See <a href="safety.html">Safety &amp; modes</a>.
+    </p>
+  </footer>
+    </main>
+  </div>
+</body>
+</html>
+
