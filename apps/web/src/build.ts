@@ -17,7 +17,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { renderToString } from "./lib/html.js";
+import { renderDocument } from "./lib/html.js";
 import { DashboardShell } from "./components/layout.js";
 import { PAGES } from "./pages/registry.js";
 
@@ -40,7 +40,7 @@ for (const page of PAGES) {
     description: page.nav.description,
     body: page.render(),
   });
-  writeFileSync(join(publicDir, page.nav.file), `${renderToString(document)}\n`, "utf8");
+  writeFileSync(join(publicDir, page.nav.file), `${renderDocument(document)}\n`, "utf8");
   console.log(`wrote public/${page.nav.file}`);
 }
 

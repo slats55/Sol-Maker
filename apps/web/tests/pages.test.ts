@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { escapeHtml, renderToString } from "../src/lib/html.js";
+import { escapeHtml, renderDocument } from "../src/lib/html.js";
 import { NAV } from "../src/lib/nav.js";
 import { DashboardShell } from "../src/components/layout.js";
 import { PAGES } from "../src/pages/registry.js";
@@ -15,7 +15,7 @@ function renderPage(page: (typeof PAGES)[number]): string {
     description: page.nav.description,
     body: page.render(),
   });
-  return renderToString(document);
+  return renderDocument(document);
 }
 
 const normalize = (text: string): string => text.replace(/\r\n/g, "\n");

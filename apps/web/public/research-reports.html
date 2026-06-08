@@ -74,6 +74,15 @@
       <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></span>
       <span class="sm-navlink__label">Suite coverage</span>
     </a>
+  </li><li>
+    <a
+      class="sm-navlink"
+      href="research-artifact.html"
+      title="Inspect one locally-generated PAPER report JSON as a static page (no upload, no network)."
+    >
+      <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span>
+      <span class="sm-navlink__label">Artifact inspector</span>
+    </a>
   </li>
         </ul>
       </div><div class="sm-navgroup">
@@ -122,14 +131,14 @@
     </ul>
   </aside>
       <div class="sm-content">
-        
+
     <header class="sm-pagehead">
     <div class="sm-pagehead__main">
       <p class="sm-eyebrow">Research</p>
       <h1 class="sm-pagehead__title">Report viewer</h1>
       <p class="sm-pagehead__desc">Inspect locally-generated backtest report artifacts (viewer foundation).</p>
     </div>
-    
+
   </header>
 
     <section class="sm-section">
@@ -138,7 +147,7 @@
               <h2 class="sm-section__title">Sample report</h2>
               <p class="sm-section__desc">A representative backtest report summary, rendered from a labelled local fixture.</p>
             </div>
-            
+
           </div>
     <div class="sm-section__body"><article class="sm-report">
     <div class="sm-report__head">
@@ -181,11 +190,11 @@
               <h2 class="sm-section__title">Local artifacts</h2>
               <p class="sm-section__desc">How a list of generated report files would appear (sample fixture).</p>
             </div>
-            
+
           </div>
     <div class="sm-section__body"><div class="sm-tablewrap">
     <table class="sm-table">
-      
+
       <thead>
         <tr>
           <th scope="col" class="sm-td--left">Artifact</th><th scope="col" class="sm-td--left">Kind</th><th scope="col" class="sm-td--left">Schema</th>
@@ -216,7 +225,7 @@
               <h2 class="sm-section__title">Load a report</h2>
               <p class="sm-section__desc">Where a real artifact would render once a local read bridge is wired.</p>
             </div>
-            
+
           </div>
     <div class="sm-section__body"><div class="sm-placeholder">
     <div class="sm-placeholder__head">
@@ -239,7 +248,7 @@
               <h2 class="sm-section__title">Known schemas</h2>
               <p class="sm-section__desc">Every schema the viewer can label. Emerging schemas are backend work-in-progress.</p>
             </div>
-            
+
           </div>
     <div class="sm-section__body"><div class="sm-tablewrap">
     <table class="sm-table">
@@ -286,12 +295,24 @@
                   <td class="sm-td--left"><span class="sm-schema sm-schema--emerging" title="Delta between two sensitivity matrices. Backend work in progress — viewer is a labelled placeholder.">
     <code>backtest.sensitivity.matrix.diff.v1</code> · emerging
   </span></td><td class="sm-td--left">sensitivity</td><td class="sm-td--left"><span class="sm-pill sm-pill--caution">emerging</span></td><td class="sm-td--left"><code>(pending — backend research sprint)</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--emerging" title="Manifest of a paper research run&#39;s generated artifacts + digests. Backend work in progress — inspector labels it as emerging.">
+    <code>backtest.research.manifest.v1</code> · emerging
+  </span></td><td class="sm-td--left">research</td><td class="sm-td--left"><span class="sm-pill sm-pill--caution">emerging</span></td><td class="sm-td--left"><code>(pending — backend research sprint)</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--emerging" title="Result of re-verifying a research manifest against its artifacts on disk. Backend work in progress — inspector labels it as emerging.">
+    <code>backtest.research.verify.v1</code> · emerging
+  </span></td><td class="sm-td--left">research</td><td class="sm-td--left"><span class="sm-pill sm-pill--caution">emerging</span></td><td class="sm-td--left"><code>(pending — backend research sprint)</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--emerging" title="Conservative delta between two research run manifests. Backend work in progress — inspector labels it as emerging.">
+    <code>backtest.research.manifest.diff.v1</code> · emerging
+  </span></td><td class="sm-td--left">research</td><td class="sm-td--left"><span class="sm-pill sm-pill--caution">emerging</span></td><td class="sm-td--left"><code>(pending — backend research sprint)</code></td>
                 </tr>
       </tbody>
     </table>
   </div></div>
   </section>
-  
+
       </div>
       <footer class="sm-footer">
     <p class="sm-footer__labels">
