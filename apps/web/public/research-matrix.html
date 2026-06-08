@@ -141,11 +141,13 @@
 
   </header>
 
-    <div class="sm-notice sm-notice--caution" role="note">
-    <p class="sm-notice__title">Emerging schema.</p>
-    <div class="sm-notice__body">The cross-scenario sensitivity matrix is backend research work-in-progress
-        (<code>backtest.sensitivity.matrix.v1</code>). This page is a labelled placeholder so the viewer
-        is ready once the schema stabilizes. It loads nothing and asserts nothing about results.</div>
+    <div class="sm-notice sm-notice--info" role="note">
+    <p class="sm-notice__title">Shipped schema — inspect a matrix in the artifact inspector.</p>
+    <div class="sm-notice__body">The cross-scenario sensitivity matrix (<code>backtest.sensitivity.matrix.v1</code>) is a
+        shipped, stable schema, produced by <code>paper:backtest:sensitivity:matrix</code>. The
+        <a href="research-artifact.html">artifact inspector</a> renders a typed
+        <strong>base × variant grid</strong> for a local matrix JSON. This page stays a foundation
+        placeholder: it loads nothing, makes no network call, and asserts nothing about results.</div>
   </div>
 
     <section class="sm-section">
@@ -159,11 +161,11 @@
     <div class="sm-section__body"><div class="sm-placeholder">
     <div class="sm-placeholder__head">
       <h3 class="sm-placeholder__title">No matrix loaded</h3>
-      <span class="sm-schema sm-schema--emerging" title="Cross-scenario sensitivity matrix. Backend work in progress — viewer is a labelled placeholder.">
-    <code>backtest.sensitivity.matrix.v1</code> · emerging
+      <span class="sm-schema sm-schema--stable" title="Cross-scenario sensitivity matrix: base scenarios × variants, with per-cell deltas and per-variant aggregates.">
+    <code>backtest.sensitivity.matrix.v1</code>
   </span>
     </div>
-    <p class="sm-placeholder__message">A sensitivity matrix compares each scenario against each perturbation. The grid renderer will live here once the schema is finalized.</p>
+    <p class="sm-placeholder__message">A sensitivity matrix compares each base scenario against each variant. Render one locally with `pnpm web:inspect --input &lt;matrix&gt;.json` — the inspector draws the base × variant grid.</p>
     <p class="sm-placeholder__hint">
       No file is loaded. This is a viewer foundation — file loading is intentionally
       not wired yet (no upload, no network, no backend import).
@@ -181,8 +183,8 @@
           </div>
     <div class="sm-section__body"><div class="sm-empty">
     <div class="sm-empty__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div>
-    <p class="sm-empty__title">Nothing to display yet</p>
-    <p class="sm-empty__message">No local matrix artifact is loaded, and matrix loading is intentionally not wired.</p>
+    <p class="sm-empty__title">Nothing to display here</p>
+    <p class="sm-empty__message">This page loads no artifact; use the artifact inspector to render a local matrix grid.</p>
 
   </div></div>
   </section>

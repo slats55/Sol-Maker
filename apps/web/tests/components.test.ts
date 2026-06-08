@@ -45,10 +45,12 @@ describe("ReportSchemaBadge", () => {
     expect(out).not.toContain("unknown");
   });
 
-  it("flags an emerging schema", () => {
+  it("renders a now-shipped matrix schema as stable (no longer emerging)", () => {
+    // sensitivity.matrix.v1 shipped to master; the badge must not claim "emerging".
     const out = render(ReportSchemaBadge("backtest.sensitivity.matrix.v1"));
-    expect(out).toContain("sm-schema--emerging");
-    expect(out).toContain("emerging");
+    expect(out).toContain("backtest.sensitivity.matrix.v1");
+    expect(out).toContain("sm-schema--stable");
+    expect(out).not.toContain("emerging");
   });
 
   it("flags an unknown schema instead of pretending to know it", () => {

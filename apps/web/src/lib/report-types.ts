@@ -31,9 +31,13 @@ export interface ReportSchemaInfo {
 }
 
 /**
- * Known schema ids. `stable` entries correspond to shipped CLI commands;
- * `emerging` entries are backend work-in-progress (e.g. the cross-scenario
- * sensitivity matrix) whose exact CLI shape is not finalized here.
+ * Known schema ids. `stable` entries correspond to shipped CLI commands. The
+ * `emerging` tier is kept for forward-compatibility (a recognized schema whose
+ * backend work has not yet landed on master), but no catalogued schema is
+ * emerging today — the cross-scenario matrix and research-run families have all
+ * shipped. CLI command names below are verified against the commands registered
+ * in `apps/cli` on master; they are display labels only (this module imports no
+ * backend code and runs nothing).
  */
 export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
   {
@@ -100,73 +104,72 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
     id: "backtest.sensitivity.matrix.v1",
     title: "Sensitivity matrix",
     family: "sensitivity",
-    stability: "emerging",
+    stability: "stable",
     description:
-      "Cross-scenario sensitivity matrix. Backend work in progress — viewer is a labelled placeholder.",
-    cli: "(pending — backend research sprint)",
+      "Cross-scenario sensitivity matrix: base scenarios × variants, with per-cell deltas and per-variant aggregates.",
+    cli: "paper:backtest:sensitivity:matrix",
   },
   {
     id: "backtest.sensitivity.matrix.diff.v1",
     title: "Sensitivity matrix diff",
     family: "sensitivity",
-    stability: "emerging",
+    stability: "stable",
     description:
-      "Delta between two sensitivity matrices. Backend work in progress — viewer is a labelled placeholder.",
-    cli: "(pending — backend research sprint)",
+      "Conservative delta between two sensitivity matrices (bases paired by id, cells by suffix).",
+    cli: "paper:backtest:diff:sensitivity:matrix",
   },
   {
     id: "backtest.research.manifest.v1",
     title: "Research run manifest",
     family: "research",
-    stability: "emerging",
+    stability: "stable",
     description:
-      "Manifest of a paper research run's generated artifacts + digests. Backend work in progress — inspector labels it as emerging.",
-    cli: "(pending — backend research sprint)",
+      "Manifest of a paper research run's generated artifacts + digests.",
+    cli: "paper:backtest:research:manifest",
   },
   {
     id: "backtest.research.verify.v1",
     title: "Research run verify",
     family: "research",
-    stability: "emerging",
+    stability: "stable",
     description:
-      "Result of re-verifying a research manifest against its artifacts on disk. Backend work in progress — inspector labels it as emerging.",
-    cli: "(pending — backend research sprint)",
+      "Result of re-verifying a research manifest against its artifacts on disk.",
+    cli: "paper:backtest:research:verify",
   },
   {
     id: "backtest.research.manifest.diff.v1",
     title: "Research manifest diff",
     family: "research",
-    stability: "emerging",
-    description:
-      "Conservative delta between two research run manifests. Backend work in progress — inspector labels it as emerging.",
-    cli: "(pending — backend research sprint)",
+    stability: "stable",
+    description: "Conservative delta between two research run manifests.",
+    cli: "paper:backtest:diff:research:manifest",
   },
   {
     id: "backtest.research.bundle.v1",
     title: "Research run bundle",
     family: "research",
-    stability: "emerging",
+    stability: "stable",
     description:
-      "Bundle summary of a paper research run: run digest, artifact/kind/schema counts, and a manifest summary. Backend work in progress — inspector labels it as emerging.",
-    cli: "(pending — backend research sprint)",
+      "Bundle summary of a paper research run: run digest, artifact/kind/schema counts, and a manifest summary.",
+    cli: "paper:backtest:research:bundle",
   },
   {
     id: "backtest.research.status.v1",
     title: "Research run status",
     family: "research",
-    stability: "emerging",
+    stability: "stable",
     description:
-      "Integrity/status check of a paper research run: completeness, recognition, and manifest sync. Backend work in progress — inspector labels it as emerging.",
-    cli: "(pending — backend research sprint)",
+      "Integrity/status check of a paper research run: completeness, recognition, and manifest sync.",
+    cli: "paper:backtest:research:status",
   },
   {
     id: "backtest.research.campaign.index.v1",
     title: "Research campaign index",
     family: "research",
-    stability: "emerging",
+    stability: "stable",
     description:
-      "Campaign-level summary across many paper research runs: per-run digests, drift, and aggregate kind/schema counts. Backend work in progress — inspector labels it as emerging.",
-    cli: "(pending — backend research sprint)",
+      "Campaign-level summary across many paper research runs: per-run digests, drift, and aggregate kind/schema counts.",
+    cli: "paper:backtest:research:index",
   },
 ];
 

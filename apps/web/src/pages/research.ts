@@ -60,7 +60,7 @@ export function renderResearch(): RawHtml {
         </a>
         <a class="sm-jump" href="research-matrix.html">
           <span class="sm-jump__title">Sensitivity matrix</span>
-          <span class="sm-jump__desc">Cross-scenario matrix (emerging).</span>
+          <span class="sm-jump__desc">Cross-scenario base × variant matrix.</span>
           <span class="sm-jump__arrow" aria-hidden="true">→</span>
         </a>
         <a class="sm-jump" href="research-coverage.html">
