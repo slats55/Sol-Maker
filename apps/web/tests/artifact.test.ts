@@ -23,11 +23,12 @@ describe("ArtifactSchemaBadge", () => {
     expect(out).toContain("sm-schema--stable");
   });
 
-  it("flags an emerging schema", () => {
+  it("renders a now-shipped research schema as stable (no longer emerging)", () => {
     const out = render(
       ArtifactSchemaBadge(normalizeArtifact({ schemaVersion: "backtest.research.verify.v1" })),
     );
-    expect(out).toContain("sm-schema--emerging");
+    expect(out).toContain("sm-schema--stable");
+    expect(out).not.toContain("emerging");
   });
 
   it("flags an unknown schema", () => {
