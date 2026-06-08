@@ -7,6 +7,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  symlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -41,6 +42,8 @@ import {
   paperBacktestResearchManifestReport,
   paperBacktestResearchVerifyReport,
   paperBacktestDiffResearchManifestReport,
+  paperBacktestResearchBundleReport,
+  paperBacktestResearchStatusReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -4834,6 +4837,286 @@ describe("paperBacktestDiffResearchManifestReport (Sprint 16)", () => {
       writeFileSync(join(cwd, "a.json"), JSON.stringify({ nope: true }));
       writeFileSync(join(cwd, "b.json"), JSON.stringify({ nope: true }));
       const r = paperBacktestDiffResearchManifestReport({ cwd, env: {} }, { basePath: "a.json", nextPath: "b.json" });
+      expect(r.text).toMatch(/^Refusing:/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperBacktestResearchBundleReport (Sprint 17)", () => {
+  /** Write a small artifact tree under <cwd>/<sub> and return the relative dir. */
+  function writeArtifactDir(cwd: string, sub: string): string {
+    const dir = join(cwd, sub);
+    mkdirSync(join(dir, "reports"), { recursive: true });
+    writeFileSync(join(dir, "reports", "a.report.json"), JSON.stringify({ schemaVersion: "backtest.report.v1", x: 1 }, null, 2));
+    writeFileSync(join(dir, "suite-index.json"), JSON.stringify({ schemaVersion: "backtest.suite.v1", y: 2 }, null, 2));
+    writeFileSync(join(dir, "my.scenario.json"), JSON.stringify({ name: "s", steps: [] }, null, 2));
+    return sub;
+  }
+
+  it("refuses when --dir is missing or not a directory", () => {
+    expect(paperBacktestResearchBundleReport({}, {}).text).toMatch(/^Refusing: --dir/);
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const r = paperBacktestResearchBundleReport({ cwd, env: {} }, { dir: "nope" });
+      expect(r.text).toMatch(/^Refusing: artifact directory not found/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("bundles a directory: counts, recognized schemas, sorted digest refs, and a run digest", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeArtifactDir(cwd, "run");
+      const r = paperBacktestResearchBundleReport({ cwd, env: {} }, { dir, json: true });
+      expect(r.exitCode).toBe(0);
+      const bundle = JSON.parse(r.text) as {
+        schemaVersion: string;
+        runDigest: string;
+        artifactCount: number;
+        recognizedSchemaVersions: string[];
+        digestEntries: { path: string; digest: string }[];
+        manifest: { manifestDigest: string };
+      };
+      expect(bundle.schemaVersion).toBe("backtest.research.bundle.v1");
+      expect(bundle.artifactCount).toBe(3);
+      expect(bundle.runDigest).toMatch(/^[0-9a-f]+$/);
+      expect(bundle.recognizedSchemaVersions).toEqual(["backtest.report.v1", "backtest.suite.v1"]);
+      expect(bundle.digestEntries.map((e) => e.path)).toEqual([
+        "my.scenario.json",
+        "reports/a.report.json",
+        "suite-index.json",
+      ]);
+      expect(bundle.manifest.manifestDigest).toMatch(/^[0-9a-f]+$/);
+      // Byte-stable across two runs.
+      expect(paperBacktestResearchBundleReport({ cwd, env: {} }, { dir, json: true }).text).toBe(r.text);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--out writes the bundle and refuses to overwrite without --force", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeArtifactDir(cwd, "run");
+      const first = paperBacktestResearchBundleReport({ cwd, env: {} }, { dir, outPath: "run/bundle.json" });
+      expect(first.text).toContain("Wrote bundle");
+      const written = JSON.parse(readFileSync(join(cwd, "run", "bundle.json"), "utf8")) as { schemaVersion: string };
+      expect(written.schemaVersion).toBe("backtest.research.bundle.v1");
+      const blocked = paperBacktestResearchBundleReport({ cwd, env: {} }, { dir, outPath: "run/bundle.json" });
+      expect(blocked.text).toMatch(/already exists \(pass --force/);
+      expect(blocked.exitCode).toBe(1);
+      expect(paperBacktestResearchBundleReport({ cwd, env: {} }, { dir, outPath: "run/bundle.json", force: true }).text).toContain("Wrote bundle");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("reports a malformed JSON file as unknown-json and --strict exits 1", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeArtifactDir(cwd, "run");
+      writeFileSync(join(cwd, "run", "broken.json"), "{ not json");
+      const human = paperBacktestResearchBundleReport({ cwd, env: {} }, { dir });
+      expect(human.text).toContain("Malformed (unparseable) JSON file(s)");
+      expect(human.text).toContain("broken.json");
+      expect(human.exitCode).toBe(0); // non-strict
+      const strict = paperBacktestResearchBundleReport({ cwd, env: {} }, { dir, strict: true });
+      expect(strict.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("excludes manifest/bundle/status meta files written into the same dir (never indexes itself)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeArtifactDir(cwd, "run");
+      // Drop a manifest, a bundle, and a status file INTO the run dir, then re-bundle.
+      paperBacktestResearchManifestReport({ cwd, env: {} }, { dir, outPath: "run/research-manifest.json" });
+      paperBacktestResearchBundleReport({ cwd, env: {} }, { dir, outPath: "run/research-bundle.json" });
+      paperBacktestResearchStatusReport({ cwd, env: {} }, { dir, json: true }); // writes nothing
+      writeFileSync(join(cwd, "run", "research-status.json"), JSON.stringify({ schemaVersion: "backtest.research.status.v1" }));
+      const r = paperBacktestResearchBundleReport({ cwd, env: {} }, { dir, json: true });
+      const bundle = JSON.parse(r.text) as { artifactCount: number; digestEntries: { path: string }[] };
+      expect(bundle.artifactCount).toBe(3); // still 3 — every meta file is excluded
+      const paths = bundle.digestEntries.map((e) => e.path);
+      expect(paths.some((p) => /research-manifest\.json|research-bundle\.json|research-status\.json/.test(p))).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("ignores *.jsonl files entirely", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeArtifactDir(cwd, "run");
+      writeFileSync(join(cwd, "run", "journal.jsonl"), '{"event":"x"}\n{"event":"y"}\n');
+      const r = paperBacktestResearchBundleReport({ cwd, env: {} }, { dir, json: true });
+      const bundle = JSON.parse(r.text) as { artifactCount: number; digestEntries: { path: string }[] };
+      expect(bundle.artifactCount).toBe(3); // .jsonl is never read/indexed
+      expect(bundle.digestEntries.some((e) => e.path.endsWith(".jsonl"))).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("skips symlinks (when the platform allows creating one)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeArtifactDir(cwd, "run");
+      let symlinkCreated = false;
+      try {
+        symlinkSync(join(cwd, "run", "reports", "a.report.json"), join(cwd, "run", "linked.report.json"));
+        symlinkCreated = true;
+      } catch {
+        symlinkCreated = false; // Windows without privileges — the walk-skip is still exercised elsewhere
+      }
+      const r = paperBacktestResearchBundleReport({ cwd, env: {} }, { dir, json: true });
+      const bundle = JSON.parse(r.text) as { artifactCount: number; digestEntries: { path: string }[] };
+      if (symlinkCreated) {
+        expect(bundle.artifactCount).toBe(3); // the symlink is skipped, not indexed
+        expect(bundle.digestEntries.some((e) => e.path === "linked.report.json")).toBe(false);
+      } else {
+        expect(bundle.artifactCount).toBe(3);
+      }
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("redacts a secret-looking artifact path (backstop)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      mkdirSync(join(cwd, "run"), { recursive: true });
+      const secret = "S".repeat(90);
+      writeFileSync(join(cwd, "run", `${secret}.report.json`), JSON.stringify({ schemaVersion: "backtest.report.v1" }));
+      const r = paperBacktestResearchBundleReport({ cwd, env: {} }, { dir: "run", json: true });
+      expect(r.text).not.toContain(secret);
+      expect(r.text).toContain("[REDACTED]");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperBacktestResearchStatusReport (Sprint 17)", () => {
+  function writeArtifactDir(cwd: string, sub: string): string {
+    const dir = join(cwd, sub);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "a.report.json"), JSON.stringify({ schemaVersion: "backtest.report.v1", x: 1 }, null, 2));
+    writeFileSync(join(dir, "b.suite.json"), JSON.stringify({ schemaVersion: "backtest.suite.v1", y: 2 }, null, 2));
+    return sub;
+  }
+
+  it("refuses when --dir is missing or not a directory", () => {
+    expect(paperBacktestResearchStatusReport({}, {}).text).toMatch(/^Refusing: --dir/);
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const r = paperBacktestResearchStatusReport({ cwd, env: {} }, { dir: "nope" });
+      expect(r.text).toMatch(/^Refusing: artifact directory not found/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("summarizes a healthy directory (no manifest) and WRITES NOTHING", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeArtifactDir(cwd, "run");
+      const before = readdirSync(join(cwd, dir)).sort();
+      const r = paperBacktestResearchStatusReport({ cwd, env: {} }, { dir });
+      expect(r.exitCode).toBe(0);
+      expect(r.text).toContain("SIMULATED PAPER-ONLY RESEARCH STATUS");
+      expect(r.text).toContain("- complete:   yes");
+      expect(r.text).toContain("No manifest recorded");
+      expect(readdirSync(join(cwd, dir)).sort()).toEqual(before); // wrote nothing
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json emits a valid status object", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeArtifactDir(cwd, "run");
+      const r = paperBacktestResearchStatusReport({ cwd, env: {} }, { dir, json: true });
+      const status = JSON.parse(r.text) as {
+        schemaVersion: string;
+        complete: boolean;
+        recognized: boolean;
+        stable: boolean;
+        manifest: { present: boolean };
+      };
+      expect(status.schemaVersion).toBe("backtest.research.status.v1");
+      expect(status.complete).toBe(true);
+      expect(status.recognized).toBe(true);
+      expect(status.stable).toBe(true);
+      expect(status.manifest.present).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("reports IN SYNC against an explicit --manifest", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeArtifactDir(cwd, "run");
+      paperBacktestResearchManifestReport({ cwd, env: {} }, { dir, outPath: "manifest.json" });
+      const r = paperBacktestResearchStatusReport({ cwd, env: {} }, { dir, manifestPath: "manifest.json", json: true });
+      const status = JSON.parse(r.text) as { manifest: { present: boolean; inSync: boolean } };
+      expect(status.manifest.present).toBe(true);
+      expect(status.manifest.inSync).toBe(true);
+      expect(r.exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("discovers a research-manifest.json in the dir and detects drift; --strict exits 1", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeArtifactDir(cwd, "run");
+      // Record a manifest INTO the run dir by the conventional name, then mutate an artifact.
+      paperBacktestResearchManifestReport({ cwd, env: {} }, { dir, outPath: "run/research-manifest.json" });
+      writeFileSync(join(cwd, "run", "a.report.json"), JSON.stringify({ schemaVersion: "backtest.report.v1", x: 999 }, null, 2));
+      const r = paperBacktestResearchStatusReport({ cwd, env: {} }, { dir, json: true });
+      const status = JSON.parse(r.text) as { manifest: { present: boolean; inSync: boolean; digestChangedCount: number } };
+      expect(status.manifest.present).toBe(true); // discovered
+      expect(status.manifest.inSync).toBe(false);
+      expect(status.manifest.digestChangedCount).toBe(1);
+      const strict = paperBacktestResearchStatusReport({ cwd, env: {} }, { dir, strict: true });
+      expect(strict.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--strict exits 1 when a malformed file is present", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeArtifactDir(cwd, "run");
+      writeFileSync(join(cwd, "run", "broken.json"), "{ not json");
+      const lenient = paperBacktestResearchStatusReport({ cwd, env: {} }, { dir });
+      expect(lenient.exitCode).toBe(0);
+      const strict = paperBacktestResearchStatusReport({ cwd, env: {} }, { dir, strict: true });
+      expect(strict.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed explicit --manifest", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeArtifactDir(cwd, "run");
+      writeFileSync(join(cwd, "bad.json"), JSON.stringify({ not: "a manifest" }));
+      const r = paperBacktestResearchStatusReport({ cwd, env: {} }, { dir, manifestPath: "bad.json" });
       expect(r.text).toMatch(/^Refusing:/);
       expect(r.exitCode).toBe(1);
     } finally {
