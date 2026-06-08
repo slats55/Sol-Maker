@@ -80,11 +80,13 @@ describe("@soulmaker/backtest — forbidden-import regression", () => {
     expect(names).toContain("types.ts");
     expect(names).toContain("index.ts");
     expect(names).toContain("scenario-variants.ts");
-    // Sprint 16/17/18 research layer must be in the scan too.
+    // Sprint 16/17/18/19 research layer must be in the scan too.
     expect(names).toContain("research-manifest.ts");
     expect(names).toContain("research-bundle.ts");
     expect(names).toContain("research-status.ts");
     expect(names).toContain("research-campaign-index.ts");
+    expect(names).toContain("research-bundle-diff.ts");
+    expect(names).toContain("research-campaign-index-diff.ts");
   });
 
   it("imports no chain/network/filesystem/socket capability module", () => {
