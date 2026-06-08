@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const SCRIPT = fileURLToPath(new URL("../src/inspect.ts", import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const FIXTURE = fileURLToPath(new URL("../fixtures/sample-backtest-report.json", import.meta.url));
+const RESEARCH_FIXTURE = fileURLToPath(new URL("../fixtures/sample-research-verify.json", import.meta.url));
 
 const TIMEOUT = 30_000;
 
@@ -198,6 +199,49 @@ describe("web:inspect — generated output safety", () => {
       expect(html).not.toContain("<script>alert");
       expect(html).not.toContain("<img src=x");
       expect(html).toContain("&lt;script&gt;");
+    },
+    TIMEOUT,
+  );
+});
+
+describe("web:inspect — schema-aware typed views", () => {
+  it(
+    "renders a typed section for a recognized stable report, keeping the generic view",
+    () => {
+      const out = join(dir, "typed-report.html");
+      expect(runInspect(["--input", FIXTURE, "--out", out, "--force"]).status).toBe(0);
+      const html = readFileSync(out, "utf8");
+      expect(html).toContain("sm-typedview");
+      expect(html).toContain("Schema-aware view — Backtest report");
+      expect(html).toContain("Simulated PnL (not real, not advice)");
+      // The generic normalized view is still present below the typed view.
+      expect(html).toContain("Raw preview");
+      expect(html).toContain("Generic field view");
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "renders a typed section for an emerging research artifact with the safety banner",
+    () => {
+      const out = join(dir, "typed-verify.html");
+      expect(runInspect(["--input", RESEARCH_FIXTURE, "--out", out, "--force"]).status).toBe(0);
+      const html = readFileSync(out, "utf8");
+      expect(html).toContain("sm-typedview");
+      expect(html).toContain("Per-artifact verification");
+      expect(html).toContain("PAPER ONLY");
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "produces byte-identical output for identical input (deterministic)",
+    () => {
+      const a = join(dir, "det-a.html");
+      const b = join(dir, "det-b.html");
+      expect(runInspect(["--input", FIXTURE, "--out", a, "--force"]).status).toBe(0);
+      expect(runInspect(["--input", FIXTURE, "--out", b, "--force"]).status).toBe(0);
+      expect(readFileSync(a, "utf8")).toBe(readFileSync(b, "utf8"));
     },
     TIMEOUT,
   );
