@@ -37,9 +37,9 @@ describe("normalizeArtifact — schema recognition", () => {
     expect(view.kind).toBe("Backtest report");
   });
 
-  it("flags an emerging schema honestly", () => {
+  it("recognizes a now-shipped research schema as stable", () => {
     const view = normalizeArtifact({ schemaVersion: "backtest.research.manifest.v1" });
-    expect(view.schemaStatus).toBe("emerging");
+    expect(view.schemaStatus).toBe("stable");
     expect(view.schemaInfo?.family).toBe("research");
   });
 

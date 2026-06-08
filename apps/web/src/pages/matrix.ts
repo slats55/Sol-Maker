@@ -1,4 +1,4 @@
-/** Sensitivity matrix viewer page (foundation — emerging backend schema). */
+/** Sensitivity matrix viewer page (foundation; schema shipped — grid lives in the inspector). */
 
 import { html, type RawHtml } from "../lib/html.js";
 import { navItem } from "../lib/nav.js";
@@ -13,11 +13,13 @@ export function renderMatrix(): RawHtml {
     ${PageHeader({ eyebrow: nav.group, title: "Sensitivity matrix", description: nav.description })}
 
     ${RiskNotice({
-      tone: "caution",
-      title: "Emerging schema.",
-      body: html`The cross-scenario sensitivity matrix is backend research work-in-progress
-        (<code>backtest.sensitivity.matrix.v1</code>). This page is a labelled placeholder so the viewer
-        is ready once the schema stabilizes. It loads nothing and asserts nothing about results.`,
+      tone: "info",
+      title: "Shipped schema — inspect a matrix in the artifact inspector.",
+      body: html`The cross-scenario sensitivity matrix (<code>backtest.sensitivity.matrix.v1</code>) is a
+        shipped, stable schema, produced by <code>paper:backtest:sensitivity:matrix</code>. The
+        <a href="research-artifact.html">artifact inspector</a> renders a typed
+        <strong>base × variant grid</strong> for a local matrix JSON. This page stays a foundation
+        placeholder: it loads nothing, makes no network call, and asserts nothing about results.`,
     })}
 
     ${Section({
@@ -26,7 +28,7 @@ export function renderMatrix(): RawHtml {
         title: "No matrix loaded",
         schemaId: "backtest.sensitivity.matrix.v1",
         message:
-          "A sensitivity matrix compares each scenario against each perturbation. The grid renderer will live here once the schema is finalized.",
+          "A sensitivity matrix compares each base scenario against each variant. Render one locally with `pnpm web:inspect --input <matrix>.json` — the inspector draws the base × variant grid.",
       }),
     })}
 
@@ -34,8 +36,8 @@ export function renderMatrix(): RawHtml {
       title: "Status",
       body: EmptyState({
         icon: ICONS.grid,
-        title: "Nothing to display yet",
-        message: "No local matrix artifact is loaded, and matrix loading is intentionally not wired.",
+        title: "Nothing to display here",
+        message: "This page loads no artifact; use the artifact inspector to render a local matrix grid.",
       }),
     })}
   `;

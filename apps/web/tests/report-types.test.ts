@@ -31,24 +31,45 @@ describe("report schema registry", () => {
     expect(isKnownSchema("totally.unknown.v9")).toBe(false);
   });
 
-  it("marks the in-progress matrix schemas as emerging", () => {
-    expect(knownSchema("backtest.sensitivity.matrix.v1")?.stability).toBe("emerging");
-    expect(knownSchema("backtest.sensitivity.matrix.diff.v1")?.stability).toBe("emerging");
-  });
-
-  it("knows the emerging research bundle/status/campaign schemas", () => {
-    expect(knownSchema("backtest.research.bundle.v1")?.stability).toBe("emerging");
-    expect(knownSchema("backtest.research.status.v1")?.stability).toBe("emerging");
-    expect(knownSchema("backtest.research.campaign.index.v1")?.stability).toBe("emerging");
-    expect(knownSchema("backtest.research.bundle.v1")?.family).toBe("research");
-    expect(knownSchema("backtest.research.status.v1")?.family).toBe("research");
-    expect(knownSchema("backtest.research.campaign.index.v1")?.family).toBe("research");
-  });
-
   it("marks shipped schemas as stable with a real CLI command", () => {
     const report = knownSchema("backtest.report.v1");
     expect(report?.stability).toBe("stable");
     expect(report?.cli).toBe("paper:backtest");
+  });
+
+  // Matrix + research families shipped on master; relabel them stable with the
+  // real CLI command registered in apps/cli. Verified against origin/master.
+  const SHIPPED_STABLE: ReadonlyArray<readonly [string, string]> = [
+    ["backtest.sensitivity.matrix.v1", "paper:backtest:sensitivity:matrix"],
+    ["backtest.sensitivity.matrix.diff.v1", "paper:backtest:diff:sensitivity:matrix"],
+    ["backtest.research.manifest.v1", "paper:backtest:research:manifest"],
+    ["backtest.research.verify.v1", "paper:backtest:research:verify"],
+    ["backtest.research.manifest.diff.v1", "paper:backtest:diff:research:manifest"],
+    ["backtest.research.bundle.v1", "paper:backtest:research:bundle"],
+    ["backtest.research.status.v1", "paper:backtest:research:status"],
+    ["backtest.research.campaign.index.v1", "paper:backtest:research:index"],
+  ];
+
+  for (const [id, cli] of SHIPPED_STABLE) {
+    it(`marks ${id} stable with CLI ${cli}`, () => {
+      const info = knownSchema(id);
+      expect(info?.stability).toBe("stable");
+      expect(info?.cli).toBe(cli);
+      // No relabeled schema should keep a "pending"/"emerging" CLI placeholder.
+      expect(info?.cli).not.toContain("pending");
+    });
+  }
+
+  it("no catalogued schema is labelled emerging (all shipped to master)", () => {
+    const emerging = KNOWN_REPORT_SCHEMAS.filter((s) => s.stability === "emerging");
+    expect(emerging.map((s) => s.id)).toEqual([]);
+  });
+
+  it("every schema advertises a non-empty, non-placeholder CLI", () => {
+    for (const schema of KNOWN_REPORT_SCHEMAS) {
+      expect(schema.cli.length).toBeGreaterThan(0);
+      expect(schema.cli).not.toContain("pending");
+    }
   });
 
   it("has no duplicate ids", () => {
