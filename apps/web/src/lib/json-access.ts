@@ -29,6 +29,10 @@ export const TYPED_VIEW_LIMITS = {
   maxDigestChars: 16,
   /** Max "missing field" labels listed in a partial-view notice. */
   maxMissingListed: 16,
+  /** Max rows (base scenarios) in a base×variant grid. */
+  maxGridRows: 24,
+  /** Max columns (variants) in a base×variant grid. */
+  maxGridCols: 12,
 } as const;
 
 /** Narrow an unknown to a plain object (not array, not null). */

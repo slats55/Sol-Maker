@@ -159,7 +159,7 @@ describe("typed views — per schema (inline minimal shapes)", () => {
     {
       schema: "backtest.sensitivity.matrix.v1",
       raw: { schemaVersion: "backtest.sensitivity.matrix.v1", baseCount: 0, variantCount: 0, bases: [], variantAggregates: [] },
-      expect: "Per-variant aggregates",
+      expect: "Base × variant grid",
     },
     {
       schema: "backtest.sensitivity.matrix.diff.v1",
@@ -214,6 +214,123 @@ describe("typed views — per schema (inline minimal shapes)", () => {
       });
     });
   }
+});
+
+describe("matrix base × variant grid drill-down", () => {
+  const matrixRaw = {
+    schemaVersion: "backtest.sensitivity.matrix.v1",
+    baseCount: 2,
+    variantCount: 2,
+    bases: [
+      {
+        index: 0,
+        baseScenarioName: "alpha",
+        baselineStatus: "passed",
+        cells: [
+          { suffix: "+10pct", status: "passed", deltas: { totalPnlUsd: { base: 1, next: 3, delta: 2 } } },
+          { suffix: "-10pct", status: "failed", deltas: null },
+        ],
+      },
+      {
+        index: 1,
+        baseScenarioName: "beta",
+        baselineStatus: "passed",
+        cells: [{ suffix: "+10pct", status: "passed", deltas: { totalPnlUsd: { base: 1, next: 0.5, delta: -0.5 } } }],
+      },
+    ],
+    variantAggregates: [],
+  };
+  const out = typed(matrixRaw) ?? "";
+
+  it("renders a grid with variant columns and signed PnL-delta cells", () => {
+    expect(out).toContain("Base × variant grid");
+    expect(out).toContain("Base scenario");
+    expect(out).toContain("+10pct");
+    expect(out).toContain("-10pct");
+    expect(out).toContain("alpha");
+    expect(out).toContain("+2");
+  });
+
+  it("shows '·' for an absent cell and a status word for a non-diffable cell", () => {
+    expect(out).toContain("·");
+    expect(out).toContain("failed");
+  });
+
+  it("caps columns and notes hidden variants", () => {
+    const manyCols = {
+      schemaVersion: "backtest.sensitivity.matrix.v1",
+      bases: [
+        {
+          baseScenarioName: "b0",
+          cells: Array.from({ length: 30 }, (_v, i) => ({
+            suffix: `v${i}`,
+            status: "passed",
+            deltas: { totalPnlUsd: { base: 0, next: i, delta: i } },
+          })),
+        },
+      ],
+    };
+    const o = typed(manyCols) ?? "";
+    expect(o).toContain("more variants not shown");
+    expect(o).not.toContain("v20");
+  });
+
+  it("caps grid rows and notes hidden bases", () => {
+    // 50 bases exceeds both the grid row cap (24) and the per-base table cap (40),
+    // so a base past index 40 must not appear anywhere in the rendered view.
+    const manyRows = {
+      schemaVersion: "backtest.sensitivity.matrix.v1",
+      bases: Array.from({ length: 50 }, (_v, i) => ({
+        baseScenarioName: `base-${i}`,
+        cells: [{ suffix: "+10pct", status: "passed", deltas: { totalPnlUsd: { base: 0, next: 1, delta: 1 } } }],
+      })),
+    };
+    const o = typed(manyRows) ?? "";
+    expect(o).toContain("more bases not shown");
+    expect(o).not.toContain("base-45");
+  });
+
+  it("escapes a hostile variant suffix in the grid header", () => {
+    const hostile = {
+      schemaVersion: "backtest.sensitivity.matrix.v1",
+      bases: [
+        {
+          baseScenarioName: "b",
+          cells: [
+            { suffix: "<script>x</script>", status: "passed", deltas: { totalPnlUsd: { base: 0, next: 1, delta: 1 } } },
+          ],
+        },
+      ],
+    };
+    const o = typed(hostile) ?? "";
+    expect(o).not.toContain("<script>x");
+    expect(o).toContain("&lt;script&gt;");
+  });
+
+  it("does not throw on malformed bases/cells", () => {
+    expect(() => typed({ schemaVersion: "backtest.sensitivity.matrix.v1", bases: "nope" })).not.toThrow();
+    expect(() => typed({ schemaVersion: "backtest.sensitivity.matrix.v1", bases: [1, "x", { cells: 5 }] })).not.toThrow();
+  });
+});
+
+describe("matrix diff — changed cells", () => {
+  it("flattens per-base changed cells into a capped table", () => {
+    const raw = {
+      schemaVersion: "backtest.sensitivity.matrix.diff.v1",
+      hasRegression: true,
+      regressionReasons: ["alpha +10pct regressed"],
+      changedBases: [
+        {
+          baseScenarioName: "alpha",
+          cellsChanged: [{ suffix: "+10pct", baseStatus: "passed", nextStatus: "failed", isRegression: true }],
+        },
+      ],
+    };
+    const out = typed(raw) ?? "";
+    expect(out).toContain("Changed cells");
+    expect(out).toContain("+10pct");
+    expect(out).toContain("passed → failed");
+  });
 });
 
 describe("typed views — committed fixtures", () => {
