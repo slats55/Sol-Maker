@@ -1,0 +1,137 @@
+{
+  "schemaVersion": "backtest.sensitivity.matrix.v1",
+  "banner": "PAPER ONLY — cross-scenario sensitivity matrix. Not live, not advice, not a profitability claim.",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "disclaimers": [
+    "Simulated paper-only sensitivity matrix — per-cell bookkeeping deltas vs each base baseline."
+  ],
+  "label": "sample-matrix",
+  "matrixName": "sample-matrix",
+  "planName": "sample-perturbation-plan",
+  "baseCount": 2,
+  "variantCount": 2,
+  "passedBaseCount": 2,
+  "failedBaseCount": 0,
+  "passedVariantRunCount": 3,
+  "failedVariantRunCount": 1,
+  "warningCount": 0,
+  "bases": [
+    {
+      "index": 0,
+      "id": "buy-hold",
+      "baseScenarioName": "sample-buy-hold",
+      "baseScenarioDigest": "sample-digest-buy-hold",
+      "baselineStatus": "passed",
+      "baselineSummary": null,
+      "variantCount": 2,
+      "passedVariantCount": 2,
+      "failedVariantCount": 0,
+      "warningCount": 0,
+      "cells": [
+        {
+          "suffix": "+10pct",
+          "scenarioDigest": "sample-digest-bh-plus10",
+          "status": "passed",
+          "changeCount": 1,
+          "warningCount": 0,
+          "summary": null,
+          "deltas": {
+            "totalPnlUsd": { "base": 12.5, "next": 15, "delta": 2.5 },
+            "realizedPnlUsd": { "base": 7.5, "next": 9, "delta": 1.5 },
+            "unrealizedPnlUsd": { "base": 5, "next": 6, "delta": 1 }
+          }
+        },
+        {
+          "suffix": "-10pct",
+          "scenarioDigest": "sample-digest-bh-minus10",
+          "status": "passed",
+          "changeCount": 1,
+          "warningCount": 0,
+          "summary": null,
+          "deltas": {
+            "totalPnlUsd": { "base": 12.5, "next": 9, "delta": -3.5 },
+            "realizedPnlUsd": { "base": 7.5, "next": 5.5, "delta": -2 },
+            "unrealizedPnlUsd": { "base": 5, "next": 3.5, "delta": -1.5 }
+          }
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "id": "momentum",
+      "baseScenarioName": "sample-momentum",
+      "baseScenarioDigest": "sample-digest-momentum",
+      "baselineStatus": "passed",
+      "baselineSummary": null,
+      "variantCount": 2,
+      "passedVariantCount": 1,
+      "failedVariantCount": 1,
+      "warningCount": 0,
+      "cells": [
+        {
+          "suffix": "+10pct",
+          "scenarioDigest": "sample-digest-mo-plus10",
+          "status": "passed",
+          "changeCount": 1,
+          "warningCount": 0,
+          "summary": null,
+          "deltas": {
+            "totalPnlUsd": { "base": 4, "next": 6.25, "delta": 2.25 }
+          }
+        },
+        {
+          "suffix": "-10pct",
+          "scenarioDigest": "sample-digest-mo-minus10",
+          "status": "failed",
+          "changeCount": 1,
+          "warningCount": 0,
+          "summary": null,
+          "deltas": null
+        }
+      ]
+    }
+  ],
+  "variantAggregates": [
+    {
+      "suffix": "+10pct",
+      "baseCount": 2,
+      "passedCount": 2,
+      "failedCount": 0,
+      "diffableCount": 2,
+      "totalPnlDelta": { "count": 2, "sum": 4.75, "min": 2.25, "max": 2.5, "meanMagnitude": 2.375, "maxMagnitude": 2.5 },
+      "realizedPnlDelta": { "count": 1, "sum": 1.5, "min": 1.5, "max": 1.5, "meanMagnitude": 1.5, "maxMagnitude": 1.5 },
+      "unrealizedPnlDelta": { "count": 1, "sum": 1, "min": 1, "max": 1, "meanMagnitude": 1, "maxMagnitude": 1 },
+      "fillDelta": { "count": 2, "sum": 0, "min": 0, "max": 0, "meanMagnitude": 0, "maxMagnitude": 0 },
+      "rejectDelta": { "count": 2, "sum": 0, "min": 0, "max": 0, "meanMagnitude": 0, "maxMagnitude": 0 },
+      "notionalDelta": { "count": 2, "sum": 6, "min": 2, "max": 4, "meanMagnitude": 3, "maxMagnitude": 4 }
+    },
+    {
+      "suffix": "-10pct",
+      "baseCount": 2,
+      "passedCount": 1,
+      "failedCount": 1,
+      "diffableCount": 1,
+      "totalPnlDelta": { "count": 1, "sum": -3.5, "min": -3.5, "max": -3.5, "meanMagnitude": 3.5, "maxMagnitude": 3.5 },
+      "realizedPnlDelta": { "count": 1, "sum": -2, "min": -2, "max": -2, "meanMagnitude": 2, "maxMagnitude": 2 },
+      "unrealizedPnlDelta": { "count": 1, "sum": -1.5, "min": -1.5, "max": -1.5, "meanMagnitude": 1.5, "maxMagnitude": 1.5 },
+      "fillDelta": { "count": 1, "sum": 0, "min": 0, "max": 0, "meanMagnitude": 0, "maxMagnitude": 0 },
+      "rejectDelta": { "count": 1, "sum": 1, "min": 1, "max": 1, "meanMagnitude": 1, "maxMagnitude": 1 },
+      "notionalDelta": { "count": 1, "sum": -3, "min": -3, "max": -3, "meanMagnitude": 3, "maxMagnitude": 3 }
+    }
+  ],
+  "rankings": {
+    "byMaxTotalPnlMagnitude": [
+      { "suffix": "-10pct", "value": 3.5, "diffableCount": 1 },
+      { "suffix": "+10pct", "value": 2.5, "diffableCount": 2 }
+    ],
+    "byMeanTotalPnlMagnitude": [],
+    "byMaxFillMagnitude": [],
+    "byMaxRejectMagnitude": [],
+    "byMaxNotionalMagnitude": []
+  },
+  "notes": []
+}
