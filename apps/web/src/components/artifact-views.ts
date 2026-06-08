@@ -1002,6 +1002,82 @@ function renderResearchStatusView(rec: Record<string, unknown>): RawHtml {
   `;
 }
 
+function renderResearchCampaignIndexView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const campaignDigest = need(missing, "campaignDigest", readString(rec, "campaignDigest"));
+  const runCount = need(missing, "runCount", readNumber(rec, "runCount"));
+  const runs = readArray(rec, "runs") ?? [];
+  const kindCounts = readArray(rec, "aggregateKindCounts") ?? [];
+  const aggregateSchemas = readStringArray(rec, "aggregateSchemaVersions");
+  const needingAttention = readStringArray(rec, "runsNeedingAttention");
+
+  const kindCap = capRows(kindCounts);
+  const kindRows: readonly (readonly HtmlValue[])[] = kindCap.shown.map((entry) => {
+    const e = asRecord(entry) ?? {};
+    return [text(readString(e, "kind")), num(readNumber(e, "count"))];
+  });
+
+  const runCap = capRows(runs);
+  const runRows: readonly (readonly HtmlValue[])[] = runCap.shown.map((entry) => {
+    const e = asRecord(entry) ?? {};
+    return [
+      text(readString(e, "runId")),
+      boolText(readBoolean(e, "valid")),
+      digestCode(readString(e, "runDigest")),
+      boolText(readBoolean(e, "driftDetected")),
+      text(readString(e, "recommendedAction")),
+    ];
+  });
+
+  return html`
+    ${kvSection("Campaign", "Campaign-level summary across many paper research runs.", [
+      { term: "campaignName", detail: text(readString(rec, "campaignName")) },
+      { term: "campaignDigest", detail: digestCode(campaignDigest) },
+      { term: "runCount", detail: num(runCount) },
+      { term: "validRunCount", detail: num(readNumber(rec, "validRunCount")) },
+      { term: "invalidRunCount", detail: num(readNumber(rec, "invalidRunCount")) },
+      { term: "totalArtifactCount", detail: num(readNumber(rec, "totalArtifactCount")) },
+      { term: "totalUnknownArtifactCount", detail: num(readNumber(rec, "totalUnknownArtifactCount")) },
+      { term: "totalMalformedArtifactCount", detail: num(readNumber(rec, "totalMalformedArtifactCount")) },
+      {
+        term: "runsNeedingAttention",
+        detail:
+          needingAttention.items.length > 0
+            ? `${needingAttention.items.join(", ")}${needingAttention.hidden > 0 ? `, +${needingAttention.hidden} more` : ""}`
+            : DASH,
+      },
+      {
+        term: "aggregateSchemaVersions",
+        detail:
+          aggregateSchemas.items.length > 0
+            ? `${aggregateSchemas.items.join(", ")}${aggregateSchemas.hidden > 0 ? `, +${aggregateSchemas.hidden} more` : ""}`
+            : DASH,
+      },
+    ])}
+    ${tableSection({
+      title: "Aggregate kinds",
+      columns: [{ header: "Kind" }, { header: "Count", align: "right" }],
+      rows: kindRows,
+      empty: "aggregateKindCounts not present.",
+      caption: capCaption(kindCap, "kinds"),
+    })}
+    ${tableSection({
+      title: "Runs",
+      columns: [
+        { header: "Run" },
+        { header: "Valid" },
+        { header: "Run digest" },
+        { header: "Drift" },
+        { header: "Recommended action" },
+      ],
+      rows: runRows,
+      empty: "No runs present.",
+      caption: capCaption(runCap, "runs"),
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
 /* ------------------------------------------------------------------ *
  * Dispatch.
  * ------------------------------------------------------------------ */
@@ -1037,6 +1113,8 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderResearchBundleView(rec);
     case "backtest.research.status.v1":
       return renderResearchStatusView(rec);
+    case "backtest.research.campaign.index.v1":
+      return renderResearchCampaignIndexView(rec);
     default:
       return null;
   }
