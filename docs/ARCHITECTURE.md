@@ -28,7 +28,7 @@ packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.j
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
-packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff (Sprint 8–16)  [strategy, paper, security]
+packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status (Sprint 8–17)  [strategy, paper, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -168,6 +168,23 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   `unknown-json`, never a crash; and research-manifest META files are excluded so a manifest
   never indexes itself. It reads local files only — no backtest, no journal, no network, no
   wallet.
+- **(Sprint 17)** `@soulmaker/backtest` adds the **research run bundle + integrity/status** —
+  `research-bundle.ts` (`buildBacktestResearchRunDigest`, `buildBacktestResearchBundle`,
+  `validate…`, `format…`; schema `backtest.research.bundle.v1`) and `research-status.ts`
+  (`buildBacktestResearchStatus`, `validate…`, `format…`; schema
+  `backtest.research.status.v1`), exposed by the CLI as `paper:backtest:research:bundle` and
+  `paper:backtest:research:status`. Both sit **above** the Sprint 16 manifest and reuse it: the
+  bundle calls `buildBacktestResearchManifest` internally, then adds a manifest summary, counts,
+  the recognized-schema set, unknown/malformed counts, sorted per-artifact digest references, and
+  one deterministic top-level **run digest** (a `digestContent` pass over the path-sorted artifact
+  metadata under a stable domain tag — order-independent, and sensitive to any artifact
+  digest/schema/kind/size change). The status reuses the bundle (for counts + a bundle-candidate
+  probe) and `verifyBacktestResearchManifest` (for drift) to report COMPLETE / RECOGNIZED /
+  STABLE / IN-SYNC plus a neutral recommended action. The package stays pure (still **no file
+  IO**); the CLI walks the directory, extends the META-schema exclusion set to cover bundle +
+  status files, and the status command **writes nothing**. The run digest is the same
+  non-cryptographic, reproducibility-only fingerprint. Local files only — no backtest, no
+  journal, no network, no wallet.
 
 ## The live boundary
 

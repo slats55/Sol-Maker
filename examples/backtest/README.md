@@ -533,3 +533,46 @@ indexes itself (and verify never flags it as "extra").
 > manifest is local bookkeeping over injected, simulated artifacts — **not** a live result,
 > **not** advice, and **not** a profitability claim. Nothing here touches a wallet, key,
 > signing, sending, or the network; Phases 6 and 7 remain **not started**.
+
+## Bundling & checking a research run at a glance (Sprint 17)
+
+The manifest answers "what did this run produce, and can I verify it later?". Sprint 17 adds
+two commands one level up: a **bundle** that packages the whole run into a single
+self-describing summary with a deterministic top-level **run digest**, and a **status** that
+tells you — at a glance — whether the directory looks **complete / recognized / stable /
+in sync**. Neither embeds artifact contents, and `status` **writes nothing**.
+
+```bash
+# Starting from a research run directory (see the Sprint 16 example above):
+pnpm soulmaker paper:backtest:sensitivity:matrix \
+  --dir examples/backtest \
+  --plan examples/backtest/price-sensitivity.variant-plan.json --out-dir matrix-run/
+
+# 1) Record a manifest INTO the run dir (status can then discover it by its conventional name):
+pnpm soulmaker paper:backtest:research:manifest --dir matrix-run/ --out matrix-run/research-manifest.json
+
+# 2) BUNDLE the run — one self-describing summary + a deterministic run digest
+#    (manifest summary + kind/schema counts + recognized schemas + sorted digest refs):
+pnpm soulmaker paper:backtest:research:bundle --dir matrix-run/ --out matrix-run/research-bundle.json
+# --json for the machine-readable bundle (schema backtest.research.bundle.v1);
+# --strict exits non-zero if any artifact is unknown/malformed. The bundle excludes every
+# research META file (manifest/verify/diff/bundle/status), so it never indexes itself.
+
+# 3) STATUS — a quick health check that WRITES NOTHING. The manifest written in step 1 is
+#    discovered automatically (research-manifest.json), so drift is reported:
+pnpm soulmaker paper:backtest:research:status --dir matrix-run/
+# Prints complete / recognized / stable / in-sync verdicts + a single neutral recommended action.
+
+# 4) Demonstrate DRIFT detection — change one artifact, then re-check with --strict:
+#    (any edit to a recorded artifact flips "in sync" to no and, with --strict, exits 1)
+pnpm soulmaker paper:backtest:research:status --dir matrix-run/ \
+  --manifest matrix-run/research-manifest.json --strict
+```
+
+> **Same honesty as the manifest.** The run digest is the same **non-cryptographic,
+> reproducibility-only** fingerprint — it makes two runs comparable and re-identifiable, but
+> it is **not** a cryptographic hash and **not** anti-tamper. The bundle embeds **no** artifact
+> contents, the status' recommended action is **operational** guidance about the directory and
+> **never** trading advice, and both are local bookkeeping over injected, simulated artifacts —
+> **not** a live result, **not** advice, and **not** a profitability claim. Nothing here touches
+> a wallet, key, signing, sending, or the network; Phases 6 and 7 remain **not started**.

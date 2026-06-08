@@ -1,4 +1,4 @@
-# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow; Sprint 14 paper research lab — rankings, variant-plan explain, sensitivity diff, config perturbations, suite coverage; Sprint 15 cross-scenario sensitivity matrix + matrix diff; Sprint 16 research run manifest — index/verify/diff a run's local artifacts)
+# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow; Sprint 14 paper research lab — rankings, variant-plan explain, sensitivity diff, config perturbations, suite coverage; Sprint 15 cross-scenario sensitivity matrix + matrix diff; Sprint 16 research run manifest — index/verify/diff a run's local artifacts; Sprint 17 research run bundle + integrity/status — package a run into one self-describing bundle with a deterministic run digest, plus a complete/recognized/stable/in-sync directory status)
 
 The paper engine (`@soulmaker/paper` + the `paper:*` CLI commands) is a
 **deterministic, offline, simulated-only** trading sandbox. It exists to prove
@@ -507,6 +507,48 @@ manifests by path and reports added/removed/changed artifacts plus count/size de
 output is local bookkeeping over injected artifacts — not a live result, not advice, and not
 a profitability claim.
 
+## Research run bundle + integrity/status (Sprint 17)
+
+Sprint 17 sits one level **above** the manifest. It answers two everyday questions about a
+research directory: *"can I capture this whole run as one comparable fingerprint?"* (bundle)
+and *"does this directory look complete, recognized, stable, and in sync right now?"*
+(status). It is **not** an archive — it embeds no artifact contents; it is a deterministic
+JSON summary/index.
+
+`@soulmaker/backtest` exports the pure `buildBacktestResearchRunDigest`,
+`buildBacktestResearchBundle`, `validateBacktestResearchBundle`,
+`formatBacktestResearchBundle` (schema `backtest.research.bundle.v1`) and
+`buildBacktestResearchStatus`, `validateBacktestResearchStatus`,
+`formatBacktestResearchStatus` (schema `backtest.research.status.v1`). The CLI adds
+`paper:backtest:research:bundle --dir <d> [--out <b>] [--force] [--json] [--strict]` and
+`paper:backtest:research:status --dir <d> [--manifest <m>] [--json] [--strict]`.
+
+The **bundle** reuses `buildBacktestResearchManifest` internally (so it never drifts from the
+manifest), then adds: a manifest summary (schema + run + counts + a `manifestDigest`), per-kind
+and per-schema counts, the **recognized-schema set** (versioned recognized kinds only),
+unknown + malformed counts, the sorted per-artifact `{path, digest}` references, and one
+deterministic top-level **run digest**. The run digest is a `digestContent` pass over the
+path-sorted artifact metadata (`path` + `kind` + `schemaVersion` + `digest` + `sizeBytes`)
+under a stable domain tag — so it is **independent of input order**, **identical** for
+identical artifact sets, and **changes** when any artifact's digest/schema/kind/size changes.
+It is the same **non-cryptographic, reproducibility-only** fingerprint (NOT a security or
+anti-tamper guarantee). `--strict` exits 1 on any unknown/malformed artifact; `--out` writes
+ONLY the bundle (refuses overwrite without `--force`).
+
+The **status** reuses the bundle (for counts + a bundle-candidate validity probe) and
+`verifyBacktestResearchManifest` (for drift, when a manifest is provided via `--manifest` or
+discovered as `research-manifest.json` in the dir) to report four at-a-glance verdicts —
+**COMPLETE** (has artifacts), **RECOGNIZED** (every file classified), **STABLE** (no
+unparseable files), and **IN SYNC** (matches the manifest: missing / extra /
+digest-/schema-/size-changed counts) — plus one **neutral recommended action** that is
+operational guidance about the directory, **never trading advice**. The status **writes
+nothing**; `--strict` exits 1 on any unknown/malformed/drift/invalid condition.
+
+Both stay pure (the CLI does all directory IO, excludes every research META file —
+manifest/verify/diff/bundle/status — so a bundle never indexes itself, and never reads a
+`*.jsonl`). Local bookkeeping over injected artifacts — not a live result, not advice, not a
+profitability claim.
+
 ## PnL reporting
 
 `PaperRunSummary`: realized PnL, unrealized PnL, total PnL, open position count,
@@ -539,6 +581,8 @@ simulated, or sent" disclaimer.
 | `paper:backtest:research:manifest` | index a directory's LOCAL JSON artifacts into a reproducibility manifest (Sprint 16): classify each by schema/shape + a non-cryptographic, reproducibility-only content digest (`backtest.research.manifest.v1`); `--out` writes ONLY the manifest (`--force` to overwrite), `--strict` exits 1 on any unknown/malformed artifact; a malformed file is indexed as `unknown-json`, never a crash |
 | `paper:backtest:research:verify` | verify a manifest against the CURRENT local artifacts (Sprint 16): recompute digests/sizes → per-artifact `ok`/`digest-changed`/`schema-changed`/`size-changed`/`missing`/`extra` + VALID/INVALID (`backtest.research.verify.v1`); writes nothing, exit 1 when the set drifted |
 | `paper:backtest:diff:research:manifest` | diff **two** manifest JSON files (Sprint 16): pairs artifacts by path → added/removed/changed + count/size + per-kind/per-schema count deltas + `hasChange` (`backtest.research.manifest.diff.v1`); reads two files, writes nothing |
+| `paper:backtest:research:bundle` | package a directory's artifacts into one self-describing bundle (Sprint 17): manifest summary + kind/schema counts + recognized-schema set + unknown/malformed counts + sorted digest refs + a deterministic top-level **run digest** (`backtest.research.bundle.v1`); embeds no contents; `--out` writes ONLY the bundle (`--force`), `--strict` exits 1 on any unknown/malformed artifact |
+| `paper:backtest:research:status` | at-a-glance health of a research dir (Sprint 17): **complete / recognized / stable / in-sync** + drift counts (vs `--manifest` or a discovered `research-manifest.json`) + a single **neutral** recommended action (`backtest.research.status.v1`); **writes nothing**, `--strict` exits 1 on any unknown/malformed/drift condition |
 
 `paper:run` options: `--candidates <path>` `--prices <path>` `--journal <path>`
 `--max-trade-size-usd` `--max-daily-loss-usd` `--max-open-positions`

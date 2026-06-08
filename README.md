@@ -105,7 +105,17 @@ digest — into a stable (`backtest.research.manifest.v1`) manifest;
 reports any missing / changed / extra / schema-mismatched artifact (exit 1 if the set
 drifted); and `paper:backtest:diff:research:manifest` diffs two manifests. The manifest
 answers "what exactly did this local PAPER-only run produce, and can I verify it later?" —
-it is local bookkeeping, not a security/anti-tamper guarantee. None of this fetches live
+it is local bookkeeping, not a security/anti-tamper guarantee. Sprint 17 packages a run
+**above** the manifest: `paper:backtest:research:bundle --dir <artifacts>` builds one
+self-describing **bundle** (`backtest.research.bundle.v1`) — a manifest summary, kind +
+schema counts, the recognized-schema set, unknown/malformed counts, the sorted per-artifact
+digest references, and one deterministic top-level **run digest** that fingerprints the
+whole artifact set (so two runs compare at a glance; a single changed artifact changes the
+run digest) — and `paper:backtest:research:status --dir <artifacts>` gives a quick health
+check (`backtest.research.status.v1`): is the directory **complete / recognized / stable /
+in sync** with its recorded manifest, with a single neutral recommended action. Both embed
+no artifact contents, the run digest is the same **non-cryptographic, reproducibility-only**
+fingerprint, and status **writes nothing**. None of this fetches live
 data or begins transaction planning (roadmap Phase 6 remains not started; Phase 7 burner
 live remains not started). The default mode is `PAPER`. See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
@@ -146,7 +156,8 @@ soulmaker/
                 #                    paper:backtest:suite:coverage,
                 #                    paper:backtest:sensitivity, paper:backtest:diff:sensitivity,
                 #                    paper:backtest:sensitivity:matrix, paper:backtest:diff:sensitivity:matrix,
-                #                    paper:backtest:research:manifest/verify, paper:backtest:diff:research:manifest)
+                #                    paper:backtest:research:manifest/verify, paper:backtest:diff:research:manifest,
+                #                    paper:backtest:research:bundle, paper:backtest:research:status)
     web/        # Phase 8 dashboard (placeholder)
   packages/
     core/       # @soulmaker/core      — config schema, modes, risk caps, LIVE GATE
@@ -168,7 +179,8 @@ soulmaker/
                 #            Sprint 14 adds sensitivity rankings, variant-plan explain,
                 #            sensitivity diff, config.<field> perturbations, and suite coverage;
                 #            Sprint 15 adds the multi-base sensitivity matrix + matrix diff;
-                #            Sprint 16 adds the research artifact manifest (build/verify/diff)
+                #            Sprint 16 adds the research artifact manifest (build/verify/diff);
+                #            Sprint 17 adds the research run bundle + integrity/status summary
                 #            (still pure: the package never scans dirs or reads/writes files)
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
@@ -337,6 +349,15 @@ pnpm soulmaker paper:backtest:research:manifest --dir <matrix/> --out <matrix/>/
 pnpm soulmaker paper:backtest:research:verify --manifest <matrix/>/research-manifest.json --dir <matrix/>
 # (exit 1 if anything is missing/changed/extra). DIFF two manifests (--fail-on-change):
 pnpm soulmaker paper:backtest:diff:research:manifest --base <runA/manifest.json> --next <runB/manifest.json>
+
+# Sprint 17 — BUNDLE: package the run into one self-describing summary with a deterministic
+# top-level run digest (manifest summary + counts + recognized schemas + sorted digest refs).
+# Embeds no artifact contents; writes only the bundle with --out; --strict fails on unknown/malformed:
+pnpm soulmaker paper:backtest:research:bundle --dir <matrix/> --out <matrix/>/research-bundle.json
+# STATUS: a quick health check — complete / recognized / stable / in-sync — that WRITES NOTHING.
+# A manifest is discovered (research-manifest.json) or passed with --manifest; --strict fails on drift:
+pnpm soulmaker paper:backtest:research:status --dir <matrix/>
+pnpm soulmaker paper:backtest:research:status --dir <matrix/> --manifest <matrix/>/research-manifest.json --strict
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

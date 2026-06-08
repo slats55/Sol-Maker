@@ -119,7 +119,10 @@ sensitivity-report diffing, allowlisted config-field perturbations, suite covera
 Sprint 15 cross-scenario sensitivity matrix — sweep many bases through one plan,
 aggregate every (base × variant) cell, diff two matrices;
 Sprint 16 research run manifest — index/verify/diff a run's local artifacts for
-reproducibility):
+reproducibility;
+Sprint 17 research run bundle + integrity/status — package a run into one self-describing
+bundle with a deterministic top-level run digest, plus a quick complete/recognized/stable/
+in-sync directory status):
 
 - ✅ Deterministic, **paper-only** rules engine: turns an advisory
   `@soulmaker/risk` report + injected, read-only metrics into a single decision —
@@ -379,6 +382,25 @@ reproducibility):
   `verify` recomputes digests/sizes and reports missing/changed/extra/schema-mismatch with a
   VALID/INVALID exit; everything is local bookkeeping — not a live result, not advice, not a
   profitability claim.
+- ✅ **(Sprint 17) Research run bundle & integrity/status** — a self-describing summary layer
+  **above** the Sprint 16 manifest. `@soulmaker/backtest` exports the pure
+  `buildBacktestResearchRunDigest`, `buildBacktestResearchBundle`, `validate…`, `format…`
+  (schema `backtest.research.bundle.v1`) and `buildBacktestResearchStatus`, `validate…`,
+  `format…` (schema `backtest.research.status.v1`); the CLI adds
+  `paper:backtest:research:bundle --dir <d> [--out <b>] [--force] [--json] [--strict]` and
+  `paper:backtest:research:status --dir <d> [--manifest <m>] [--json] [--strict]`. The **bundle**
+  reuses the manifest builder, then adds a manifest summary (with a manifest digest), kind +
+  schema counts, the recognized-schema set, unknown/malformed counts, the sorted per-artifact
+  digest references, and one deterministic top-level **run digest** over the sorted artifact
+  metadata — identical artifact sets ⇒ an identical run digest; a single changed artifact digest
+  changes it. The **status** answers, at a glance, whether the directory is COMPLETE (has
+  artifacts), RECOGNIZED (every file classified), STABLE (no unparseable files), and IN SYNC
+  with a recorded manifest (drift = missing/extra/digest-/schema-/size-changed), plus one NEUTRAL
+  recommended action (operational, never trading advice). The bundle embeds **no artifact
+  contents**; the status **writes nothing**; both reuse the same non-cryptographic,
+  reproducibility-only digest; the package stays pure (the CLI walks the directory, excludes all
+  research META files — manifest/verify/diff/bundle/status — and never reads a `*.jsonl`). Local
+  bookkeeping — not a live result, not advice, not a profitability claim.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 
