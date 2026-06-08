@@ -126,3 +126,29 @@ describe("renderArtifactReport (loaded page)", () => {
     expect(out).toContain("&lt;script&gt;");
   });
 });
+
+describe("ArtifactReportView — typed + generic integration", () => {
+  it("renders a typed view above the generic summary when raw is supplied", () => {
+    const raw = { schemaVersion: "backtest.report.v1", scenarioName: "buy-hold", pnl: { totalUsd: 12.5 } };
+    const out = render(ArtifactReportView(normalizeArtifact(raw), raw));
+    expect(out).toContain("sm-typedview");
+    expect(out).toContain("Schema-aware view — Backtest report");
+    // Generic view still rendered below the typed view.
+    expect(out).toContain("Generic field view");
+    expect(out).toContain("Raw preview");
+  });
+
+  it("omits the typed view for an unrecognized schema (generic only)", () => {
+    const raw = { schemaVersion: "made.up.v1", a: 1 };
+    const out = render(ArtifactReportView(normalizeArtifact(raw), raw));
+    expect(out).not.toContain("sm-typedview");
+    expect(out).toContain("Raw preview");
+  });
+
+  it("omits the typed view when no raw value is supplied (back-compat)", () => {
+    const view = normalizeArtifact({ schemaVersion: "backtest.report.v1" });
+    const out = render(ArtifactReportView(view));
+    expect(out).not.toContain("sm-typedview");
+    expect(out).toContain("Raw preview");
+  });
+});
