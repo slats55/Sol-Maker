@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "backtest.research.verify.v1",
+  "banner": "PAPER ONLY — research run verify. Not live, not advice, not a profitability claim.",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "disclaimers": [
+    "Simulated paper-only verification — re-checks a manifest against artifacts on disk."
+  ],
+  "runName": "sample-research-run",
+  "manifestArtifactCount": 3,
+  "currentArtifactCount": 3,
+  "okCount": 1,
+  "changedCount": 1,
+  "missingCount": 1,
+  "extraCount": 0,
+  "valid": false,
+  "artifacts": [
+    {
+      "path": "reports/buy-hold.report.json",
+      "status": "ok",
+      "expected": {
+        "kind": "backtest-report",
+        "schemaVersion": "backtest.report.v1",
+        "digest": "sample-digest-report",
+        "sizeBytes": 1536
+      },
+      "actual": {
+        "kind": "backtest-report",
+        "schemaVersion": "backtest.report.v1",
+        "digest": "sample-digest-report",
+        "sizeBytes": 1536
+      },
+      "issues": []
+    },
+    {
+      "path": "suite/index.json",
+      "status": "digest-changed",
+      "expected": {
+        "kind": "suite-index",
+        "schemaVersion": "backtest.suite.v1",
+        "digest": "sample-digest-suite",
+        "sizeBytes": 1792
+      },
+      "actual": {
+        "kind": "suite-index",
+        "schemaVersion": "backtest.suite.v1",
+        "digest": "sample-digest-suite-changed",
+        "sizeBytes": 1792
+      },
+      "issues": ["digest changed"]
+    },
+    {
+      "path": "notes/readme.txt",
+      "status": "missing",
+      "expected": {
+        "kind": "unknown-json",
+        "schemaVersion": null,
+        "digest": "sample-digest-notes",
+        "sizeBytes": 768
+      },
+      "actual": null,
+      "issues": ["file missing on disk"]
+    }
+  ],
+  "notes": ["Manifest is out of sync: 1 changed, 1 missing."]
+}

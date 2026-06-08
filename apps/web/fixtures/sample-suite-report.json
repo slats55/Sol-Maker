@@ -1,0 +1,88 @@
+{
+  "schemaVersion": "backtest.suite.v1",
+  "banner": "PAPER ONLY — simulated paper suite index. Not live, not advice, not a profitability claim.",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "disclaimers": [
+    "Simulated paper-only suite — bookkeeping over injected scenarios, not market behaviour."
+  ],
+  "name": "sample-suite",
+  "summary": {
+    "scenarioCount": 3,
+    "passedCount": 2,
+    "failedCount": 1,
+    "warningCount": 1,
+    "totalStepCount": 18,
+    "totalCandidateCount": 15,
+    "totalBuyFills": 7,
+    "totalSellFills": 3,
+    "totalFills": 10,
+    "totalRejects": 2,
+    "totalRealizedPnlUsd": 14,
+    "totalUnrealizedPnlUsd": 6,
+    "totalSimulatedPnlUsd": 20,
+    "totalSimulatedNotionalUsd": 90,
+    "totalOpenPositions": 2,
+    "totalClosedTrades": 4
+  },
+  "entries": [
+    {
+      "index": 0,
+      "id": "buy-hold",
+      "file": "scenarios/buy-hold.json",
+      "scenarioName": "sample-buy-hold",
+      "scenarioDigest": "sample-digest-buy-hold",
+      "status": "passed",
+      "lintStatus": "valid",
+      "runStatus": "passed",
+      "errors": [],
+      "warningCodes": [],
+      "summary": {
+        "stepCount": 6,
+        "candidateCount": 5,
+        "buyFills": 3,
+        "sellFills": 1,
+        "rejects": 1,
+        "realizedPnlUsd": 7.5,
+        "unrealizedPnlUsd": 5,
+        "totalPnlUsd": 12.5,
+        "openPositions": 1,
+        "closedTrades": 2,
+        "simulatedNotionalUsd": 30
+      },
+      "reportFile": "reports/buy-hold.report.json"
+    },
+    {
+      "index": 1,
+      "id": "momentum",
+      "file": "scenarios/momentum.json",
+      "scenarioName": "sample-momentum",
+      "scenarioDigest": "sample-digest-momentum",
+      "status": "passed",
+      "lintStatus": "valid",
+      "runStatus": "passed",
+      "errors": [],
+      "warningCodes": ["watch-only-path"],
+      "summary": null,
+      "reportFile": "reports/momentum.report.json"
+    },
+    {
+      "index": 2,
+      "id": "stop-out",
+      "file": "scenarios/stop-out.json",
+      "scenarioName": "sample-stop-out",
+      "scenarioDigest": "sample-digest-stop-out",
+      "status": "failed",
+      "lintStatus": "valid",
+      "runStatus": "failed",
+      "errors": [{ "code": "run-failed", "message": "simulated stop-out path" }],
+      "warningCodes": [],
+      "summary": null,
+      "reportFile": null
+    }
+  ],
+  "notes": []
+}
