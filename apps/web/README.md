@@ -51,13 +51,16 @@ pnpm test                # includes apps/web/tests/**
 apps/web/
   src/
     lib/         html engine, safety model, nav, report-schema registry,
-                 CLI command reference, local-artifact normalizer, fixtures
+                 CLI command reference, local-artifact normalizer,
+                 defensive JSON accessors (json-access.ts)
     components/  layout (shell, sidebar, banner), ui primitives, cards,
-                 tables, report-viewer + artifact-inspector components
+                 tables, report-viewer + artifact-inspector components,
+                 schema-aware typed views (artifact-views.ts)
     pages/       one render function per route + a registry
     build.ts     static-site generator (reads styles/, writes public/)
     inspect.ts   Node-only command: read ONE local report JSON → one static page
-  fixtures/      committed benign sample report JSON (inspect smoke + tests)
+  fixtures/      committed benign sample report/suite/sensitivity/research JSON
+                 (inspect smoke + tests)
   styles/        theme.css (dark command-center theme)
   tests/         Vitest tests (rendering, safety, schema, normalizer, CLI, drift)
   public/        GENERATED static site — do not edit by hand
@@ -74,7 +77,13 @@ reads one `.json` file, writes one HTML file — no upload, no server, no networ
 no wallet, no keys. Report content is normalized, capped, and HTML-escaped, never
 executed. Malformed JSON, directories, and non-`.json` inputs are refused with a
 non-zero exit; the default output is the committed empty-state page, so
-overwriting it requires `--force`. Full details:
+overwriting it requires `--force`.
+
+When the inspector recognizes a schema, it renders a **typed, schema-aware view**
+(identity, key counts, capped tables) above the generic summary; unknown schemas
+fall back to the generic view safely. Typed rendering is **UI-only** — it reads
+the parsed JSON defensively (no backend import) and escapes/caps everything. Full
+details:
 [`../../docs/WEB_LOCAL_ARTIFACT_INSPECTOR.md`](../../docs/WEB_LOCAL_ARTIFACT_INSPECTOR.md).
 
 ## Data policy
