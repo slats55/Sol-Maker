@@ -664,3 +664,50 @@ pnpm soulmaker paper:backtest:diff:research:index --base base-index.json --next 
 > injected, simulated summaries — **not** a live result, **not** advice, and **not** a profitability
 > claim — and nothing here touches a wallet, key, signing, sending, or the network; Phases 6 and 7
 > remain **not started**.
+
+## Tracking a campaign over time (Sprint 20)
+
+The campaign **diff** compares two snapshots; the campaign **history report** folds an **ordered
+set** of campaign index snapshots into one trend view — which runs appeared / disappeared / changed
+/ newly regressed / recovered, each run's current **valid** and **attention streaks**, and a
+conservative regression signal you can fail CI on. Capture a campaign index after each research
+session, keep the JSON files, and point `paper:backtest:research:history` at them oldest-first.
+
+```bash
+# 1) Snapshot the campaign index at three points in time (oldest first). In practice you produce
+#    one of these per research session; here they are t0/t1/t2 of the same campaign directory:
+pnpm soulmaker paper:backtest:research:index --dir campaign/ --out t0-index.json
+# … edit/add runs in campaign/ between sessions …
+pnpm soulmaker paper:backtest:research:index --dir campaign/ --out t1-index.json
+# … edit/add runs again …
+pnpm soulmaker paper:backtest:research:index --dir campaign/ --out t2-index.json
+
+# 2) HISTORY — fold the ordered snapshots into one trend report (human-readable):
+pnpm soulmaker paper:backtest:research:history --index t0-index.json --index t1-index.json --index t2-index.json
+# --json for the machine-readable report (schema backtest.research.campaign.history.report.v1).
+
+# 3) Pick the reference for the "since baseline" deltas:
+#    --baseline first    (default) → since the OLDEST snapshot (t0)
+#    --baseline previous           → since the SECOND-TO-LAST snapshot (t1)
+#    --baseline t1-index.json      → since an EXPLICIT snapshot (matched by its --index path)
+pnpm soulmaker paper:backtest:research:history --index t0-index.json --index t1-index.json --index t2-index.json --baseline previous
+
+# 4) STRICT behaviour for CI — each flag sets a non-zero exit:
+#    --fail-on-change       any change since baseline
+#    --fail-on-regression   ONLY a conservative integrity regression since baseline
+#    --fail-on-attention    any run needs attention in the LATEST snapshot
+#    --fail-on-new-attention a run newly needs attention since baseline
+pnpm soulmaker paper:backtest:research:history --index t0-index.json --index t2-index.json --fail-on-regression --fail-on-new-attention
+```
+
+> **Reuses the diff, never re-derives it.** The history report's `hasChange` and conservative
+> `hasRegression` come straight from the Sprint 19 campaign diff (baseline → latest), so the
+> regression definition is exactly the same: a previously-**valid** run removed, a run going
+> **valid→invalid**, a paired run's **run digest** changing, an unknown/malformed increase, or an
+> incompatible schema. A purely **additive** new run is a *change*, not a *regression*. Each snapshot
+> must be a real `backtest.research.campaign.index.v1` (a bundle, a diff, or a malformed file is
+> refused); the report carries no timestamp, so an identical ordered set of snapshots yields a
+> byte-identical report. Every digest is the same **non-cryptographic, reproducibility-only**
+> fingerprint; this is local bookkeeping over injected, simulated summaries — **not** a live result,
+> **not** advice, and **not** a profitability claim — and nothing here touches a wallet, key,
+> signing, sending, or the network; Phases 6 and 7 remain **not started**.

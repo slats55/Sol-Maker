@@ -28,7 +28,7 @@ packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.j
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
-packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff (Sprint 8–19)  [strategy, paper, security]
+packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report (Sprint 8–20)  [strategy, paper, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -217,6 +217,20 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   `Date.now`/`Math.random`. The CLI reads the two named files and **writes nothing**; a
   missing/malformed/wrong-type file refuses. A diff is bookkeeping over two **summaries** — not a
   live result, prediction, or advice.
+- **(Sprint 20)** `@soulmaker/backtest` adds the **research campaign history layer** above the
+  Sprint 19 diff: `research-campaign-history.ts` (`buildBacktestResearchCampaignHistoryReport`,
+  `validate…`, `format…`; schema `backtest.research.campaign.history.report.v1`), exposed by the
+  CLI as `paper:backtest:research:history`. It folds an **ordered** set of campaign index snapshots
+  (each strictly validated via `validateBacktestResearchCampaignIndex`, so a non-index / wrong-
+  schema input is refused) into one trend report — per-run first/last-seen, present/valid/attention
+  now, ever-needed-attention, current valid + attention streaks, and digest-change count — and
+  REUSES `diffBacktestResearchCampaignIndexes` verbatim for the since-baseline and since-previous
+  deltas, so `hasChange` and the conservative `hasRegression` are byte-identical to the diff. The
+  module imports only `@soulmaker/security` (redacting formatter) plus its two sibling research
+  modules — no fs/net, no `Date.now`/`Math.random`. The CLI reads the named files **in order** and
+  **writes nothing**; `--baseline first|previous|<path>` chooses the reference and the `--fail-on-*`
+  flags gate CI on change / regression / current attention / new attention. A history report is
+  bookkeeping over an ordered set of **summaries** — not a live result, prediction, or advice.
 
 ## The live boundary
 

@@ -131,7 +131,16 @@ both a `hasChange` flag and a **conservative** `hasRegression` flag — `--fail-
 non-zero on any difference, while `--fail-on-regression` fires only on integrity breakage
 (a removed/changed artifact, a removed valid run, a run going valid→invalid, an unexpected
 digest change, or an unknown/malformed increase) and treats a purely additive run/artifact as a
-change, not a regression. None of this fetches live
+change, not a regression. Sprint 20 folds a **time series** of campaign indexes into one
+deterministic **history report**: `paper:backtest:research:history --index <i0> --index <i1> …`
+reads an ordered set of campaign index snapshots (oldest first) and answers which runs first
+appeared / disappeared / changed / newly regressed / recovered, each run's first/last-seen,
+present-valid-attention-now state, current **valid** and **attention streaks**, and digest-change
+count (`backtest.research.campaign.history.report.v1`). It REUSES the Sprint 19 campaign diff for
+the since-baseline / since-previous deltas — so `hasChange` and the conservative `hasRegression`
+are byte-identical to the diff — and adds `--fail-on-change` / `--fail-on-regression` /
+`--fail-on-attention` / `--fail-on-new-attention` for CI, with `--baseline first|previous|<path>`
+to pick the reference snapshot. It reads only the named files and writes nothing. None of this fetches live
 data or begins transaction planning (roadmap Phase 6 remains not started; Phase 7 burner
 live remains not started). The default mode is `PAPER`. See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
@@ -174,7 +183,7 @@ soulmaker/
                 #                    paper:backtest:sensitivity:matrix, paper:backtest:diff:sensitivity:matrix,
                 #                    paper:backtest:research:manifest/verify, paper:backtest:diff:research:manifest,
                 #                    paper:backtest:research:bundle, paper:backtest:research:status,
-                #                    paper:backtest:research:index,
+                #                    paper:backtest:research:index, paper:backtest:research:history,
                 #                    paper:backtest:diff:research:bundle, paper:backtest:diff:research:index)
     web/        # Phase 8 dashboard (placeholder)
   packages/
@@ -200,7 +209,8 @@ soulmaker/
                 #            Sprint 16 adds the research artifact manifest (build/verify/diff);
                 #            Sprint 17 adds the research run bundle + integrity/status summary;
                 #            Sprint 18 adds the cross-run research campaign index;
-                #            Sprint 19 adds the research bundle diff + campaign index diff
+                #            Sprint 19 adds the research bundle diff + campaign index diff;
+                #            Sprint 20 adds the research campaign history/trend report
                 #            (still pure: the package never scans dirs or reads/writes files)
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
@@ -391,6 +401,13 @@ pnpm soulmaker paper:backtest:research:index --dir <campaign/> --strict
 # integrity breakage (removed/changed artifact or run, valid→invalid, unknown/malformed increase):
 pnpm soulmaker paper:backtest:diff:research:bundle --base <runA/bundle.json> --next <runB/bundle.json> --fail-on-regression
 pnpm soulmaker paper:backtest:diff:research:index --base <campA/index.json> --next <campB/index.json> --fail-on-change
+
+# Sprint 20 — HISTORY: fold an ORDERED set of campaign indexes (oldest first) into one trend report —
+# which runs appeared/disappeared/changed/regressed/recovered, per-run valid + attention streaks,
+# and a conservative regression signal. Reads the named files only, writes nothing. --baseline picks
+# the reference (first|previous|<path>); the --fail-on-* flags set a non-zero CI exit:
+pnpm soulmaker paper:backtest:research:history --index <t0/index.json> --index <t1/index.json> --index <t2/index.json>
+pnpm soulmaker paper:backtest:research:history --index <t0/index.json> --index <t1/index.json> --fail-on-regression --fail-on-new-attention
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

@@ -126,7 +126,9 @@ in-sync directory status;
 Sprint 18 research campaign index — index many runs under a campaign directory into one
 comparable summary with a deterministic top-level campaign digest;
 Sprint 19 research bundle diff + campaign index diff — compare two bundles or two campaign
-indexes with a conservative regression flag):
+indexes with a conservative regression flag;
+Sprint 20 research campaign history report — fold an ordered set of campaign index snapshots
+into one deterministic trend report with per-run streaks and a conservative regression signal):
 
 - ✅ Deterministic, **paper-only** rules engine: turns an advisory
   `@soulmaker/risk` report + injected, read-only metrics into a single decision —
@@ -443,6 +445,25 @@ indexes with a conservative regression flag):
   Each reads ONLY the two named files and **writes nothing**; the package stays pure (no fs/net,
   no `Date.now`/`Math.random`; the formatters redact internally). Local bookkeeping — not a live
   result, not advice, not a profitability claim.
+- ✅ **(Sprint 20) Research campaign history report** — the TIME layer **above** the Sprint 19
+  campaign diff. `@soulmaker/backtest` exports the pure `buildBacktestResearchCampaignHistoryReport`,
+  `validate…`, `format…` (schema `backtest.research.campaign.history.report.v1`); the CLI adds
+  `paper:backtest:research:history --index <i> … [--baseline first|previous|<path>] [--json] [--fail-on-change] [--fail-on-regression] [--fail-on-attention] [--fail-on-new-attention]`.
+  It takes an **ordered** set of campaign index snapshots (each strictly validated as a Sprint 18
+  `backtest.research.campaign.index.v1`; a non-index / wrong-schema file is refused), walks each
+  run's trajectory across them — first/last seen, present + valid + attention now, ever-needed-
+  attention, current **valid** and **attention streaks**, and digest-change count — and REUSES the
+  Sprint 19 `diffBacktestResearchCampaignIndexes` verbatim for the **since-baseline** and
+  **since-previous** deltas, so `hasChange` and the **conservative** `hasRegression` are
+  byte-identical to the diff (never re-derived or over-claimed). The report surfaces the runs
+  added / removed / changed / newly-needing-attention / recovered since baseline, the runs needing
+  attention **now**, the runs with a conservative regression, and the longest valid / attention
+  streak leaders. `--baseline` picks the reference snapshot (default `first`); the `--fail-on-*`
+  flags set a non-zero exit for change / regression / current attention / new attention. Each reads
+  ONLY the named files (in order) and **writes nothing**; the package stays pure (no fs/net, no
+  `Date.now`/`Math.random`; the formatter redacts internally). Local bookkeeping — not a live
+  result, not advice, not a profitability claim; the conservative regression flag is an
+  integrity/reproducibility signal, never a trading recommendation.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

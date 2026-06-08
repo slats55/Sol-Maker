@@ -1,4 +1,4 @@
-# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow; Sprint 14 paper research lab — rankings, variant-plan explain, sensitivity diff, config perturbations, suite coverage; Sprint 15 cross-scenario sensitivity matrix + matrix diff; Sprint 16 research run manifest — index/verify/diff a run's local artifacts; Sprint 17 research run bundle + integrity/status — package a run into one self-describing bundle with a deterministic run digest, plus a complete/recognized/stable/in-sync directory status; Sprint 18 research campaign index — index many runs under a campaign directory into one comparable summary with a deterministic campaign digest; Sprint 19 research bundle diff + campaign index diff — compare two bundles or two campaign indexes with a conservative regression flag)
+# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow; Sprint 14 paper research lab — rankings, variant-plan explain, sensitivity diff, config perturbations, suite coverage; Sprint 15 cross-scenario sensitivity matrix + matrix diff; Sprint 16 research run manifest — index/verify/diff a run's local artifacts; Sprint 17 research run bundle + integrity/status — package a run into one self-describing bundle with a deterministic run digest, plus a complete/recognized/stable/in-sync directory status; Sprint 18 research campaign index — index many runs under a campaign directory into one comparable summary with a deterministic campaign digest; Sprint 19 research bundle diff + campaign index diff — compare two bundles or two campaign indexes with a conservative regression flag; Sprint 20 research campaign history report — fold an ordered set of campaign index snapshots into one deterministic trend report with per-run valid/attention streaks and a conservative regression signal)
 
 The paper engine (`@soulmaker/paper` + the `paper:*` CLI commands) is a
 **deterministic, offline, simulated-only** trading sandbox. It exists to prove
@@ -624,6 +624,54 @@ runs no backtest, and **writes nothing**. The diff digests are the same non-cryp
 reproducibility-only fingerprints; the formatters redact internally and cap long lists. Local
 bookkeeping over two summaries — not a live result, not advice, not a profitability claim.
 
+## Research campaign history report (Sprint 20)
+
+Sprint 20 adds the **time** layer above the Sprint 19 campaign diff. Where the diff compares **two**
+campaign indexes, the history report folds an **ordered set** of campaign index snapshots (oldest
+first, latest last) into one deterministic trend report answering *"how has this campaign moved over
+time, and is there a conservative regression signal worth failing CI on?"*
+
+`@soulmaker/backtest` exports the pure `buildBacktestResearchCampaignHistoryReport`,
+`validateBacktestResearchCampaignHistoryReport`, `formatBacktestResearchCampaignHistoryReport`
+(schema `backtest.research.campaign.history.report.v1`). The CLI adds
+`paper:backtest:research:history --index <i> …` (repeatable, ordered) with
+`[--baseline first|previous|<path>] [--json] [--fail-on-change] [--fail-on-regression]
+[--fail-on-attention] [--fail-on-new-attention]`.
+
+Each snapshot is **strictly validated** as a Sprint 18 `backtest.research.campaign.index.v1` (a
+non-index / wrong-schema / malformed file refuses with exit 1, so the report can never silently
+mis-read a bundle or a diff as a snapshot). For every run ever observed, the report walks its
+trajectory across the ordered snapshots:
+
+- **first/last seen** snapshot, **currently present / valid / needs-attention** (null when absent
+  from the latest snapshot), and **ever needed attention**;
+- the current **valid streak** and **attention streak** — the count of consecutive most-recent
+  snapshots in which the run was present-and-valid / present-and-needing-attention (so the longest
+  attention streak surfaces the most chronically broken run, and the longest valid streak the most
+  stably-valid one);
+- the **digest-change count** across consecutive snapshots where the run was present in both;
+- and per-run **changed/newly-needs-attention/recovered since baseline** and **changed since
+  previous snapshot** flags.
+
+The **since-baseline** and **since-previous** deltas REUSE `diffBacktestResearchCampaignIndexes`
+verbatim, so the report's **`hasChange`** and **conservative `hasRegression`** are byte-identical to
+the Sprint 19 campaign diff — never re-derived. A per-run `conservativeRegression` is exactly the
+integrity breakage the diff attributes to that run (a previously-valid run removed, a paired run
+that became invalid or changed run digest, or a paired run whose unknown/malformed count rose);
+`hasAttention` is simply *any run needs attention in the latest snapshot*, and
+`hasNewAttentionSinceBaseline` rolls up the diff's `newlyNeedsAttention`.
+
+`--baseline` chooses the reference snapshot for the since-baseline deltas: `first` (default),
+`previous` (the second-to-last snapshot, i.e. since-previous semantics), or an explicit `--index`
+path. The `--fail-on-change` / `--fail-on-regression` / `--fail-on-attention` /
+`--fail-on-new-attention` flags each set a non-zero exit. The command reads **only** the named files
+(in order; BOM-tolerant), runs no backtest, and **writes nothing**; the formatter redacts internally
+and caps long lists. The report carries no wall-clock timestamp, so an identical ordered set of
+snapshots yields a byte-identical report. The reproducibility digests it reads are non-cryptographic,
+reproducibility-only fingerprints — **not** a security/anti-tamper guarantee. Local bookkeeping over
+an ordered set of summaries — not a live result, not advice, not a profitability claim; the
+conservative regression flag is an integrity/reproducibility signal, never a trading recommendation.
+
 ## PnL reporting
 
 `PaperRunSummary`: realized PnL, unrealized PnL, total PnL, open position count,
@@ -661,6 +709,7 @@ simulated, or sent" disclaimer.
 | `paper:backtest:research:index` | index a **campaign** directory of research runs (Sprint 18): each immediate child dir is a run; per-run digest + kind/schema counts + complete/recognized/stable/in-sync health, aggregate kinds/schemas, the runs needing attention, and a deterministic top-level **campaign digest** (`backtest.research.campaign.index.v1`); embeds no contents, `--out` writes ONLY the index (`--force`), **writes nothing** without `--out`, `--strict` exits 1 when any run needs attention |
 | `paper:backtest:diff:research:bundle` | diff **two** bundle JSON files (Sprint 19): pairs artifacts by path → added/removed/digest-changed + run-digest/kind/schema/count changes (`backtest.research.bundle.diff.v1`); `hasChange` + a conservative `hasRegression`; `--fail-on-change` / `--fail-on-regression`; reads two files, writes nothing |
 | `paper:backtest:diff:research:index` | diff **two** campaign index JSON files (Sprint 19): pairs runs by runId → added/removed runs + per-run digest/valid/attention changes + campaign-digest/kind/schema/count changes (`backtest.research.campaign.diff.v1`); `hasChange` + a conservative `hasRegression`; `--fail-on-change` / `--fail-on-regression`; reads two files, writes nothing |
+| `paper:backtest:research:history` | fold an **ordered** set of campaign index JSON snapshots into one trend report (Sprint 20): per-run first/last-seen, present/valid/attention now, valid + attention streaks, digest-change count, and since-baseline/since-previous deltas (`backtest.research.campaign.history.report.v1`); reuses the Sprint 19 campaign diff so `hasChange` + conservative `hasRegression` match it, plus `hasAttention` / `hasNewAttentionSinceBaseline`; `--baseline first\|previous\|<path>`, `--fail-on-change` / `--fail-on-regression` / `--fail-on-attention` / `--fail-on-new-attention`; reads the named files only, writes nothing |
 
 `paper:run` options: `--candidates <path>` `--prices <path>` `--journal <path>`
 `--max-trade-size-usd` `--max-daily-loss-usd` `--max-open-positions`
