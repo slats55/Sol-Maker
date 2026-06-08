@@ -382,3 +382,24 @@ export type {
   BacktestResearchStatusManifestCheck,
   FormatBacktestResearchStatusOptions,
 } from "./research-status.js";
+
+export {
+  buildBacktestResearchCampaignIndex,
+  buildBacktestResearchCampaignDigest,
+  validateBacktestResearchCampaignIndex,
+  formatBacktestResearchCampaignIndex,
+  BacktestResearchCampaignIndexError,
+  BACKTEST_RESEARCH_CAMPAIGN_INDEX_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_CAMPAIGN_INDEX_BANNER,
+  BACKTEST_RESEARCH_CAMPAIGN_DIGEST_DOMAIN,
+  BACKTEST_RESEARCH_CAMPAIGN_DIGEST_ALGORITHM,
+  BACKTEST_RESEARCH_CAMPAIGN_INDEX_DISCLAIMERS,
+} from "./research-campaign-index.js";
+
+export type {
+  BacktestResearchCampaignRunInput,
+  BuildBacktestResearchCampaignIndexInput,
+  BacktestResearchCampaignRunSummary,
+  BacktestResearchCampaignIndex,
+  FormatBacktestResearchCampaignIndexOptions,
+} from "./research-campaign-index.js";
