@@ -141,6 +141,24 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
       "Conservative delta between two research run manifests. Backend work in progress — inspector labels it as emerging.",
     cli: "(pending — backend research sprint)",
   },
+  {
+    id: "backtest.research.bundle.v1",
+    title: "Research run bundle",
+    family: "research",
+    stability: "emerging",
+    description:
+      "Bundle summary of a paper research run: run digest, artifact/kind/schema counts, and a manifest summary. Backend work in progress — inspector labels it as emerging.",
+    cli: "(pending — backend research sprint)",
+  },
+  {
+    id: "backtest.research.status.v1",
+    title: "Research run status",
+    family: "research",
+    stability: "emerging",
+    description:
+      "Integrity/status check of a paper research run: completeness, recognition, and manifest sync. Backend work in progress — inspector labels it as emerging.",
+    cli: "(pending — backend research sprint)",
+  },
 ];
 
 /** Look up schema metadata by id, or `undefined` for an unknown schema. */

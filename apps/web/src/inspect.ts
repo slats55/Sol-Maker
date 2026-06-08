@@ -174,7 +174,7 @@ export function main(argv: readonly string[]): number {
     activeId: nav.id,
     title: nav.label,
     description: nav.description,
-    body: renderArtifactReport(view, { name: basename(inputPath) }),
+    body: renderArtifactReport(view, { name: basename(inputPath) }, parsed.value),
   });
   const htmlOut = `${renderDocument(document)}\n`;
 
