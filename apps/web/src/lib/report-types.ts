@@ -17,7 +17,8 @@ export type SchemaFamily =
   | "suite"
   | "sensitivity"
   | "coverage"
-  | "plan";
+  | "plan"
+  | "research";
 
 export interface ReportSchemaInfo {
   readonly id: string;
@@ -113,6 +114,33 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
       "Delta between two sensitivity matrices. Backend work in progress — viewer is a labelled placeholder.",
     cli: "(pending — backend research sprint)",
   },
+  {
+    id: "backtest.research.manifest.v1",
+    title: "Research run manifest",
+    family: "research",
+    stability: "emerging",
+    description:
+      "Manifest of a paper research run's generated artifacts + digests. Backend work in progress — inspector labels it as emerging.",
+    cli: "(pending — backend research sprint)",
+  },
+  {
+    id: "backtest.research.verify.v1",
+    title: "Research run verify",
+    family: "research",
+    stability: "emerging",
+    description:
+      "Result of re-verifying a research manifest against its artifacts on disk. Backend work in progress — inspector labels it as emerging.",
+    cli: "(pending — backend research sprint)",
+  },
+  {
+    id: "backtest.research.manifest.diff.v1",
+    title: "Research manifest diff",
+    family: "research",
+    stability: "emerging",
+    description:
+      "Conservative delta between two research run manifests. Backend work in progress — inspector labels it as emerging.",
+    cli: "(pending — backend research sprint)",
+  },
 ];
 
 /** Look up schema metadata by id, or `undefined` for an unknown schema. */
@@ -123,6 +151,24 @@ export function knownSchema(id: string): ReportSchemaInfo | undefined {
 /** True when `id` is a schema this foundation recognizes. */
 export function isKnownSchema(id: string): boolean {
   return knownSchema(id) !== undefined;
+}
+
+/**
+ * How the inspector should label a (possibly missing) schemaVersion:
+ *   - "absent"   — no usable `schemaVersion` field at all
+ *   - "stable"   — a shipped, recognized schema
+ *   - "emerging" — a recognized but backend-work-in-progress schema
+ *   - "unknown"  — a present-but-unrecognized schema id (labelled honestly, never faked)
+ */
+export type SchemaRecognition = "absent" | "stable" | "emerging" | "unknown";
+
+/** Classify a raw schemaVersion string without ever pretending to know it. */
+export function recognizeSchema(id: string | null | undefined): SchemaRecognition {
+  if (typeof id !== "string" || id.length === 0) {
+    return "absent";
+  }
+  const info = knownSchema(id);
+  return info ? info.stability : "unknown";
 }
 
 /**
