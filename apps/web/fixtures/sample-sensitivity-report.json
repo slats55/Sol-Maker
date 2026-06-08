@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "backtest.sensitivity.v1",
+  "banner": "PAPER ONLY — simulated sensitivity sweep. Not live, not advice, not a profitability claim.",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "disclaimers": [
+    "Simulated paper-only sensitivity — per-variant bookkeeping deltas vs a baseline."
+  ],
+  "label": "sample-sensitivity",
+  "planName": "sample-perturbation-plan",
+  "baseScenarioName": "sample-buy-hold",
+  "baseScenarioDigest": "sample-digest-buy-hold",
+  "variantCount": 2,
+  "passedVariantCount": 2,
+  "failedVariantCount": 0,
+  "warningCount": 0,
+  "baseline": {
+    "id": "buy-hold",
+    "scenarioName": "sample-buy-hold",
+    "scenarioDigest": "sample-digest-buy-hold",
+    "status": "passed",
+    "lintStatus": "valid",
+    "runStatus": "passed",
+    "warningCount": 0,
+    "warningCodes": [],
+    "errors": [],
+    "summary": null
+  },
+  "variants": [
+    {
+      "index": 0,
+      "suffix": "+10pct",
+      "scenarioName": "sample-buy-hold-+10pct",
+      "scenarioDigest": "sample-digest-plus10",
+      "changeCount": 1,
+      "status": "passed",
+      "lintStatus": "valid",
+      "runStatus": "passed",
+      "warningCount": 0,
+      "warningCodes": [],
+      "errors": [],
+      "summary": null,
+      "deltas": { "totalPnlUsd": { "base": 12.5, "next": 15, "delta": 2.5 } }
+    },
+    {
+      "index": 1,
+      "suffix": "-10pct",
+      "scenarioName": "sample-buy-hold--10pct",
+      "scenarioDigest": "sample-digest-minus10",
+      "changeCount": 1,
+      "status": "passed",
+      "lintStatus": "valid",
+      "runStatus": "passed",
+      "warningCount": 0,
+      "warningCodes": [],
+      "errors": [],
+      "summary": null,
+      "deltas": { "totalPnlUsd": { "base": 12.5, "next": 9, "delta": -3.5 } }
+    }
+  ],
+  "rankings": {
+    "byTotalSimulatedPnlDelta": [
+      { "suffix": "-10pct", "scenarioDigest": "sample-digest-minus10", "value": -3.5, "magnitude": 3.5 },
+      { "suffix": "+10pct", "scenarioDigest": "sample-digest-plus10", "value": 2.5, "magnitude": 2.5 }
+    ],
+    "byRealizedSimulatedPnlDelta": [],
+    "byUnrealizedSimulatedPnlDelta": [],
+    "byFillDelta": [],
+    "byRejectDelta": [],
+    "byWarningDelta": [],
+    "byNotionalDelta": []
+  },
+  "suiteSummary": {
+    "scenarioCount": 3,
+    "passedCount": 3,
+    "failedCount": 0,
+    "warningCount": 0,
+    "totalStepCount": 18,
+    "totalCandidateCount": 15,
+    "totalBuyFills": 7,
+    "totalSellFills": 3,
+    "totalFills": 10,
+    "totalRejects": 2,
+    "totalRealizedPnlUsd": 14,
+    "totalUnrealizedPnlUsd": 6,
+    "totalSimulatedPnlUsd": 20,
+    "totalSimulatedNotionalUsd": 90,
+    "totalOpenPositions": 2,
+    "totalClosedTrades": 4
+  },
+  "notes": []
+}
