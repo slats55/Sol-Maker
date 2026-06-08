@@ -145,6 +145,12 @@ fixture/test, and `pnpm web:build`.
 - Schema-aware typed views are defensive: unknown schemas, non-object values, and
   malformed shapes fall back to the generic view, and missing fields render as
   “—” — the dispatcher never throws.
+- The command-reference page lists every shipped backtest/research CLI command,
+  and each command's produced-artifact badge (id + stable/emerging status) is
+  **derived** from the schema registry via `schemaForCli` rather than duplicated.
+  A drift guard (`tests/command-reference.test.ts`) asserts every registry `cli`
+  is a real listed command, so the page and the registry cannot drift silently;
+  a command with no catalogued artifact simply shows no badge (never a faked one).
 
 ## Adding a page
 
