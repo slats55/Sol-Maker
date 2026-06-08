@@ -49,7 +49,8 @@ Pages (generated to `apps/web/public/`):
 | `/research/reports`  | `research-reports.html`  | Report viewer foundation + schema catalogue        |
 | `/research/matrix`   | `research-matrix.html`   | Sensitivity matrix viewer (emerging schema)        |
 | `/research/coverage` | `research-coverage.html` | Suite coverage viewer (behavioural bookkeeping)    |
-| `/commands`          | `commands.html`          | Reference for the existing CLI workflows           |
+| `/research/artifact` | `research-artifact.html` | Local artifact inspector (empty state + how-to)    |
+| `/commands`          | `commands.html`          | Reference for the existing CLI + web workflows     |
 | `/safety`            | `safety.html`            | Modes, hard guarantees, live-mode gate             |
 | `/settings`          | `settings.html`          | Local display preferences (placeholder shell)      |
 
@@ -57,7 +58,8 @@ Components: `DashboardShell`, `SidebarNav`, `SafetyBanner`, `ModeBadge`,
 `PageHeader`, `Footer`, `StatusCard`, `MetricCard`, `Section`, `EmptyState`,
 `RiskNotice`, `Pill`, `DefinitionList`, `BulletList`, `CommandCard`,
 `ArtifactCard`, `DataTable`, `CapabilityTable`, `ReportTable`,
-`ReportSchemaBadge`, `ReportSummaryCard`, `ReportPlaceholder`.
+`ReportSchemaBadge`, `ReportSummaryCard`, `ReportPlaceholder`,
+`ArtifactSchemaBadge`, `ArtifactReportView`.
 
 ## Data strategy
 
@@ -78,10 +80,18 @@ backtest artifact schemas (`backtest.report.v1`, `backtest.suite.v1`,
 `backtest.suite.diff.v1`, `backtest.sensitivity.v1`,
 `backtest.sensitivity.diff.v1`, `backtest.coverage.v1`,
 `backtest.variant-plan.explain.v1`, plus the emerging
-`backtest.sensitivity.matrix.v1` / `…matrix.diff.v1`). It imports **no** backend
-code and is **not** wired to any loader/parser — it only lets the UI label known
-vs. emerging vs. unknown schemas. File loading is intentionally deferred (no
-upload, no network, no backend import).
+`backtest.sensitivity.matrix.v1` / `…matrix.diff.v1` and the emerging research
+families `backtest.research.manifest.v1` / `…verify.v1` / `…manifest.diff.v1`).
+It imports **no** backend code; it only lets the UI label known vs. emerging vs.
+unknown schemas.
+
+A read-only **local file bridge** is now delivered as the `pnpm web:inspect`
+command (`apps/web/src/inspect.ts`) plus the defensive normalizer
+`apps/web/src/lib/local-artifact.ts` — a Node-only build step, not a browser
+upload, so the dashboard stays script-free. It reads one local report JSON and
+renders it into `research-artifact.html`, still with no upload, network, or
+backend import. See
+[`WEB_LOCAL_ARTIFACT_INSPECTOR.md`](WEB_LOCAL_ARTIFACT_INSPECTOR.md).
 
 ## Constraints honoured
 
@@ -92,10 +102,14 @@ upload, no network, no backend import).
 
 ## Next UI slices (suggested)
 
-1. A read-only local file bridge so the viewer can render a real generated
-   report JSON (still local, still no network).
-2. Dashboard tables/visuals over loaded artifacts (no charting dep until one is
+1. ~~A read-only local file bridge so the viewer can render a real generated
+   report JSON (still local, still no network).~~ **Delivered** as
+   `pnpm web:inspect` — see
+   [`WEB_LOCAL_ARTIFACT_INSPECTOR.md`](WEB_LOCAL_ARTIFACT_INSPECTOR.md).
+2. Schema-specific rendering for loaded artifacts (typed tables for suites,
+   sensitivity, matrices, research manifests) building on the generic inspector.
+3. Dashboard tables/visuals over loaded artifacts (no charting dep until one is
    justified).
-3. An auth shell for an eventual hosted, read-only deployment.
-4. The Chrome companion prototype (see
+4. An auth shell for an eventual hosted, read-only deployment.
+5. The Chrome companion prototype (see
    [`CHROME_EXTENSION_COMPANION_PLAN.md`](CHROME_EXTENSION_COMPANION_PLAN.md)).
