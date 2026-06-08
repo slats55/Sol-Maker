@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "backtest.research.campaign.index.v1",
+  "banner": "PAPER ONLY — research campaign index. Not live, not advice, not a profitability claim.",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "disclaimers": [
+    "Simulated paper-only research campaign index — a summary of local research runs under a campaign directory.",
+    "The campaign digest is a non-cryptographic, reproducibility-only fingerprint of the run set, not a security guarantee."
+  ],
+  "digestAlgorithm": "fnv1a (non-cryptographic, reproducibility-only)",
+  "campaignName": "sample-campaign",
+  "campaignDigest": "sample-campaign-digest-0000",
+  "runCount": 2,
+  "validRunCount": 1,
+  "invalidRunCount": 1,
+  "totalArtifactCount": 6,
+  "totalKnownArtifactCount": 4,
+  "totalUnknownArtifactCount": 2,
+  "totalMalformedArtifactCount": 0,
+  "runsNeedingAttention": ["run-002"],
+  "aggregateKindCounts": [
+    { "kind": "backtest-report", "count": 2 },
+    { "kind": "suite-index", "count": 2 },
+    { "kind": "unknown-json", "count": 2 }
+  ],
+  "aggregateSchemaVersions": ["backtest.report.v1", "backtest.suite.v1"],
+  "runs": [
+    {
+      "runId": "run-001",
+      "runDigest": "sample-run-digest-001",
+      "valid": true,
+      "artifactCount": 3,
+      "knownArtifactCount": 2,
+      "unknownArtifactCount": 1,
+      "malformedArtifactCount": 0,
+      "complete": true,
+      "recognized": true,
+      "stable": true,
+      "bundleCandidateValid": true,
+      "manifestPresent": true,
+      "inSync": true,
+      "driftDetected": false,
+      "kindCounts": [
+        { "kind": "backtest-report", "count": 1 },
+        { "kind": "suite-index", "count": 1 },
+        { "kind": "unknown-json", "count": 1 }
+      ],
+      "schemaVersions": ["backtest.report.v1", "backtest.suite.v1"],
+      "warnings": [],
+      "recommendedAction": "none — run is complete and in sync",
+      "buildError": null
+    },
+    {
+      "runId": "run-002",
+      "runDigest": "sample-run-digest-002",
+      "valid": false,
+      "artifactCount": 3,
+      "knownArtifactCount": 2,
+      "unknownArtifactCount": 1,
+      "malformedArtifactCount": 0,
+      "complete": true,
+      "recognized": true,
+      "stable": true,
+      "bundleCandidateValid": true,
+      "manifestPresent": true,
+      "inSync": false,
+      "driftDetected": true,
+      "kindCounts": [
+        { "kind": "backtest-report", "count": 1 },
+        { "kind": "suite-index", "count": 1 },
+        { "kind": "unknown-json", "count": 1 }
+      ],
+      "schemaVersions": ["backtest.report.v1", "backtest.suite.v1"],
+      "warnings": ["manifest out of sync: 1 digest-changed"],
+      "recommendedAction": "re-verify the run manifest",
+      "buildError": null
+    }
+  ],
+  "warnings": ["1 of 2 runs needs attention (drift detected)."],
+  "notes": []
+}

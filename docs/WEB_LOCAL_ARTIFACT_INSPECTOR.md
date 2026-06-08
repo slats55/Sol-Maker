@@ -96,7 +96,7 @@ backtest.variant-plan.explain.v1   backtest.sensitivity.matrix.v1
 backtest.sensitivity.matrix.diff.v1
 backtest.research.manifest.v1      backtest.research.verify.v1
 backtest.research.manifest.diff.v1 backtest.research.bundle.v1
-backtest.research.status.v1
+backtest.research.status.v1         backtest.research.campaign.index.v1
 ```
 
 Emerging schemas (the cross-scenario matrix and research-run families) are
