@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "backtest.research.bundle.diff.v1",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "baseRunName": "run-2026-05-01",
+  "nextRunName": "run-2026-05-08",
+  "bundleSchemaMatch": true,
+  "baseRunDigest": "run-digest-base-000000000000000000000000",
+  "nextRunDigest": "run-digest-next-111111111111111111111111",
+  "runDigestChanged": true,
+  "baseManifestDigest": "manifest-digest-base-aaaaaaaaaaaa",
+  "nextManifestDigest": "manifest-digest-next-bbbbbbbbbbbb",
+  "manifestDigestChanged": true,
+  "artifactCount": { "base": 6, "next": 7, "delta": 1 },
+  "totalSizeBytes": { "base": 20480, "next": 23552, "delta": 3072 },
+  "unknownArtifactCount": { "base": 0, "next": 0, "delta": 0 },
+  "malformedArtifactCount": { "base": 0, "next": 1, "delta": 1 },
+  "warningCount": { "base": 0, "next": 1, "delta": 1 },
+  "added": [
+    { "path": "reports/sensitivity-report.json", "digest": "added-digest-222222222222" }
+  ],
+  "removed": [
+    { "path": "reports/old-suite-index.json", "digest": "removed-digest-333333333333" }
+  ],
+  "changed": [
+    {
+      "path": "reports/buy-hold.report.json",
+      "baseDigest": "base-digest-444444444444",
+      "nextDigest": "next-digest-555555555555"
+    }
+  ],
+  "kindCountChanges": [
+    { "key": "sensitivity-report", "base": 0, "next": 1, "delta": 1 },
+    { "key": "suite-index", "base": 1, "next": 0, "delta": -1 }
+  ],
+  "schemaCountChanges": [
+    { "key": "backtest.sensitivity.v1", "base": 0, "next": 1, "delta": 1 }
+  ],
+  "recognizedSchemasAdded": ["backtest.sensitivity.v1"],
+  "recognizedSchemasRemoved": ["backtest.suite.v1"],
+  "hasChange": true,
+  "changeReasons": [
+    "run digest changed (run-digest-base-000000000000000000000000 → run-digest-next-111111111111111111111111)",
+    "1 artifact(s) added",
+    "1 artifact(s) removed",
+    "1 artifact(s) changed digest",
+    "malformed artifact count 0 → 1"
+  ],
+  "hasRegression": true,
+  "regressionReasons": [
+    "1 artifact(s) removed",
+    "1 artifact(s) changed content digest",
+    "malformed artifact count increased by 1",
+    "1 recognized schema(s) removed"
+  ],
+  "disclaimers": [
+    "SIMULATED PAPER-ONLY research bundle diff — compares two LOCAL run bundles.",
+    "Every value is a change between two local reproducibility summaries, not a live result.",
+    "A changed run/artifact digest is a non-cryptographic content-fingerprint difference, not a security or anti-tamper signal.",
+    "Uses injected bundle data only — no live data was fetched and nothing was traded.",
+    "Not a live result. Not financial advice. Not a profitability claim."
+  ]
+}
