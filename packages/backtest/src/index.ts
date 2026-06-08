@@ -403,3 +403,21 @@ export type {
   BacktestResearchCampaignIndex,
   FormatBacktestResearchCampaignIndexOptions,
 } from "./research-campaign-index.js";
+
+export {
+  diffBacktestResearchBundles,
+  validateBacktestResearchBundleDiff,
+  formatBacktestResearchBundleDiff,
+  BacktestResearchBundleDiffError,
+  BACKTEST_RESEARCH_BUNDLE_DIFF_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_BUNDLE_DIFF_DISCLAIMERS,
+} from "./research-bundle-diff.js";
+
+export type {
+  ResearchBundleNumberDelta,
+  ResearchBundleDigestRef,
+  ResearchBundleArtifactChange,
+  ResearchBundleCountChange,
+  BacktestResearchBundleDiff,
+  FormatBacktestResearchBundleDiffOptions,
+} from "./research-bundle-diff.js";
