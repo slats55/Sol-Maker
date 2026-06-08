@@ -159,6 +159,15 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
       "Integrity/status check of a paper research run: completeness, recognition, and manifest sync. Backend work in progress — inspector labels it as emerging.",
     cli: "(pending — backend research sprint)",
   },
+  {
+    id: "backtest.research.campaign.index.v1",
+    title: "Research campaign index",
+    family: "research",
+    stability: "emerging",
+    description:
+      "Campaign-level summary across many paper research runs: per-run digests, drift, and aggregate kind/schema counts. Backend work in progress — inspector labels it as emerging.",
+    cli: "(pending — backend research sprint)",
+  },
 ];
 
 /** Look up schema metadata by id, or `undefined` for an unknown schema. */
