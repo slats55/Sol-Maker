@@ -222,7 +222,7 @@ describe("web:inspect — schema-aware typed views", () => {
   );
 
   it(
-    "renders a typed section for an emerging research artifact with the safety banner",
+    "renders a typed section for a research artifact with the safety banner",
     () => {
       const out = join(dir, "typed-verify.html");
       expect(runInspect(["--input", RESEARCH_FIXTURE, "--out", out, "--force"]).status).toBe(0);
