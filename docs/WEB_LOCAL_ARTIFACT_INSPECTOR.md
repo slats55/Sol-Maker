@@ -95,12 +95,45 @@ backtest.sensitivity.v1            backtest.sensitivity.diff.v1 backtest.coverag
 backtest.variant-plan.explain.v1   backtest.sensitivity.matrix.v1
 backtest.sensitivity.matrix.diff.v1
 backtest.research.manifest.v1      backtest.research.verify.v1
-backtest.research.manifest.diff.v1
+backtest.research.manifest.diff.v1 backtest.research.bundle.v1
+backtest.research.status.v1
 ```
 
 Emerging schemas (the cross-scenario matrix and research-run families) are
 labelled **emerging** because the corresponding backend work is in progress; the
 inspector still renders them, it just does not pretend they are finalized.
+
+## Schema-aware typed views
+
+On top of the generic summary, the inspector renders a **typed, schema-aware
+view** when it recognizes the declared `schemaVersion`. Each typed view surfaces
+the high-signal fields for that schema — identity, headline counts,
+regression/validity status, and row-capped tables — *above* the generic field
+view, which is always still shown.
+
+- **UI-only and defensive.** Typed views read the parsed JSON purely as data
+  (`apps/web/src/lib/json-access.ts`) and render via
+  `apps/web/src/components/artifact-views.ts`. There is **no backend import**;
+  the inspector never executes backend logic.
+- **Honest about gaps.** A missing or type-mismatched field renders as “—”, and a
+  visible **partial-view** notice lists fields the inspector could not read. No
+  field is ever invented.
+- **Unknown schemas fall back safely.** An unrecognized `schemaVersion`, a
+  non-object value, or any malformed shape simply renders the generic view — the
+  typed dispatch returns nothing and never throws.
+- **Same safety envelope.** Typed output is escaped and capped exactly like the
+  rest of the inspector: no `<script>`, no handlers, no network, no wallet/keys.
+
+Every currently-recognized schema (the list above) has a typed view. Try one of
+the committed sample fixtures under `apps/web/fixtures/`, e.g.:
+
+```bash
+pnpm web:inspect --input apps/web/fixtures/sample-research-verify.json \
+  --out apps/web/public/research-artifact.html --force
+```
+
+The committed empty-state inspector page also lists which schemas have typed
+views; run `pnpm web:build` to restore it.
 
 ## What this is not
 
