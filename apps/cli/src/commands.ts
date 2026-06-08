@@ -116,12 +116,15 @@ import {
   formatBacktestResearchBundle,
   buildBacktestResearchStatus,
   formatBacktestResearchStatus,
+  buildBacktestResearchCampaignIndex,
+  formatBacktestResearchCampaignIndex,
   digestContent,
   BACKTEST_RESEARCH_MANIFEST_SCHEMA_VERSION,
   BACKTEST_RESEARCH_VERIFY_SCHEMA_VERSION,
   BACKTEST_RESEARCH_MANIFEST_DIFF_SCHEMA_VERSION,
   BACKTEST_RESEARCH_BUNDLE_SCHEMA_VERSION,
   BACKTEST_RESEARCH_STATUS_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_CAMPAIGN_INDEX_SCHEMA_VERSION,
   type BacktestReport,
   type BacktestReportDiff,
   type BacktestScenario,
@@ -145,6 +148,8 @@ import {
   type BacktestResearchManifestDiff,
   type BacktestResearchBundle,
   type BacktestResearchStatus,
+  type BacktestResearchCampaignIndex,
+  type BacktestResearchCampaignRunInput,
 } from "@soulmaker/backtest";
 
 export interface CommandContext {
@@ -2820,6 +2825,7 @@ const RESEARCH_META_SCHEMAS = new Set<string>([
   BACKTEST_RESEARCH_MANIFEST_DIFF_SCHEMA_VERSION,
   BACKTEST_RESEARCH_BUNDLE_SCHEMA_VERSION,
   BACKTEST_RESEARCH_STATUS_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_CAMPAIGN_INDEX_SCHEMA_VERSION,
 ]);
 
 /**
@@ -3275,6 +3281,117 @@ export function paperBacktestResearchStatusReport(
     return { text: JSON.stringify(redactValue(status), null, 2), exitCode };
   }
   return { text: redactString(formatBacktestResearchStatus(status, { label: opts.dir })), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 18 — paper:backtest:research:index
+//   Index MANY research runs living side-by-side under a campaign directory
+//   into ONE comparable campaign-level summary (per-run digests + health +
+//   aggregate kinds/schemas + a deterministic top-level campaign digest).
+//   Reads local files only; no backtest, no journal, no network, no wallet.
+// ---------------------------------------------------------------------------
+
+/**
+ * Deterministically list the IMMEDIATE child directories of `campaignDir` (each a candidate
+ * research run), as plain names sorted ascending. Symlinks are skipped (never followed out of the
+ * tree) and hidden dot-directories (e.g. `.git`, `.tmp`) are excluded. Only real subdirectories
+ * are returned — top-level files (including a campaign index written here) are never treated as a
+ * run. Read-only.
+ */
+function listRunDirectories(campaignDir: string): string[] {
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = readdirSync(campaignDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const dirs: string[] = [];
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) continue; // deterministic; never follow a link out of the tree
+    if (!entry.isDirectory()) continue; // only immediate child directories are candidate runs
+    if (entry.name.startsWith(".")) continue; // skip hidden/dot directories
+    dirs.push(entry.name);
+  }
+  return dirs.sort();
+}
+
+export interface PaperBacktestResearchIndexCommandOptions {
+  /** Campaign directory whose immediate child directories are research runs (required). */
+  dir?: string;
+  /** Optional path to write the campaign index JSON to (writes nothing without it). */
+  outPath?: string;
+  /** Overwrite the --out file if it exists (refused by default). */
+  force?: boolean;
+  json?: boolean;
+  /** Exit non-zero if any run needs attention (unknown/malformed/drift/invalid/incomplete). */
+  strict?: boolean;
+}
+
+/**
+ * `soulmaker paper:backtest:research:index` — index a CAMPAIGN directory of research runs. Each
+ * IMMEDIATE child directory of `--dir` is treated as a run: its local `*.json` artifacts are
+ * walked (recursing real subdirs, BOM-tolerant, sorted; never `*.jsonl`; symlinks skipped; research
+ * meta files excluded), classified, and digested, and a conventional `research-manifest.json` (if
+ * present) is loaded to detect drift. The command then summarizes every run — run digest, artifact
+ * + kind + schema counts, unknown/malformed totals, and complete/recognized/stable/in-sync health —
+ * aggregates the kind/schema sets across the campaign, lists the runs needing attention, and emits a
+ * deterministic top-level NON-CRYPTOGRAPHIC campaign digest. With `--out` it writes ONLY the
+ * campaign index JSON (refuses to overwrite without `--force`). `--json` prints the index; `--strict`
+ * exits non-zero when any run needs attention. Local files only — no backtest, no journal, no
+ * network, no wallet. The index embeds no artifact contents and is not a live result, not advice,
+ * and not a profitability claim.
+ */
+export function paperBacktestResearchIndexReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestResearchIndexCommandOptions = {},
+): CliReport {
+  if (!opts.dir) return { text: "Refusing: --dir <path> is required.", exitCode: 1 };
+
+  const resolved = resolveArtifactDir(ctx, opts.dir, "campaign");
+  if (!resolved.ok) return { text: redactString(`Refusing: ${resolved.reason}`), exitCode: 1 };
+
+  // Each immediate child directory is a candidate run; assemble its already-loaded descriptors.
+  const runs: BacktestResearchCampaignRunInput[] = listRunDirectories(resolved.dir).map((name) => {
+    const runDir = join(resolved.dir, name);
+    const { descriptors, malformed } = collectArtifactDescriptors(runDir);
+    const manifest = discoverResearchManifest(runDir);
+    return { runId: name, artifacts: descriptors, malformedPaths: malformed, manifest };
+  });
+
+  let index: BacktestResearchCampaignIndex;
+  try {
+    index = buildBacktestResearchCampaignIndex({ campaignName: basename(resolved.dir), runs });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // Write the campaign index only when --out is given; refuse to overwrite without --force.
+  let writtenNote = "";
+  if (opts.outPath) {
+    const outPath = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(outPath)) {
+      return {
+        text: redactString(`Refusing: ${outPath} already exists (pass --force to overwrite).`),
+        exitCode: 1,
+      };
+    }
+    try {
+      writeFileSync(outPath, JSON.stringify(redactValue(index), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write campaign index to ${outPath}`), exitCode: 1 };
+    }
+    writtenNote = `\n\nWrote campaign index to ${outPath}`;
+  }
+
+  const exitCode = opts.strict && index.invalidRunCount > 0 ? 1 : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(index), null, 2), exitCode };
+  }
+  return {
+    text: redactString(formatBacktestResearchCampaignIndex(index, { label: opts.dir }) + writtenNote),
+    exitCode,
+  };
 }
 
 function yesNo(value: boolean): string {

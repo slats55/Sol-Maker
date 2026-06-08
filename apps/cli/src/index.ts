@@ -33,6 +33,7 @@ import {
   paperBacktestDiffResearchManifestReport,
   paperBacktestResearchBundleReport,
   paperBacktestResearchStatusReport,
+  paperBacktestResearchIndexReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -745,6 +746,31 @@ program
       {
         dir: opts.dir,
         manifestPath: opts.manifest,
+        json: Boolean(opts.json),
+        strict: Boolean(opts.strict),
+      },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("paper:backtest:research:index")
+  .description(
+    "Index a CAMPAIGN directory of research runs into one comparable summary: per-run digests + health, aggregate kinds/schemas, and a deterministic non-cryptographic top-level campaign digest (PAPER ONLY; each immediate child dir is a run; reads local files only; exit 1 with --strict when any run needs attention)",
+  )
+  .option("--dir <path>", "campaign directory whose immediate child directories are research runs")
+  .option("--out <path>", "write ONLY the campaign index JSON to this file")
+  .option("--force", "overwrite the --out file if it already exists")
+  .option("--json", "emit the campaign index as stable JSON")
+  .option("--strict", "exit non-zero if any run needs attention (unknown/malformed/drift/invalid)")
+  .action((opts: { dir?: string; out?: string; force?: boolean; json?: boolean; strict?: boolean }) => {
+    const { text, exitCode } = paperBacktestResearchIndexReport(
+      {},
+      {
+        dir: opts.dir,
+        outPath: opts.out,
+        force: Boolean(opts.force),
         json: Boolean(opts.json),
         strict: Boolean(opts.strict),
       },
