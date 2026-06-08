@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "backtest.research.campaign.diff.v1",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "baseCampaignName": "campaign-q1",
+  "nextCampaignName": "campaign-q2",
+  "campaignSchemaMatch": true,
+  "baseCampaignDigest": "campaign-digest-base-000000000000",
+  "nextCampaignDigest": "campaign-digest-next-111111111111",
+  "campaignDigestChanged": true,
+  "runCount": { "base": 3, "next": 4, "delta": 1 },
+  "validRunCount": { "base": 3, "next": 3, "delta": 0 },
+  "invalidRunCount": { "base": 0, "next": 1, "delta": 1 },
+  "totalArtifactCount": { "base": 18, "next": 25, "delta": 7 },
+  "totalKnownArtifactCount": { "base": 18, "next": 24, "delta": 6 },
+  "totalUnknownArtifactCount": { "base": 0, "next": 1, "delta": 1 },
+  "totalMalformedArtifactCount": { "base": 0, "next": 0, "delta": 0 },
+  "addedRuns": [
+    { "runId": "run-d", "runDigest": "run-d-digest-222222222222", "valid": false }
+  ],
+  "removedRuns": [
+    { "runId": "run-a0", "runDigest": "run-a0-digest-333333333333", "valid": true }
+  ],
+  "changedRuns": [
+    {
+      "runId": "run-b",
+      "baseRunDigest": "run-b-base-444444444444",
+      "nextRunDigest": "run-b-next-555555555555",
+      "runDigestChanged": true,
+      "baseValid": true,
+      "nextValid": false,
+      "validChanged": true,
+      "becameInvalid": true,
+      "becameValid": false,
+      "artifactCount": { "base": 6, "next": 7, "delta": 1 },
+      "unknownArtifactCount": { "base": 0, "next": 1, "delta": 1 },
+      "malformedArtifactCount": { "base": 0, "next": 0, "delta": 0 }
+    }
+  ],
+  "newlyNeedsAttention": ["run-b", "run-d"],
+  "noLongerNeedsAttention": [],
+  "aggregateKindCountChanges": [
+    { "key": "sensitivity-report", "base": 2, "next": 3, "delta": 1 },
+    { "key": "unknown-json", "base": 0, "next": 1, "delta": 1 }
+  ],
+  "aggregateSchemasAdded": ["backtest.sensitivity.matrix.v1"],
+  "aggregateSchemasRemoved": [],
+  "hasChange": true,
+  "changeReasons": [
+    "campaign digest changed",
+    "1 run(s) added",
+    "1 run(s) removed",
+    "1 run(s) changed",
+    "invalid run count 0 → 1"
+  ],
+  "hasRegression": true,
+  "regressionReasons": [
+    "1 run(s) removed",
+    "run \"run-b\" became invalid",
+    "total unknown artifact count increased by 1"
+  ],
+  "disclaimers": [
+    "SIMULATED PAPER-ONLY research campaign diff — compares two LOCAL campaign indexes.",
+    "Every value is a change between two local reproducibility summaries, not a live result.",
+    "A changed campaign/run digest is a non-cryptographic content-fingerprint difference, not a security or anti-tamper signal.",
+    "Uses injected campaign data only — no live data was fetched and nothing was traded.",
+    "Not a live result. Not financial advice. Not a profitability claim."
+  ]
+}

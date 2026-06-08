@@ -61,6 +61,8 @@ describe("renderTypedArtifactView — dispatch", () => {
       { schemaVersion: "backtest.sensitivity.v1", rankings: 5, variants: {} },
       { schemaVersion: "backtest.research.manifest.v1", artifacts: 3, kindCounts: null },
       { schemaVersion: "backtest.research.status.v1", manifest: [] },
+      { schemaVersion: "backtest.research.bundle.diff.v1", added: "no", changed: 5, kindCountChanges: {} },
+      { schemaVersion: "backtest.research.campaign.diff.v1", changedRuns: 7, addedRuns: "x", aggregateKindCountChanges: 1 },
     ];
     for (const shape of hostileShapes) {
       expect(() => typed(shape)).not.toThrow();
@@ -196,6 +198,30 @@ describe("typed views — per schema (inline minimal shapes)", () => {
       raw: { schemaVersion: "backtest.research.campaign.index.v1", campaignDigest: "d", runCount: 0, runs: [], aggregateKindCounts: [] },
       expect: "Aggregate kinds",
     },
+    {
+      schema: "backtest.research.bundle.diff.v1",
+      raw: {
+        schemaVersion: "backtest.research.bundle.diff.v1",
+        hasChange: false,
+        hasRegression: false,
+        added: [],
+        removed: [],
+        changed: [],
+      },
+      expect: "Compared bundles",
+    },
+    {
+      schema: "backtest.research.campaign.diff.v1",
+      raw: {
+        schemaVersion: "backtest.research.campaign.diff.v1",
+        hasChange: false,
+        hasRegression: false,
+        addedRuns: [],
+        removedRuns: [],
+        changedRuns: [],
+      },
+      expect: "Compared campaigns",
+    },
   ];
 
   for (const c of cases) {
@@ -330,6 +356,177 @@ describe("matrix diff — changed cells", () => {
     expect(out).toContain("Changed cells");
     expect(out).toContain("+10pct");
     expect(out).toContain("passed → failed");
+  });
+});
+
+describe("research bundle diff — typed view (Sprint 19)", () => {
+  const base = {
+    schemaVersion: "backtest.research.bundle.diff.v1",
+    hasChange: true,
+    hasRegression: true,
+    regressionReasons: ["1 artifact(s) removed", "1 artifact(s) changed content digest"],
+    changeReasons: ["run digest changed", "1 artifact(s) added"],
+    added: [{ path: "reports/new.json", digest: "add-digest-aaaa" }],
+    removed: [{ path: "reports/gone.json", digest: "rm-digest-bbbb" }],
+    changed: [{ path: "reports/buy-hold.report.json", baseDigest: "base-cccc", nextDigest: "next-dddd" }],
+    kindCountChanges: [{ key: "sensitivity-report", base: 0, next: 1, delta: 1 }],
+    schemaCountChanges: [{ key: "backtest.sensitivity.v1", base: 0, next: 1, delta: 1 }],
+    recognizedSchemasAdded: ["backtest.sensitivity.v1"],
+    recognizedSchemasRemoved: ["backtest.suite.v1"],
+  };
+  const out = typed(base) ?? "";
+
+  it("leads with a conservative integrity regression notice and reasons", () => {
+    expect(out).toContain("Integrity regression flagged by this bundle diff");
+    expect(out).toContain("1 artifact(s) removed");
+  });
+
+  it("renders a combined add/remove/change artifact table", () => {
+    expect(out).toContain("Artifact changes");
+    expect(out).toContain("reports/new.json");
+    expect(out).toContain("reports/gone.json");
+    expect(out).toContain("reports/buy-hold.report.json");
+    expect(out).toContain("added");
+    expect(out).toContain("removed");
+    expect(out).toContain("changed");
+  });
+
+  it("renders kind + schema count changes with a scope column", () => {
+    expect(out).toContain("Count changes");
+    expect(out).toContain("sensitivity-report");
+    expect(out).toContain("backtest.sensitivity.v1");
+  });
+
+  it("caps the combined artifact table and reports the hidden count", () => {
+    const many = {
+      schemaVersion: "backtest.research.bundle.diff.v1",
+      hasChange: true,
+      hasRegression: false,
+      added: Array.from({ length: 100 }, (_v, i) => ({ path: `reports/a${i}.json`, digest: `d${i}` })),
+      removed: [],
+      changed: [],
+    };
+    const o = typed(many) ?? "";
+    expect(o).toContain("Showing 40 of 100 artifacts — 60 more not shown.");
+    expect(o).not.toContain("reports/a41.json");
+  });
+
+  it("shows a partial-view notice when the verdict flags are absent", () => {
+    const o = typed({ schemaVersion: "backtest.research.bundle.diff.v1", added: [], removed: [], changed: [] }) ?? "";
+    expect(o).toContain("Partial view");
+    expect(o).toContain("hasChange");
+    expect(o).toContain("hasRegression");
+  });
+
+  it("escapes a hostile artifact path", () => {
+    const o =
+      typed({
+        schemaVersion: "backtest.research.bundle.diff.v1",
+        hasChange: true,
+        hasRegression: false,
+        added: [{ path: "<script>x</script>", digest: "d" }],
+        removed: [],
+        changed: [],
+      }) ?? "";
+    expect(o).not.toContain("<script>x");
+    expect(o).toContain("&lt;script&gt;");
+  });
+});
+
+describe("research campaign diff — typed view (Sprint 19)", () => {
+  const base = {
+    schemaVersion: "backtest.research.campaign.diff.v1",
+    hasChange: true,
+    hasRegression: true,
+    regressionReasons: ['run "run-b" became invalid'],
+    changeReasons: ["campaign digest changed"],
+    addedRuns: [{ runId: "run-d", runDigest: "d", valid: false }],
+    removedRuns: [{ runId: "run-a", runDigest: "a", valid: true }],
+    changedRuns: [
+      {
+        runId: "run-b",
+        runDigestChanged: true,
+        baseValid: true,
+        nextValid: false,
+        becameInvalid: true,
+        artifactCount: { base: 6, next: 7, delta: 1 },
+      },
+    ],
+    newlyNeedsAttention: ["run-b", "run-d"],
+    noLongerNeedsAttention: [],
+    aggregateKindCountChanges: [{ key: "sensitivity-report", base: 2, next: 3, delta: 1 }],
+    aggregateSchemasAdded: ["backtest.sensitivity.matrix.v1"],
+    aggregateSchemasRemoved: [],
+  };
+  const out = typed(base) ?? "";
+
+  it("leads with a conservative integrity regression notice and reasons", () => {
+    expect(out).toContain("Integrity regression flagged by this campaign diff");
+    expect(out).toContain("became invalid");
+  });
+
+  it("renders changed runs with validity transition and artifact delta", () => {
+    expect(out).toContain("Changed runs");
+    expect(out).toContain("run-b");
+    expect(out).toContain("yes → no");
+    expect(out).toContain("6 → 7 (+1)");
+  });
+
+  it("surfaces the newly-needs-attention run ids", () => {
+    expect(out).toContain("newlyNeedsAttention");
+    expect(out).toContain("run-b, run-d");
+  });
+
+  it("caps the changed-runs table and reports the hidden count", () => {
+    const many = {
+      schemaVersion: "backtest.research.campaign.diff.v1",
+      hasChange: true,
+      hasRegression: false,
+      addedRuns: [],
+      removedRuns: [],
+      changedRuns: Array.from({ length: 100 }, (_v, i) => ({
+        runId: `run-${i}`,
+        runDigestChanged: true,
+        baseValid: true,
+        nextValid: true,
+        becameInvalid: false,
+        artifactCount: { base: 1, next: 2, delta: 1 },
+      })),
+    };
+    const o = typed(many) ?? "";
+    expect(o).toContain("Showing 40 of 100 runs — 60 more not shown.");
+    expect(o).not.toContain("run-41");
+  });
+
+  it("shows a partial-view notice when the verdict flags are absent", () => {
+    const o =
+      typed({ schemaVersion: "backtest.research.campaign.diff.v1", addedRuns: [], removedRuns: [], changedRuns: [] }) ??
+      "";
+    expect(o).toContain("Partial view");
+    expect(o).toContain("hasChange");
+  });
+
+  it("escapes a hostile runId", () => {
+    const o =
+      typed({
+        schemaVersion: "backtest.research.campaign.diff.v1",
+        hasChange: true,
+        hasRegression: false,
+        addedRuns: [],
+        removedRuns: [],
+        changedRuns: [
+          {
+            runId: "<script>x</script>",
+            runDigestChanged: true,
+            baseValid: true,
+            nextValid: false,
+            becameInvalid: true,
+            artifactCount: { base: 0, next: 0, delta: 0 },
+          },
+        ],
+      }) ?? "";
+    expect(o).not.toContain("<script>x");
+    expect(o).toContain("&lt;script&gt;");
   });
 });
 
