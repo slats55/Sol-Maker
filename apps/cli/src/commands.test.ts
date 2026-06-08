@@ -44,6 +44,7 @@ import {
   paperBacktestDiffResearchManifestReport,
   paperBacktestResearchBundleReport,
   paperBacktestResearchStatusReport,
+  paperBacktestResearchIndexReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -5119,6 +5120,305 @@ describe("paperBacktestResearchStatusReport (Sprint 17)", () => {
       const r = paperBacktestResearchStatusReport({ cwd, env: {} }, { dir, manifestPath: "bad.json" });
       expect(r.text).toMatch(/^Refusing:/);
       expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperBacktestResearchIndexReport (Sprint 18)", () => {
+  interface CampaignIndexJson {
+    schemaVersion: string;
+    campaignName: string | null;
+    campaignDigest: string;
+    runCount: number;
+    validRunCount: number;
+    invalidRunCount: number;
+    totalArtifactCount: number;
+    totalKnownArtifactCount: number;
+    totalUnknownArtifactCount: number;
+    totalMalformedArtifactCount: number;
+    runsNeedingAttention: string[];
+    aggregateKindCounts: { kind: string; count: number }[];
+    aggregateSchemaVersions: string[];
+    runs: {
+      runId: string;
+      runDigest: string | null;
+      valid: boolean;
+      artifactCount: number;
+      unknownArtifactCount: number;
+      malformedArtifactCount: number;
+      manifestPresent: boolean;
+      inSync: boolean;
+      driftDetected: boolean;
+      buildError: string | null;
+    }[];
+  }
+
+  /**
+   * Build a campaign tree with three runs: run-1 (two recognized artifacts), run-2 (an unknown
+   * parseable file), run-3 (a malformed file). Returns the relative campaign dir.
+   */
+  function writeCampaign(cwd: string, sub = "campaign"): string {
+    const root = join(cwd, sub);
+    mkdirSync(join(root, "run-1", "reports"), { recursive: true });
+    writeFileSync(
+      join(root, "run-1", "reports", "a.report.json"),
+      JSON.stringify({ schemaVersion: "backtest.report.v1", x: 1 }, null, 2),
+    );
+    writeFileSync(join(root, "run-1", "my.scenario.json"), JSON.stringify({ name: "s", steps: [] }, null, 2));
+    mkdirSync(join(root, "run-2"), { recursive: true });
+    writeFileSync(join(root, "run-2", "weird.json"), JSON.stringify({ hello: "world" }, null, 2));
+    mkdirSync(join(root, "run-3"), { recursive: true });
+    writeFileSync(join(root, "run-3", "broken.json"), "{ not json");
+    return sub;
+  }
+
+  /** Recursively list every file under `dir`, sorted (for "writes nothing" assertions). */
+  function listFilesRec(dir: string): string[] {
+    const out: string[] = [];
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) out.push(...listFilesRec(full));
+      else out.push(full);
+    }
+    return out.sort();
+  }
+
+  it("refuses when --dir is missing or not a directory", () => {
+    expect(paperBacktestResearchIndexReport({}, {}).text).toMatch(/^Refusing: --dir/);
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const r = paperBacktestResearchIndexReport({ cwd, env: {} }, { dir: "nope" });
+      expect(r.text).toMatch(/^Refusing: campaign directory not found/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("scans immediate child directories as runs and counts valid/invalid", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeCampaign(cwd);
+      const r = paperBacktestResearchIndexReport({ cwd, env: {} }, { dir, json: true });
+      expect(r.exitCode).toBe(0);
+      const index = JSON.parse(r.text) as CampaignIndexJson;
+      expect(index.schemaVersion).toBe("backtest.research.campaign.index.v1");
+      expect(index.campaignName).toBe("campaign");
+      expect(index.campaignDigest).toMatch(/^[0-9a-f]+$/);
+      expect(index.runs.map((x) => x.runId)).toEqual(["run-1", "run-2", "run-3"]);
+      expect(index.runCount).toBe(3);
+      expect(index.validRunCount).toBe(1);
+      expect(index.invalidRunCount).toBe(2);
+      expect(index.runsNeedingAttention).toEqual(["run-2", "run-3"]);
+      const run1 = index.runs.find((x) => x.runId === "run-1")!;
+      expect(run1.valid).toBe(true);
+      expect(run1.artifactCount).toBe(2);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("aggregates kind counts, schema set, and unknown/malformed totals across runs", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeCampaign(cwd);
+      const index = JSON.parse(
+        paperBacktestResearchIndexReport({ cwd, env: {} }, { dir, json: true }).text,
+      ) as CampaignIndexJson;
+      expect(index.aggregateKindCounts).toEqual([
+        { kind: "backtest-report", count: 1 },
+        { kind: "scenario", count: 1 },
+        { kind: "unknown-json", count: 2 },
+      ]);
+      expect(index.aggregateSchemaVersions).toEqual(["backtest.report.v1"]);
+      expect(index.totalArtifactCount).toBe(4);
+      expect(index.totalKnownArtifactCount).toBe(2);
+      expect(index.totalUnknownArtifactCount).toBe(2);
+      expect(index.totalMalformedArtifactCount).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("handles a malformed JSON file safely (no crash) and counts it", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeCampaign(cwd);
+      const index = JSON.parse(
+        paperBacktestResearchIndexReport({ cwd, env: {} }, { dir, json: true }).text,
+      ) as CampaignIndexJson;
+      const run3 = index.runs.find((x) => x.runId === "run-3")!;
+      expect(run3.malformedArtifactCount).toBe(1);
+      expect(run3.valid).toBe(false);
+      expect(run3.buildError).toBeNull(); // malformed is summarized, not an error
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("ignores *.jsonl files entirely (never read or indexed)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeCampaign(cwd);
+      writeFileSync(join(cwd, "campaign", "run-1", "journal.jsonl"), '{"event":"x"}\n{"event":"y"}\n');
+      const index = JSON.parse(
+        paperBacktestResearchIndexReport({ cwd, env: {} }, { dir, json: true }).text,
+      ) as CampaignIndexJson;
+      expect(index.runs.find((x) => x.runId === "run-1")!.artifactCount).toBe(2); // .jsonl excluded
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("excludes research meta files (manifest/bundle/status/campaign-index) from a run's artifacts", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeCampaign(cwd);
+      // Drop meta files INTO run-1, then re-index: they must not be counted as artifacts.
+      paperBacktestResearchManifestReport({ cwd, env: {} }, { dir: "campaign/run-1", outPath: "campaign/run-1/research-manifest.json" });
+      paperBacktestResearchBundleReport({ cwd, env: {} }, { dir: "campaign/run-1", outPath: "campaign/run-1/research-bundle.json" });
+      writeFileSync(join(cwd, "campaign", "run-1", "research-status.json"), JSON.stringify({ schemaVersion: "backtest.research.status.v1" }));
+      writeFileSync(join(cwd, "campaign", "run-1", "campaign-index.json"), JSON.stringify({ schemaVersion: "backtest.research.campaign.index.v1" }));
+      const index = JSON.parse(
+        paperBacktestResearchIndexReport({ cwd, env: {} }, { dir, json: true }).text,
+      ) as CampaignIndexJson;
+      const run1 = index.runs.find((x) => x.runId === "run-1")!;
+      expect(run1.artifactCount).toBe(2); // still 2 — every meta file is excluded
+      // run-1 now has a recorded manifest matching its (unchanged) artifacts → in sync.
+      expect(run1.manifestPresent).toBe(true);
+      expect(run1.inSync).toBe(true);
+      expect(run1.valid).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("detects manifest drift in a run after an artifact changes", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeCampaign(cwd);
+      // Record a manifest for run-1, then mutate an artifact so the directory drifts from it.
+      paperBacktestResearchManifestReport({ cwd, env: {} }, { dir: "campaign/run-1", outPath: "campaign/run-1/research-manifest.json" });
+      writeFileSync(
+        join(cwd, "campaign", "run-1", "reports", "a.report.json"),
+        JSON.stringify({ schemaVersion: "backtest.report.v1", x: 999 }, null, 2),
+      );
+      const index = JSON.parse(
+        paperBacktestResearchIndexReport({ cwd, env: {} }, { dir, json: true }).text,
+      ) as CampaignIndexJson;
+      const run1 = index.runs.find((x) => x.runId === "run-1")!;
+      expect(run1.driftDetected).toBe(true);
+      expect(run1.inSync).toBe(false);
+      expect(run1.valid).toBe(false);
+      expect(index.runsNeedingAttention).toContain("run-1");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("skips a symlinked child directory (when the platform allows creating one)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeCampaign(cwd);
+      let symlinkCreated = false;
+      try {
+        symlinkSync(join(cwd, "campaign", "run-1"), join(cwd, "campaign", "linked-run"), "dir");
+        symlinkCreated = true;
+      } catch {
+        symlinkCreated = false; // Windows without privileges — the walk-skip is still exercised elsewhere
+      }
+      const index = JSON.parse(
+        paperBacktestResearchIndexReport({ cwd, env: {} }, { dir, json: true }).text,
+      ) as CampaignIndexJson;
+      expect(index.runCount).toBe(3); // a symlinked run dir is skipped, never followed
+      expect(index.runs.some((x) => x.runId === "linked-run")).toBe(false);
+      void symlinkCreated;
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--out writes the campaign index and refuses to overwrite without --force", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeCampaign(cwd);
+      const first = paperBacktestResearchIndexReport({ cwd, env: {} }, { dir, outPath: "campaign-index.json" });
+      expect(first.text).toContain("Wrote campaign index");
+      const written = JSON.parse(readFileSync(join(cwd, "campaign-index.json"), "utf8")) as { schemaVersion: string };
+      expect(written.schemaVersion).toBe("backtest.research.campaign.index.v1");
+      const blocked = paperBacktestResearchIndexReport({ cwd, env: {} }, { dir, outPath: "campaign-index.json" });
+      expect(blocked.text).toMatch(/already exists \(pass --force/);
+      expect(blocked.exitCode).toBe(1);
+      expect(
+        paperBacktestResearchIndexReport({ cwd, env: {} }, { dir, outPath: "campaign-index.json", force: true }).text,
+      ).toContain("Wrote campaign index");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("writes nothing when no --out is given", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeCampaign(cwd);
+      const root = join(cwd, "campaign");
+      const before = listFilesRec(root);
+      const r = paperBacktestResearchIndexReport({ cwd, env: {} }, { dir, json: true });
+      expect(r.exitCode).toBe(0);
+      expect(listFilesRec(root)).toEqual(before); // no file created or modified
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--strict exits non-zero when any run needs attention, 0 otherwise", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeCampaign(cwd);
+      expect(paperBacktestResearchIndexReport({ cwd, env: {} }, { dir }).exitCode).toBe(0); // non-strict
+      expect(paperBacktestResearchIndexReport({ cwd, env: {} }, { dir, strict: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("is deterministic — byte-identical JSON across two indexings", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dir = writeCampaign(cwd);
+      const a = paperBacktestResearchIndexReport({ cwd, env: {} }, { dir, json: true }).text;
+      const b = paperBacktestResearchIndexReport({ cwd, env: {} }, { dir, json: true }).text;
+      expect(a).toBe(b);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("reports an empty campaign (no run subdirectories) without crashing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      mkdirSync(join(cwd, "empty-campaign"), { recursive: true });
+      const r = paperBacktestResearchIndexReport({ cwd, env: {} }, { dir: "empty-campaign", json: true });
+      const index = JSON.parse(r.text) as CampaignIndexJson;
+      expect(index.runCount).toBe(0);
+      expect(index.validRunCount).toBe(0);
+      expect(index.invalidRunCount).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("redacts a secret-looking run directory name (backstop)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const secret = "S".repeat(90);
+      mkdirSync(join(cwd, "campaign", secret), { recursive: true });
+      writeFileSync(join(cwd, "campaign", secret, "a.report.json"), JSON.stringify({ schemaVersion: "backtest.report.v1" }));
+      const r = paperBacktestResearchIndexReport({ cwd, env: {} }, { dir: "campaign", json: true });
+      expect(r.text).not.toContain(secret);
+      expect(r.text).toContain("[REDACTED]");
     } finally {
       cleanup();
     }
