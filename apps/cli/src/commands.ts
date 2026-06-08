@@ -112,10 +112,16 @@ import {
   formatBacktestResearchVerification,
   diffBacktestResearchManifests,
   formatBacktestResearchManifestDiff,
+  buildBacktestResearchBundle,
+  formatBacktestResearchBundle,
+  buildBacktestResearchStatus,
+  formatBacktestResearchStatus,
   digestContent,
   BACKTEST_RESEARCH_MANIFEST_SCHEMA_VERSION,
   BACKTEST_RESEARCH_VERIFY_SCHEMA_VERSION,
   BACKTEST_RESEARCH_MANIFEST_DIFF_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_BUNDLE_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_STATUS_SCHEMA_VERSION,
   type BacktestReport,
   type BacktestReportDiff,
   type BacktestScenario,
@@ -137,6 +143,8 @@ import {
   type BacktestResearchManifest,
   type BacktestResearchVerification,
   type BacktestResearchManifestDiff,
+  type BacktestResearchBundle,
+  type BacktestResearchStatus,
 } from "@soulmaker/backtest";
 
 export interface CommandContext {
@@ -2800,11 +2808,18 @@ export function paperBacktestSuiteCoverageReport(
 //   no journal, no network, no wallet.
 // ---------------------------------------------------------------------------
 
-/** Research-manifest META schemas — these index/describe artifacts and are not themselves run artifacts. */
+/**
+ * Research META schemas — these index/describe/summarize artifacts and are not themselves run
+ * artifacts. Excluding them from the directory walk means a manifest/bundle/status written into
+ * the same run dir is never indexed (a bundle never indexes itself, and verify never sees a meta
+ * file as "extra"). Covers Sprint 16 (manifest/verify/manifest-diff) and Sprint 17 (bundle/status).
+ */
 const RESEARCH_META_SCHEMAS = new Set<string>([
   BACKTEST_RESEARCH_MANIFEST_SCHEMA_VERSION,
   BACKTEST_RESEARCH_VERIFY_SCHEMA_VERSION,
   BACKTEST_RESEARCH_MANIFEST_DIFF_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_BUNDLE_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_STATUS_SCHEMA_VERSION,
 ]);
 
 /**
@@ -3087,6 +3102,179 @@ export function paperBacktestDiffResearchManifestReport(
     text: formatBacktestResearchManifestDiff(diff, { baseLabel: opts.basePath, nextLabel: opts.nextPath }),
     exitCode,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 17 — paper:backtest:research:bundle / :status
+//   Package a PAPER-only research run into ONE self-describing bundle summary
+//   (manifest summary + counts + a deterministic top-level run digest) and a
+//   quick directory health/integrity status. Reads local files only; no
+//   backtest, no journal, no network, no wallet. The status writes nothing.
+// ---------------------------------------------------------------------------
+
+export interface PaperBacktestResearchBundleCommandOptions {
+  /** Directory of local research artifacts to bundle (required). */
+  dir?: string;
+  /** Optional path to write the bundle JSON to (writes nothing without it). */
+  outPath?: string;
+  /** Overwrite the --out file if it exists (refused by default). */
+  force?: boolean;
+  json?: boolean;
+  /** Exit non-zero if any artifact is unknown/malformed. */
+  strict?: boolean;
+}
+
+/**
+ * `soulmaker paper:backtest:research:bundle` — package the local JSON artifacts under `--dir`
+ * into ONE self-describing bundle: a manifest summary, artifact + kind counts, the recognized
+ * schema-version set, unknown/malformed counts, the sorted per-artifact digest references, and a
+ * deterministic top-level NON-CRYPTOGRAPHIC run digest. It walks real subdirectories (BOM-
+ * tolerant, sorted), reads `*.json` only (never `*.jsonl`), skips symlinks, and excludes research
+ * meta files (manifest/verify/diff/status/bundle) so a bundle never indexes itself. A malformed
+ * file is indexed as `unknown-json` and reported, never a crash. With `--out` it writes ONLY the
+ * bundle JSON (refuses to overwrite without `--force`). `--json` prints the bundle; `--strict`
+ * exits non-zero when any unknown/malformed artifact is present. Local files only — no backtest,
+ * no journal, no network, no wallet. The bundle embeds no artifact contents and is not a live
+ * result, not advice, and not a profitability claim.
+ */
+export function paperBacktestResearchBundleReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestResearchBundleCommandOptions = {},
+): CliReport {
+  if (!opts.dir) return { text: "Refusing: --dir <path> is required.", exitCode: 1 };
+
+  const resolved = resolveArtifactDir(ctx, opts.dir, "artifact");
+  if (!resolved.ok) return { text: redactString(`Refusing: ${resolved.reason}`), exitCode: 1 };
+
+  const { descriptors, malformed } = collectArtifactDescriptors(resolved.dir);
+
+  let bundle: BacktestResearchBundle;
+  try {
+    bundle = buildBacktestResearchBundle({
+      runName: basename(resolved.dir),
+      artifacts: descriptors,
+      malformedPaths: malformed,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // Write the bundle only when --out is given; refuse to overwrite without --force.
+  let writtenNote = "";
+  if (opts.outPath) {
+    const outPath = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(outPath)) {
+      return {
+        text: redactString(`Refusing: ${outPath} already exists (pass --force to overwrite).`),
+        exitCode: 1,
+      };
+    }
+    try {
+      writeFileSync(outPath, JSON.stringify(redactValue(bundle), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write bundle to ${outPath}`), exitCode: 1 };
+    }
+    writtenNote = `\n\nWrote bundle to ${outPath}`;
+  }
+
+  const exitCode =
+    opts.strict && (bundle.unknownArtifactCount > 0 || bundle.malformedArtifactCount > 0) ? 1 : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(bundle), null, 2), exitCode };
+  }
+  const malformedNote =
+    malformed.length > 0
+      ? `\n\nMalformed (unparseable) JSON file(s), indexed as unknown-json:\n` +
+        malformed.map((p) => `- ${p}`).join("\n")
+      : "";
+  return {
+    text: redactString(
+      formatBacktestResearchBundle(bundle, { label: opts.dir }) + malformedNote + writtenNote,
+    ),
+    exitCode,
+  };
+}
+
+/** Read-only: load a manifest JSON from the run dir by its conventional name, or null. */
+function discoverResearchManifest(dir: string): unknown {
+  const candidate = join(dir, "research-manifest.json");
+  if (!existsSync(candidate)) return null;
+  try {
+    return JSON.parse(stripJsonBom(readFileSync(candidate, "utf8")));
+  } catch {
+    return null; // a malformed discovered manifest is ignored (status reports "no manifest")
+  }
+}
+
+export interface PaperBacktestResearchStatusCommandOptions {
+  /** Directory of current local research artifacts to summarize (required). */
+  dir?: string;
+  /** Optional manifest JSON to check the directory against (else a conventional one is discovered). */
+  manifestPath?: string;
+  json?: boolean;
+  /** Exit non-zero when unknown/malformed/drift/invalid conditions exist. */
+  strict?: boolean;
+}
+
+/**
+ * `soulmaker paper:backtest:research:status` — summarize a research directory's health at a
+ * glance: COMPLETE (has artifacts), RECOGNIZED (every file classified), STABLE (no unparseable
+ * files), and IN SYNC (matches a recorded manifest, if one is provided via `--manifest` or
+ * discovered as `research-manifest.json` in the dir). Reports kinds/schemas present, unknown +
+ * malformed counts, a bundle-candidate validity check, manifest drift (missing/extra/changed),
+ * and a single NEUTRAL recommended action (operational, never trading advice). It reads local
+ * files only and WRITES NOTHING. `--json` emits the stable, redacted status. `--strict` exits
+ * non-zero when any unknown/malformed/drift/invalid condition exists. No backtest, no journal,
+ * no network, no wallet.
+ */
+export function paperBacktestResearchStatusReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestResearchStatusCommandOptions = {},
+): CliReport {
+  if (!opts.dir) return { text: "Refusing: --dir <path> is required.", exitCode: 1 };
+
+  const resolved = resolveArtifactDir(ctx, opts.dir, "artifact");
+  if (!resolved.ok) return { text: redactString(`Refusing: ${resolved.reason}`), exitCode: 1 };
+
+  // Load a manifest to check against: explicit --manifest wins; else discover a conventional one.
+  let manifestValue: unknown = null;
+  if (opts.manifestPath) {
+    try {
+      manifestValue = readJsonValue(ctx, opts.manifestPath, "manifest");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+  } else {
+    manifestValue = discoverResearchManifest(resolved.dir);
+  }
+
+  const { descriptors, malformed } = collectArtifactDescriptors(resolved.dir);
+
+  let status: BacktestResearchStatus;
+  try {
+    status = buildBacktestResearchStatus({
+      runName: basename(resolved.dir),
+      artifacts: descriptors,
+      malformedPaths: malformed,
+      manifest: manifestValue,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const driftPresent = status.manifest.present && !status.manifest.inSync;
+  const unsafe =
+    status.unknownArtifactCount > 0 ||
+    status.malformedArtifactCount > 0 ||
+    driftPresent ||
+    !status.bundleCandidateValid;
+  const exitCode = opts.strict && unsafe ? 1 : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(status), null, 2), exitCode };
+  }
+  return { text: redactString(formatBacktestResearchStatus(status, { label: opts.dir })), exitCode };
 }
 
 function yesNo(value: boolean): string {

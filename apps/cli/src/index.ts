@@ -31,6 +31,8 @@ import {
   paperBacktestResearchManifestReport,
   paperBacktestResearchVerifyReport,
   paperBacktestDiffResearchManifestReport,
+  paperBacktestResearchBundleReport,
+  paperBacktestResearchStatusReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -697,6 +699,54 @@ program
         nextPath: opts.next,
         json: Boolean(opts.json),
         failOnChange: Boolean(opts.failOnChange),
+      },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("paper:backtest:research:bundle")
+  .description(
+    "Package a research run's LOCAL JSON artifacts into one self-describing bundle: manifest summary + counts + a deterministic non-cryptographic top-level run digest (PAPER ONLY; embeds no contents; local artifacts only, not a live result, not advice)",
+  )
+  .option("--dir <path>", "directory of local research artifacts to bundle (recurses real subdirs)")
+  .option("--out <path>", "write ONLY the bundle JSON to this file")
+  .option("--force", "overwrite the --out file if it already exists")
+  .option("--json", "emit the bundle as stable JSON")
+  .option("--strict", "exit non-zero if any unknown/malformed artifact is present")
+  .action((opts: { dir?: string; out?: string; force?: boolean; json?: boolean; strict?: boolean }) => {
+    const { text, exitCode } = paperBacktestResearchBundleReport(
+      {},
+      {
+        dir: opts.dir,
+        outPath: opts.out,
+        force: Boolean(opts.force),
+        json: Boolean(opts.json),
+        strict: Boolean(opts.strict),
+      },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("paper:backtest:research:status")
+  .description(
+    "Summarize a research directory's health at a glance — complete / recognized / stable / in-sync — with a neutral recommended action (PAPER ONLY; reads local files only and writes nothing; exit 1 with --strict on unknown/malformed/drift)",
+  )
+  .option("--dir <path>", "directory of current local research artifacts to summarize")
+  .option("--manifest <path>", "manifest JSON to check against (else research-manifest.json is discovered)")
+  .option("--json", "emit the status as stable JSON")
+  .option("--strict", "exit non-zero on any unknown/malformed/drift/invalid condition")
+  .action((opts: { dir?: string; manifest?: string; json?: boolean; strict?: boolean }) => {
+    const { text, exitCode } = paperBacktestResearchStatusReport(
+      {},
+      {
+        dir: opts.dir,
+        manifestPath: opts.manifest,
+        json: Boolean(opts.json),
+        strict: Boolean(opts.strict),
       },
     );
     console.log(text);
