@@ -112,6 +112,15 @@ and total** by contract:
 - Missing expected fields render as “—” with a visible **partial-view** notice,
   so a typed view is honest about what it could not read.
 
+The sensitivity-matrix view goes a level deeper with a **base × variant grid**
+(rows = base scenarios, columns = variant suffixes; each cell = that variant's
+total simulated PnL delta vs the base baseline). It is row/column-capped, marks
+absent cells with `·` and non-diffable cells with a status word, and is wrapped
+in `.sm-matrixgrid` (a sticky first column + tabular numerals). Typed-view chrome
+has dedicated, dependency-free CSS hooks — `.sm-typedview__self`,
+`.sm-artifactview__generic-lead`, `.sm-digest`, `.sm-matrixgrid` — and degrades
+gracefully if the stylesheet is absent.
+
 Adding a typed view: extend `lib/report-types.ts` (so the schema is badged), add
 a `render<Schema>View(rec)` and a `switch` case in `buildTypedView`, add a
 fixture/test, and `pnpm web:build`.
