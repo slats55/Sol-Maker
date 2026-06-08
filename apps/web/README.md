@@ -31,6 +31,10 @@ HTML/CSS so it fits the repo's existing toolchain with **no new dependencies**:
 pnpm install
 pnpm web:build           # regenerate public/*.html from src/
 # then open apps/web/public/index.html in a browser (file:// is fine)
+
+# Inspect ONE local PAPER report JSON as a static page (local-only, no network):
+pnpm web:inspect --input <report.json> --out apps/web/public/research-artifact.html --force
+pnpm web:inspect --input <report.json> --json   # print a summary, write nothing
 ```
 
 Gates (run from the repo root):
@@ -47,18 +51,31 @@ pnpm test                # includes apps/web/tests/**
 apps/web/
   src/
     lib/         html engine, safety model, nav, report-schema registry,
-                 CLI command reference, clearly-labelled sample fixtures
+                 CLI command reference, local-artifact normalizer, fixtures
     components/  layout (shell, sidebar, banner), ui primitives, cards,
-                 tables, report-viewer components
+                 tables, report-viewer + artifact-inspector components
     pages/       one render function per route + a registry
     build.ts     static-site generator (reads styles/, writes public/)
+    inspect.ts   Node-only command: read ONE local report JSON → one static page
+  fixtures/      committed benign sample report JSON (inspect smoke + tests)
   styles/        theme.css (dark command-center theme)
-  tests/         Vitest tests (rendering, safety, schema, drift)
+  tests/         Vitest tests (rendering, safety, schema, normalizer, CLI, drift)
   public/        GENERATED static site — do not edit by hand
 ```
 
 `public/` is generated. Edit `src/` / `styles/` and re-run `pnpm web:build`;
 a test (`tests/pages.test.ts`) fails if the committed output is stale.
+
+## Local artifact inspector
+
+`pnpm web:inspect` renders **one local PAPER report JSON** into a static page
+(`public/research-artifact.html`) using the same shell. It is **local-only**:
+reads one `.json` file, writes one HTML file — no upload, no server, no network,
+no wallet, no keys. Report content is normalized, capped, and HTML-escaped, never
+executed. Malformed JSON, directories, and non-`.json` inputs are refused with a
+non-zero exit; the default output is the committed empty-state page, so
+overwriting it requires `--force`. Full details:
+[`../../docs/WEB_LOCAL_ARTIFACT_INSPECTOR.md`](../../docs/WEB_LOCAL_ARTIFACT_INSPECTOR.md).
 
 ## Data policy
 
@@ -66,7 +83,9 @@ There is **no live data**. The only sample content lives in
 [`src/lib/sample-data.ts`](src/lib/sample-data.ts), where every item is tagged
 `source: "sample-local-ui-fixture"` and `isLive: false`. Sample status cards
 reflect the project's *true* posture (PAPER / no wallet / offline / engine not
-running) — they never fake a connected wallet, a running bot, or profit.
+running) — they never fake a connected wallet, a running bot, or profit. The
+`fixtures/` directory holds a clearly-benign sample report used only by the
+inspect smoke test and tests.
 
 ## Deliberately NOT here
 
