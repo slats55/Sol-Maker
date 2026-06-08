@@ -191,6 +191,11 @@ describe("typed views — per schema (inline minimal shapes)", () => {
       raw: { schemaVersion: "backtest.research.status.v1", complete: true, manifest: {} },
       expect: "Manifest check",
     },
+    {
+      schema: "backtest.research.campaign.index.v1",
+      raw: { schemaVersion: "backtest.research.campaign.index.v1", campaignDigest: "d", runCount: 0, runs: [], aggregateKindCounts: [] },
+      expect: "Aggregate kinds",
+    },
   ];
 
   for (const c of cases) {
