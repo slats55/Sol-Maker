@@ -60,7 +60,7 @@ const code = (value: string | null): HtmlValue => (value === null ? DASH : html`
 
 /** A `<code>` cell that elides long digests but keeps the full value in a title. */
 const digestCode = (value: string | null): HtmlValue =>
-  value === null ? DASH : html`<code title="${value}">${shortDigest(value)}</code>`;
+  value === null ? DASH : html`<code class="sm-digest" title="${value}">${shortDigest(value)}</code>`;
 
 /** Render a `{ base, next, delta }` delta as "base → next (Δ)". */
 const deltaCell = (delta: NumberDelta | null): HtmlValue =>
@@ -592,6 +592,74 @@ function renderVariantPlanExplainView(rec: Record<string, unknown>): RawHtml {
  * Priority 2 — sensitivity matrix + matrix diff.
  * ------------------------------------------------------------------ */
 
+/**
+ * A base×variant grid: rows are base scenarios, columns are variant suffixes,
+ * each cell shows that variant's total simulated PnL Δ vs the base's baseline.
+ * Defensive and bounded: rows/columns are capped, unknown cells show "·", and a
+ * non-diffable cell falls back to its status word. Never throws.
+ */
+function matrixGridSection(bases: readonly unknown[]): RawHtml {
+  const rowCap = capRows(bases, TYPED_VIEW_LIMITS.maxGridRows);
+
+  // Ordered union of variant suffixes (first-seen) across the shown bases.
+  const suffixes: string[] = [];
+  const seen = new Set<string>();
+  for (const base of rowCap.shown) {
+    const b = asRecord(base) ?? {};
+    for (const cell of asArray(b["cells"]) ?? []) {
+      const suffix = readString(asRecord(cell) ?? {}, "suffix");
+      if (suffix !== null && !seen.has(suffix)) {
+        seen.add(suffix);
+        suffixes.push(suffix);
+      }
+    }
+  }
+  const shownCols = suffixes.slice(0, TYPED_VIEW_LIMITS.maxGridCols);
+  const hiddenCols = suffixes.length - shownCols.length;
+
+  const columns: readonly TableColumn[] = [
+    { header: "Base scenario" },
+    ...shownCols.map((suffix) => ({ header: suffix, align: "right" as const })),
+  ];
+
+  const rows: readonly (readonly HtmlValue[])[] = rowCap.shown.map((base) => {
+    const b = asRecord(base) ?? {};
+    const bySuffix = new Map<string, Record<string, unknown>>();
+    for (const cell of asArray(b["cells"]) ?? []) {
+      const c = asRecord(cell);
+      if (c === null) continue;
+      const suffix = readString(c, "suffix");
+      if (suffix !== null && !bySuffix.has(suffix)) bySuffix.set(suffix, c);
+    }
+    const label = text(readString(b, "baseScenarioName") ?? readString(b, "id"));
+    const cells: HtmlValue[] = shownCols.map((suffix) => {
+      const c = bySuffix.get(suffix);
+      if (c === undefined) return "·";
+      const deltas = asRecord(c["deltas"]);
+      const totalPnl = deltas ? asRecord(deltas["totalPnlUsd"]) : null;
+      const delta = totalPnl ? readNumber(totalPnl, "delta") : null;
+      return delta !== null ? signed(delta) : text(readString(c, "status"));
+    });
+    return [label, ...cells];
+  });
+
+  const hidden: string[] = [];
+  if (rowCap.hidden > 0) hidden.push(`${rowCap.hidden} more base${rowCap.hidden === 1 ? "" : "s"}`);
+  if (hiddenCols > 0) hidden.push(`${hiddenCols} more variant${hiddenCols === 1 ? "" : "s"}`);
+  const caption =
+    "Cells: each variant's total simulated PnL Δ vs the base baseline (signed; not real). " +
+    "“·” = no cell for that base; a status word = run not diffable." +
+    (hidden.length > 0 ? ` ${hidden.join(" and ")} not shown.` : "");
+
+  return Section({
+    title: "Base × variant grid",
+    description: "Per-cell total simulated PnL delta across the matrix (row/column capped).",
+    body: html`<div class="sm-matrixgrid">
+      ${DataTable({ columns, rows, caption, emptyMessage: "No matrix cells present." })}
+    </div>`,
+  });
+}
+
 function renderMatrixView(rec: Record<string, unknown>): RawHtml {
   const missing: string[] = [];
   const baseCount = need(missing, "baseCount", readNumber(rec, "baseCount"));
@@ -634,6 +702,7 @@ function renderMatrixView(rec: Record<string, unknown>): RawHtml {
       { term: "passedBaseCount", detail: num(readNumber(rec, "passedBaseCount")) },
       { term: "failedBaseCount", detail: num(readNumber(rec, "failedBaseCount")) },
     ])}
+    ${matrixGridSection(bases)}
     ${tableSection({
       title: "Per-base",
       columns: [
@@ -689,6 +758,26 @@ function renderMatrixDiffView(rec: Record<string, unknown>): RawHtml {
   const compatStatus = compatibility ? readString(compatibility, "status") : null;
   const compatible = compatibility ? readBoolean(compatibility, "compatible") : null;
 
+  // Flatten per-base cell changes into one capped table (a full base×variant grid
+  // is sparse for a diff, so list only the cells that actually changed).
+  const cellChanges: { readonly base: string; readonly cell: Record<string, unknown> }[] = [];
+  for (const entry of changedBases) {
+    const e = asRecord(entry);
+    if (e === null) continue;
+    const baseLabel = text(readString(e, "baseScenarioName") ?? readString(e, "id"));
+    for (const cell of asArray(e["cellsChanged"]) ?? []) {
+      const c = asRecord(cell);
+      if (c !== null) cellChanges.push({ base: baseLabel, cell: c });
+    }
+  }
+  const cellCap = capRows(cellChanges);
+  const cellRows: readonly (readonly HtmlValue[])[] = cellCap.shown.map(({ base, cell }) => [
+    base,
+    text(readString(cell, "suffix")),
+    `${text(readString(cell, "baseStatus"))} → ${text(readString(cell, "nextStatus"))}`,
+    boolText(readBoolean(cell, "isRegression")),
+  ]);
+
   return html`
     ${flagNotice({
       flag: hasRegression,
@@ -718,6 +807,19 @@ function renderMatrixDiffView(rec: Record<string, unknown>): RawHtml {
       rows: changedRows,
       empty: "No changed bases.",
       caption: capCaption(changedCap, "bases"),
+    })}
+    ${tableSection({
+      title: "Changed cells",
+      description: "Individual base×variant cells that changed between the two matrices.",
+      columns: [
+        { header: "Base scenario" },
+        { header: "Variant" },
+        { header: "Status base → next" },
+        { header: "Regression" },
+      ],
+      rows: cellRows,
+      empty: "No changed cells.",
+      caption: capCaption(cellCap, "cells"),
     })}
     ${partialNotice(missing)}
   `;
