@@ -28,7 +28,7 @@ packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.j
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
-packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status (Sprint 8–17)  [strategy, paper, security]
+packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index (Sprint 8–18)  [strategy, paper, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -185,6 +185,23 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   status files, and the status command **writes nothing**. The run digest is the same
   non-cryptographic, reproducibility-only fingerprint. Local files only — no backtest, no
   journal, no network, no wallet.
+- **(Sprint 18)** `@soulmaker/backtest` adds the **research campaign index** —
+  `research-campaign-index.ts` (`buildBacktestResearchCampaignIndex`, `validate…`, `format…`,
+  `buildBacktestResearchCampaignDigest`; schema `backtest.research.campaign.index.v1`), exposed by
+  the CLI as `paper:backtest:research:index`. It sits **above** the Sprint 17 per-run
+  bundle/status and reuses them: for each run it calls `buildBacktestResearchBundle` (counts,
+  kinds, recognized schemas, run digest) and `buildBacktestResearchStatus`
+  (complete/recognized/stable/in-sync health), then aggregates the kind/schema sets across the
+  campaign, lists the runs needing attention, and emits one deterministic top-level **campaign
+  digest** (a `digestContent` pass over the runId-sorted run digests + stable metadata under a
+  stable domain tag — order-independent, and sensitive to an added/removed/changed run or a
+  validity flip). A merely unhealthy run is counted as needing attention; a structurally bad run
+  is captured as an invalid, errored run rather than crashing the campaign. The package stays pure
+  (still **no file IO**); the CLI treats each immediate child directory as a run, skips
+  symlinked/hidden child dirs, extends the META-schema exclusion set to cover the campaign index
+  itself, and writes nothing without `--out`. The campaign digest is the same non-cryptographic,
+  reproducibility-only fingerprint. Local files only — no backtest, no journal, no network, no
+  wallet.
 
 ## The live boundary
 

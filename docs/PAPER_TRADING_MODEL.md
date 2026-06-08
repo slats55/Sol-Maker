@@ -1,4 +1,4 @@
-# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow; Sprint 14 paper research lab — rankings, variant-plan explain, sensitivity diff, config perturbations, suite coverage; Sprint 15 cross-scenario sensitivity matrix + matrix diff; Sprint 16 research run manifest — index/verify/diff a run's local artifacts; Sprint 17 research run bundle + integrity/status — package a run into one self-describing bundle with a deterministic run digest, plus a complete/recognized/stable/in-sync directory status)
+# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow; Sprint 14 paper research lab — rankings, variant-plan explain, sensitivity diff, config perturbations, suite coverage; Sprint 15 cross-scenario sensitivity matrix + matrix diff; Sprint 16 research run manifest — index/verify/diff a run's local artifacts; Sprint 17 research run bundle + integrity/status — package a run into one self-describing bundle with a deterministic run digest, plus a complete/recognized/stable/in-sync directory status; Sprint 18 research campaign index — index many runs under a campaign directory into one comparable summary with a deterministic campaign digest)
 
 The paper engine (`@soulmaker/paper` + the `paper:*` CLI commands) is a
 **deterministic, offline, simulated-only** trading sandbox. It exists to prove
@@ -549,6 +549,39 @@ manifest/verify/diff/bundle/status — so a bundle never indexes itself, and nev
 `*.jsonl`). Local bookkeeping over injected artifacts — not a live result, not advice, not a
 profitability claim.
 
+## Research campaign index (Sprint 18)
+
+Sprint 18 sits one level **above** the per-run bundle/status. A research **campaign** is just a
+directory whose immediate child directories are individual research runs; the campaign index
+answers *"what runs exist here, which need attention, and did the campaign change?"* in one
+deterministic, comparable summary. It embeds no artifact contents.
+
+`@soulmaker/backtest` exports the pure `buildBacktestResearchCampaignIndex`,
+`validateBacktestResearchCampaignIndex`, `formatBacktestResearchCampaignIndex`, and
+`buildBacktestResearchCampaignDigest` (schema `backtest.research.campaign.index.v1`). The CLI adds
+`paper:backtest:research:index --dir <campaign> [--out <i>] [--force] [--json] [--strict]`.
+
+For each immediate child directory the command reuses the Sprint 17 builders — the **bundle** (for
+the run digest, artifact/kind/schema counts, recognized-schema set, and unknown/malformed totals)
+and the **status** (for COMPLETE / RECOGNIZED / STABLE / IN-SYNC health, discovering a conventional
+`research-manifest.json` for drift). A run is **valid** when it is complete, recognized, stable,
+bundle-valid, and (if it has a recorded manifest) in sync; otherwise it is counted among the
+**runs needing attention**. A merely unhealthy run is summarized and counted; a structurally bad
+run is captured as an invalid, **errored** run rather than crashing the whole campaign.
+
+The index aggregates the per-kind counts and the recognized-schema set across all runs, and emits
+one deterministic top-level **campaign digest** — a `digestContent` pass over the runId-sorted run
+digests plus stable per-run metadata under a stable domain tag — so it is **independent of run
+order**, **identical** for identical run sets, and **changes** when a run is added, removed, or
+changed (or flips validity). It is the same **non-cryptographic, reproducibility-only** fingerprint
+(NOT a security or anti-tamper guarantee). `--strict` exits 1 when any run needs attention; `--out`
+writes ONLY the index (refuses overwrite without `--force`); without `--out` it **writes nothing**.
+
+It stays pure (the CLI does all directory IO): only immediate child **directories** are runs
+(top-level files, symlinked child dirs, and hidden dot-dirs are skipped), every research META file —
+now including the campaign index — is excluded, and a `*.jsonl` is never read. Local bookkeeping
+over injected artifacts — not a live result, not advice, not a profitability claim.
+
 ## PnL reporting
 
 `PaperRunSummary`: realized PnL, unrealized PnL, total PnL, open position count,
@@ -583,6 +616,7 @@ simulated, or sent" disclaimer.
 | `paper:backtest:diff:research:manifest` | diff **two** manifest JSON files (Sprint 16): pairs artifacts by path → added/removed/changed + count/size + per-kind/per-schema count deltas + `hasChange` (`backtest.research.manifest.diff.v1`); reads two files, writes nothing |
 | `paper:backtest:research:bundle` | package a directory's artifacts into one self-describing bundle (Sprint 17): manifest summary + kind/schema counts + recognized-schema set + unknown/malformed counts + sorted digest refs + a deterministic top-level **run digest** (`backtest.research.bundle.v1`); embeds no contents; `--out` writes ONLY the bundle (`--force`), `--strict` exits 1 on any unknown/malformed artifact |
 | `paper:backtest:research:status` | at-a-glance health of a research dir (Sprint 17): **complete / recognized / stable / in-sync** + drift counts (vs `--manifest` or a discovered `research-manifest.json`) + a single **neutral** recommended action (`backtest.research.status.v1`); **writes nothing**, `--strict` exits 1 on any unknown/malformed/drift condition |
+| `paper:backtest:research:index` | index a **campaign** directory of research runs (Sprint 18): each immediate child dir is a run; per-run digest + kind/schema counts + complete/recognized/stable/in-sync health, aggregate kinds/schemas, the runs needing attention, and a deterministic top-level **campaign digest** (`backtest.research.campaign.index.v1`); embeds no contents, `--out` writes ONLY the index (`--force`), **writes nothing** without `--out`, `--strict` exits 1 when any run needs attention |
 
 `paper:run` options: `--candidates <path>` `--prices <path>` `--journal <path>`
 `--max-trade-size-usd` `--max-daily-loss-usd` `--max-open-positions`

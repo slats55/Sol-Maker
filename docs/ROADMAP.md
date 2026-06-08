@@ -122,7 +122,9 @@ Sprint 16 research run manifest — index/verify/diff a run's local artifacts fo
 reproducibility;
 Sprint 17 research run bundle + integrity/status — package a run into one self-describing
 bundle with a deterministic top-level run digest, plus a quick complete/recognized/stable/
-in-sync directory status):
+in-sync directory status;
+Sprint 18 research campaign index — index many runs under a campaign directory into one
+comparable summary with a deterministic top-level campaign digest):
 
 - ✅ Deterministic, **paper-only** rules engine: turns an advisory
   `@soulmaker/risk` report + injected, read-only metrics into a single decision —
@@ -401,6 +403,25 @@ in-sync directory status):
   reproducibility-only digest; the package stays pure (the CLI walks the directory, excludes all
   research META files — manifest/verify/diff/bundle/status — and never reads a `*.jsonl`). Local
   bookkeeping — not a live result, not advice, not a profitability claim.
+- ✅ **(Sprint 18) Research campaign index** — a cross-run summary layer **above** the Sprint 17
+  per-run bundle/status. `@soulmaker/backtest` exports the pure
+  `buildBacktestResearchCampaignIndex`, `validate…`, `format…`, and `buildBacktestResearchCampaignDigest`
+  (schema `backtest.research.campaign.index.v1`); the CLI adds
+  `paper:backtest:research:index --dir <campaign> [--out <i>] [--force] [--json] [--strict]`.
+  Each **immediate child directory** of the campaign dir is treated as a run; the command reuses
+  the Sprint 17 bundle + status builders per run to derive its run digest, artifact/kind/schema
+  counts, unknown/malformed totals, and complete/recognized/stable/in-sync health (a conventional
+  `research-manifest.json` is discovered for drift). The index aggregates the kind/schema sets and
+  counts across the campaign, lists the **runs needing attention**, and emits one deterministic
+  top-level **campaign digest** over the sorted run digests + stable metadata — identical run sets
+  ⇒ an identical campaign digest; an added / removed / changed run (or a validity flip) moves it.
+  A merely unhealthy run is counted as needing attention; a structurally bad run is captured as an
+  invalid, errored run rather than crashing the campaign. `--strict` exits non-zero when any run
+  needs attention. The index embeds **no artifact contents**; the package stays pure (the CLI
+  walks the campaign, skips symlinked/hidden child dirs, excludes all research META files — now
+  including the campaign index — and never reads a `*.jsonl`); the campaign digest is the same
+  non-cryptographic, reproducibility-only fingerprint. Local bookkeeping — not a live result, not
+  advice, not a profitability claim.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

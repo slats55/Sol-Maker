@@ -115,7 +115,14 @@ run digest) — and `paper:backtest:research:status --dir <artifacts>` gives a q
 check (`backtest.research.status.v1`): is the directory **complete / recognized / stable /
 in sync** with its recorded manifest, with a single neutral recommended action. Both embed
 no artifact contents, the run digest is the same **non-cryptographic, reproducibility-only**
-fingerprint, and status **writes nothing**. None of this fetches live
+fingerprint, and status **writes nothing**. Sprint 18 indexes a whole **campaign** of runs:
+`paper:backtest:research:index --dir <campaign>` treats each immediate child directory as a
+run, summarizes each (run digest, kind/schema counts, unknown/malformed totals, and
+complete/recognized/stable/in-sync health), aggregates the kind/schema sets across the
+campaign, lists the runs needing attention, and emits one deterministic top-level **campaign
+digest** (`backtest.research.campaign.index.v1`) over the sorted run digests + stable metadata
+(so an added / removed / changed run all move it); `--strict` exits non-zero when any run
+needs attention and the index embeds no artifact contents. None of this fetches live
 data or begins transaction planning (roadmap Phase 6 remains not started; Phase 7 burner
 live remains not started). The default mode is `PAPER`. See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
@@ -157,7 +164,8 @@ soulmaker/
                 #                    paper:backtest:sensitivity, paper:backtest:diff:sensitivity,
                 #                    paper:backtest:sensitivity:matrix, paper:backtest:diff:sensitivity:matrix,
                 #                    paper:backtest:research:manifest/verify, paper:backtest:diff:research:manifest,
-                #                    paper:backtest:research:bundle, paper:backtest:research:status)
+                #                    paper:backtest:research:bundle, paper:backtest:research:status,
+                #                    paper:backtest:research:index)
     web/        # Phase 8 dashboard (placeholder)
   packages/
     core/       # @soulmaker/core      — config schema, modes, risk caps, LIVE GATE
@@ -180,7 +188,8 @@ soulmaker/
                 #            sensitivity diff, config.<field> perturbations, and suite coverage;
                 #            Sprint 15 adds the multi-base sensitivity matrix + matrix diff;
                 #            Sprint 16 adds the research artifact manifest (build/verify/diff);
-                #            Sprint 17 adds the research run bundle + integrity/status summary
+                #            Sprint 17 adds the research run bundle + integrity/status summary;
+                #            Sprint 18 adds the cross-run research campaign index
                 #            (still pure: the package never scans dirs or reads/writes files)
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
@@ -358,6 +367,13 @@ pnpm soulmaker paper:backtest:research:bundle --dir <matrix/> --out <matrix/>/re
 # A manifest is discovered (research-manifest.json) or passed with --manifest; --strict fails on drift:
 pnpm soulmaker paper:backtest:research:status --dir <matrix/>
 pnpm soulmaker paper:backtest:research:status --dir <matrix/> --manifest <matrix/>/research-manifest.json --strict
+
+# Sprint 18 — CAMPAIGN INDEX: index a directory of research runs (each immediate child dir is a
+# run) into one comparable summary — per-run digests + health, aggregate kinds/schemas, the runs
+# needing attention, and a deterministic top-level campaign digest. Writes only the index with
+# --out; --strict fails when any run needs attention (unknown/malformed/drift/incomplete):
+pnpm soulmaker paper:backtest:research:index --dir <campaign/> --out <campaign/>/campaign-index.json
+pnpm soulmaker paper:backtest:research:index --dir <campaign/> --strict
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

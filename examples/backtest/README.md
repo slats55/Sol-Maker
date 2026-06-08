@@ -576,3 +576,44 @@ pnpm soulmaker paper:backtest:research:status --dir matrix-run/ \
 > **never** trading advice, and both are local bookkeeping over injected, simulated artifacts —
 > **not** a live result, **not** advice, and **not** a profitability claim. Nothing here touches
 > a wallet, key, signing, sending, or the network; Phases 6 and 7 remain **not started**.
+
+## Indexing a whole campaign of runs (Sprint 18)
+
+A research **campaign** is just a directory whose immediate child directories are individual
+runs. Sprint 18's campaign index summarizes every run at once — per-run digest + health, the
+aggregate kinds/schemas, the runs needing attention, and one deterministic top-level **campaign
+digest** — so you can answer "what runs exist, which need attention, and did anything change?"
+in a single comparable report. It embeds no artifact contents and, without `--out`, writes nothing.
+
+```bash
+# 1) Produce two runs side-by-side under one campaign directory (each child dir is a run):
+pnpm soulmaker paper:backtest:sensitivity:matrix \
+  --dir examples/backtest \
+  --plan examples/backtest/price-sensitivity.variant-plan.json --out-dir campaign/run-a/
+pnpm soulmaker paper:backtest:sensitivity:matrix \
+  --dir examples/backtest \
+  --plan examples/backtest/price-sensitivity.variant-plan.json --out-dir campaign/run-b/
+
+# 2) Record a manifest INTO each run dir (so per-run drift can be detected later):
+pnpm soulmaker paper:backtest:research:manifest --dir campaign/run-a/ --out campaign/run-a/research-manifest.json
+pnpm soulmaker paper:backtest:research:manifest --dir campaign/run-b/ --out campaign/run-b/research-manifest.json
+
+# 3) INDEX the campaign — one comparable summary across both runs + a deterministic campaign digest:
+pnpm soulmaker paper:backtest:research:index --dir campaign/ --out campaign/campaign-index.json
+# --json for the machine-readable index (schema backtest.research.campaign.index.v1). Only
+# immediate child DIRECTORIES are runs; the campaign-index.json written here is a top-level file,
+# so it is never mistaken for a run, and symlinked/hidden child dirs are skipped.
+
+# 4) Demonstrate STRICT campaign health — drift one run, then re-index with --strict (exits 1 when
+#    any run needs attention: unknown/malformed/drift/incomplete). Edit a recorded artifact in run-a:
+#    (after the edit, run-a is no longer in sync with its manifest → it "needs attention")
+pnpm soulmaker paper:backtest:research:index --dir campaign/ --strict
+```
+
+> **Same honesty, one level up.** The campaign digest is the same **non-cryptographic,
+> reproducibility-only** fingerprint over the sorted run digests — it makes two campaigns
+> comparable and surfaces added / removed / changed runs, but it is **not** a cryptographic hash
+> and **not** anti-tamper. The index embeds **no** artifact contents and is local bookkeeping over
+> injected, simulated artifacts — **not** a live result, **not** advice, and **not** a
+> profitability claim. Nothing here touches a wallet, key, signing, sending, or the network;
+> Phases 6 and 7 remain **not started**.
