@@ -118,6 +118,10 @@ import {
   formatBacktestResearchStatus,
   buildBacktestResearchCampaignIndex,
   formatBacktestResearchCampaignIndex,
+  diffBacktestResearchBundles,
+  formatBacktestResearchBundleDiff,
+  diffBacktestResearchCampaignIndexes,
+  formatBacktestResearchCampaignIndexDiff,
   digestContent,
   BACKTEST_RESEARCH_MANIFEST_SCHEMA_VERSION,
   BACKTEST_RESEARCH_VERIFY_SCHEMA_VERSION,
@@ -150,6 +154,8 @@ import {
   type BacktestResearchStatus,
   type BacktestResearchCampaignIndex,
   type BacktestResearchCampaignRunInput,
+  type BacktestResearchBundleDiff,
+  type BacktestResearchCampaignIndexDiff,
 } from "@soulmaker/backtest";
 
 export interface CommandContext {
@@ -3390,6 +3396,138 @@ export function paperBacktestResearchIndexReport(
   }
   return {
     text: redactString(formatBacktestResearchCampaignIndex(index, { label: opts.dir }) + writtenNote),
+    exitCode,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 19 — paper:backtest:diff:research:bundle / :index
+//   Diff two LOCAL research bundle / campaign index JSON files. Reads ONLY the
+//   two named files, runs no backtest, and writes nothing. Both expose a
+//   conservative regression flag distinct from "any change". No network, no
+//   wallet.
+// ---------------------------------------------------------------------------
+
+export interface PaperBacktestDiffResearchBundleCommandOptions {
+  /** Path to the BASE bundle JSON (required). */
+  basePath?: string;
+  /** Path to the NEXT bundle JSON (required). */
+  nextPath?: string;
+  json?: boolean;
+  /** Exit non-zero when the diff reports any change. */
+  failOnChange?: boolean;
+  /** Exit non-zero only on a conservative integrity regression. */
+  failOnRegression?: boolean;
+}
+
+/**
+ * `soulmaker paper:backtest:diff:research:bundle` — diff TWO research bundle JSON files. Reads
+ * ONLY the two named local files (BOM-tolerant; a missing/malformed/non-bundle file refuses),
+ * runs no backtest, and writes nothing. It pairs artifacts by path and reports added/removed/
+ * digest-changed, the top-level run-digest change, aggregate kind/schema/recognized-schema
+ * changes, and unknown/malformed/warning/count deltas, with a `hasChange` flag and a CONSERVATIVE
+ * `hasRegression` flag (integrity breakage only). `--json` emits the stable, redacted diff;
+ * `--fail-on-change` exits non-zero when anything changed; `--fail-on-regression` exits non-zero
+ * only on a regression. No network, no wallet.
+ */
+export function paperBacktestDiffResearchBundleReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestDiffResearchBundleCommandOptions = {},
+): CliReport {
+  if (!opts.basePath) return { text: "Refusing: --base <path> is required.", exitCode: 1 };
+  if (!opts.nextPath) return { text: "Refusing: --next <path> is required.", exitCode: 1 };
+
+  let baseValue: unknown;
+  try {
+    baseValue = readJsonValue(ctx, opts.basePath, "base bundle");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let nextValue: unknown;
+  try {
+    nextValue = readJsonValue(ctx, opts.nextPath, "next bundle");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let diff: BacktestResearchBundleDiff;
+  try {
+    diff = diffBacktestResearchBundles(baseValue, nextValue);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const exitCode =
+    (opts.failOnChange && diff.hasChange) || (opts.failOnRegression && diff.hasRegression) ? 1 : 0;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(diff), null, 2), exitCode };
+  }
+  return {
+    text: formatBacktestResearchBundleDiff(diff, { baseLabel: opts.basePath, nextLabel: opts.nextPath }),
+    exitCode,
+  };
+}
+
+export interface PaperBacktestDiffResearchIndexCommandOptions {
+  /** Path to the BASE campaign index JSON (required). */
+  basePath?: string;
+  /** Path to the NEXT campaign index JSON (required). */
+  nextPath?: string;
+  json?: boolean;
+  /** Exit non-zero when the diff reports any change. */
+  failOnChange?: boolean;
+  /** Exit non-zero only on a conservative integrity regression. */
+  failOnRegression?: boolean;
+}
+
+/**
+ * `soulmaker paper:backtest:diff:research:index` — diff TWO campaign index JSON files. Reads ONLY
+ * the two named local files (BOM-tolerant; a missing/malformed/non-index file refuses), runs no
+ * backtest, and writes nothing. It pairs runs by runId and reports runs added/removed, per-run
+ * digest / valid-status / unknown-malformed changes, the runs newly needing (or no longer
+ * needing) attention, the top-level campaign-digest change, aggregate kind/schema changes, and
+ * run/artifact count deltas, with a `hasChange` flag and a CONSERVATIVE `hasRegression` flag
+ * (removed valid run / valid→invalid / unexpected run-digest change / unknown-malformed increase /
+ * incompatible schema). `--json` emits the stable, redacted diff; `--fail-on-change` exits
+ * non-zero when anything changed; `--fail-on-regression` exits non-zero only on a regression. No
+ * network, no wallet.
+ */
+export function paperBacktestDiffResearchIndexReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestDiffResearchIndexCommandOptions = {},
+): CliReport {
+  if (!opts.basePath) return { text: "Refusing: --base <path> is required.", exitCode: 1 };
+  if (!opts.nextPath) return { text: "Refusing: --next <path> is required.", exitCode: 1 };
+
+  let baseValue: unknown;
+  try {
+    baseValue = readJsonValue(ctx, opts.basePath, "base campaign index");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let nextValue: unknown;
+  try {
+    nextValue = readJsonValue(ctx, opts.nextPath, "next campaign index");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let diff: BacktestResearchCampaignIndexDiff;
+  try {
+    diff = diffBacktestResearchCampaignIndexes(baseValue, nextValue);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const exitCode =
+    (opts.failOnChange && diff.hasChange) || (opts.failOnRegression && diff.hasRegression) ? 1 : 0;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(diff), null, 2), exitCode };
+  }
+  return {
+    text: formatBacktestResearchCampaignIndexDiff(diff, { baseLabel: opts.basePath, nextLabel: opts.nextPath }),
     exitCode,
   };
 }

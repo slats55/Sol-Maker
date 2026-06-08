@@ -34,6 +34,8 @@ import {
   paperBacktestResearchBundleReport,
   paperBacktestResearchStatusReport,
   paperBacktestResearchIndexReport,
+  paperBacktestDiffResearchBundleReport,
+  paperBacktestDiffResearchIndexReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -773,6 +775,56 @@ program
         force: Boolean(opts.force),
         json: Boolean(opts.json),
         strict: Boolean(opts.strict),
+      },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("paper:backtest:diff:research:bundle")
+  .description(
+    "Deterministically diff TWO research bundle JSON files (PAPER ONLY; pairs artifacts by path → added/removed/digest-changed + run-digest/kind/schema/count changes; a conservative regression flag distinct from any change; reads two files, writes nothing)",
+  )
+  .option("--base <path>", "BASE bundle JSON (the reference)")
+  .option("--next <path>", "NEXT bundle JSON (compared against base)")
+  .option("--json", "emit the bundle diff as stable JSON")
+  .option("--fail-on-change", "exit non-zero when the diff reports any change")
+  .option("--fail-on-regression", "exit non-zero only on a conservative integrity regression")
+  .action((opts: { base?: string; next?: string; json?: boolean; failOnChange?: boolean; failOnRegression?: boolean }) => {
+    const { text, exitCode } = paperBacktestDiffResearchBundleReport(
+      {},
+      {
+        basePath: opts.base,
+        nextPath: opts.next,
+        json: Boolean(opts.json),
+        failOnChange: Boolean(opts.failOnChange),
+        failOnRegression: Boolean(opts.failOnRegression),
+      },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("paper:backtest:diff:research:index")
+  .description(
+    "Deterministically diff TWO campaign index JSON files (PAPER ONLY; pairs runs by runId → added/removed runs + per-run digest/valid/attention changes + campaign-digest/kind/schema/count changes; a conservative regression flag distinct from any change; reads two files, writes nothing)",
+  )
+  .option("--base <path>", "BASE campaign index JSON (the reference)")
+  .option("--next <path>", "NEXT campaign index JSON (compared against base)")
+  .option("--json", "emit the campaign diff as stable JSON")
+  .option("--fail-on-change", "exit non-zero when the diff reports any change")
+  .option("--fail-on-regression", "exit non-zero only on a conservative integrity regression")
+  .action((opts: { base?: string; next?: string; json?: boolean; failOnChange?: boolean; failOnRegression?: boolean }) => {
+    const { text, exitCode } = paperBacktestDiffResearchIndexReport(
+      {},
+      {
+        basePath: opts.base,
+        nextPath: opts.next,
+        json: Boolean(opts.json),
+        failOnChange: Boolean(opts.failOnChange),
+        failOnRegression: Boolean(opts.failOnRegression),
       },
     );
     console.log(text);
