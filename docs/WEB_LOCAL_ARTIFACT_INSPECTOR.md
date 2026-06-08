@@ -99,9 +99,16 @@ backtest.research.manifest.diff.v1 backtest.research.bundle.v1
 backtest.research.status.v1         backtest.research.campaign.index.v1
 ```
 
-Emerging schemas (the cross-scenario matrix and research-run families) are
-labelled **emerging** because the corresponding backend work is in progress; the
-inspector still renders them, it just does not pretend they are finalized.
+All of these are now **stable**: the cross-scenario matrix and the research-run
+families (manifest / verify / manifest-diff / bundle / status / campaign-index)
+have shipped to `master`, each produced by a real CLI command (e.g.
+`paper:backtest:sensitivity:matrix`, `paper:backtest:research:manifest`,
+`paper:backtest:research:index`). The registry's `cli` field records the real
+command per schema, verified against the commands registered in `apps/cli` on
+`master`. The `emerging` tier is retained only for forward-compatibility (a
+future schema whose backend has not yet landed); no catalogued schema is emerging
+today. The inspector never invents a command and labels any unrecognized schema
+honestly.
 
 ## Schema-aware typed views
 
@@ -123,6 +130,13 @@ view, which is always still shown.
   typed dispatch returns nothing and never throws.
 - **Same safety envelope.** Typed output is escaped and capped exactly like the
   rest of the inspector: no `<script>`, no handlers, no network, no wallet/keys.
+
+The sensitivity-matrix view adds a deeper drill-down: a **base × variant grid**
+(rows = base scenarios, columns = variant suffixes) where each cell shows that
+variant's total simulated PnL delta vs the base's baseline. The grid is
+row/column-capped (a `·` marks an absent cell; a status word marks a non-diffable
+run) and notes anything hidden. The matrix-diff view lists the individual
+base × variant **changed cells** (a full grid would be sparse for a diff).
 
 Every currently-recognized schema (the list above) has a typed view. Try one of
 the committed sample fixtures under `apps/web/fixtures/`, e.g.:
