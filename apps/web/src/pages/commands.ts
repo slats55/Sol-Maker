@@ -8,6 +8,7 @@ import {
   WEB_COMMANDS,
   commandsByGroup,
 } from "../lib/command-reference.js";
+import { schemaForCli } from "../lib/report-types.js";
 import { PageHeader } from "../components/layout.js";
 import { RiskNotice, Section } from "../components/ui.js";
 import { CommandCard } from "../components/cards.js";
@@ -34,7 +35,9 @@ export function renderCommands(): RawHtml {
       Section({
         title: group,
         body: html`<div class="sm-cmdgrid">
-          ${commandsByGroup(group).map((command) => CommandCard(command))}
+          ${commandsByGroup(group).map((command) =>
+            CommandCard(command, schemaForCli(command.command)),
+          )}
         </div>`,
       }),
     )}

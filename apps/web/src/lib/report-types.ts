@@ -171,11 +171,40 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
       "Campaign-level summary across many paper research runs: per-run digests, drift, and aggregate kind/schema counts.",
     cli: "paper:backtest:research:index",
   },
+  {
+    id: "backtest.research.bundle.diff.v1",
+    title: "Research bundle diff",
+    family: "research",
+    stability: "stable",
+    description:
+      "Conservative delta between two research run bundles: run-digest change, artifact add/remove/digest-change, count/schema-set deltas, and a conservative regression flag.",
+    cli: "paper:backtest:diff:research:bundle",
+  },
+  {
+    id: "backtest.research.campaign.diff.v1",
+    title: "Research campaign diff",
+    family: "research",
+    stability: "stable",
+    description:
+      "Conservative delta between two research campaign indexes: campaign-digest change, runs added/removed/changed, attention transitions, aggregate count/schema deltas, and a conservative regression flag.",
+    cli: "paper:backtest:diff:research:index",
+  },
 ];
 
 /** Look up schema metadata by id, or `undefined` for an unknown schema. */
 export function knownSchema(id: string): ReportSchemaInfo | undefined {
   return KNOWN_REPORT_SCHEMAS.find((schema) => schema.id === id);
+}
+
+/**
+ * Inverse of {@link knownSchema}: find the schema a CLI command emits, matched
+ * against the registry's `cli` field. Returns `undefined` for a command that
+ * produces no catalogued artifact (e.g. `doctor`, `paper:run`). This is the
+ * single source of truth the command-reference page reads so a command's
+ * artifact + stability can never drift from the schema registry.
+ */
+export function schemaForCli(cli: string): ReportSchemaInfo | undefined {
+  return KNOWN_REPORT_SCHEMAS.find((schema) => schema.cli === cli);
 }
 
 /** True when `id` is a schema this foundation recognizes. */
