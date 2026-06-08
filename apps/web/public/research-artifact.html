@@ -6,8 +6,8 @@
   <meta name="color-scheme" content="dark" />
   <meta name="robots" content="noindex, nofollow" />
   <meta name="generator" content="Soulmaker apps/web/src/build.ts — generated, do not edit by hand" />
-  <meta name="description" content="The wallet-safety model, modes, and hard guarantees." />
-  <title>Safety &amp; modes · Soulmaker</title>
+  <meta name="description" content="Inspect one locally-generated PAPER report JSON as a static page (no upload, no network)." />
+  <title>Artifact inspector · Soulmaker</title>
   <link rel="stylesheet" href="assets/theme.css" />
 </head>
 <body class="sm-body">
@@ -76,8 +76,8 @@
     </a>
   </li><li>
     <a
-      class="sm-navlink"
-      href="research-artifact.html"
+      class="sm-navlink is-active"
+      href="research-artifact.html" aria-current="page"
       title="Inspect one locally-generated PAPER report JSON as a static page (no upload, no network)."
     >
       <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span>
@@ -99,8 +99,8 @@
     </a>
   </li><li>
     <a
-      class="sm-navlink is-active"
-      href="safety.html" aria-current="page"
+      class="sm-navlink"
+      href="safety.html"
       title="The wallet-safety model, modes, and hard guarantees."
     >
       <span class="sm-navlink__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v5c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg></span>
@@ -134,112 +134,74 @@
 
     <header class="sm-pagehead">
     <div class="sm-pagehead__main">
-      <p class="sm-eyebrow">Operate</p>
-      <h1 class="sm-pagehead__title">Safety &amp; modes</h1>
-      <p class="sm-pagehead__desc">The wallet-safety model, modes, and hard guarantees.</p>
+      <p class="sm-eyebrow">Research</p>
+      <h1 class="sm-pagehead__title">Artifact inspector</h1>
+      <p class="sm-pagehead__desc">Inspect one locally-generated PAPER report JSON as a static page (no upload, no network).</p>
     </div>
-    <div class="sm-pagehead__aside"><span class="sm-pill sm-pill--safe">wallet safety first</span></div>
+
   </header>
-
     <div class="sm-notice sm-notice--info" role="note">
-    <p class="sm-notice__title">SECURITY.md and docs/WALLET_SAFETY_MODEL.md are authoritative.</p>
-    <div class="sm-notice__body">This page mirrors those documents for display. If anything here disagrees with them, they win.
-        Soulmaker defaults to PAPER and refuses to handle seeds or the operator's main wallet.</div>
+    <p class="sm-notice__title">Local-only, read-only inspector.</p>
+    <div class="sm-notice__body">This page renders <strong>one local PAPER report JSON</strong> that you generate on your own
+      machine. There is <strong>no upload, no server, no network</strong>, and no wallet, keys, signing, or
+      sending anywhere in this tool. Untrusted report content is escaped and capped — it is displayed, never
+      executed.</div>
   </div>
-
     <section class="sm-section">
     <div class="sm-section__head">
             <div>
-              <h2 class="sm-section__title">Modes (safest → most dangerous)</h2>
-              <p class="sm-section__desc">Only DANGEROUS_BURNER_LIVE can ever send, and it is gated and not started.</p>
+              <h2 class="sm-section__title">How to generate this page</h2>
+              <p class="sm-section__desc">Run the Node-only inspector from the repo root against one local report JSON file.</p>
             </div>
 
           </div>
-    <div class="sm-section__body"><div class="sm-tablewrap">
-    <table class="sm-table">
-      <caption class="sm-table__caption">Capabilities by mode (safest → most dangerous). Only DANGEROUS_BURNER_LIVE can send.</caption>
-      <thead>
-        <tr>
-          <th scope="col" class="sm-td--left">Mode</th><th scope="col" class="sm-td--center">Needs key</th><th scope="col" class="sm-td--center">Reads chain</th><th scope="col" class="sm-td--center">Builds tx</th><th scope="col" class="sm-td--center">Simulates</th><th scope="col" class="sm-td--center">Sends</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-                  <td class="sm-td--left"><span class="sm-mode sm-mode--safe">PAPER</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--no">no</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--no">no</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--no">no</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--no">no</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--no">no</span></td>
-                </tr><tr>
-                  <td class="sm-td--left"><span class="sm-mode sm-mode--safe">WATCH_ONLY</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--no">no</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--yes sm-bool--info">yes</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--no">no</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--no">no</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--no">no</span></td>
-                </tr><tr>
-                  <td class="sm-td--left"><span class="sm-mode sm-mode--caution">SIMULATION</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--no">no</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--yes sm-bool--info">yes</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--yes sm-bool--danger">yes</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--yes sm-bool--info">yes</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--no">no</span></td>
-                </tr><tr>
-                  <td class="sm-td--left"><span class="sm-mode sm-mode--danger">DANGEROUS_BURNER_LIVE</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--yes sm-bool--danger">yes</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--yes sm-bool--info">yes</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--yes sm-bool--danger">yes</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--yes sm-bool--info">yes</span></td><td class="sm-td--center"><span class="sm-bool sm-bool--yes sm-bool--danger">yes</span></td>
-                </tr>
-      </tbody>
-    </table>
-  </div></div>
+    <div class="sm-section__body"><div class="sm-cmdgrid">
+      <article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm web:build</code>
+    <p class="sm-cmd__summary">Regenerate every static dashboard page from src/ into apps/web/public/. Offline; reads styles/ and writes public/ only.</p>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm web:inspect --input &lt;report.json&gt; --out apps/web/public/research-artifact.html --force</code>
+    <p class="sm-cmd__summary">Read ONE local PAPER report JSON and render it into the artifact inspector page. Local-only, no upload, no network; --force overwrites the committed empty-state page.</p>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm web:inspect --input &lt;report.json&gt; --json</code>
+    <p class="sm-cmd__summary">Print a machine-readable summary of the report to stdout and write no HTML file.</p>
+  </article>
+    </div></div>
   </section>
-
     <section class="sm-section">
     <div class="sm-section__head">
             <div>
-              <h2 class="sm-section__title">What each mode means</h2>
-
-            </div>
-
-          </div>
-    <div class="sm-section__body"><dl class="sm-deflist">
-    <div class="sm-deflist__row">
-        <dt>PAPER</dt>
-        <dd><span class="sm-mode sm-mode--safe">active</span> Default. Fully simulated, offline, no key, no chain access — the only honest live posture this dashboard has today.</dd>
-      </div><div class="sm-deflist__row">
-        <dt>WATCH_ONLY</dt>
-        <dd><span class="sm-mode sm-mode--safe">available</span> Reads public chain state with public keys only. Refuses secret-length input. No build, simulate, or send.</dd>
-      </div><div class="sm-deflist__row">
-        <dt>SIMULATION</dt>
-        <dd><span class="sm-mode sm-mode--caution">available</span> Builds and simulates transactions for human-readable preview only — never sends. Roadmap Phase 6, not started.</dd>
-      </div><div class="sm-deflist__row">
-        <dt>DANGEROUS_BURNER_LIVE</dt>
-        <dd><span class="sm-mode sm-mode--danger">gated</span> Burner-only live sending behind every fail-closed gate. Roadmap Phase 7 — not started and not reachable from this UI.</dd>
-      </div>
-  </dl></div>
-  </section>
-
-    <section class="sm-section">
-    <div class="sm-section__head">
-            <div>
-              <h2 class="sm-section__title">Hard guarantees — what this dashboard will never do</h2>
-
-            </div>
-
-          </div>
-    <div class="sm-section__body"><ul class="sm-bullets sm-bullets--deny">
-    <li>Connect a wallet or hold a private key</li><li>Accept or derive from a seed / recovery phrase</li><li>Use the operator&#39;s main wallet</li><li>Sign, send, build, plan, or simulate a transaction</li><li>Auto-approve anything or send to an unseen address</li><li>Fetch live market data, scrape, or call a trading / data provider</li><li>Show fake balances, fake PnL, or a fake &#39;connected&#39; / &#39;running&#39; state</li>
-  </ul></div>
-  </section>
-
-    <section class="sm-section">
-    <div class="sm-section__head">
-            <div>
-              <h2 class="sm-section__title">Always-on disclaimers</h2>
-
-            </div>
-
-          </div>
-    <div class="sm-section__body"><ul class="sm-pillrow">
-        <li class="sm-pill sm-pill--safe">PAPER ONLY</li><li class="sm-pill sm-pill--safe">No live trading</li><li class="sm-pill sm-pill--safe">No wallet connected</li><li class="sm-pill sm-pill--safe">No signing or sending</li><li class="sm-pill sm-pill--safe">Local simulated reports only</li><li class="sm-pill sm-pill--safe">Not financial advice</li><li class="sm-pill sm-pill--safe">Not a profitability claim</li>
-      </ul></div>
-  </section>
-
-    <section class="sm-section">
-    <div class="sm-section__head">
-            <div>
-              <h2 class="sm-section__title">Live-mode gate (fail-closed)</h2>
-              <p class="sm-section__desc">Every condition must hold before any future signing/sending code could run. The gate fails closed. Roadmap Phase 7 — not started.</p>
+              <h2 class="sm-section__title">What the inspector accepts</h2>
+              <p class="sm-section__desc">Conservative, fail-closed input handling.</p>
             </div>
 
           </div>
     <div class="sm-section__body"><ul class="sm-bullets sm-bullets--allow">
-    <li>mode === DANGEROUS_BURNER_LIVE</li><li>killSwitch === false</li><li>live.acknowledgeBurnerRisk === true</li><li>live.confirmFreshBurner === true</li><li>live.burnerKeyEnvVar is set AND that env var is present</li><li>out-of-band env SOULMAKER_I_UNDERSTAND_BURNER_RISK === &quot;true&quot;</li><li>caps within the hard limits (HARD_LIMITS)</li>
-  </ul></div>
+      <li>Exactly one local <code>.json</code> file passed via <code>--input</code>.</li>
+      <li>Recognized PAPER report schemas are badged; unknown schemas are labelled honestly, not faked.</li>
+      <li>Large or deeply-nested data is capped and summarized — the full file is never dumped inline.</li>
+      <li>Directories, non-<code>.json</code> inputs, and malformed JSON are refused with a non-zero exit.</li>
+      <li>
+        See the <a href="research-reports.html">report viewer</a> for the full catalogue of recognized
+        schemas.
+      </li>
+    </ul></div>
+  </section>
+
+    <section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Loaded artifact</h2>
+              <p class="sm-section__desc">Where a real local report renders once you run the inspect command.</p>
+            </div>
+
+          </div>
+    <div class="sm-section__body"><div class="sm-empty">
+    <div class="sm-empty__icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div>
+    <p class="sm-empty__title">No artifact loaded</p>
+    <p class="sm-empty__message">This is the committed empty-state page. Run the inspect command above with --force to render a local PAPER report here. Run `pnpm web:build` to restore this empty state.</p>
+
+  </div></div>
   </section>
 
       </div>

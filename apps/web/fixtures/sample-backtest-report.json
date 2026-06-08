@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "backtest.report.v1",
+  "name": "buy-hold-sample",
+  "mode": "PAPER",
+  "scenarioDigest": "sample-fixture-digest-0000000000000000",
+  "steps": 6,
+  "simulatedFills": 4,
+  "rejections": 1,
+  "closedPositions": 2,
+  "openPositions": 1,
+  "totalSimulatedPnl": 12.5,
+  "deterministic": true,
+  "disclaimers": [
+    "Simulated paper-only result — not live, not advice, not a profitability claim.",
+    "Outputs are bookkeeping over an injected scenario, not market behaviour."
+  ],
+  "positions": [
+    { "mint": "SampleMint1111111111111111111111111111111111", "simulatedPnl": 7.5 },
+    { "mint": "SampleMint2222222222222222222222222222222222", "simulatedPnl": 5.0 }
+  ],
+  "config": {
+    "maxPositions": 3,
+    "perTradeSize": 1.0
+  }
+}

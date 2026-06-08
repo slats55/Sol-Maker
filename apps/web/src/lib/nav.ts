@@ -39,6 +39,7 @@ export const ICONS = {
     `<circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>`,
   ),
   gauge: svg(`<path d="M12 13l4-3"/><path d="M3.5 13a8.5 8.5 0 1 1 17 0"/><circle cx="12" cy="13" r="1.4"/>`),
+  search: svg(`<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>`),
 } as const;
 
 export type IconName = keyof typeof ICONS;
@@ -104,6 +105,15 @@ export const NAV: readonly NavItem[] = [
     group: "Research",
     icon: "layers",
     description: "Which simulated paper paths a backtest suite exercised (foundation).",
+  },
+  {
+    id: "artifact",
+    label: "Artifact inspector",
+    route: "/research/artifact",
+    file: "research-artifact.html",
+    group: "Research",
+    icon: "search",
+    description: "Inspect one locally-generated PAPER report JSON as a static page (no upload, no network).",
   },
   {
     id: "commands",
