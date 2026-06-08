@@ -29,6 +29,10 @@ blocks that.
 - `raw(s)` marks trusted HTML. **Never wrap untrusted/dynamic text in `raw()`.**
   Pass dynamic text as a plain string so it is escaped.
 - `renderToString(value)` produces the final string.
+- `renderDocument(value)` is `renderToString` plus per-line trailing-whitespace
+  stripping. Use it **only at the document-write boundary** (the static
+  generator and the inspect command) so committed output stays clean; never for
+  inline fragments, where whitespace can be significant.
 
 ## Layers
 
@@ -38,7 +42,8 @@ src/lib/         pure data + the html engine (no components)
   safety.ts            modes, disclaimers, hard guarantees, current mode
   nav.ts               routes + inline SVG icons
   report-types.ts      frontend-only report schema registry + envelope type
-  command-reference.ts factual CLI command reference data
+  command-reference.ts factual CLI command reference data (+ web build/inspect)
+  local-artifact.ts    defensive normalizer for a local report JSON (pure, bounded)
   sample-data.ts       clearly-labelled, non-live fixtures
 
 src/components/  pure RawHtml builders (import lib, never pages)
@@ -47,9 +52,13 @@ src/components/  pure RawHtml builders (import lib, never pages)
   cards.ts             CommandCard, ArtifactCard
   tables.ts            DataTable, CapabilityTable, ReportTable
   reports.ts           ReportSchemaBadge, ReportSummaryCard, ReportPlaceholder
+  artifact.ts          ArtifactSchemaBadge, ArtifactReportView (inspector view)
 
 src/pages/       one render function per page + registry.ts (the page list)
+  artifact.ts          renderArtifact (empty state) + renderArtifactReport (loaded)
 src/build.ts     generator: wraps each page in the shell, writes public/
+src/inspect.ts   Node-only command: reads ONE local report JSON, writes one page
+fixtures/        committed, benign sample report JSON (for the inspect smoke/tests)
 styles/theme.css the dark command-center theme
 tests/           Vitest tests
 public/          GENERATED output (committed; do not hand-edit)
@@ -67,6 +76,14 @@ language automatically.
 
 `tests/pages.test.ts` re-renders each page and asserts the committed file
 matches — so forgetting to rebuild fails the test, not review.
+
+`pnpm web:inspect` (`apps/web/src/inspect.ts`) is a second, separate writer: it
+reads exactly one local report JSON, normalizes it via `lib/local-artifact.ts`,
+and renders the loaded artifact through the **same** `DashboardShell` to a single
+flat file (default `public/research-artifact.html`). It shares the safety
+guarantees of the generator — no upload, no network, no server, no wallet, no
+keys — and never executes report content (everything is escaped and capped). See
+[`WEB_LOCAL_ARTIFACT_INSPECTOR.md`](WEB_LOCAL_ARTIFACT_INSPECTOR.md).
 
 ## Styling conventions
 
