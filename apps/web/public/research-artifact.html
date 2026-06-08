@@ -187,6 +187,94 @@
       </li>
     </ul></div>
   </section>
+    <section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Schema-aware typed views</h2>
+              <p class="sm-section__desc">Recognized PAPER report schemas render a typed summary — identity, key counts, and capped tables — above the generic field view. Unrecognized schemas fall back to the generic view safely.</p>
+            </div>
+
+          </div>
+    <div class="sm-section__body"><p class="sm-muted-line">
+        Typed views are UI-only and defensive: fields are read from the parsed JSON, escaped, and
+        capped. There is no backend import, no upload, and no network; report content is displayed,
+        never executed. Missing or type-mismatched fields render as “—” with a visible partial-view
+        notice.
+      </p>
+      <div class="sm-tablewrap">
+    <table class="sm-table">
+      <caption class="sm-table__caption">Schemas with a typed inspector view. Unknown schemas use the generic view.</caption>
+      <thead>
+        <tr>
+          <th scope="col" class="sm-td--left">Schema</th><th scope="col" class="sm-td--left">Family</th><th scope="col" class="sm-td--left">Inspector view</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="A single deterministic, simulated paper backtest over one injected scenario.">
+    <code>backtest.report.v1</code>
+  </span></td><td class="sm-td--left">report</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Aggregated index over a directory of injected scenarios (counts + summed simulated totals).">
+    <code>backtest.suite.v1</code>
+  </span></td><td class="sm-td--left">suite</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Conservative delta between two suite indexes.">
+    <code>backtest.suite.diff.v1</code>
+  </span></td><td class="sm-td--left">suite</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Per-variant deltas vs a baseline over bounded numeric perturbations, with rankings by movement magnitude.">
+    <code>backtest.sensitivity.v1</code>
+  </span></td><td class="sm-td--left">sensitivity</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Conservative delta between two sensitivity reports (paired by suffix).">
+    <code>backtest.sensitivity.diff.v1</code>
+  </span></td><td class="sm-td--left">sensitivity</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Which simulated paper behaviours a suite exercised — behavioural bookkeeping, not market or test coverage.">
+    <code>backtest.coverage.v1</code>
+  </span></td><td class="sm-td--left">coverage</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Dry-run explanation of what a variant plan would change, without generating files.">
+    <code>backtest.variant-plan.explain.v1</code>
+  </span></td><td class="sm-td--left">plan</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--emerging" title="Cross-scenario sensitivity matrix. Backend work in progress — viewer is a labelled placeholder.">
+    <code>backtest.sensitivity.matrix.v1</code> · emerging
+  </span></td><td class="sm-td--left">sensitivity</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--emerging" title="Delta between two sensitivity matrices. Backend work in progress — viewer is a labelled placeholder.">
+    <code>backtest.sensitivity.matrix.diff.v1</code> · emerging
+  </span></td><td class="sm-td--left">sensitivity</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--emerging" title="Manifest of a paper research run&#39;s generated artifacts + digests. Backend work in progress — inspector labels it as emerging.">
+    <code>backtest.research.manifest.v1</code> · emerging
+  </span></td><td class="sm-td--left">research</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--emerging" title="Result of re-verifying a research manifest against its artifacts on disk. Backend work in progress — inspector labels it as emerging.">
+    <code>backtest.research.verify.v1</code> · emerging
+  </span></td><td class="sm-td--left">research</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--emerging" title="Conservative delta between two research run manifests. Backend work in progress — inspector labels it as emerging.">
+    <code>backtest.research.manifest.diff.v1</code> · emerging
+  </span></td><td class="sm-td--left">research</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--emerging" title="Bundle summary of a paper research run: run digest, artifact/kind/schema counts, and a manifest summary. Backend work in progress — inspector labels it as emerging.">
+    <code>backtest.research.bundle.v1</code> · emerging
+  </span></td><td class="sm-td--left">research</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--emerging" title="Integrity/status check of a paper research run: completeness, recognition, and manifest sync. Backend work in progress — inspector labels it as emerging.">
+    <code>backtest.research.status.v1</code> · emerging
+  </span></td><td class="sm-td--left">research</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
+                </tr>
+      </tbody>
+    </table>
+  </div>
+      <p class="sm-muted-line">
+        Try a committed sample fixture, e.g.
+        <code>pnpm web:inspect --input apps/web/fixtures/sample-research-verify.json --out apps/web/public/research-artifact.html --force</code>.
+      </p></div>
+  </section>
 
     <section class="sm-section">
     <div class="sm-section__head">
