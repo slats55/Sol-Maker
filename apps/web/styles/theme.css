@@ -592,6 +592,18 @@ h3 {
   color: var(--text-dim);
   font-size: 13.5px;
 }
+.sm-cmd__artifact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sm-cmd__artifact-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
 
 .sm-artifact {
   background: var(--bg-card);

@@ -17,6 +17,8 @@ const REQUIRED_SCHEMA_IDS = [
   "backtest.variant-plan.explain.v1",
   "backtest.sensitivity.matrix.v1",
   "backtest.sensitivity.matrix.diff.v1",
+  "backtest.research.bundle.diff.v1",
+  "backtest.research.campaign.diff.v1",
 ];
 
 describe("report schema registry", () => {
@@ -48,6 +50,9 @@ describe("report schema registry", () => {
     ["backtest.research.bundle.v1", "paper:backtest:research:bundle"],
     ["backtest.research.status.v1", "paper:backtest:research:status"],
     ["backtest.research.campaign.index.v1", "paper:backtest:research:index"],
+    // Sprint 19 research diffs — merged to origin/master (verified at 53a7f83).
+    ["backtest.research.bundle.diff.v1", "paper:backtest:diff:research:bundle"],
+    ["backtest.research.campaign.diff.v1", "paper:backtest:diff:research:index"],
   ];
 
   for (const [id, cli] of SHIPPED_STABLE) {
