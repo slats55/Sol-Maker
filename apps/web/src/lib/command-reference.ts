@@ -207,3 +207,38 @@ export const COMMANDS: readonly CommandRef[] = [
 export function commandsByGroup(group: CommandGroup): CommandRef[] {
   return COMMANDS.filter((command) => command.group === group);
 }
+
+/**
+ * Static web-dashboard build/inspect commands. Unlike {@link COMMANDS} (which
+ * are `pnpm soulmaker …` backend CLI workflows), these are local, offline
+ * dashboard-generation commands. They read/write local files only — no chain,
+ * no wallet, no network.
+ */
+export interface WebCommandRef {
+  /** Full invocation as typed in a terminal (from the repo root). */
+  readonly command: string;
+  readonly summary: string;
+}
+
+export const WEB_COMMANDS: readonly WebCommandRef[] = [
+  {
+    command: "pnpm web:build",
+    summary:
+      "Regenerate every static dashboard page from src/ into apps/web/public/. Offline; reads styles/ and writes public/ only.",
+  },
+  {
+    command:
+      "pnpm web:inspect --input <report.json> --out apps/web/public/research-artifact.html --force",
+    summary:
+      "Read ONE local PAPER report JSON and render it into the artifact inspector page. Local-only, no upload, no network; --force overwrites the committed empty-state page.",
+  },
+  {
+    command: "pnpm web:inspect --input <report.json> --json",
+    summary:
+      "Print a machine-readable summary of the report to stdout and write no HTML file.",
+  },
+];
+
+/** The canonical inspect command shown in instructions (with default --out). */
+export const WEB_INSPECT_EXAMPLE =
+  "pnpm web:inspect --input <report.json> --out apps/web/public/research-artifact.html --force";

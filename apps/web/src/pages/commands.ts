@@ -5,6 +5,7 @@ import { navItem } from "../lib/nav.js";
 import {
   CLI_INVOCATION,
   COMMAND_GROUP_ORDER,
+  WEB_COMMANDS,
   commandsByGroup,
 } from "../lib/command-reference.js";
 import { PageHeader } from "../components/layout.js";
@@ -37,5 +38,20 @@ export function renderCommands(): RawHtml {
         </div>`,
       }),
     )}
+
+    ${Section({
+      title: "Web dashboard (static, local)",
+      description:
+        "Generate this dashboard and inspect local report artifacts. These read/write local files only — no chain, no wallet, no network.",
+      body: html`<div class="sm-cmdgrid">
+        ${WEB_COMMANDS.map(
+          (command) => html`<article class="sm-cmd">
+            <code class="sm-cmd__code">${command.command}</code>
+            <p class="sm-cmd__summary">${command.summary}</p>
+            <span class="sm-pill sm-pill--safe">offline · local files only</span>
+          </article>`,
+        )}
+      </div>`,
+    })}
   `;
 }
