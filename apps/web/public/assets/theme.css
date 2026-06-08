@@ -774,6 +774,56 @@ h3 {
   font-size: 12px;
 }
 
+/* ---- Schema-aware typed views ------------------------------------------ */
+
+/* The artifact's own self-declared paper-only posture, echoed from its data. */
+.sm-typedview__self {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: baseline;
+  margin: 6px 0 0;
+  font-size: 13.5px;
+}
+.sm-typedview__banner {
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+/* Divider lead-in before the generic field view that always follows. */
+.sm-artifactview__generic-lead {
+  margin: 24px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+/* Elided digest/hash code chips. */
+.sm-digest {
+  color: var(--text-dim);
+}
+
+/* Base×variant matrix grid: numeric alignment + a sticky base-scenario column. */
+.sm-matrixgrid .sm-table {
+  font-variant-numeric: tabular-nums;
+}
+.sm-matrixgrid .sm-table th:first-child,
+.sm-matrixgrid .sm-table td:first-child {
+  position: sticky;
+  left: 0;
+  background: var(--bg-card);
+  font-weight: 600;
+}
+.sm-matrixgrid .sm-table thead th:first-child {
+  background: var(--bg-card-hi);
+}
+.sm-matrixgrid .sm-table thead th {
+  white-space: nowrap;
+}
+
 /* ---- Tables ------------------------------------------------------------- */
 
 .sm-tablewrap {
