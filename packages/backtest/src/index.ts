@@ -344,3 +344,41 @@ export type {
   BacktestResearchManifestDiff,
   FormatBacktestResearchManifestDiffOptions,
 } from "./research-manifest-diff.js";
+
+export {
+  buildBacktestResearchBundle,
+  buildBacktestResearchRunDigest,
+  validateBacktestResearchBundle,
+  formatBacktestResearchBundle,
+  BacktestResearchBundleError,
+  BACKTEST_RESEARCH_BUNDLE_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_BUNDLE_BANNER,
+  BACKTEST_RESEARCH_RUN_DIGEST_DOMAIN,
+  BACKTEST_RESEARCH_BUNDLE_DIGEST_ALGORITHM,
+  BACKTEST_RESEARCH_BUNDLE_DISCLAIMERS,
+} from "./research-bundle.js";
+
+export type {
+  BuildBacktestResearchBundleInput,
+  BacktestResearchBundle,
+  BacktestResearchBundleManifestSummary,
+  BacktestResearchBundleDigestEntry,
+  FormatBacktestResearchBundleOptions,
+} from "./research-bundle.js";
+
+export {
+  buildBacktestResearchStatus,
+  validateBacktestResearchStatus,
+  formatBacktestResearchStatus,
+  BacktestResearchStatusError,
+  BACKTEST_RESEARCH_STATUS_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_STATUS_BANNER,
+  BACKTEST_RESEARCH_STATUS_DISCLAIMERS,
+} from "./research-status.js";
+
+export type {
+  BuildBacktestResearchStatusInput,
+  BacktestResearchStatus,
+  BacktestResearchStatusManifestCheck,
+  FormatBacktestResearchStatusOptions,
+} from "./research-status.js";
