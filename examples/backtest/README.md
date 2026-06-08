@@ -617,3 +617,50 @@ pnpm soulmaker paper:backtest:research:index --dir campaign/ --strict
 > injected, simulated artifacts — **not** a live result, **not** advice, and **not** a
 > profitability claim. Nothing here touches a wallet, key, signing, sending, or the network;
 > Phases 6 and 7 remain **not started**.
+
+## Diffing two bundles or two campaigns (Sprint 19)
+
+The manifest, bundle, and campaign index each now have a matching **diff**. Sprint 19 adds the
+bundle diff and the campaign index diff, so you can compare two PAPER-only runs (or two whole
+campaigns) and tell a harmless addition apart from an integrity **regression**. Each diff reads
+only the two named JSON files and **writes nothing**.
+
+```bash
+# 1) Produce a BASE campaign (two runs) and snapshot its index + run-a's bundle:
+pnpm soulmaker paper:backtest:sensitivity:matrix \
+  --dir examples/backtest \
+  --plan examples/backtest/price-sensitivity.variant-plan.json --out-dir campaign/run-a/
+pnpm soulmaker paper:backtest:sensitivity:matrix \
+  --dir examples/backtest \
+  --plan examples/backtest/price-sensitivity.variant-plan.json --out-dir campaign/run-b/
+pnpm soulmaker paper:backtest:research:index  --dir campaign/        --out base-index.json
+pnpm soulmaker paper:backtest:research:bundle --dir campaign/run-a/  --out run-a-base-bundle.json
+
+# 2) Change the campaign: edit an artifact in run-a, then add a NEW run-c. Re-snapshot:
+#    (editing run-a changes its content → its run digest moves; run-c is purely additive)
+pnpm soulmaker paper:backtest:research:index  --dir campaign/        --out next-index.json
+pnpm soulmaker paper:backtest:research:bundle --dir campaign/run-a/  --out run-a-next-bundle.json
+
+# 3) DIFF THE BUNDLES — run-a base vs next. A changed artifact digest is a regression:
+pnpm soulmaker paper:backtest:diff:research:bundle --base run-a-base-bundle.json --next run-a-next-bundle.json
+# --json for the machine-readable diff (schema backtest.research.bundle.diff.v1).
+
+# 4) DIFF THE CAMPAIGN INDEXES — base vs next. run-a changed (regression), run-c added (additive):
+pnpm soulmaker paper:backtest:diff:research:index --base base-index.json --next next-index.json
+
+# 5) STRICT behaviour — the same diff under each fail flag:
+#    --fail-on-change exits 1 on ANY difference (so the added run-c alone trips it);
+#    --fail-on-regression exits 1 ONLY on integrity breakage (run-a's digest change), NOT on
+#    the purely additive run-c:
+pnpm soulmaker paper:backtest:diff:research:index --base base-index.json --next next-index.json --fail-on-change
+pnpm soulmaker paper:backtest:diff:research:index --base base-index.json --next next-index.json --fail-on-regression
+```
+
+> **Conservative by design.** `hasChange` flags any difference; `hasRegression` flags only
+> integrity breakage — a removed or content-changed artifact, a removed valid run, a run going
+> valid→invalid, an unexpected digest change, or an unknown/malformed increase. A purely **additive**
+> new run or artifact is a change, **not** a regression. Every digest is the same
+> **non-cryptographic, reproducibility-only** fingerprint, both diffs are local bookkeeping over
+> injected, simulated summaries — **not** a live result, **not** advice, and **not** a profitability
+> claim — and nothing here touches a wallet, key, signing, sending, or the network; Phases 6 and 7
+> remain **not started**.

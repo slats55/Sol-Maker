@@ -122,7 +122,16 @@ complete/recognized/stable/in-sync health), aggregates the kind/schema sets acro
 campaign, lists the runs needing attention, and emits one deterministic top-level **campaign
 digest** (`backtest.research.campaign.index.v1`) over the sorted run digests + stable metadata
 (so an added / removed / changed run all move it); `--strict` exits non-zero when any run
-needs attention and the index embeds no artifact contents. None of this fetches live
+needs attention and the index embeds no artifact contents. Sprint 19 completes the
+index→diff symmetry with two deterministic **diff** commands:
+`paper:backtest:diff:research:bundle` (`backtest.research.bundle.diff.v1`) compares two run
+bundles and `paper:backtest:diff:research:index` (`backtest.research.campaign.diff.v1`)
+compares two campaign indexes. Each reads only the two named files, writes nothing, and reports
+both a `hasChange` flag and a **conservative** `hasRegression` flag — `--fail-on-change` exits
+non-zero on any difference, while `--fail-on-regression` fires only on integrity breakage
+(a removed/changed artifact, a removed valid run, a run going valid→invalid, an unexpected
+digest change, or an unknown/malformed increase) and treats a purely additive run/artifact as a
+change, not a regression. None of this fetches live
 data or begins transaction planning (roadmap Phase 6 remains not started; Phase 7 burner
 live remains not started). The default mode is `PAPER`. See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
@@ -165,7 +174,8 @@ soulmaker/
                 #                    paper:backtest:sensitivity:matrix, paper:backtest:diff:sensitivity:matrix,
                 #                    paper:backtest:research:manifest/verify, paper:backtest:diff:research:manifest,
                 #                    paper:backtest:research:bundle, paper:backtest:research:status,
-                #                    paper:backtest:research:index)
+                #                    paper:backtest:research:index,
+                #                    paper:backtest:diff:research:bundle, paper:backtest:diff:research:index)
     web/        # Phase 8 dashboard (placeholder)
   packages/
     core/       # @soulmaker/core      — config schema, modes, risk caps, LIVE GATE
@@ -189,7 +199,8 @@ soulmaker/
                 #            Sprint 15 adds the multi-base sensitivity matrix + matrix diff;
                 #            Sprint 16 adds the research artifact manifest (build/verify/diff);
                 #            Sprint 17 adds the research run bundle + integrity/status summary;
-                #            Sprint 18 adds the cross-run research campaign index
+                #            Sprint 18 adds the cross-run research campaign index;
+                #            Sprint 19 adds the research bundle diff + campaign index diff
                 #            (still pure: the package never scans dirs or reads/writes files)
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
@@ -374,6 +385,12 @@ pnpm soulmaker paper:backtest:research:status --dir <matrix/> --manifest <matrix
 # --out; --strict fails when any run needs attention (unknown/malformed/drift/incomplete):
 pnpm soulmaker paper:backtest:research:index --dir <campaign/> --out <campaign/>/campaign-index.json
 pnpm soulmaker paper:backtest:research:index --dir <campaign/> --strict
+
+# Sprint 19 — DIFF: compare two bundles or two campaign indexes. Reads only the two files, writes
+# nothing. --fail-on-change exits 1 on ANY difference; --fail-on-regression exits 1 ONLY on
+# integrity breakage (removed/changed artifact or run, valid→invalid, unknown/malformed increase):
+pnpm soulmaker paper:backtest:diff:research:bundle --base <runA/bundle.json> --next <runB/bundle.json> --fail-on-regression
+pnpm soulmaker paper:backtest:diff:research:index --base <campA/index.json> --next <campB/index.json> --fail-on-change
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

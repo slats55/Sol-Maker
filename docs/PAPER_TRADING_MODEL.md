@@ -1,4 +1,4 @@
-# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow; Sprint 14 paper research lab — rankings, variant-plan explain, sensitivity diff, config perturbations, suite coverage; Sprint 15 cross-scenario sensitivity matrix + matrix diff; Sprint 16 research run manifest — index/verify/diff a run's local artifacts; Sprint 17 research run bundle + integrity/status — package a run into one self-describing bundle with a deterministic run digest, plus a complete/recognized/stable/in-sync directory status; Sprint 18 research campaign index — index many runs under a campaign directory into one comparable summary with a deterministic campaign digest)
+# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow; Sprint 14 paper research lab — rankings, variant-plan explain, sensitivity diff, config perturbations, suite coverage; Sprint 15 cross-scenario sensitivity matrix + matrix diff; Sprint 16 research run manifest — index/verify/diff a run's local artifacts; Sprint 17 research run bundle + integrity/status — package a run into one self-describing bundle with a deterministic run digest, plus a complete/recognized/stable/in-sync directory status; Sprint 18 research campaign index — index many runs under a campaign directory into one comparable summary with a deterministic campaign digest; Sprint 19 research bundle diff + campaign index diff — compare two bundles or two campaign indexes with a conservative regression flag)
 
 The paper engine (`@soulmaker/paper` + the `paper:*` CLI commands) is a
 **deterministic, offline, simulated-only** trading sandbox. It exists to prove
@@ -582,6 +582,48 @@ It stays pure (the CLI does all directory IO): only immediate child **directorie
 now including the campaign index — is excluded, and a `*.jsonl` is never read. Local bookkeeping
 over injected artifacts — not a live result, not advice, not a profitability claim.
 
+## Research bundle diff & campaign index diff (Sprint 19)
+
+Sprint 19 completes the **index → diff** symmetry (manifest→diff, bundle→diff, campaign→diff). Two
+deterministic comparisons answer *"what changed between two PAPER-only runs/campaigns, and did the
+change break integrity?"* without re-reading any directory.
+
+`@soulmaker/backtest` exports the pure `diffBacktestResearchBundles`,
+`validateBacktestResearchBundleDiff`, `formatBacktestResearchBundleDiff` (schema
+`backtest.research.bundle.diff.v1`) and `diffBacktestResearchCampaignIndexes`,
+`validateBacktestResearchCampaignIndexDiff`, `formatBacktestResearchCampaignIndexDiff` (schema
+`backtest.research.campaign.diff.v1`). The CLI adds
+`paper:backtest:diff:research:bundle --base <b> --next <b>` and
+`paper:backtest:diff:research:index --base <i> --next <i>`, each with
+`[--json] [--fail-on-change] [--fail-on-regression]`.
+
+The **bundle diff** pairs artifacts by path (added / removed / content-digest-changed) and reports
+the top-level **run digest** change, aggregate kind/schema-count changes, the recognized-schema set
+delta, and unknown/malformed/warning/artifact/size count deltas. Because a bundle stores only a
+per-artifact digest, a per-artifact kind/schema/size change surfaces as an aggregate change plus a
+run-digest move rather than per-artifact attribution (diff the **manifests** for that).
+
+The **campaign diff** pairs runs by runId (added / removed / changed) and reports per-run
+digest/valid-status/unknown-malformed changes, the runs that **newly need** (or **no longer need**)
+attention, the top-level **campaign digest** change, aggregate kind-count and schema-set changes,
+and run/artifact count deltas.
+
+Both expose two verdicts. **`hasChange`** is any difference at all. **`hasRegression`** is
+**conservative** — integrity breakage only:
+
+- *bundle:* incompatible schema, a removed artifact, a content-digest change, a same-set run-digest
+  move (a kind/schema/size change to an existing artifact), an unknown/malformed increase, or a
+  recognized schema removed.
+- *campaign:* incompatible schema, a previously-**valid** run removed, a run going **valid→invalid**,
+  a paired run's **run digest changing**, or the total unknown/malformed count increasing.
+
+A purely **additive** new run or artifact is a *change*, not a *regression*. `--fail-on-change`
+exits 1 on any difference; `--fail-on-regression` exits 1 only on a regression. Each command reads
+**only** the two named files (BOM-tolerant; a missing/malformed/wrong-type file refuses with exit 1),
+runs no backtest, and **writes nothing**. The diff digests are the same non-cryptographic,
+reproducibility-only fingerprints; the formatters redact internally and cap long lists. Local
+bookkeeping over two summaries — not a live result, not advice, not a profitability claim.
+
 ## PnL reporting
 
 `PaperRunSummary`: realized PnL, unrealized PnL, total PnL, open position count,
@@ -617,6 +659,8 @@ simulated, or sent" disclaimer.
 | `paper:backtest:research:bundle` | package a directory's artifacts into one self-describing bundle (Sprint 17): manifest summary + kind/schema counts + recognized-schema set + unknown/malformed counts + sorted digest refs + a deterministic top-level **run digest** (`backtest.research.bundle.v1`); embeds no contents; `--out` writes ONLY the bundle (`--force`), `--strict` exits 1 on any unknown/malformed artifact |
 | `paper:backtest:research:status` | at-a-glance health of a research dir (Sprint 17): **complete / recognized / stable / in-sync** + drift counts (vs `--manifest` or a discovered `research-manifest.json`) + a single **neutral** recommended action (`backtest.research.status.v1`); **writes nothing**, `--strict` exits 1 on any unknown/malformed/drift condition |
 | `paper:backtest:research:index` | index a **campaign** directory of research runs (Sprint 18): each immediate child dir is a run; per-run digest + kind/schema counts + complete/recognized/stable/in-sync health, aggregate kinds/schemas, the runs needing attention, and a deterministic top-level **campaign digest** (`backtest.research.campaign.index.v1`); embeds no contents, `--out` writes ONLY the index (`--force`), **writes nothing** without `--out`, `--strict` exits 1 when any run needs attention |
+| `paper:backtest:diff:research:bundle` | diff **two** bundle JSON files (Sprint 19): pairs artifacts by path → added/removed/digest-changed + run-digest/kind/schema/count changes (`backtest.research.bundle.diff.v1`); `hasChange` + a conservative `hasRegression`; `--fail-on-change` / `--fail-on-regression`; reads two files, writes nothing |
+| `paper:backtest:diff:research:index` | diff **two** campaign index JSON files (Sprint 19): pairs runs by runId → added/removed runs + per-run digest/valid/attention changes + campaign-digest/kind/schema/count changes (`backtest.research.campaign.diff.v1`); `hasChange` + a conservative `hasRegression`; `--fail-on-change` / `--fail-on-regression`; reads two files, writes nothing |
 
 `paper:run` options: `--candidates <path>` `--prices <path>` `--journal <path>`
 `--max-trade-size-usd` `--max-daily-loss-usd` `--max-open-positions`

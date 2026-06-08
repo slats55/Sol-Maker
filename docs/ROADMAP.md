@@ -124,7 +124,9 @@ Sprint 17 research run bundle + integrity/status — package a run into one self
 bundle with a deterministic top-level run digest, plus a quick complete/recognized/stable/
 in-sync directory status;
 Sprint 18 research campaign index — index many runs under a campaign directory into one
-comparable summary with a deterministic top-level campaign digest):
+comparable summary with a deterministic top-level campaign digest;
+Sprint 19 research bundle diff + campaign index diff — compare two bundles or two campaign
+indexes with a conservative regression flag):
 
 - ✅ Deterministic, **paper-only** rules engine: turns an advisory
   `@soulmaker/risk` report + injected, read-only metrics into a single decision —
@@ -422,6 +424,25 @@ comparable summary with a deterministic top-level campaign digest):
   including the campaign index — and never reads a `*.jsonl`); the campaign digest is the same
   non-cryptographic, reproducibility-only fingerprint. Local bookkeeping — not a live result, not
   advice, not a profitability claim.
+- ✅ **(Sprint 19) Research bundle diff & campaign index diff** — the diff layer that completes
+  the manifest→diff / bundle→diff / campaign→diff symmetry. `@soulmaker/backtest` exports the pure
+  `diffBacktestResearchBundles`, `validate…`, `format…` (schema `backtest.research.bundle.diff.v1`)
+  and `diffBacktestResearchCampaignIndexes`, `validate…`, `format…` (schema
+  `backtest.research.campaign.diff.v1`); the CLI adds
+  `paper:backtest:diff:research:bundle --base <b> --next <b> [--json] [--fail-on-change] [--fail-on-regression]`
+  and `paper:backtest:diff:research:index --base <i> --next <i> [--json] [--fail-on-change] [--fail-on-regression]`.
+  The **bundle diff** pairs artifacts by path (added / removed / digest-changed) and reports the
+  run-digest change, aggregate kind/schema/recognized-schema changes, and count deltas. The
+  **campaign diff** pairs runs by runId (added / removed / changed) and reports per-run
+  digest/valid/attention changes, the campaign-digest change, aggregate kind/schema changes, and
+  count deltas. Both carry a `hasChange` flag AND a **conservative** `hasRegression` flag — a
+  regression is integrity breakage only (a removed/changed artifact, a removed valid run, a run
+  going valid→invalid, an unexpected digest change, an unknown/malformed increase, or an
+  incompatible schema); a purely additive new run/artifact is a change, **not** a regression.
+  `--fail-on-change` exits non-zero on any difference; `--fail-on-regression` only on a regression.
+  Each reads ONLY the two named files and **writes nothing**; the package stays pure (no fs/net,
+  no `Date.now`/`Math.random`; the formatters redact internally). Local bookkeeping — not a live
+  result, not advice, not a profitability claim.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

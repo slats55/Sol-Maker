@@ -28,7 +28,7 @@ packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.j
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
-packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index (Sprint 8–18)  [strategy, paper, security]
+packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff (Sprint 8–19)  [strategy, paper, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -202,6 +202,21 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   itself, and writes nothing without `--out`. The campaign digest is the same non-cryptographic,
   reproducibility-only fingerprint. Local files only — no backtest, no journal, no network, no
   wallet.
+- **(Sprint 19)** `@soulmaker/backtest` adds the **research diff layer** that completes the
+  index→diff symmetry: `research-bundle-diff.ts` (`diffBacktestResearchBundles`, `validate…`,
+  `format…`; schema `backtest.research.bundle.diff.v1`) and `research-campaign-index-diff.ts`
+  (`diffBacktestResearchCampaignIndexes`, `validate…`, `format…`; schema
+  `backtest.research.campaign.diff.v1`), exposed by the CLI as `paper:backtest:diff:research:bundle`
+  and `paper:backtest:diff:research:index`. Each reads two already-produced summaries (lenient on
+  `schemaVersion` so a mismatch is surfaced, strict on every field it reads), pairs the units
+  (artifacts by path / runs by runId), and reports added/removed/changed plus the top-level
+  digest change and aggregate count/schema changes. Both expose a `hasChange` flag AND a
+  **conservative** `hasRegression` flag — integrity breakage only, so a purely additive new
+  artifact/run is a change, not a regression. These modules import only `@soulmaker/security` (for
+  the redacting formatters) — no other package, no `digestContent`, no fs/net, no
+  `Date.now`/`Math.random`. The CLI reads the two named files and **writes nothing**; a
+  missing/malformed/wrong-type file refuses. A diff is bookkeeping over two **summaries** — not a
+  live result, prediction, or advice.
 
 ## The live boundary
 
