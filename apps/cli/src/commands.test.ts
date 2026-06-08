@@ -47,6 +47,7 @@ import {
   paperBacktestResearchIndexReport,
   paperBacktestDiffResearchBundleReport,
   paperBacktestDiffResearchIndexReport,
+  paperBacktestResearchHistoryReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -55,6 +56,7 @@ import {
   runBacktest,
   buildBacktestResearchBundle,
   buildBacktestResearchCampaignIndex,
+  validateBacktestResearchCampaignHistoryReport,
   type BacktestArtifactDescriptor,
 } from "@soulmaker/backtest";
 import type {
@@ -5635,5 +5637,197 @@ describe("paperBacktestDiffResearchBundleReport / paperBacktestDiffResearchIndex
         cleanup();
       }
     });
+  });
+});
+
+describe("paperBacktestResearchHistoryReport (Sprint 20)", () => {
+  function desc(over: Partial<BacktestArtifactDescriptor> = {}): BacktestArtifactDescriptor {
+    return { path: "a.report.json", kind: "backtest-report", schemaVersion: "backtest.report.v1", digest: "d1", sizeBytes: 100, ...over };
+  }
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+  function idx(runs: { runId: string; artifacts: BacktestArtifactDescriptor[] }[]) {
+    return buildBacktestResearchCampaignIndex({ campaignName: "c", runs });
+  }
+  const okRun = (runId: string, digest = "d1") => ({ runId, artifacts: [desc({ digest })] });
+  const badRun = (runId: string) => ({ runId, artifacts: [desc({ path: "u.json", kind: "unknown-json" as const, schemaVersion: null, digest: "u" })] });
+  function listFilesRec(dir: string): string[] {
+    const out: string[] = [];
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) out.push(...listFilesRec(full));
+      else out.push(full);
+    }
+    return out.sort();
+  }
+
+  it("refuses when no --index is supplied", () => {
+    expect(paperBacktestResearchHistoryReport({}, {}).text).toMatch(/^Refusing: at least one --index/);
+    expect(paperBacktestResearchHistoryReport({}, { indexPaths: [] }).exitCode).toBe(1);
+  });
+
+  it("reads ordered snapshots and renders a PAPER-ONLY human report", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const s0 = writeJson(cwd, "s0.json", idx([okRun("a", "1")]));
+      const s1 = writeJson(cwd, "s1.json", idx([okRun("a", "2"), okRun("b")]));
+      const r = paperBacktestResearchHistoryReport({ cwd, env: {} }, { indexPaths: [s0, s1] });
+      expect(r.text).toContain("SIMULATED PAPER-ONLY RESEARCH CAMPAIGN HISTORY REPORT");
+      expect(r.text).toContain("Changed since baseline: YES");
+      expect(r.text.toLowerCase()).toContain("not a live result");
+      expect(r.exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json emits a valid, stable history report object", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const s0 = writeJson(cwd, "s0.json", idx([okRun("a", "1")]));
+      const s1 = writeJson(cwd, "s1.json", idx([okRun("a", "2"), okRun("b")]));
+      const r = paperBacktestResearchHistoryReport({ cwd, env: {} }, { indexPaths: [s0, s1], json: true });
+      const report = JSON.parse(r.text) as { schemaVersion: string; snapshotCount: number; snapshotIds: string[]; runsAddedSinceBaseline: number; hasRegression: boolean };
+      expect(report.schemaVersion).toBe("backtest.research.campaign.history.report.v1");
+      expect(report.snapshotCount).toBe(2);
+      expect(report.snapshotIds).toEqual(["s0.json", "s1.json"]);
+      expect(report.runsAddedSinceBaseline).toBe(1);
+      expect(report.hasRegression).toBe(true); // run "a" digest changed
+      // the emitted (redacted) JSON must still round-trip through the strict backstop validator
+      expect(() => validateBacktestResearchCampaignHistoryReport(JSON.parse(r.text))).not.toThrow();
+      // byte-stable across repeated calls
+      expect(paperBacktestResearchHistoryReport({ cwd, env: {} }, { indexPaths: [s0, s1], json: true }).text).toBe(r.text);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-change exits 1 on change, 0 for an unchanged pair", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const s0 = writeJson(cwd, "s0.json", idx([okRun("a", "1")]));
+      const same = writeJson(cwd, "same.json", idx([okRun("a", "1")]));
+      const changed = writeJson(cwd, "changed.json", idx([okRun("a", "2")]));
+      expect(paperBacktestResearchHistoryReport({ cwd, env: {} }, { indexPaths: [s0, same], failOnChange: true }).exitCode).toBe(0);
+      expect(paperBacktestResearchHistoryReport({ cwd, env: {} }, { indexPaths: [s0, changed], failOnChange: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-regression exits 1 on a digest change but 0 on a new valid run", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const s0 = writeJson(cwd, "s0.json", idx([okRun("a", "1")]));
+      const added = writeJson(cwd, "added.json", idx([okRun("a", "1"), okRun("b")]));
+      const regressed = writeJson(cwd, "regressed.json", idx([okRun("a", "2")]));
+      expect(paperBacktestResearchHistoryReport({ cwd, env: {} }, { indexPaths: [s0, added], failOnRegression: true }).exitCode).toBe(0);
+      expect(paperBacktestResearchHistoryReport({ cwd, env: {} }, { indexPaths: [s0, regressed], failOnRegression: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-attention exits 1 when a run needs attention now, 0 otherwise", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      // Two DISTINCT clean snapshots (snapshot ids are the paths, which must be unique).
+      const clean0 = writeJson(cwd, "clean0.json", idx([okRun("a")]));
+      const clean1 = writeJson(cwd, "clean1.json", idx([okRun("a")]));
+      const dirty = writeJson(cwd, "dirty.json", idx([okRun("a"), badRun("b")]));
+      expect(paperBacktestResearchHistoryReport({ cwd, env: {} }, { indexPaths: [clean0, clean1], failOnAttention: true }).exitCode).toBe(0);
+      expect(paperBacktestResearchHistoryReport({ cwd, env: {} }, { indexPaths: [clean0, dirty], failOnAttention: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-new-attention exits 1 when a run newly needs attention since baseline", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const s0 = writeJson(cwd, "s0.json", idx([okRun("a")]));
+      const s0copy = writeJson(cwd, "s0copy.json", idx([okRun("a")]));
+      const wentBad = writeJson(cwd, "bad.json", idx([badRun("a")]));
+      expect(paperBacktestResearchHistoryReport({ cwd, env: {} }, { indexPaths: [s0, s0copy], failOnNewAttention: true }).exitCode).toBe(0);
+      expect(paperBacktestResearchHistoryReport({ cwd, env: {} }, { indexPaths: [s0, wentBad], failOnNewAttention: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("supports --baseline previous", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const s0 = writeJson(cwd, "s0.json", idx([okRun("a")]));
+      const s1 = writeJson(cwd, "s1.json", idx([okRun("a"), okRun("b")]));
+      const s2 = writeJson(cwd, "s2.json", idx([okRun("a", "2"), okRun("b")]));
+      const r = paperBacktestResearchHistoryReport({ cwd, env: {} }, { indexPaths: [s0, s1, s2], baseline: "previous", json: true });
+      const report = JSON.parse(r.text) as { baselineSnapshotId: string; baselineSelector: string; runsAddedSinceBaseline: number };
+      expect(report.baselineSnapshotId).toBe("s1.json");
+      expect(report.baselineSelector).toBe("previous");
+      expect(report.runsAddedSinceBaseline).toBe(0); // b already present at s1
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("supports an explicit --baseline <path> (matched against the supplied --index paths)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const s0 = writeJson(cwd, "s0.json", idx([okRun("a")]));
+      const s1 = writeJson(cwd, "s1.json", idx([okRun("a"), okRun("b")]));
+      const s2 = writeJson(cwd, "s2.json", idx([okRun("a", "2"), okRun("b")]));
+      const r = paperBacktestResearchHistoryReport({ cwd, env: {} }, { indexPaths: [s0, s1, s2], baseline: s1, json: true });
+      const report = JSON.parse(r.text) as { baselineSnapshotId: string; baselineSelector: string; runsAddedSinceBaseline: number };
+      expect(report.baselineSnapshotId).toBe(s1);
+      expect(report.baselineSelector).toBe("explicit");
+      expect(report.runsAddedSinceBaseline).toBe(0); // b already present at the explicit baseline s1
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses an explicit --baseline that is not among the supplied --index paths", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const s0 = writeJson(cwd, "s0.json", idx([okRun("a")]));
+      const s1 = writeJson(cwd, "s1.json", idx([okRun("a", "2")]));
+      const r = paperBacktestResearchHistoryReport({ cwd, env: {} }, { indexPaths: [s0, s1], baseline: "nope.json" });
+      expect(r.text).toMatch(/^Refusing:/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses malformed JSON and a non-index (wrong artifact type) file safely", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "bad.json"), "{ not json");
+      const s0 = writeJson(cwd, "s0.json", idx([okRun("a")]));
+      expect(paperBacktestResearchHistoryReport({ cwd, env: {} }, { indexPaths: [s0, "bad.json"] }).exitCode).toBe(1);
+      // a research bundle is the wrong artifact type for a history snapshot
+      const bundle = writeJson(cwd, "bundle.json", buildBacktestResearchBundle({ runName: "r", artifacts: [desc()] }));
+      const r = paperBacktestResearchHistoryReport({ cwd, env: {} }, { indexPaths: [s0, bundle] });
+      expect(r.text).toMatch(/^Refusing:/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("writes nothing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const s0 = writeJson(cwd, "s0.json", idx([okRun("a", "1")]));
+      const s1 = writeJson(cwd, "s1.json", idx([okRun("a", "2")]));
+      const before = listFilesRec(cwd);
+      paperBacktestResearchHistoryReport({ cwd, env: {} }, { indexPaths: [s0, s1], json: true });
+      expect(listFilesRec(cwd)).toEqual(before);
+    } finally {
+      cleanup();
+    }
   });
 });
