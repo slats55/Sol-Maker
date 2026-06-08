@@ -66,6 +66,14 @@ const digestCode = (value: string | null): HtmlValue =>
 const deltaCell = (delta: NumberDelta | null): HtmlValue =>
   delta === null ? DASH : `${num(delta.base)} → ${num(delta.next)} (${signed(delta.delta)})`;
 
+/**
+ * Render a FLAT `{ base, next, delta }` row (the count-change shape used by the
+ * research diff schemas, where base/next/delta are direct fields of the entry)
+ * as "base → next (Δ)". Reads each member defensively.
+ */
+const flatDeltaCell = (rec: Record<string, unknown>): HtmlValue =>
+  `${num(readNumber(rec, "base"))} → ${num(readNumber(rec, "next"))} (${signed(readNumber(rec, "delta"))})`;
+
 /** Record a field as missing when it could not be read; pass the value through. */
 function need<T>(missing: string[], label: string, value: T | null): T | null {
   if (value === null) missing.push(label);
@@ -1181,6 +1189,242 @@ function renderResearchCampaignIndexView(rec: Record<string, unknown>): RawHtml 
 }
 
 /* ------------------------------------------------------------------ *
+ * Sprint 19 — research bundle diff + campaign diff.
+ * ------------------------------------------------------------------ */
+
+function renderResearchBundleDiffView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const hasChange = need(missing, "hasChange", readBoolean(rec, "hasChange"));
+  const hasRegression = need(missing, "hasRegression", readBoolean(rec, "hasRegression"));
+  const changeReasons = readStringArray(rec, "changeReasons");
+  const regressionReasons = readStringArray(rec, "regressionReasons");
+
+  const added = readArray(rec, "added") ?? [];
+  const removed = readArray(rec, "removed") ?? [];
+  const changed = readArray(rec, "changed") ?? [];
+  const kindCountChanges = readArray(rec, "kindCountChanges") ?? [];
+  const schemaCountChanges = readArray(rec, "schemaCountChanges") ?? [];
+  const recognizedAdded = readStringArray(rec, "recognizedSchemasAdded");
+  const recognizedRemoved = readStringArray(rec, "recognizedSchemasRemoved");
+
+  // One combined, capped artifact table (added / removed / digest-changed by path).
+  interface ArtifactChangeRow {
+    readonly path: string | null;
+    readonly change: string;
+    readonly base: string | null;
+    readonly next: string | null;
+  }
+  const artifactRows: readonly ArtifactChangeRow[] = [
+    ...added.map((entry): ArtifactChangeRow => {
+      const e = asRecord(entry) ?? {};
+      return { path: readString(e, "path"), change: "added", base: null, next: readString(e, "digest") };
+    }),
+    ...removed.map((entry): ArtifactChangeRow => {
+      const e = asRecord(entry) ?? {};
+      return { path: readString(e, "path"), change: "removed", base: readString(e, "digest"), next: null };
+    }),
+    ...changed.map((entry): ArtifactChangeRow => {
+      const e = asRecord(entry) ?? {};
+      return {
+        path: readString(e, "path"),
+        change: "changed",
+        base: readString(e, "baseDigest"),
+        next: readString(e, "nextDigest"),
+      };
+    }),
+  ];
+  const artifactCap = capRows(artifactRows);
+  const artifactTableRows: readonly (readonly HtmlValue[])[] = artifactCap.shown.map((r) => [
+    code(r.path),
+    r.change,
+    digestCode(r.base),
+    digestCode(r.next),
+  ]);
+
+  // Combined count-change table (kind + schema scopes), each entry is a flat {key,base,next,delta}.
+  interface CountChangeRow {
+    readonly scope: string;
+    readonly entry: Record<string, unknown>;
+  }
+  const countRows: readonly CountChangeRow[] = [
+    ...kindCountChanges.map((entry): CountChangeRow => ({ scope: "kind", entry: asRecord(entry) ?? {} })),
+    ...schemaCountChanges.map((entry): CountChangeRow => ({ scope: "schema", entry: asRecord(entry) ?? {} })),
+  ];
+  const countCap = capRows(countRows);
+  const countTableRows: readonly (readonly HtmlValue[])[] = countCap.shown.map((r) => [
+    r.scope,
+    code(readString(r.entry, "key")),
+    flatDeltaCell(r.entry),
+  ]);
+
+  const schemaSet = (read: StringListRead): HtmlValue =>
+    read.items.length > 0
+      ? `${read.items.join(", ")}${read.hidden > 0 ? `, +${read.hidden} more` : ""}`
+      : DASH;
+
+  return html`
+    ${flagNotice({
+      flag: hasRegression,
+      trueTone: "caution",
+      trueTitle: "Integrity regression flagged by this bundle diff",
+      falseTitle: "No integrity regression flagged",
+      absentTitle: "Regression status not present",
+      reasons: regressionReasons,
+      falseBody: html`The artifact reports <code>hasRegression: false</code> — a conservative
+        integrity check (removed/changed artifacts, schema mismatch, more unknown/malformed).`,
+    })}
+    ${flagNotice({
+      flag: hasChange,
+      trueTone: "info",
+      trueTitle: "The two bundles differ",
+      falseTitle: "No change between bundles",
+      absentTitle: "Change status not present",
+      reasons: changeReasons,
+      falseBody: html`The two bundles are identical (<code>hasChange: false</code>).`,
+    })}
+    ${kvSection("Compared bundles", "Conservative delta between two research run bundles.", [
+      { term: "baseRunName", detail: text(readString(rec, "baseRunName")) },
+      { term: "nextRunName", detail: text(readString(rec, "nextRunName")) },
+      { term: "bundleSchemaMatch", detail: boolText(readBoolean(rec, "bundleSchemaMatch")) },
+      { term: "runDigestChanged", detail: boolText(readBoolean(rec, "runDigestChanged")) },
+      { term: "baseRunDigest", detail: digestCode(readString(rec, "baseRunDigest")) },
+      { term: "nextRunDigest", detail: digestCode(readString(rec, "nextRunDigest")) },
+      { term: "manifestDigestChanged", detail: boolText(readBoolean(rec, "manifestDigestChanged")) },
+      { term: "artifactCount", detail: deltaCell(readDelta(rec, "artifactCount")) },
+      { term: "totalSizeBytes", detail: deltaCell(readDelta(rec, "totalSizeBytes")) },
+      { term: "unknownArtifactCount", detail: deltaCell(readDelta(rec, "unknownArtifactCount")) },
+      { term: "malformedArtifactCount", detail: deltaCell(readDelta(rec, "malformedArtifactCount")) },
+      { term: "warningCount", detail: deltaCell(readDelta(rec, "warningCount")) },
+      { term: "added / removed / changed", detail: `${added.length} / ${removed.length} / ${changed.length}` },
+      { term: "recognizedSchemasAdded", detail: schemaSet(recognizedAdded) },
+      { term: "recognizedSchemasRemoved", detail: schemaSet(recognizedRemoved) },
+    ])}
+    ${tableSection({
+      title: "Artifact changes",
+      columns: [
+        { header: "Path" },
+        { header: "Change" },
+        { header: "Base digest" },
+        { header: "Next digest" },
+      ],
+      rows: artifactTableRows,
+      empty: "No artifacts added, removed, or changed.",
+      caption: capCaption(artifactCap, "artifacts"),
+    })}
+    ${tableSection({
+      title: "Count changes",
+      columns: [{ header: "Scope" }, { header: "Key" }, { header: "base → next (Δ)" }],
+      rows: countTableRows,
+      empty: "No kind or schema count changes.",
+      caption: capCaption(countCap, "count changes"),
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderResearchCampaignDiffView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const hasChange = need(missing, "hasChange", readBoolean(rec, "hasChange"));
+  const hasRegression = need(missing, "hasRegression", readBoolean(rec, "hasRegression"));
+  const changeReasons = readStringArray(rec, "changeReasons");
+  const regressionReasons = readStringArray(rec, "regressionReasons");
+
+  const addedRuns = readArray(rec, "addedRuns") ?? [];
+  const removedRuns = readArray(rec, "removedRuns") ?? [];
+  const changedRuns = readArray(rec, "changedRuns") ?? [];
+  const kindCountChanges = readArray(rec, "aggregateKindCountChanges") ?? [];
+  const newlyNeedsAttention = readStringArray(rec, "newlyNeedsAttention");
+  const noLongerNeedsAttention = readStringArray(rec, "noLongerNeedsAttention");
+  const schemasAdded = readStringArray(rec, "aggregateSchemasAdded");
+  const schemasRemoved = readStringArray(rec, "aggregateSchemasRemoved");
+
+  const runCap = capRows(changedRuns);
+  const runRows: readonly (readonly HtmlValue[])[] = runCap.shown.map((entry) => {
+    const e = asRecord(entry) ?? {};
+    return [
+      text(readString(e, "runId")),
+      boolText(readBoolean(e, "runDigestChanged")),
+      `${boolText(readBoolean(e, "baseValid"))} → ${boolText(readBoolean(e, "nextValid"))}`,
+      boolText(readBoolean(e, "becameInvalid")),
+      deltaCell(readDelta(e, "artifactCount")),
+    ];
+  });
+
+  const kindCap = capRows(kindCountChanges);
+  const kindRows: readonly (readonly HtmlValue[])[] = kindCap.shown.map((entry) => {
+    const e = asRecord(entry) ?? {};
+    return [code(readString(e, "key")), flatDeltaCell(e)];
+  });
+
+  const attentionList = (read: StringListRead): HtmlValue =>
+    read.items.length > 0
+      ? `${read.items.join(", ")}${read.hidden > 0 ? `, +${read.hidden} more` : ""}`
+      : DASH;
+
+  return html`
+    ${flagNotice({
+      flag: hasRegression,
+      trueTone: "caution",
+      trueTitle: "Integrity regression flagged by this campaign diff",
+      falseTitle: "No integrity regression flagged",
+      absentTitle: "Regression status not present",
+      reasons: regressionReasons,
+      falseBody: html`The artifact reports <code>hasRegression: false</code> — a conservative
+        integrity check (removed runs, runs that became invalid, more unknown/malformed).`,
+    })}
+    ${flagNotice({
+      flag: hasChange,
+      trueTone: "info",
+      trueTitle: "The two campaigns differ",
+      falseTitle: "No change between campaigns",
+      absentTitle: "Change status not present",
+      reasons: changeReasons,
+      falseBody: html`The two campaign indexes are identical (<code>hasChange: false</code>).`,
+    })}
+    ${kvSection("Compared campaigns", "Conservative delta between two research campaign indexes.", [
+      { term: "baseCampaignName", detail: text(readString(rec, "baseCampaignName")) },
+      { term: "nextCampaignName", detail: text(readString(rec, "nextCampaignName")) },
+      { term: "campaignSchemaMatch", detail: boolText(readBoolean(rec, "campaignSchemaMatch")) },
+      { term: "campaignDigestChanged", detail: boolText(readBoolean(rec, "campaignDigestChanged")) },
+      { term: "baseCampaignDigest", detail: digestCode(readString(rec, "baseCampaignDigest")) },
+      { term: "nextCampaignDigest", detail: digestCode(readString(rec, "nextCampaignDigest")) },
+      { term: "runCount", detail: deltaCell(readDelta(rec, "runCount")) },
+      { term: "validRunCount", detail: deltaCell(readDelta(rec, "validRunCount")) },
+      { term: "invalidRunCount", detail: deltaCell(readDelta(rec, "invalidRunCount")) },
+      { term: "totalArtifactCount", detail: deltaCell(readDelta(rec, "totalArtifactCount")) },
+      { term: "totalUnknownArtifactCount", detail: deltaCell(readDelta(rec, "totalUnknownArtifactCount")) },
+      { term: "totalMalformedArtifactCount", detail: deltaCell(readDelta(rec, "totalMalformedArtifactCount")) },
+      { term: "added / removed / changed runs", detail: `${addedRuns.length} / ${removedRuns.length} / ${changedRuns.length}` },
+      { term: "newlyNeedsAttention", detail: attentionList(newlyNeedsAttention) },
+      { term: "noLongerNeedsAttention", detail: attentionList(noLongerNeedsAttention) },
+      { term: "aggregateSchemasAdded", detail: attentionList(schemasAdded) },
+      { term: "aggregateSchemasRemoved", detail: attentionList(schemasRemoved) },
+    ])}
+    ${tableSection({
+      title: "Changed runs",
+      columns: [
+        { header: "Run" },
+        { header: "Digest changed" },
+        { header: "Valid base → next" },
+        { header: "Became invalid" },
+        { header: "Artifacts Δ" },
+      ],
+      rows: runRows,
+      empty: "No changed runs.",
+      caption: capCaption(runCap, "runs"),
+    })}
+    ${tableSection({
+      title: "Aggregate kind count changes",
+      columns: [{ header: "Kind" }, { header: "base → next (Δ)" }],
+      rows: kindRows,
+      empty: "No aggregate kind count changes.",
+      caption: capCaption(kindCap, "count changes"),
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
+/* ------------------------------------------------------------------ *
  * Dispatch.
  * ------------------------------------------------------------------ */
 
@@ -1217,6 +1461,10 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderResearchStatusView(rec);
     case "backtest.research.campaign.index.v1":
       return renderResearchCampaignIndexView(rec);
+    case "backtest.research.bundle.diff.v1":
+      return renderResearchBundleDiffView(rec);
+    case "backtest.research.campaign.diff.v1":
+      return renderResearchCampaignDiffView(rec);
     default:
       return null;
   }
