@@ -714,6 +714,66 @@ h3 {
   font-size: 13px;
 }
 
+/* ---- Artifact inspector ------------------------------------------------- */
+
+.sm-artifactview {
+  display: flex;
+  flex-direction: column;
+}
+.sm-artifactview__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.sm-artifactview__note {
+  margin: 18px 0 0;
+  color: var(--text-faint);
+  font-size: 12.5px;
+}
+.sm-artifactview .sm-section:first-of-type {
+  margin-top: 18px;
+}
+
+.sm-muted-line {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 14px;
+}
+.sm-trunc {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.sm-pre {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  overflow: hidden;
+}
+.sm-pre__code {
+  margin: 0;
+  padding: 14px 16px;
+  max-height: 460px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  white-space: pre;
+  tab-size: 2;
+}
+.sm-pre__code code {
+  font-size: inherit;
+}
+.sm-pre__meta {
+  margin: 0;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
 /* ---- Tables ------------------------------------------------------------- */
 
 .sm-tablewrap {
