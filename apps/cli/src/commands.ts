@@ -122,6 +122,8 @@ import {
   formatBacktestResearchBundleDiff,
   diffBacktestResearchCampaignIndexes,
   formatBacktestResearchCampaignIndexDiff,
+  buildBacktestResearchCampaignHistoryReport,
+  formatBacktestResearchCampaignHistoryReport,
   digestContent,
   BACKTEST_RESEARCH_MANIFEST_SCHEMA_VERSION,
   BACKTEST_RESEARCH_VERIFY_SCHEMA_VERSION,
@@ -156,6 +158,9 @@ import {
   type BacktestResearchCampaignRunInput,
   type BacktestResearchBundleDiff,
   type BacktestResearchCampaignIndexDiff,
+  type BacktestResearchCampaignHistoryReport,
+  type BacktestResearchCampaignHistorySnapshotInput,
+  type BacktestResearchCampaignHistoryBaselineSelector,
 } from "@soulmaker/backtest";
 
 export interface CommandContext {
@@ -3530,6 +3535,93 @@ export function paperBacktestDiffResearchIndexReport(
     text: formatBacktestResearchCampaignIndexDiff(diff, { baseLabel: opts.basePath, nextLabel: opts.nextPath }),
     exitCode,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 20 — paper:backtest:research:history
+//   Fold an ORDERED set of campaign index JSON snapshots into one deterministic
+//   trend report: which runs appeared/disappeared/changed/regressed/recovered,
+//   per-run valid + attention streaks, and a CONSERVATIVE regression signal
+//   (reusing the Sprint 19 diff semantics) suitable for CI. Reads the named
+//   files only, runs no backtest, and writes nothing. No network, no wallet.
+// ---------------------------------------------------------------------------
+
+export interface PaperBacktestResearchHistoryCommandOptions {
+  /** Ordered campaign index JSON paths (repeatable; oldest first, latest last). Required (>=1). */
+  indexPaths?: string[];
+  json?: boolean;
+  /** Exit non-zero when there is any change since baseline. */
+  failOnChange?: boolean;
+  /** Exit non-zero only on a conservative integrity regression since baseline. */
+  failOnRegression?: boolean;
+  /** Exit non-zero when any run currently needs attention. */
+  failOnAttention?: boolean;
+  /** Exit non-zero when any run newly needs attention since baseline. */
+  failOnNewAttention?: boolean;
+  /** Baseline for the "since baseline" deltas: "first" (default), "previous", or a supplied path. */
+  baseline?: string;
+}
+
+/**
+ * `soulmaker paper:backtest:research:history` — fold an ORDERED set of campaign index JSON files
+ * into one deterministic history/trend report. Reads ONLY the named local files in the given order
+ * (oldest first, latest last; BOM-tolerant; a missing/malformed/non-index/wrong-schema file
+ * refuses), runs no backtest, and writes nothing. It walks each run's trajectory across the
+ * snapshots — first/last seen, present/valid/attention now, ever-needed-attention, current valid +
+ * attention streaks, and digest-change count — and REUSES the Sprint 19 campaign diff for the
+ * "since baseline" / "since previous snapshot" deltas, so `hasChange` and the CONSERVATIVE
+ * `hasRegression` are byte-identical to the diff. `--baseline first|previous|<path>` chooses the
+ * reference snapshot (default `first`). `--json` emits the stable, redacted report; the
+ * `--fail-on-*` flags set a non-zero exit for change / regression / current attention / new
+ * attention. No network, no wallet. The report embeds no artifact contents and is not a live
+ * result, advice, or a profitability claim.
+ */
+export function paperBacktestResearchHistoryReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestResearchHistoryCommandOptions = {},
+): CliReport {
+  const paths = opts.indexPaths ?? [];
+  if (paths.length === 0) {
+    return { text: "Refusing: at least one --index <path> is required.", exitCode: 1 };
+  }
+
+  // Read each campaign index file in order; the snapshot id is the path as supplied on the CLI.
+  const snapshots: BacktestResearchCampaignHistorySnapshotInput[] = [];
+  for (const path of paths) {
+    let value: unknown;
+    try {
+      value = readJsonValue(ctx, path, "campaign index");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    snapshots.push({ snapshotId: path, index: value });
+  }
+
+  // Baseline selector: "first" (default) / "previous" / an explicit supplied path (== a snapshot id).
+  let baseline: BacktestResearchCampaignHistoryBaselineSelector;
+  if (opts.baseline === undefined || opts.baseline === "first") baseline = "first";
+  else if (opts.baseline === "previous") baseline = "previous";
+  else baseline = { snapshotId: opts.baseline };
+
+  let report: BacktestResearchCampaignHistoryReport;
+  try {
+    report = buildBacktestResearchCampaignHistoryReport({ snapshots, baseline });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const exitCode =
+    (opts.failOnChange && report.hasChange) ||
+    (opts.failOnRegression && report.hasRegression) ||
+    (opts.failOnAttention && report.hasAttention) ||
+    (opts.failOnNewAttention && report.hasNewAttentionSinceBaseline)
+      ? 1
+      : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
+  }
+  return { text: formatBacktestResearchCampaignHistoryReport(report), exitCode };
 }
 
 function yesNo(value: boolean): string {

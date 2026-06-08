@@ -36,6 +36,7 @@ import {
   paperBacktestResearchIndexReport,
   paperBacktestDiffResearchBundleReport,
   paperBacktestDiffResearchIndexReport,
+  paperBacktestResearchHistoryReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -830,5 +831,49 @@ program
     console.log(text);
     if (exitCode !== 0) process.exitCode = exitCode;
   });
+
+program
+  .command("paper:backtest:research:history")
+  .description(
+    "Fold an ORDERED set of campaign index JSON snapshots into one deterministic trend report (PAPER ONLY; per-run first/last-seen, present/valid/attention now, valid + attention streaks, digest-change count; reuses the Sprint 19 diff for since-baseline/since-previous change + conservative regression; reads the named files only, writes nothing)",
+  )
+  .option(
+    "--index <path>",
+    "campaign index JSON snapshot (repeatable; oldest first, latest last)",
+    (value: string, previous: string[]) => previous.concat(value),
+    [] as string[],
+  )
+  .option("--baseline <ref>", 'since-baseline reference: "first" (default), "previous", or a supplied --index path')
+  .option("--json", "emit the history report as stable JSON")
+  .option("--fail-on-change", "exit non-zero when there is any change since baseline")
+  .option("--fail-on-regression", "exit non-zero only on a conservative integrity regression since baseline")
+  .option("--fail-on-attention", "exit non-zero when any run currently needs attention")
+  .option("--fail-on-new-attention", "exit non-zero when any run newly needs attention since baseline")
+  .action(
+    (opts: {
+      index?: string[];
+      baseline?: string;
+      json?: boolean;
+      failOnChange?: boolean;
+      failOnRegression?: boolean;
+      failOnAttention?: boolean;
+      failOnNewAttention?: boolean;
+    }) => {
+      const { text, exitCode } = paperBacktestResearchHistoryReport(
+        {},
+        {
+          indexPaths: opts.index ?? [],
+          baseline: opts.baseline,
+          json: Boolean(opts.json),
+          failOnChange: Boolean(opts.failOnChange),
+          failOnRegression: Boolean(opts.failOnRegression),
+          failOnAttention: Boolean(opts.failOnAttention),
+          failOnNewAttention: Boolean(opts.failOnNewAttention),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
 
 program.parseAsync(process.argv);
