@@ -36,6 +36,13 @@ describe("report schema registry", () => {
     expect(knownSchema("backtest.sensitivity.matrix.diff.v1")?.stability).toBe("emerging");
   });
 
+  it("knows the emerging research bundle/status schemas", () => {
+    expect(knownSchema("backtest.research.bundle.v1")?.stability).toBe("emerging");
+    expect(knownSchema("backtest.research.status.v1")?.stability).toBe("emerging");
+    expect(knownSchema("backtest.research.bundle.v1")?.family).toBe("research");
+    expect(knownSchema("backtest.research.status.v1")?.family).toBe("research");
+  });
+
   it("marks shipped schemas as stable with a real CLI command", () => {
     const report = knownSchema("backtest.report.v1");
     expect(report?.stability).toBe("stable");
