@@ -92,6 +92,21 @@ export function renderToString(value: HtmlValue): string {
   return renderValue(value);
 }
 
+/**
+ * Render a full document for writing to disk: like {@link renderToString} but
+ * with per-line trailing whitespace stripped so committed static output stays
+ * clean (and `git diff --check` stays quiet). Use this ONLY at the
+ * document-write boundary — never for inline fragment rendering, where
+ * surrounding whitespace can be significant.
+ *
+ * Safe for the JSON preview block: `JSON.stringify(…, null, 2)` never emits a
+ * line that ends in significant whitespace, and escaped values never contain a
+ * raw newline, so no displayed content ends a line with spaces.
+ */
+export function renderDocument(value: HtmlValue): string {
+  return renderToString(value).replace(/[ \t]+$/gm, "");
+}
+
 /** Join a list of fragments with no separator (sugar for `raw(parts.join(""))`). */
 export function fragments(parts: readonly HtmlValue[]): RawHtml {
   return raw(parts.map(renderValue).join(""));
