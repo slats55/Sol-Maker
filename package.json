@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "web:build": "tsx apps/web/src/build.ts",
+    "web:inspect": "tsx apps/web/src/inspect.ts",
     "check": "pnpm run typecheck && pnpm run lint && pnpm run test"
   },
   "devDependencies": {
