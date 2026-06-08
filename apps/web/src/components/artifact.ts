@@ -13,6 +13,7 @@ import type { NormalizedArtifact } from "../lib/local-artifact.js";
 import { DataTable } from "./tables.js";
 import { DefinitionList, Pill, RiskNotice, Section, type Tone } from "./ui.js";
 import { ReportSchemaBadge } from "./reports.js";
+import { renderTypedArtifactView } from "./artifact-views.js";
 
 /** Tone for a schema-recognition status. */
 function statusTone(status: SchemaRecognition): Tone | "muted" {
@@ -148,8 +149,23 @@ function notesSection(view: NormalizedArtifact): RawHtml | null {
   });
 }
 
-/** Full inspector view for a normalized local artifact. */
-export function ArtifactReportView(view: NormalizedArtifact): RawHtml {
+/** A muted lead-in shown above the generic view when a typed view precedes it. */
+function genericLead(): RawHtml {
+  return html`<p class="sm-artifactview__generic-lead sm-muted-line">
+    Generic field view — applies to every artifact, recognized schema or not.
+  </p>`;
+}
+
+/**
+ * Full inspector view for a normalized local artifact.
+ *
+ * When the RAW parsed value is supplied and the schema is recognized, a typed,
+ * schema-aware view is rendered first (see ./artifact-views.ts); the generic,
+ * schema-agnostic summary always follows so nothing is ever hidden. Passing no
+ * `raw` (e.g. unit tests of the generic view) simply skips the typed view.
+ */
+export function ArtifactReportView(view: NormalizedArtifact, raw?: unknown): RawHtml {
+  const typed = raw === undefined ? null : renderTypedArtifactView(view, raw);
   return html`<div class="sm-artifactview">
     <div class="sm-artifactview__head">
       ${ArtifactSchemaBadge(view)}
@@ -157,6 +173,8 @@ export function ArtifactReportView(view: NormalizedArtifact): RawHtml {
       <span class="sm-pill sm-pill--muted">local · read-only</span>
     </div>
 
+    ${typed}
+    ${typed ? genericLead() : null}
     ${summarySection(view)}
     ${warningsSection(view)}
     ${scalarsSection(view)}
