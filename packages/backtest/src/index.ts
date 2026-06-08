@@ -439,3 +439,23 @@ export type {
   BacktestResearchCampaignIndexDiff,
   FormatBacktestResearchCampaignIndexDiffOptions,
 } from "./research-campaign-index-diff.js";
+
+export {
+  buildBacktestResearchCampaignHistoryReport,
+  validateBacktestResearchCampaignHistoryReport,
+  formatBacktestResearchCampaignHistoryReport,
+  BacktestResearchCampaignHistoryReportError,
+  BACKTEST_RESEARCH_CAMPAIGN_HISTORY_REPORT_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_CAMPAIGN_HISTORY_REPORT_BANNER,
+  BACKTEST_RESEARCH_CAMPAIGN_HISTORY_REPORT_DISCLAIMERS,
+} from "./research-campaign-history.js";
+
+export type {
+  BacktestResearchCampaignHistoryBaselineSelector,
+  BacktestResearchCampaignHistorySnapshotInput,
+  BuildBacktestResearchCampaignHistoryReportInput,
+  BacktestResearchCampaignHistoryBaselineKind,
+  BacktestResearchCampaignHistoryRunSummary,
+  BacktestResearchCampaignHistoryReport,
+  FormatBacktestResearchCampaignHistoryReportOptions,
+} from "./research-campaign-history.js";
