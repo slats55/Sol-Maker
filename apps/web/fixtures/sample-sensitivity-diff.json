@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "backtest.sensitivity.diff.v1",
+  "compatibility": {
+    "status": "same-schema",
+    "compatible": true,
+    "expectedSchemaVersion": "backtest.sensitivity.v1",
+    "schemaVersion": {
+      "base": "backtest.sensitivity.v1",
+      "next": "backtest.sensitivity.v1",
+      "match": true,
+      "baseIsExpected": true,
+      "nextIsExpected": true
+    },
+    "planName": { "base": "sample-perturbation-plan", "next": "sample-perturbation-plan", "match": true },
+    "baseScenarioName": { "base": "sample-buy-hold", "next": "sample-buy-hold", "match": true },
+    "baseScenarioDigest": { "base": "sample-digest-buy-hold", "next": "sample-digest-buy-hold", "match": true },
+    "notes": []
+  },
+  "basePlanName": "sample-perturbation-plan",
+  "nextPlanName": "sample-perturbation-plan",
+  "baseVariantCount": 2,
+  "nextVariantCount": 3,
+  "variantCount": { "base": 2, "next": 3, "delta": 1 },
+  "failedVariantCount": { "base": 0, "next": 1, "delta": 1 },
+  "warningCount": { "base": 0, "next": 0, "delta": 0 },
+  "baseline": {
+    "baseStatus": "passed",
+    "nextStatus": "passed",
+    "statusChanged": false,
+    "warningCount": { "base": 0, "next": 0, "delta": 0 },
+    "summary": null
+  },
+  "added": [
+    {
+      "suffix": "+20pct",
+      "scenarioName": "sample-buy-hold-+20pct",
+      "scenarioDigest": "sample-digest-plus20",
+      "status": "failed"
+    }
+  ],
+  "removed": [],
+  "changed": [
+    {
+      "suffix": "+10pct",
+      "scenarioName": "sample-buy-hold-+10pct",
+      "baseDigest": "sample-digest-plus10",
+      "nextDigest": "sample-digest-plus10b",
+      "digestMatch": false,
+      "baseStatus": "passed",
+      "nextStatus": "failed",
+      "baseChangeCount": 1,
+      "nextChangeCount": 1,
+      "warningCount": { "base": 0, "next": 0, "delta": 0 },
+      "warningCodes": { "added": [], "removed": [] },
+      "summary": null,
+      "isRegression": true,
+      "regressionReasons": ["status passed → failed"]
+    }
+  ],
+  "failedChanged": [],
+  "rankingMovement": [],
+  "hasRegression": true,
+  "regressionReasons": ["variant +10pct regressed: passed → failed"],
+  "disclaimers": [
+    "Simulated paper-only diff — conservative delta between two sensitivity reports."
+  ]
+}

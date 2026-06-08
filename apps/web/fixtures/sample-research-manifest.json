@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "backtest.research.manifest.v1",
+  "banner": "PAPER ONLY — research run manifest. Not live, not advice, not a profitability claim.",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "disclaimers": [
+    "Simulated paper-only research run — manifest of generated artifacts and digests."
+  ],
+  "digestAlgorithm": "sha256",
+  "runName": "sample-research-run",
+  "artifactCount": 3,
+  "totalSizeBytes": 4096,
+  "artifacts": [
+    {
+      "path": "reports/buy-hold.report.json",
+      "kind": "backtest-report",
+      "schemaVersion": "backtest.report.v1",
+      "digest": "sample-digest-report",
+      "sizeBytes": 1536
+    },
+    {
+      "path": "suite/index.json",
+      "kind": "suite-index",
+      "schemaVersion": "backtest.suite.v1",
+      "digest": "sample-digest-suite",
+      "sizeBytes": 1792
+    },
+    {
+      "path": "notes/readme.txt",
+      "kind": "unknown-json",
+      "schemaVersion": null,
+      "digest": "sample-digest-notes",
+      "sizeBytes": 768
+    }
+  ],
+  "kindCounts": [
+    { "kind": "backtest-report", "count": 1 },
+    { "kind": "suite-index", "count": 1 },
+    { "kind": "unknown-json", "count": 1 }
+  ],
+  "schemaCounts": [
+    { "schemaVersion": "backtest.report.v1", "count": 1 },
+    { "schemaVersion": "backtest.suite.v1", "count": 1 }
+  ],
+  "warnings": ["1 artifact had no recognized schemaVersion (unknown-json)."],
+  "notes": []
+}

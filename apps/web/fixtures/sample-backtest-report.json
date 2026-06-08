@@ -1,25 +1,52 @@
 {
   "schemaVersion": "backtest.report.v1",
-  "name": "buy-hold-sample",
-  "mode": "PAPER",
-  "scenarioDigest": "sample-fixture-digest-0000000000000000",
-  "steps": 6,
-  "simulatedFills": 4,
-  "rejections": 1,
-  "closedPositions": 2,
-  "openPositions": 1,
-  "totalSimulatedPnl": 12.5,
-  "deterministic": true,
+  "banner": "PAPER ONLY — deterministic simulated backtest. Not live, not advice, not a profitability claim.",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
   "disclaimers": [
     "Simulated paper-only result — not live, not advice, not a profitability claim.",
     "Outputs are bookkeeping over an injected scenario, not market behaviour."
   ],
-  "positions": [
-    { "mint": "SampleMint1111111111111111111111111111111111", "simulatedPnl": 7.5 },
-    { "mint": "SampleMint2222222222222222222222222222222222", "simulatedPnl": 5.0 }
-  ],
-  "config": {
-    "maxPositions": 3,
-    "perTradeSize": 1.0
-  }
+  "warnings": [],
+  "scenarioName": "sample-buy-hold",
+  "scenarioDigest": "sample-digest-buy-hold",
+  "stepCount": 6,
+  "totalCandidateCount": 5,
+  "planCounts": {
+    "paperBuyCandidateCount": 3,
+    "paperSellCandidateCount": 1,
+    "watchCount": 1,
+    "skippedCount": 0,
+    "rejectedCount": 1
+  },
+  "fillCounts": { "buyCount": 3, "sellCount": 1 },
+  "rejectedCounts": { "byRisk": 1, "byCaps": 0, "byPrice": 0, "total": 1 },
+  "positionCounts": { "open": 1, "closed": 2 },
+  "pnl": { "realizedUsd": 7.5, "unrealizedUsd": 5, "totalUsd": 12.5 },
+  "simulatedNotionalUsd": 30,
+  "perMint": [
+    {
+      "mint": "SampleMint1111111111111111111111111111111111",
+      "buyFillCount": 2,
+      "sellFillCount": 1,
+      "openQuantity": 0,
+      "realizedPnlUsd": 7.5,
+      "unrealizedPnlUsd": 0,
+      "totalPnlUsd": 7.5,
+      "simulatedNotionalUsd": 20
+    },
+    {
+      "mint": "SampleMint2222222222222222222222222222222222",
+      "buyFillCount": 1,
+      "sellFillCount": 0,
+      "openQuantity": 1,
+      "realizedPnlUsd": 0,
+      "unrealizedPnlUsd": 5,
+      "totalPnlUsd": 5,
+      "simulatedNotionalUsd": 10
+    }
+  ]
 }
