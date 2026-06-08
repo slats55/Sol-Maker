@@ -17,7 +17,8 @@ export type CommandGroup =
   | "Risk"
   | "Paper trading"
   | "Strategy"
-  | "Backtest research";
+  | "Backtest research"
+  | "Research runs";
 
 export const COMMAND_GROUP_ORDER: readonly CommandGroup[] = [
   "Diagnostics",
@@ -26,6 +27,7 @@ export const COMMAND_GROUP_ORDER: readonly CommandGroup[] = [
   "Paper trading",
   "Strategy",
   "Backtest research",
+  "Research runs",
 ];
 
 export interface CommandRef {
@@ -196,9 +198,83 @@ export const COMMANDS: readonly CommandRef[] = [
     readsChain: false,
   },
   {
+    command: "paper:backtest:sensitivity:matrix",
+    summary:
+      "Sweep a directory of base scenarios through one shared variant plan; aggregate every base × variant cell into a stable matrix.",
+    group: "Backtest research",
+    readsChain: false,
+  },
+  {
+    command: "paper:backtest:diff:sensitivity:matrix",
+    summary:
+      "Conservative delta between two sensitivity matrices (bases paired by id, cells by suffix).",
+    group: "Backtest research",
+    readsChain: false,
+  },
+  {
     command: "paper:backtest:suite:coverage",
     summary: "Report which simulated paper behaviours a suite exercised.",
     group: "Backtest research",
+    readsChain: false,
+  },
+
+  // Research runs — reproducibility / integrity tooling over a directory of a
+  // research run's local JSON artifacts (and across a campaign of runs). All
+  // read local files only; the diff/verify/status commands write nothing.
+  {
+    command: "paper:backtest:research:manifest",
+    summary:
+      "Build a reproducibility manifest of a run's local JSON artifacts + content digests.",
+    group: "Research runs",
+    readsChain: false,
+  },
+  {
+    command: "paper:backtest:research:verify",
+    summary:
+      "Re-verify a manifest against the current local artifacts (missing / changed / extra / schema-mismatch). Writes nothing.",
+    group: "Research runs",
+    readsChain: false,
+  },
+  {
+    command: "paper:backtest:diff:research:manifest",
+    summary:
+      "Conservative delta between two research manifests (artifacts paired by path). Reads two files, writes nothing.",
+    group: "Research runs",
+    readsChain: false,
+  },
+  {
+    command: "paper:backtest:research:bundle",
+    summary:
+      "Package a run's local artifacts into one self-describing bundle: manifest summary + counts + a top-level run digest.",
+    group: "Research runs",
+    readsChain: false,
+  },
+  {
+    command: "paper:backtest:diff:research:bundle",
+    summary:
+      "Conservative delta between two research bundles (artifacts paired by path): hasChange plus a conservative integrity hasRegression. Reads two files, writes nothing.",
+    group: "Research runs",
+    readsChain: false,
+  },
+  {
+    command: "paper:backtest:research:status",
+    summary:
+      "Summarize a research directory's health — complete / recognized / stable / in-sync — with a neutral recommended action.",
+    group: "Research runs",
+    readsChain: false,
+  },
+  {
+    command: "paper:backtest:research:index",
+    summary:
+      "Index a campaign directory of runs into one comparable summary: per-run digests + health and aggregate kind/schema counts.",
+    group: "Research runs",
+    readsChain: false,
+  },
+  {
+    command: "paper:backtest:diff:research:index",
+    summary:
+      "Conservative delta between two campaign indexes (runs paired by runId): hasChange plus a conservative integrity hasRegression. Reads two files, writes nothing.",
+    group: "Research runs",
     readsChain: false,
   },
 ];
