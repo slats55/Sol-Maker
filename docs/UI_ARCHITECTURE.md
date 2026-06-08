@@ -44,6 +44,7 @@ src/lib/         pure data + the html engine (no components)
   report-types.ts      frontend-only report schema registry + envelope type
   command-reference.ts factual CLI command reference data (+ web build/inspect)
   local-artifact.ts    defensive normalizer for a local report JSON (pure, bounded)
+  json-access.ts       defensive accessors/formatters for untrusted JSON (pure, bounded)
   sample-data.ts       clearly-labelled, non-live fixtures
 
 src/components/  pure RawHtml builders (import lib, never pages)
@@ -53,6 +54,7 @@ src/components/  pure RawHtml builders (import lib, never pages)
   tables.ts            DataTable, CapabilityTable, ReportTable
   reports.ts           ReportSchemaBadge, ReportSummaryCard, ReportPlaceholder
   artifact.ts          ArtifactSchemaBadge, ArtifactReportView (inspector view)
+  artifact-views.ts    schema-aware typed views + renderTypedArtifactView dispatch
 
 src/pages/       one render function per page + registry.ts (the page list)
   artifact.ts          renderArtifact (empty state) + renderArtifactReport (loaded)
@@ -85,6 +87,35 @@ guarantees of the generator — no upload, no network, no server, no wallet, no
 keys — and never executes report content (everything is escaped and capped). See
 [`WEB_LOCAL_ARTIFACT_INSPECTOR.md`](WEB_LOCAL_ARTIFACT_INSPECTOR.md).
 
+## Schema-aware typed views (`src/components/artifact-views.ts`)
+
+The inspector renders two layers for a loaded artifact:
+
+1. A **typed, schema-aware view** when the declared `schemaVersion` is recognized
+   — identity fields, headline counts, regression/validity notices, and
+   row-capped tables tailored to that schema.
+2. The **generic normalized view** (always shown below the typed view) plus the
+   length-capped raw preview, so nothing is ever hidden.
+
+`renderTypedArtifactView(view, raw)` is the dispatch: it picks a renderer by
+`schemaVersion` and returns `null` to fall back to the generic view. It is **UI-only
+and total** by contract:
+
+- It imports **no backend package**; it reads the raw parsed JSON purely as data
+  through `lib/json-access.ts` (every accessor returns `null` on a missing or
+  type-mismatched field — it never throws).
+- It returns `null` for an unknown schema, for a non-object value, and for any
+  error thrown while building a view (wrapped in `try/catch`).
+- Untrusted values are interpolated as **plain strings** (escaped by the `html`
+  engine) and **never** wrapped in `raw()`; tables/lists are row-capped and
+  digests elided.
+- Missing expected fields render as “—” with a visible **partial-view** notice,
+  so a typed view is honest about what it could not read.
+
+Adding a typed view: extend `lib/report-types.ts` (so the schema is badged), add
+a `render<Schema>View(rec)` and a `switch` case in `buildTypedView`, add a
+fixture/test, and `pnpm web:build`.
+
 ## Styling conventions
 
 - All classes are prefixed `sm-` and follow a light BEM style
@@ -102,6 +133,9 @@ keys — and never executes report content (everything is escaped and capped). S
 - Interpolated strings are escaped (verified with hostile inputs).
 - Sample data is always `isLive: false` and never fakes connected/running/profit.
 - `report-types.ts` labels known vs. emerging vs. unknown schemas honestly.
+- Schema-aware typed views are defensive: unknown schemas, non-object values, and
+  malformed shapes fall back to the generic view, and missing fields render as
+  “—” — the dispatcher never throws.
 
 ## Adding a page
 
