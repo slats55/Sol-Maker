@@ -160,14 +160,17 @@
           <article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker doctor</code>
     <p class="sm-cmd__summary">Environment / config sanity check. No chain, no key.</p>
+
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker config:check</code>
     <p class="sm-cmd__summary">Validate soulmaker.config.json against the safety schema.</p>
+
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker mode</code>
     <p class="sm-cmd__summary">Show the configured mode and its capabilities (read/build/simulate/send).</p>
+
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article>
         </div></div>
@@ -183,6 +186,7 @@
           <article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker solana:doctor</code>
     <p class="sm-cmd__summary">Read-only RPC health / version check. Host-only endpoint display.</p>
+
     <span
             class="sm-pill sm-pill--caution"
             title="Reads public chain state; in PAPER mode requires --allow-paper-read and accepts public keys only"
@@ -191,6 +195,7 @@
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker wallet:watch &lt;pubkey&gt;</code>
     <p class="sm-cmd__summary">Watch a public address: SOL balance + token accounts. Public keys only.</p>
+
     <span
             class="sm-pill sm-pill--caution"
             title="Reads public chain state; in PAPER mode requires --allow-paper-read and accepts public keys only"
@@ -199,6 +204,7 @@
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker token:inspect &lt;mint&gt;</code>
     <p class="sm-cmd__summary">Inspect a token mint: decimals, supply, authorities, program, init state.</p>
+
     <span
             class="sm-pill sm-pill--caution"
             title="Reads public chain state; in PAPER mode requires --allow-paper-read and accepts public keys only"
@@ -207,6 +213,7 @@
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker token:accounts &lt;pubkey&gt;</code>
     <p class="sm-cmd__summary">List SPL / Token-2022 accounts for a public address.</p>
+
     <span
             class="sm-pill sm-pill--caution"
             title="Reads public chain state; in PAPER mode requires --allow-paper-read and accepts public keys only"
@@ -226,6 +233,7 @@
           <article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker token:risk &lt;mint&gt;</code>
     <p class="sm-cmd__summary">Advisory, read-only risk flags + score. Not a buy recommendation.</p>
+
     <span
             class="sm-pill sm-pill--caution"
             title="Reads public chain state; in PAPER mode requires --allow-paper-read and accepts public keys only"
@@ -245,14 +253,17 @@
           <article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:run</code>
     <p class="sm-cmd__summary">Run a simulated paper session over injected candidates + prices.</p>
+
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:journal</code>
     <p class="sm-cmd__summary">Summarize an append-only paper trade journal (JSONL).</p>
+
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:status</code>
     <p class="sm-cmd__summary">Show simulated portfolio state derived from a paper journal.</p>
+
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article>
         </div></div>
@@ -268,10 +279,12 @@
           <article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker strategy:evaluate</code>
     <p class="sm-cmd__summary">Evaluate one candidate into a single paper-only decision.</p>
+
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker strategy:plan</code>
     <p class="sm-cmd__summary">Turn a candidate list into a PaperCandidate[] plan (manual hand-off only).</p>
+
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article>
         </div></div>
@@ -287,50 +300,208 @@
           <article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:backtest</code>
     <p class="sm-cmd__summary">Replay an injected scenario into a deterministic simulated report.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="A single deterministic, simulated paper backtest over one injected scenario.">
+    <code>backtest.report.v1</code>
+  </span>
+          </div>
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:backtest:lint</code>
     <p class="sm-cmd__summary">Validate / lint a scenario (errors block; warnings stay runnable).</p>
+
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:backtest:diff</code>
     <p class="sm-cmd__summary">Conservative delta between two backtest report files.</p>
+
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:backtest:scenario:new</code>
     <p class="sm-cmd__summary">Generate a deterministic example scenario from a built-in template.</p>
+
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:backtest:scenario:matrix</code>
     <p class="sm-cmd__summary">Expand a base scenario across a config-only patch matrix.</p>
+
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:backtest:scenario:variants</code>
     <p class="sm-cmd__summary">Generate bounded numeric perturbation variants of a base scenario.</p>
+
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:backtest:scenario:variants:explain</code>
     <p class="sm-cmd__summary">Dry-run: explain what a variant plan would change, without writing files.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Dry-run explanation of what a variant plan would change, without generating files.">
+    <code>backtest.variant-plan.explain.v1</code>
+  </span>
+          </div>
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:backtest:suite</code>
     <p class="sm-cmd__summary">Run a directory of scenarios and write a suite index.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Aggregated index over a directory of injected scenarios (counts + summed simulated totals).">
+    <code>backtest.suite.v1</code>
+  </span>
+          </div>
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:backtest:diff:suite</code>
     <p class="sm-cmd__summary">Conservative delta between two suite indexes.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Conservative delta between two suite indexes.">
+    <code>backtest.suite.diff.v1</code>
+  </span>
+          </div>
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:backtest:sensitivity</code>
     <p class="sm-cmd__summary">Run a base + variants and report per-variant deltas vs the baseline.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Per-variant deltas vs a baseline over bounded numeric perturbations, with rankings by movement magnitude.">
+    <code>backtest.sensitivity.v1</code>
+  </span>
+          </div>
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:backtest:diff:sensitivity</code>
     <p class="sm-cmd__summary">Conservative delta between two sensitivity reports.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Conservative delta between two sensitivity reports (paired by suffix).">
+    <code>backtest.sensitivity.diff.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:sensitivity:matrix</code>
+    <p class="sm-cmd__summary">Sweep a directory of base scenarios through one shared variant plan; aggregate every base × variant cell into a stable matrix.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Cross-scenario sensitivity matrix: base scenarios × variants, with per-cell deltas and per-variant aggregates.">
+    <code>backtest.sensitivity.matrix.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:diff:sensitivity:matrix</code>
+    <p class="sm-cmd__summary">Conservative delta between two sensitivity matrices (bases paired by id, cells by suffix).</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Conservative delta between two sensitivity matrices (bases paired by id, cells by suffix).">
+    <code>backtest.sensitivity.matrix.diff.v1</code>
+  </span>
+          </div>
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:backtest:suite:coverage</code>
     <p class="sm-cmd__summary">Report which simulated paper behaviours a suite exercised.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Which simulated paper behaviours a suite exercised — behavioural bookkeeping, not market or test coverage.">
+    <code>backtest.coverage.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article>
+        </div></div>
+  </section><section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Research runs</h2>
+
+            </div>
+
+          </div>
+    <div class="sm-section__body"><div class="sm-cmdgrid">
+          <article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:research:manifest</code>
+    <p class="sm-cmd__summary">Build a reproducibility manifest of a run&#39;s local JSON artifacts + content digests.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Manifest of a paper research run&#39;s generated artifacts + digests.">
+    <code>backtest.research.manifest.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:research:verify</code>
+    <p class="sm-cmd__summary">Re-verify a manifest against the current local artifacts (missing / changed / extra / schema-mismatch). Writes nothing.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Result of re-verifying a research manifest against its artifacts on disk.">
+    <code>backtest.research.verify.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:diff:research:manifest</code>
+    <p class="sm-cmd__summary">Conservative delta between two research manifests (artifacts paired by path). Reads two files, writes nothing.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Conservative delta between two research run manifests.">
+    <code>backtest.research.manifest.diff.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:research:bundle</code>
+    <p class="sm-cmd__summary">Package a run&#39;s local artifacts into one self-describing bundle: manifest summary + counts + a top-level run digest.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Bundle summary of a paper research run: run digest, artifact/kind/schema counts, and a manifest summary.">
+    <code>backtest.research.bundle.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:diff:research:bundle</code>
+    <p class="sm-cmd__summary">Conservative delta between two research bundles (artifacts paired by path): hasChange plus a conservative integrity hasRegression. Reads two files, writes nothing.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Conservative delta between two research run bundles: run-digest change, artifact add/remove/digest-change, count/schema-set deltas, and a conservative regression flag.">
+    <code>backtest.research.bundle.diff.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:research:status</code>
+    <p class="sm-cmd__summary">Summarize a research directory&#39;s health — complete / recognized / stable / in-sync — with a neutral recommended action.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Integrity/status check of a paper research run: completeness, recognition, and manifest sync.">
+    <code>backtest.research.status.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:research:index</code>
+    <p class="sm-cmd__summary">Index a campaign directory of runs into one comparable summary: per-run digests + health and aggregate kind/schema counts.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Campaign-level summary across many paper research runs: per-run digests, drift, and aggregate kind/schema counts.">
+    <code>backtest.research.campaign.index.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:backtest:diff:research:index</code>
+    <p class="sm-cmd__summary">Conservative delta between two campaign indexes (runs paired by runId): hasChange plus a conservative integrity hasRegression. Reads two files, writes nothing.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Conservative delta between two research campaign indexes: campaign-digest change, runs added/removed/changed, attention transitions, aggregate count/schema deltas, and a conservative regression flag.">
+    <code>backtest.research.campaign.diff.v1</code>
+  </span>
+          </div>
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article>
         </div></div>
