@@ -97,6 +97,7 @@ backtest.sensitivity.matrix.diff.v1
 backtest.research.manifest.v1      backtest.research.verify.v1
 backtest.research.manifest.diff.v1 backtest.research.bundle.v1
 backtest.research.status.v1         backtest.research.campaign.index.v1
+backtest.research.bundle.diff.v1   backtest.research.campaign.diff.v1
 ```
 
 All of these are now **stable**: the cross-scenario matrix and the research-run
@@ -109,6 +110,25 @@ command per schema, verified against the commands registered in `apps/cli` on
 future schema whose backend has not yet landed); no catalogued schema is emerging
 today. The inspector never invents a command and labels any unrecognized schema
 honestly.
+
+### Sprint 19 research-diff schemas (now on `master`)
+
+The last two ids above are the Sprint 19 research diffs. They were **merged to
+`origin/master`** (verified at commit `53a7f83`: `packages/backtest/src/research-bundle-diff.ts`
+and `research-campaign-index-diff.ts`), so the UI now catalogues them as stable:
+
+| Schema                                 | CLI command                             |
+| -------------------------------------- | --------------------------------------- |
+| `backtest.research.bundle.diff.v1`     | `paper:backtest:diff:research:bundle`   |
+| `backtest.research.campaign.diff.v1`   | `paper:backtest:diff:research:index`    |
+
+Both have a faithful committed fixture (`apps/web/fixtures/sample-research-bundle-diff.json`,
+`sample-research-campaign-diff.json`) shaped to the real backend types, and a
+typed view (below). For any schema NOT yet on `master`, the inspector still
+degrades honestly: `schemaForCli` returns `undefined`, the command reference shows
+no artifact badge rather than a fake one, and an artifact bearing an unrecognized
+`schemaVersion` falls back to the generic, capped, escaped view (see
+`apps/web/tests/command-reference.test.ts` for the forward-compat guard).
 
 ## Schema-aware typed views
 
@@ -137,6 +157,12 @@ variant's total simulated PnL delta vs the base's baseline. The grid is
 row/column-capped (a `·` marks an absent cell; a status word marks a non-diffable
 run) and notes anything hidden. The matrix-diff view lists the individual
 base × variant **changed cells** (a full grid would be sparse for a diff).
+
+The Sprint 19 **research bundle diff** and **campaign diff** views each lead with
+a conservative integrity-regression notice (distinct from the broader change
+notice), then a compared-summary block, a row-capped change table (added /
+removed / digest-changed artifacts, or changed runs with their validity
+transition), and a count-change table — all read defensively and escaped.
 
 Every currently-recognized schema (the list above) has a typed view. Try one of
 the committed sample fixtures under `apps/web/fixtures/`, e.g.:
