@@ -421,3 +421,21 @@ export type {
   BacktestResearchBundleDiff,
   FormatBacktestResearchBundleDiffOptions,
 } from "./research-bundle-diff.js";
+
+export {
+  diffBacktestResearchCampaignIndexes,
+  validateBacktestResearchCampaignIndexDiff,
+  formatBacktestResearchCampaignIndexDiff,
+  BacktestResearchCampaignIndexDiffError,
+  BACKTEST_RESEARCH_CAMPAIGN_DIFF_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_CAMPAIGN_DIFF_DISCLAIMERS,
+} from "./research-campaign-index-diff.js";
+
+export type {
+  ResearchCampaignNumberDelta,
+  ResearchCampaignRunRef,
+  ResearchCampaignRunChange,
+  ResearchCampaignCountChange,
+  BacktestResearchCampaignIndexDiff,
+  FormatBacktestResearchCampaignIndexDiffOptions,
+} from "./research-campaign-index-diff.js";
