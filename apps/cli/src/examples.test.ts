@@ -17,9 +17,11 @@ import {
   paperBacktestSensitivityMatrixReport,
   paperBacktestResearchManifestReport,
   paperBacktestResearchVerifyReport,
+  paperSniperCandidatesValidateReport,
 } from "./commands.js";
 
 const EXAMPLES_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../examples/backtest");
+const SNIPER_EXAMPLES_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../examples/sniper");
 
 function readExample(name: string): unknown {
   return JSON.parse(readFileSync(join(EXAMPLES_DIR, name), "utf8"));
@@ -235,5 +237,27 @@ describe("examples/backtest — CLI smoke", () => {
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
+  });
+});
+
+describe("examples/sniper — fixtures validate", () => {
+  it("the shipped candidate list validates and normalizes (PAPER ONLY, no warnings)", () => {
+    const r = paperSniperCandidatesValidateReport(
+      { cwd: SNIPER_EXAMPLES_DIR, env: {} },
+      { inputPath: "candidates.example.json", json: true },
+    );
+    expect(r.exitCode).toBe(0);
+    const list = JSON.parse(r.text) as { schemaVersion: string; candidateCount: number; warnings: string[]; candidates: { candidateId: string }[] };
+    expect(list.schemaVersion).toBe("sniper.candidate.list.v1");
+    expect(list.candidateCount).toBe(2);
+    expect(list.warnings).toEqual([]);
+    expect(list.candidates.map((c) => c.candidateId)).toEqual(["example-usdc", "example-wsol"]);
+    // --fail-on-warning still passes (no duplicate mints in the fixture).
+    expect(
+      paperSniperCandidatesValidateReport(
+        { cwd: SNIPER_EXAMPLES_DIR, env: {} },
+        { inputPath: "candidates.example.json", failOnWarning: true },
+      ).exitCode,
+    ).toBe(0);
   });
 });

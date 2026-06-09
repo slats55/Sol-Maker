@@ -52,6 +52,7 @@ import {
   paperBacktestDiffResearchPortfolioReport,
   paperBacktestResearchPackReport,
   paperBacktestDiffResearchPackReport,
+  paperSniperCandidatesValidateReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -6576,6 +6577,131 @@ describe("paperBacktestDiffResearchPackReport (Sprint 24)", () => {
       const next = writeJson(cwd, "next.json", pack([art("ci", attentionIndex())]));
       const before = readdirSync(cwd).sort();
       paperBacktestDiffResearchPackReport({ cwd, env: {} }, { basePath: base, nextPath: next, json: true });
+      expect(readdirSync(cwd).sort()).toEqual(before);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperSniperCandidatesValidateReport (Sprint 25)", () => {
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const WRAPPED_SOL = "So11111111111111111111111111111111111111112";
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+
+  it("refuses when --input is missing", () => {
+    expect(paperSniperCandidatesValidateReport({}, {}).text).toMatch(/^Refusing: --input/);
+    expect(paperSniperCandidatesValidateReport({}, {}).exitCode).toBe(1);
+  });
+
+  it("validates a raw operator list and renders a PAPER-ONLY human summary", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const f = writeJson(cwd, "cands.json", {
+        candidates: [
+          { candidateId: "c1", mint: USDC, symbol: "USDC", sourceTag: "manual" },
+          { candidateId: "c2", mint: WRAPPED_SOL, name: "Wrapped SOL" },
+        ],
+      });
+      const r = paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: f });
+      expect(r.text).toContain("SIMULATED PAPER-ONLY SNIPER CANDIDATE LIST");
+      expect(r.text).toContain("PAPER ONLY");
+      expect(r.text.toLowerCase()).toContain("not live data");
+      expect(r.exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json emits a valid, stable normalized candidate list", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const f = writeJson(cwd, "cands.json", { sourceLabel: "watch", candidates: [{ candidateId: "c1", mint: USDC }] });
+      const r = paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: f, json: true });
+      const obj = JSON.parse(r.text) as { schemaVersion: string; candidateCount: number; candidates: { mint: string }[] };
+      expect(obj.schemaVersion).toBe("sniper.candidate.list.v1");
+      expect(obj.candidateCount).toBe(1);
+      expect(obj.candidates[0]!.mint).toBe(USDC);
+      // byte-stable across repeated calls
+      expect(paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: f, json: true }).text).toBe(r.text);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-warning exits 1 on a duplicate mint, 0 otherwise", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const clean = writeJson(cwd, "clean.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      const dup = writeJson(cwd, "dup.json", {
+        candidates: [
+          { candidateId: "c1", mint: USDC, sourceTag: "a" },
+          { candidateId: "c2", mint: USDC, sourceTag: "b" },
+        ],
+      });
+      expect(paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: clean, failOnWarning: true }).exitCode).toBe(0);
+      const r = paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: dup, failOnWarning: true });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toContain("Duplicate mints:");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a duplicate candidateId, an invalid mint, and secret-length input", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dupId = writeJson(cwd, "dupid.json", {
+        candidates: [{ candidateId: "x", mint: USDC }, { candidateId: "x", mint: WRAPPED_SOL }],
+      });
+      const badMint = writeJson(cwd, "bad.json", { candidates: [{ candidateId: "c1", mint: "not-a-mint" }] });
+      const secretLike = writeJson(cwd, "secret.json", { candidates: [{ candidateId: "c1", mint: "z".repeat(88) }] });
+      expect(paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: dupId }).exitCode).toBe(1);
+      expect(paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: badMint }).exitCode).toBe(1);
+      const r = paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: secretLike });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toMatch(/too long to be a public key/);
+      expect(r.text).not.toContain("z".repeat(88)); // never echo the secret-like input
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a wrong-schema file and a malformed file", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const wrong = writeJson(cwd, "wrong.json", { schemaVersion: "backtest.report.v1", candidates: [{ candidateId: "c1", mint: USDC }] });
+      expect(paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: wrong }).exitCode).toBe(1);
+      expect(paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: wrong }).text).toMatch(/schemaVersion must be/);
+      writeFileSync(join(cwd, "malformed.json"), "{ not json");
+      expect(paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: "malformed.json" }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("accepts a canonical list that carries the correct schemaVersion (round-trips)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const f = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      const normalized = JSON.parse(paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: f, json: true }).text);
+      const f2 = writeJson(cwd, "canonical.json", normalized);
+      const r = paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: f2, json: true });
+      expect(JSON.parse(r.text).candidateCount).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("writes nothing (read-only command)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const f = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      const before = readdirSync(cwd).sort();
+      paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: f, json: true });
       expect(readdirSync(cwd).sort()).toEqual(before);
     } finally {
       cleanup();

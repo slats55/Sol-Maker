@@ -1,0 +1,29 @@
+{
+  "_comment": "DETERMINISTIC FIXTURE — NOT live data, NOT trading results, NOT financial advice. The mints below are real, well-known public token mints used purely as offline, copyable examples. Every liquidity/volume/observed value is a made-up operator-supplied number and is NOT verified on-chain. Validate with: pnpm soulmaker paper:sniper:candidates:validate --input examples/sniper/candidates.example.json",
+  "sourceLabel": "examples/sniper/candidates.example.json",
+  "candidates": [
+    {
+      "candidateId": "example-usdc",
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "sourceTag": "manual",
+      "sourceNote": "Example only — a well-known mint used as a deterministic fixture.",
+      "observedLiquidityUsd": 1000000,
+      "observedVolumeUsd": 500000,
+      "tags": ["example", "stablecoin"],
+      "operatorNotes": ["Fixture candidate; not a recommendation."]
+    },
+    {
+      "candidateId": "example-wsol",
+      "mint": "So11111111111111111111111111111111111111112",
+      "symbol": "wSOL",
+      "name": "Wrapped SOL",
+      "sourceTag": "watchlist",
+      "observedLiquidityUsd": 2500000,
+      "observedMarketCapUsd": 0,
+      "tags": ["example"],
+      "operatorNotes": ["Fixture candidate; not a recommendation."]
+    }
+  ]
+}
