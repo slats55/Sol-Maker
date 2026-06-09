@@ -7014,6 +7014,32 @@ describe("paperSniperDecideReport (Sprint 27)", () => {
       }
     });
 
+    it("a v2 policy (Sprint 48): refused on the v1 path, applied (with risk limits) on the v2 path", () => {
+      const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+      try {
+        const { cands, preflight } = setup(cwd);
+        const policyV2 = writeJson(cwd, "policy-v2.json", {
+          policyLabel: "v2-policy",
+          policyMode: "research-only",
+          riskLimits: { requireInspectionPresent: true },
+        });
+        // fail-closed: the v1 path refuses a v2-shaped policy instead of dropping its limits.
+        const refused = paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, policyPath: policyV2 });
+        expect(refused.exitCode).toBe(1);
+        expect(refused.text).toMatch(/v2 fields/);
+        // the v2 path applies it: research-only ⇒ nothing paper-enters.
+        const r = paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, policyPath: policyV2, schemaVersion: "v2", json: true });
+        expect(r.exitCode).toBe(0);
+        const obj = JSON.parse(r.text) as { policySchemaVersion: string; paperEnterCount: number; decisions: { candidateId: string; reasonCodes: string[] }[] };
+        expect(obj.policySchemaVersion).toBe("sniper.policy.config.v2");
+        expect(obj.paperEnterCount).toBe(0);
+        expect(obj.decisions.find((d) => d.candidateId === "good")!.reasonCodes).toContain("policy-paper-enter-disabled");
+        expect(() => validatePaperSniperDecisionReportV2(obj)).not.toThrow();
+      } finally {
+        cleanup();
+      }
+    });
+
     it("--out writes a v2 report that validates; human output shows the code summary", () => {
       const { cwd, cleanup } = withConfig({ mode: "PAPER" });
       try {
@@ -7448,6 +7474,37 @@ describe("paperSniperPolicyValidateReport + decide --policy (Sprint 32)", () => 
   }
   const cleanInspection = (mint: string) => ({ mint, decimals: 6, supplyRaw: "1", uiSupply: 1, mintAuthorityPresent: false, freezeAuthorityPresent: false, isInitialized: true, programLabel: "spl-token" });
   const riskPass = (mint: string) => ({ mint, score: 10, decision: "PASS_FOR_PAPER_EVALUATION", flags: [], summary: [] });
+
+  it("--schema-version v2 (Sprint 48): raw v2 input, v1 upgrade, mode contradictions, fail-closed v1 path", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      // raw v2 input normalizes to a canonical v2
+      const rawV2 = writeJson(cwd, "raw-v2.json", { policyLabel: "p", policyMode: "research-only", riskLimits: { maxWarningsPerCandidate: 1 } });
+      const r = paperSniperPolicyValidateReport({ cwd, env: {} }, { inputPath: rawV2, schemaVersion: "v2", json: true });
+      expect(r.exitCode).toBe(0);
+      const obj = JSON.parse(r.text) as { schemaVersion: string; policyMode: string; allowPaperEnter: boolean; riskLimits: { maxWarningsPerCandidate: number } };
+      expect(obj.schemaVersion).toBe("sniper.policy.config.v2");
+      expect(obj.policyMode).toBe("research-only");
+      expect(obj.allowPaperEnter).toBe(false);
+      expect(obj.riskLimits.maxWarningsPerCandidate).toBe(1);
+      // a canonical v1 upgrades losslessly
+      const v1Canon = JSON.parse(paperSniperPolicyValidateReport({ cwd, env: {} }, { inputPath: writeJson(cwd, "v1.json", { policyLabel: "old" }), json: true }).text);
+      writeJson(cwd, "v1-canon.json", v1Canon);
+      const up = paperSniperPolicyValidateReport({ cwd, env: {} }, { inputPath: "v1-canon.json", schemaVersion: "v2", json: true });
+      expect(up.exitCode).toBe(0);
+      expect((JSON.parse(up.text) as { policyMode: string }).policyMode).toBe("conservative");
+      // a mode contradiction is refused
+      const bad = writeJson(cwd, "bad.json", { policyMode: "research-only", allowPaperEnter: true });
+      expect(paperSniperPolicyValidateReport({ cwd, env: {} }, { inputPath: bad, schemaVersion: "v2" }).exitCode).toBe(1);
+      // the v1 path refuses a v2-shaped policy instead of silently dropping mode/limits
+      expect(paperSniperPolicyValidateReport({ cwd, env: {} }, { inputPath: rawV2 }).exitCode).toBe(1);
+      expect(paperSniperPolicyValidateReport({ cwd, env: {} }, { inputPath: rawV2 }).text).toMatch(/v2 fields/);
+      // an unknown --schema-version is refused
+      expect(paperSniperPolicyValidateReport({ cwd, env: {} }, { inputPath: rawV2, schemaVersion: "v9" }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
 
   it("refuses when --input is missing and validates a raw policy with conservative defaults", () => {
     const { cwd, cleanup } = withConfig({ mode: "PAPER" });

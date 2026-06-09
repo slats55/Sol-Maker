@@ -304,6 +304,57 @@ pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight <p
 The default stays `v1` (backward compatible). All other flags (`--rules` / `--policy` / `--out` /
 `--force` / `--fail-on-paper-enter` / `--fail-on-risk`) behave identically in both modes.
 
+## Policy config v2 — `sniper.policy.config.v2` (Sprint 48)
+
+V2 = everything the v1 policy carries, plus an explicit **policy mode** and structured,
+reason-code-aware **risk limits**. V1 is fully preserved (`sniper.policy.config.v1` keeps validating
+and enforcing unchanged); `upgradeSniperPolicyConfigV1ToV2` lifts a v1 config losslessly.
+
+### Policy mode (a consistency contract, never a loosener)
+
+- `research-only` — paper-enter is forbidden outright (presets `allowPaperEnter=false`; an explicit
+  `allowPaperEnter=true` is **refused**).
+- `conservative` — the fail-closed switches (`requirePreflightPass`,
+  `failClosedOnUnknownPreflight`, `failClosedOnMissingRisk`) must stay on; turning one off is
+  **refused**.
+- `balanced-paper` — the v1 defaults, no extra constraints.
+
+An absent mode is **derived** from the switches (deterministic, never refuses); an explicit mode is
+**checked** against them and a contradiction is refused — fail-closed, never silently "fixed".
+
+### Risk limits (`riskLimits`, all tighten-only)
+
+- `disallowedReasonCodes` — candidates whose Sprint-46 reason-code trail hits one of these are
+  paper-rejected (`policy-disallowed-reason-code`).
+- `disallowedPreflightStatuses` — `warn` / `unknown` / `fail` statuses that hard-reject
+  (`policy-disallowed-preflight-status`); a `pass` can never be disallowed.
+- `maxWarningsPerCandidate` — a paper-enter whose preflight carries more warnings is downgraded to
+  watch (`policy-max-warnings-exceeded`).
+- `requireRiskPresent` / `requireInspectionPresent` — candidates missing that section are surfaced
+  (`policy-missing-risk` / `policy-missing-inspection`) and any paper-enter among them is downgraded.
+  `requireRiskPresent=true` with `failClosedOnMissingRisk=false` is refused as self-contradictory.
+- `requirePreflightInputArtifact` — **declarative**: a validated `sniper.preflight.input.v1` is
+  required for the run; the safety gates (not the decision build) enforce it.
+- The **maximum paper-enter count** remains `paperSizing.maxCandidatesToPaperEnter` (carried from
+  v1, not duplicated).
+
+Because the new limits act on reason-code trails, a v2 policy is consumed by the codes-aware **v2
+decision builder** (`--schema-version v2`). Feeding a v2 policy down a v1-only path would silently
+drop its limits — that is fail-open, so it is **refused** instead. Enforcement reuses the unchanged
+v1 tighten-only enforcement first (via an exact v1 projection), then applies the v2 limits; a
+paper-enter downgraded by a v2 limit loses its `policy-allowed-paper-enter` marker. The decision v2
+report records `policySchemaVersion` alongside `policyApplied`/`policyLabel`.
+
+### CLI
+
+```bash
+pnpm soulmaker paper:sniper:policy:validate --input policy-v2.json --schema-version v2 --json
+pnpm soulmaker paper:sniper:decide --candidates candidates.json --preflight preflight.json --policy policy-v2.json --schema-version v2
+```
+
+`--schema-version v2` on `policy:validate` accepts raw v2 operator input, a canonical v2, or a
+canonical v1 (upgraded losslessly). The v1 default is unchanged.
+
 ## Operator workflow (Sprint 28)
 
 `paper:sniper:workflow` is the operator's "where am I / what do I run next" helper. The pure

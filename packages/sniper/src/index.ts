@@ -214,6 +214,31 @@ export type {
 } from "./policy-config.js";
 
 export {
+  normalizeSniperPolicyConfigV2,
+  validateSniperPolicyConfigV2,
+  formatSniperPolicyConfigV2,
+  upgradeSniperPolicyConfigV1ToV2,
+  projectSniperPolicyConfigV2ToV1,
+  deriveSniperDecisionRulesFromV2,
+  enforceSniperPolicyV2,
+  enforceSniperPolicyV2WithReasonCodes,
+  SniperPolicyConfigV2Error,
+  SNIPER_POLICY_CONFIG_V2_SCHEMA_VERSION,
+  SNIPER_POLICY_CONFIG_V2_BANNER,
+  SNIPER_POLICY_CONFIG_V2_DISCLAIMERS,
+  SNIPER_POLICY_MODES,
+} from "./policy-config-v2.js";
+
+export type {
+  SniperPolicyMode,
+  SniperPolicyV2RiskLimits,
+  SniperPolicyConfigV2,
+  NormalizeSniperPolicyConfigV2Input,
+  EnforceSniperPolicyV2Options,
+  FormatSniperPolicyConfigV2Options,
+} from "./policy-config-v2.js";
+
+export {
   buildSniperAuditLog,
   validateSniperAuditLog,
   formatSniperAuditLog,

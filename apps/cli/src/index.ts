@@ -1362,15 +1362,16 @@ program
 program
   .command("paper:sniper:policy:validate")
   .description(
-    "Validate + normalize a LOCAL sniper policy config (`sniper.policy.config.v1`): base decision rules, tighten-only enforcement switches (allowPaperEnter / failClosedOnUnknownPreflight / failClosedOnMissingRisk / disallowedRiskFlags), candidate-list guards (maxCandidatesPerRun / duplicateMintPolicy), operator labels, and paper sizing assumptions (LABELS / simulated units only — no currency / profit claims). Conservative by default; a policy enables NO live behaviour. Accepts operator-friendly raw input or a canonical config; reads the named file only, writes nothing, no network/RPC/wallet",
+    "Validate + normalize a LOCAL sniper policy config (`sniper.policy.config.v1`, or `.v2` with --schema-version v2): base decision rules, tighten-only enforcement switches (allowPaperEnter / failClosedOnUnknownPreflight / failClosedOnMissingRisk / disallowedRiskFlags), candidate-list guards (maxCandidatesPerRun / duplicateMintPolicy), operator labels, and paper sizing assumptions (LABELS / simulated units only — no currency / profit claims). V2 adds an explicit policyMode (conservative / balanced-paper / research-only; contradictions REFUSED) and reason-code-aware riskLimits; a canonical v1 input is upgraded losslessly. Conservative by default; a policy enables NO live behaviour. Accepts operator-friendly raw input or a canonical config; reads the named file only, writes nothing, no network/RPC/wallet",
   )
   .option("--input <path>", "policy config JSON (operator-friendly raw input or a canonical config)")
+  .option("--schema-version <version>", "policy schema to produce: v1 (default) or v2 (mode + risk limits; a canonical v1 is upgraded)")
   .option("--json", "emit the normalized canonical policy config as stable JSON")
   .option("--fail-on-warning", "exit non-zero when the normalized policy carries any warning")
-  .action((opts: { input?: string; json?: boolean; failOnWarning?: boolean }) => {
+  .action((opts: { input?: string; schemaVersion?: string; json?: boolean; failOnWarning?: boolean }) => {
     const { text, exitCode } = paperSniperPolicyValidateReport(
       {},
-      { inputPath: opts.input, json: Boolean(opts.json), failOnWarning: Boolean(opts.failOnWarning) },
+      { inputPath: opts.input, schemaVersion: opts.schemaVersion, json: Boolean(opts.json), failOnWarning: Boolean(opts.failOnWarning) },
     );
     console.log(text);
     if (exitCode !== 0) process.exitCode = exitCode;

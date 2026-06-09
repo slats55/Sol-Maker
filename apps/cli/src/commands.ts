@@ -72,6 +72,10 @@ import {
   formatSniperPolicyConfig,
   deriveSniperDecisionRules,
   enforceSniperPolicy,
+  normalizeSniperPolicyConfigV2,
+  formatSniperPolicyConfigV2,
+  upgradeSniperPolicyConfigV1ToV2,
+  SNIPER_POLICY_CONFIG_V2_SCHEMA_VERSION,
   buildSniperAuditLog,
   formatSniperAuditLog,
   buildSniperSessionPack,
@@ -97,6 +101,7 @@ import {
   type SniperRunReport,
   type SniperRunReportDiff,
   type SniperPolicyConfig,
+  type SniperPolicyConfigV2,
   type SniperAuditLog,
   type SniperSessionPack,
   type SniperSessionPackArtifactInput,
@@ -4532,8 +4537,11 @@ export function paperSniperDecideReport(
   }
 
   // 2b) Optional policy (mutually exclusive with --rules): its base rules drive the build and its
-  //     tighten-only enforcement is applied to the built report afterward.
+  //     tighten-only enforcement is applied to the built report afterward. A v2 policy (mode + risk
+  //     limits) is reason-code-aware, so it REQUIRES the v2 report path — using it with the v1
+  //     report would silently drop its limits, which is fail-open and therefore refused.
   let policy: SniperPolicyConfig | undefined;
+  let policyV2: SniperPolicyConfigV2 | undefined;
   if (opts.policyPath) {
     let policyValue: unknown;
     try {
@@ -4544,15 +4552,37 @@ export function paperSniperDecideReport(
     if (!isPlainObject(policyValue)) {
       return { text: "Refusing: policy config must be a JSON object.", exitCode: 1 };
     }
-    if (policyValue.schemaVersion !== undefined && policyValue.schemaVersion !== SNIPER_POLICY_CONFIG_SCHEMA_VERSION) {
-      return { text: redactString(`Refusing: policy config schemaVersion must be "${SNIPER_POLICY_CONFIG_SCHEMA_VERSION}".`), exitCode: 1 };
+    const looksV2 =
+      policyValue.schemaVersion === SNIPER_POLICY_CONFIG_V2_SCHEMA_VERSION ||
+      policyValue.policyMode !== undefined ||
+      policyValue.riskLimits !== undefined;
+    if (
+      policyValue.schemaVersion !== undefined &&
+      policyValue.schemaVersion !== SNIPER_POLICY_CONFIG_SCHEMA_VERSION &&
+      policyValue.schemaVersion !== SNIPER_POLICY_CONFIG_V2_SCHEMA_VERSION
+    ) {
+      return { text: redactString(`Refusing: policy config schemaVersion must be "${SNIPER_POLICY_CONFIG_SCHEMA_VERSION}" or "${SNIPER_POLICY_CONFIG_V2_SCHEMA_VERSION}".`), exitCode: 1 };
     }
-    try {
-      policy = normalizeSniperPolicyConfig(policyValue as never);
-    } catch (err) {
-      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    if (looksV2) {
+      if (schemaVersion !== "v2") {
+        return {
+          text: "Refusing: this policy carries v2 fields (policyMode/riskLimits) — its risk limits are reason-code-aware and require --schema-version v2 (they would be silently dropped on the v1 path).",
+          exitCode: 1,
+        };
+      }
+      try {
+        policyV2 = normalizeSniperPolicyConfigV2(policyValue as never);
+      } catch (err) {
+        return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+      }
+    } else {
+      try {
+        policy = normalizeSniperPolicyConfig(policyValue as never);
+      } catch (err) {
+        return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+      }
+      rules = deriveSniperDecisionRules(policy);
     }
-    rules = deriveSniperDecisionRules(policy);
   }
 
   // 3) Build the decision report (v1: build + tighten-only enforcement; v2: codes-aware builder).
@@ -4560,11 +4590,12 @@ export function paperSniperDecideReport(
   let formatted: string;
   try {
     if (schemaVersion === "v2") {
+      const appliedPolicy = policyV2 ?? policy;
       const v2 = buildPaperSniperDecisionReportV2({
         candidateList: list,
         preflight,
-        rules: policy ? undefined : rules,
-        policy,
+        rules: appliedPolicy ? undefined : rules,
+        policy: appliedPolicy,
       });
       report = v2;
       formatted = formatPaperSniperDecisionReportV2(v2, { label: opts.candidatesPath });
@@ -4908,6 +4939,8 @@ export interface PaperSniperPolicyValidateCommandOptions {
   json?: boolean;
   /** Exit non-zero when the normalized policy carries any warning. */
   failOnWarning?: boolean;
+  /** Policy schema to produce: "v1" (default) or "v2" (mode + risk limits; a canonical v1 is upgraded). */
+  schemaVersion?: string;
 }
 
 /**
@@ -4923,6 +4956,10 @@ export function paperSniperPolicyValidateReport(
   opts: PaperSniperPolicyValidateCommandOptions = {},
 ): CliReport {
   if (!opts.inputPath) return { text: "Refusing: --input <path> is required.", exitCode: 1 };
+  const schemaVersion = opts.schemaVersion ?? "v1";
+  if (schemaVersion !== "v1" && schemaVersion !== "v2") {
+    return { text: 'Refusing: --schema-version must be "v1" or "v2".', exitCode: 1 };
+  }
 
   let value: unknown;
   try {
@@ -4933,9 +4970,45 @@ export function paperSniperPolicyValidateReport(
   if (!isPlainObject(value)) {
     return { text: "Refusing: policy config must be a JSON object.", exitCode: 1 };
   }
+
+  if (schemaVersion === "v2") {
+    // v2 accepts: raw v2 operator input, a canonical v2, or a canonical v1 (upgraded).
+    if (
+      value.schemaVersion !== undefined &&
+      value.schemaVersion !== SNIPER_POLICY_CONFIG_SCHEMA_VERSION &&
+      value.schemaVersion !== SNIPER_POLICY_CONFIG_V2_SCHEMA_VERSION
+    ) {
+      return {
+        text: redactString(`Refusing: schemaVersion must be "${SNIPER_POLICY_CONFIG_SCHEMA_VERSION}" or "${SNIPER_POLICY_CONFIG_V2_SCHEMA_VERSION}" (got "${String(value.schemaVersion)}").`),
+        exitCode: 1,
+      };
+    }
+    let configV2: SniperPolicyConfigV2;
+    try {
+      configV2 =
+        value.schemaVersion === SNIPER_POLICY_CONFIG_SCHEMA_VERSION
+          ? upgradeSniperPolicyConfigV1ToV2(value)
+          : normalizeSniperPolicyConfigV2(value as never);
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    const exitCode = opts.failOnWarning && configV2.warnings.length > 0 ? 1 : 0;
+    if (opts.json) {
+      return { text: JSON.stringify(redactValue(configV2), null, 2), exitCode };
+    }
+    return { text: formatSniperPolicyConfigV2(configV2, { label: opts.inputPath }), exitCode };
+  }
+
   if (value.schemaVersion !== undefined && value.schemaVersion !== SNIPER_POLICY_CONFIG_SCHEMA_VERSION) {
     return {
       text: redactString(`Refusing: schemaVersion must be "${SNIPER_POLICY_CONFIG_SCHEMA_VERSION}" (got "${String(value.schemaVersion)}").`),
+      exitCode: 1,
+    };
+  }
+  // FAIL-CLOSED: a v2-shaped policy (mode / risk limits) must not be silently weakened to v1.
+  if (value.policyMode !== undefined || value.riskLimits !== undefined) {
+    return {
+      text: "Refusing: this policy carries v2 fields (policyMode/riskLimits) — validate it with --schema-version v2.",
       exitCode: 1,
     };
   }

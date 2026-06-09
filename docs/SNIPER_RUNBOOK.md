@@ -50,7 +50,7 @@ invariants.
 | `paper:sniper:preflight` | `--candidates` | `--out` only | `sniper.token.preflight.report.v1` |
 | `paper:sniper:preflight:input:validate` | `--input` | never | `sniper.preflight.input.v1` |
 | `paper:sniper:decide` | `--candidates` | `--out` only | `sniper.paper.decision.report.v1` (or `.v2` via `--schema-version v2`) |
-| `paper:sniper:policy:validate` | `--input` | never | `sniper.policy.config.v1` |
+| `paper:sniper:policy:validate` | `--input` | never | `sniper.policy.config.v1` (or `.v2` via `--schema-version v2`) |
 | `paper:sniper:workflow` | (none) | never | `sniper.workflow.plan.v1` |
 | `paper:sniper:report` | `--candidates` | `--out` only | `sniper.run.report.v1` |
 | `paper:sniper:diff:report` | `--base`, `--next` | never | `sniper.run.report.diff.v1` |
@@ -172,6 +172,20 @@ the policy's **tighten-only** enforcement: `allowPaperEnter` (off ⇒ no paper-e
 unknown preflight / missing risk, `disallowedRiskFlags`, `duplicateMintPolicy`, and a
 `paperSizing.maxCandidatesToPaperEnter` cap. Enforcement can only make the run **more** conservative —
 never the reverse, and never live. The output is still a `sniper.paper.decision.report.v1`.
+
+#### Policy v2: modes + reason-code risk limits (Sprint 48)
+
+A `sniper.policy.config.v2` adds an explicit `policyMode` (`conservative` / `balanced-paper` /
+`research-only`; a contradiction with the switches is **refused**) and `riskLimits`
+(`disallowedReasonCodes`, `disallowedPreflightStatuses`, `maxWarningsPerCandidate`,
+`requireRiskPresent`, `requireInspectionPresent`, `requirePreflightInputArtifact`). The limits act on
+Sprint-46 reason-code trails, so a v2 policy requires the v2 decision path — the v1 path refuses it
+rather than silently dropping the limits:
+
+```bash
+pnpm soulmaker paper:sniper:policy:validate --input policy-v2.json --schema-version v2 --json
+pnpm soulmaker paper:sniper:decide --candidates candidates.json --preflight preflight.json --policy policy-v2.json --schema-version v2 --out decision-v2.json
+```
 
 ### 5. Run report (bundle the run)
 

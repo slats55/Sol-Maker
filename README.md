@@ -654,6 +654,13 @@ pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight pr
 # never trading advice:
 pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight preflight.json --schema-version v2 --json
 
+# Sprint 48 — POLICY CONFIG V2 (sniper.policy.config.v2): explicit policyMode (conservative /
+# balanced-paper / research-only; contradictions REFUSED) + reason-code-aware riskLimits
+# (disallowedReasonCodes / disallowedPreflightStatuses / maxWarningsPerCandidate / require*).
+# Tighten-only; a v2 policy requires the v2 decision path (the v1 path refuses it, fail-closed):
+pnpm soulmaker paper:sniper:policy:validate --input policy-v2.json --schema-version v2 --json
+pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight preflight.json --policy policy-v2.json --schema-version v2
+
 # Sprint 28 — SNIPER OPERATOR WORKFLOW: a read-only helper that checks which local artifacts exist +
 # validate and prints the recommended NEXT command in the intake -> preflight -> decide sequence. It
 # DESCRIBES the sequence only — it executes no stage, runs no live action, and writes nothing:

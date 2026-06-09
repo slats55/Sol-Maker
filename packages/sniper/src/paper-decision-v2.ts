@@ -40,8 +40,16 @@ import {
   enforceSniperPolicyWithReasonCodes,
   validateSniperPolicyConfig,
   deriveSniperDecisionRules,
+  SNIPER_POLICY_CONFIG_SCHEMA_VERSION,
   type SniperPolicyConfig,
 } from "./policy-config.js";
+import {
+  validateSniperPolicyConfigV2,
+  deriveSniperDecisionRulesFromV2,
+  enforceSniperPolicyV2WithReasonCodes,
+  SNIPER_POLICY_CONFIG_V2_SCHEMA_VERSION,
+  type SniperPolicyConfigV2,
+} from "./policy-config-v2.js";
 import {
   SNIPER_DECISION_REASON_CODE_DEFINITIONS,
   SNIPER_DECISION_REASON_CATEGORIES,
@@ -113,6 +121,8 @@ export interface SniperPaperDecisionReportV2 {
   policyApplied: boolean | null;
   /** The policy's label when one was applied (null otherwise / when upgraded). */
   policyLabel: string | null;
+  /** The schemaVersion of the applied policy (null when none was applied / when upgraded). */
+  policySchemaVersion: string | null;
   /** True when this report was lifted from a v1 artifact (codes are a conservative subset). */
   upgradedFromV1: boolean;
   candidateCount: number;
@@ -149,7 +159,11 @@ export interface BuildPaperSniperDecisionReportV2Input {
   preflight?: unknown;
   /** Optional deterministic operator rules (mutually exclusive with `policy`). */
   rules?: SniperDecisionRules;
-  /** Optional canonical policy config (`sniper.policy.config.v1`; strictly validated; tighten-only). */
+  /**
+   * Optional canonical policy config — `sniper.policy.config.v1` OR `.v2` (sniffed by its
+   * schemaVersion; strictly validated; tighten-only). A v2 policy additionally applies its
+   * reason-code-aware risk limits.
+   */
   policy?: unknown;
 }
 
@@ -218,7 +232,13 @@ function assembleV2(
   base: SniperPaperDecisionReport,
   trailsById: Record<string, SniperDecisionReasonCode[]>,
   reportReasonCodes: SniperDecisionReasonCode[],
-  meta: { policyApplied: boolean | null; policyLabel: string | null; upgradedFromV1: boolean; extraNotes?: string[] },
+  meta: {
+    policyApplied: boolean | null;
+    policyLabel: string | null;
+    policySchemaVersion: string | null;
+    upgradedFromV1: boolean;
+    extraNotes?: string[];
+  },
 ): SniperPaperDecisionReportV2 {
   const decisions = base.decisions.map((entry) => buildEntryV2(entry, trailsById[entry.candidateId] ?? []));
   const { reasonCodeCounts, categoryCounts } = summarizeCodes(decisions);
@@ -236,6 +256,7 @@ function assembleV2(
     rules: { ...base.rules, denyMints: [...base.rules.denyMints] },
     policyApplied: meta.policyApplied,
     policyLabel: meta.policyLabel,
+    policySchemaVersion: meta.policySchemaVersion,
     upgradedFromV1: meta.upgradedFromV1,
     candidateCount: base.candidateCount,
     decisions,
@@ -279,15 +300,23 @@ export function buildPaperSniperDecisionReportV2(
     throw new PaperSniperDecisionReportV2Error("rules and policy are mutually exclusive — supply one");
   }
 
-  let policy: SniperPolicyConfig | null = null;
+  // Sniff the policy version (v1 / v2) by its schemaVersion; both are strictly validated.
+  let policyV1: SniperPolicyConfig | null = null;
+  let policyV2: SniperPolicyConfigV2 | null = null;
   let rules = input.rules;
   if (hasPolicy) {
+    const sniffed = isObject(input.policy) ? input.policy.schemaVersion : undefined;
     try {
-      policy = validateSniperPolicyConfig(input.policy);
+      if (sniffed === SNIPER_POLICY_CONFIG_V2_SCHEMA_VERSION) {
+        policyV2 = validateSniperPolicyConfigV2(input.policy);
+        rules = deriveSniperDecisionRulesFromV2(policyV2);
+      } else {
+        policyV1 = validateSniperPolicyConfig(input.policy);
+        rules = deriveSniperDecisionRules(policyV1);
+      }
     } catch (err) {
       throw new PaperSniperDecisionReportV2Error(`policy config is invalid: ${(err as Error).message}`);
     }
-    rules = deriveSniperDecisionRules(policy);
   }
 
   const buildInput: BuildPaperSniperDecisionReportInput = {
@@ -307,10 +336,26 @@ export function buildPaperSniperDecisionReportV2(
   const reportReasonCodes: SniperDecisionReasonCode[] = [];
   if (!finalReport.hasPreflight) reportReasonCodes.push("missing-preflight-report");
 
-  if (policy) {
+  if (policyV1) {
     let enforcement;
     try {
-      enforcement = enforceSniperPolicyWithReasonCodes(finalReport, policy, { preflight: input.preflight });
+      enforcement = enforceSniperPolicyWithReasonCodes(finalReport, policyV1, { preflight: input.preflight });
+    } catch (err) {
+      throw new PaperSniperDecisionReportV2Error((err as Error).message);
+    }
+    finalReport = enforcement.report;
+    for (const [candidateId, codes] of Object.entries(enforcement.policyReasonCodesById)) {
+      trailsById[candidateId] = [...(trailsById[candidateId] ?? []), ...codes];
+    }
+    reportReasonCodes.push(...enforcement.reportReasonCodes);
+  } else if (policyV2) {
+    // v1 enforcement + v2 risk limits in one tighten-only pass (the v2 module reuses v1 internally).
+    let enforcement;
+    try {
+      enforcement = enforceSniperPolicyV2WithReasonCodes(finalReport, policyV2, {
+        preflight: input.preflight,
+        trailsById,
+      });
     } catch (err) {
       throw new PaperSniperDecisionReportV2Error((err as Error).message);
     }
@@ -321,9 +366,11 @@ export function buildPaperSniperDecisionReportV2(
     reportReasonCodes.push(...enforcement.reportReasonCodes);
   }
 
+  const appliedPolicy = policyV1 ?? policyV2;
   return assembleV2(finalReport, trailsById, reportReasonCodes, {
-    policyApplied: policy !== null,
-    policyLabel: policy?.policyLabel ?? null,
+    policyApplied: appliedPolicy !== null,
+    policyLabel: appliedPolicy?.policyLabel ?? null,
+    policySchemaVersion: appliedPolicy === null ? null : appliedPolicy.schemaVersion,
     upgradedFromV1: false,
   });
 }
@@ -378,6 +425,7 @@ export function upgradePaperSniperDecisionReportV1ToV2(value: unknown): SniperPa
   return assembleV2(v1, trailsById, reportReasonCodes, {
     policyApplied: null,
     policyLabel: null,
+    policySchemaVersion: null,
     upgradedFromV1: true,
     extraNotes: [
       "Upgraded from v1: reason codes were derived from structured v1 fields only (never the free-text reasons) and may be a conservative subset.",
@@ -485,6 +533,15 @@ export function validatePaperSniperDecisionReportV2(value: unknown): SniperPaper
   if (value.policyLabel !== null && typeof value.policyLabel !== "string") {
     throw new PaperSniperDecisionReportV2Error("decision v2 report.policyLabel must be a string or null");
   }
+  if (value.policyApplied === true) {
+    if (value.policySchemaVersion !== SNIPER_POLICY_CONFIG_SCHEMA_VERSION && value.policySchemaVersion !== SNIPER_POLICY_CONFIG_V2_SCHEMA_VERSION) {
+      throw new PaperSniperDecisionReportV2Error(
+        `decision v2 report.policySchemaVersion must be "${SNIPER_POLICY_CONFIG_SCHEMA_VERSION}" or "${SNIPER_POLICY_CONFIG_V2_SCHEMA_VERSION}" when a policy was applied`,
+      );
+    }
+  } else if (value.policySchemaVersion !== null) {
+    throw new PaperSniperDecisionReportV2Error("decision v2 report.policySchemaVersion must be null when no policy was applied");
+  }
   if (typeof value.upgradedFromV1 !== "boolean") {
     throw new PaperSniperDecisionReportV2Error("decision v2 report.upgradedFromV1 must be a boolean");
   }
@@ -561,7 +618,7 @@ export function formatPaperSniperDecisionReportV2(
   lines.push(`source:     ${report.sourceLabel ?? "(none)"}`);
   lines.push(`preflight:  ${report.hasPreflight ? "supplied" : "(none — every candidate conservatively watched)"}`);
   lines.push(
-    `policy:     ${report.policyApplied === null ? "(not determinable — upgraded from v1)" : report.policyApplied ? `applied (${report.policyLabel ?? "unlabeled"})` : "(none)"}`,
+    `policy:     ${report.policyApplied === null ? "(not determinable — upgraded from v1)" : report.policyApplied ? `applied (${report.policyLabel ?? "unlabeled"}; ${report.policySchemaVersion})` : "(none)"}`,
   );
   if (report.upgradedFromV1) lines.push("origin:     upgraded from a v1 artifact (codes are a conservative subset)");
   lines.push(
