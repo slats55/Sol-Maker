@@ -130,6 +130,8 @@ import {
   formatBacktestResearchPortfolioDiff,
   buildBacktestResearchArtifactPack,
   formatBacktestResearchArtifactPack,
+  diffBacktestResearchArtifactPacks,
+  formatBacktestResearchArtifactPackDiff,
   digestContent,
   BACKTEST_RESEARCH_MANIFEST_SCHEMA_VERSION,
   BACKTEST_RESEARCH_VERIFY_SCHEMA_VERSION,
@@ -172,6 +174,7 @@ import {
   type BacktestResearchPortfolioDiff,
   type BacktestResearchArtifactPackInput,
   type BacktestResearchArtifactPack,
+  type BacktestResearchArtifactPackDiff,
 } from "@soulmaker/backtest";
 
 export interface CommandContext {
@@ -3923,6 +3926,94 @@ export function paperBacktestResearchPackReport(
     return { text: JSON.stringify(redactValue(pack), null, 2), exitCode };
   }
   return { text: formatBacktestResearchArtifactPack(pack), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 24 — paper:backtest:diff:research:pack
+//   Deterministically diff TWO artifact pack JSON files: which artifacts
+//   appeared / disappeared / changed / newly-regressed / recovered / newly-need
+//   attention / newly-unsupported, the aggregate count deltas, the chain-
+//   coverage changes, and a CONSERVATIVE regression flag suitable for CI. Reads
+//   the two named files only, runs nothing, and writes nothing. No network, no
+//   wallet.
+// ---------------------------------------------------------------------------
+
+export interface PaperBacktestDiffResearchPackCommandOptions {
+  /** BASE artifact pack JSON path (the reference). Required. */
+  basePath?: string;
+  /** NEXT artifact pack JSON path (compared against base). Required. */
+  nextPath?: string;
+  json?: boolean;
+  /** Exit non-zero when the diff reports any change. */
+  failOnChange?: boolean;
+  /** Exit non-zero only on a conservative integrity regression (a common artifact newly regressed). */
+  failOnRegression?: boolean;
+  /** Exit non-zero when current attention newly appeared on a common artifact. */
+  failOnAttention?: boolean;
+  /** Exit non-zero when new-attention newly appeared on a common artifact. */
+  failOnNewAttention?: boolean;
+  /** Exit non-zero when an unsupported artifact is newly present (common lost recognition or added unsupported). */
+  failOnUnsupported?: boolean;
+}
+
+/**
+ * `soulmaker paper:backtest:diff:research:pack` — deterministically diff TWO artifact pack JSON files.
+ * Reads ONLY the two named local files (BOM-tolerant; a missing/malformed/non-pack/wrong-schema file
+ * refuses), runs nothing, and writes nothing. Artifacts are paired by label (added / removed /
+ * common); per-artifact transitions (newly-changed / newly-regressed / recovered / newly-attention /
+ * newly-unsupported) are computed over the common set, while appeared/disappeared artifacts are
+ * reported as an artifact-set change. `--json` emits the stable, redacted diff; the `--fail-on-*`
+ * flags set a non-zero exit for change / conservative regression / current attention / new attention /
+ * a newly-present unsupported artifact. No network, no wallet. The diff embeds no artifact contents
+ * and is not a live result, advice, or a profitability claim.
+ */
+export function paperBacktestDiffResearchPackReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestDiffResearchPackCommandOptions = {},
+): CliReport {
+  if (!opts.basePath) return { text: "Refusing: --base <path> is required.", exitCode: 1 };
+  if (!opts.nextPath) return { text: "Refusing: --next <path> is required.", exitCode: 1 };
+
+  let baseValue: unknown;
+  try {
+    baseValue = readJsonValue(ctx, opts.basePath, "base artifact pack");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let nextValue: unknown;
+  try {
+    nextValue = readJsonValue(ctx, opts.nextPath, "next artifact pack");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let diff: BacktestResearchArtifactPackDiff;
+  try {
+    diff = diffBacktestResearchArtifactPacks(baseValue, nextValue, {
+      baseLabel: opts.basePath,
+      nextLabel: opts.nextPath,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const exitCode =
+    (opts.failOnChange && diff.hasChange) ||
+    (opts.failOnRegression && diff.hasRegression) ||
+    (opts.failOnAttention && diff.hasAttention) ||
+    (opts.failOnNewAttention && diff.hasNewAttention) ||
+    (opts.failOnUnsupported && diff.hasUnsupported)
+      ? 1
+      : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(diff), null, 2), exitCode };
+  }
+  return {
+    text: formatBacktestResearchArtifactPackDiff(diff, { baseLabel: opts.basePath, nextLabel: opts.nextPath }),
+    exitCode,
+  };
 }
 
 function yesNo(value: boolean): string {

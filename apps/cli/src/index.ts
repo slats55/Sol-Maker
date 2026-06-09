@@ -40,6 +40,7 @@ import {
   paperBacktestResearchPortfolioReport,
   paperBacktestDiffResearchPortfolioReport,
   paperBacktestResearchPackReport,
+  paperBacktestDiffResearchPackReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1005,6 +1006,48 @@ program
           failOnMissingRecommendedLayer: Boolean(opts.failOnMissingRecommendedLayer),
           outPath: opts.out,
           force: Boolean(opts.force),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:backtest:diff:research:pack")
+  .description(
+    "Deterministically diff TWO artifact pack JSON files (PAPER ONLY; pairs artifacts by label → added/removed artifacts + per-artifact kind/status/flag changes over the common set; conservative newly-regressed / recovered / newly-attention / newly-unsupported transitions + aggregate count deltas + chain-coverage changes; a conservative regression flag distinct from any change; `backtest.research.artifact.pack.diff.v1`; reads two files, writes nothing)",
+  )
+  .option("--base <path>", "BASE artifact pack JSON (the reference)")
+  .option("--next <path>", "NEXT artifact pack JSON (compared against base)")
+  .option("--json", "emit the pack diff as stable JSON")
+  .option("--fail-on-change", "exit non-zero when the diff reports any change")
+  .option("--fail-on-regression", "exit non-zero only on a conservative integrity regression (a common artifact newly regressed)")
+  .option("--fail-on-attention", "exit non-zero when current attention newly appeared on a common artifact")
+  .option("--fail-on-new-attention", "exit non-zero when new-attention newly appeared on a common artifact")
+  .option("--fail-on-unsupported", "exit non-zero when an unsupported artifact is newly present (common lost recognition or added unsupported)")
+  .action(
+    (opts: {
+      base?: string;
+      next?: string;
+      json?: boolean;
+      failOnChange?: boolean;
+      failOnRegression?: boolean;
+      failOnAttention?: boolean;
+      failOnNewAttention?: boolean;
+      failOnUnsupported?: boolean;
+    }) => {
+      const { text, exitCode } = paperBacktestDiffResearchPackReport(
+        {},
+        {
+          basePath: opts.base,
+          nextPath: opts.next,
+          json: Boolean(opts.json),
+          failOnChange: Boolean(opts.failOnChange),
+          failOnRegression: Boolean(opts.failOnRegression),
+          failOnAttention: Boolean(opts.failOnAttention),
+          failOnNewAttention: Boolean(opts.failOnNewAttention),
+          failOnUnsupported: Boolean(opts.failOnUnsupported),
         },
       );
       console.log(text);
