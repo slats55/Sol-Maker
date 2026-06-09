@@ -501,6 +501,25 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   two named files and **writes nothing**; the package stays pure (no fs/net, no
   `Date.now`/`Math.random`; the formatter redacts internally). Local bookkeeping — not a live result,
   not advice, not a profitability claim.
+- ✅ **(Sprint 23) Research artifact pack** — the navigation + integrity SUMMARY layer over the whole
+  research stack. `@soulmaker/backtest` exports the pure `buildBacktestResearchArtifactPack`,
+  `validateBacktestResearchArtifactPack`, `formatBacktestResearchArtifactPack` (schema
+  `backtest.research.artifact.pack.v1`); the CLI adds
+  `paper:backtest:research:pack --artifact <label=path> … [--json] [--fail-on-change] [--fail-on-regression] [--fail-on-attention] [--fail-on-new-attention] [--fail-on-unsupported] [--fail-on-missing-recommended-layer] [--out <path>] [--force]`.
+  It collects an already-loaded set of the **real** research artifacts (manifest, bundle, status,
+  campaign index, campaign diff, campaign history, portfolio report, portfolio diff), classifies each
+  by its `schemaVersion`, STRICTLY validates a known artifact (a corrupt artifact claiming a known
+  schema is refused), reports an unknown schema as an `unsupported` entry (never silently trusted),
+  and reads each artifact's high-level change / regression / attention / recovery flags **verbatim**.
+  It rolls those into one navigable view: a per-artifact inventory (kind / recognized / status /
+  flags / reasons), the aggregate counts, **chain coverage** (which recommended layers are present /
+  missing, and whether the pack is minimal / campaign-level / portfolio-level / diff-ready — presence
+  only, never a completeness claim), a CI decision, and a compact navigation table. The `--fail-on-*`
+  flags gate CI; `--out` writes ONLY the pack JSON (refusing overwrite without `--force`, creating no
+  directories) and is omitted-by-default (writes nothing). It reads the named files only and never
+  follows nested paths or makes a network call; the package stays pure (no fs/net in the module, no
+  `Date.now`/`Math.random`; the formatter redacts internally). Local bookkeeping over a set of local
+  artifacts — not a live result, not advice, not a profitability claim.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

@@ -28,7 +28,7 @@ packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.j
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
-packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup + research portfolio diff (Sprint 8–22)  [strategy, paper, security]
+packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup + research portfolio diff + research artifact pack (Sprint 8–23)  [strategy, paper, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -264,6 +264,28 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   `Date.now`/`Math.random`. The CLI reads the two named files only and **writes nothing**; the
   `--fail-on-*` flags gate CI on change / regression / current attention / new attention. A portfolio
   diff is bookkeeping over two local summaries — not a live result, prediction, or advice.
+- **(Sprint 23)** `@soulmaker/backtest` adds the **research artifact pack** — the navigation +
+  integrity summary over the whole stack: `research-artifact-pack.ts`
+  (`buildBacktestResearchArtifactPack`, `validate…`, `format…`; schema
+  `backtest.research.artifact.pack.v1`), exposed by the CLI as `paper:backtest:research:pack
+  --artifact <label=path> …`. It accepts an already-loaded set of the REAL research artifacts and
+  classifies each by its top-level `schemaVersion` against a registry of the ten research schemas
+  (manifest, manifest-diff, bundle, bundle-diff, status, campaign-index, campaign-diff,
+  campaign-history, portfolio-report, portfolio-diff). A known schema is strictly validated via that
+  artifact's own validator (a corrupt artifact is refused); an unknown but well-formed schema is
+  reported as an `unsupported` entry rather than refused (gated by `--fail-on-unsupported`). Each
+  artifact's high-level flags (change / regression / attention / new-attention / recovery /
+  campaign-set-change) are read **verbatim** — a couple are derived from a first-class literal list
+  (e.g. a campaign index's `runsNeedingAttention`) and that is documented — so the pack can never
+  disagree with the artifacts it summarizes. It emits a per-artifact inventory, the aggregate counts,
+  chain-coverage tiers (presence only — minimal / campaign-level / portfolio-level / diff-ready, plus
+  which recommended layers are missing; never a completeness claim), a CI section, and a compact
+  navigation table. The module imports only `@soulmaker/security` plus the ten sibling validators —
+  no fs/net, no `Date.now`/`Math.random`, and it never follows file paths or makes a network call.
+  The CLI reads the named files only and **writes nothing** unless `--out <path>` is given (then only
+  the pack JSON, refusing to overwrite an existing file without `--force`, and creating no
+  directories). A pack is bookkeeping over a set of local artifacts — not a live result, advice, or a
+  profitability claim.
 
 ## The live boundary
 

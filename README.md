@@ -154,10 +154,18 @@ appeared/disappeared, and, over the campaigns present in **both**, which newly r
 newly need attention / became clean or stable — plus the aggregate count deltas and a conservative
 regression flag. A disappearing campaign is a change / scope change, **not** a regression; an added
 campaign that already carries a regression sets `hasChange` (gated by `--fail-on-change`), not
-`hasRegression`. It reads only the two named files and writes nothing. None of this fetches live
-data or begins transaction planning (roadmap Phase 6 remains not started; Phase 7 burner
-live remains not started). The default mode is `PAPER`. See
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
+`hasRegression`. It reads only the two named files and writes nothing. Sprint 23 adds a **research
+artifact pack**: `paper:backtest:research:pack --artifact <label=path> …` collects many local
+research artifacts (manifest / bundle / status / campaign index / campaign diff / campaign history /
+portfolio report / portfolio diff) into one navigable integrity + navigation summary
+(`backtest.research.artifact.pack.v1`) — each artifact's kind / recognized-status / change /
+regression / attention flags read **verbatim**, the aggregate counts, which chain layers are present
+or missing, and a CI decision (incl. `--fail-on-unsupported`). A known artifact is strictly
+validated; an unknown schema is reported as `unsupported`, never silently trusted. It reads the named
+files only and writes nothing unless `--out <path>` is given (then only the pack JSON, refusing
+overwrite without `--force`). None of this fetches live data or begins transaction planning (roadmap
+Phase 6 remains not started; Phase 7 burner live remains not started). The default mode is `PAPER`.
+See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Non-negotiable security rules (summary)
 
@@ -200,7 +208,8 @@ soulmaker/
                 #                    paper:backtest:research:index, paper:backtest:research:history,
                 #                    paper:backtest:research:portfolio,
                 #                    paper:backtest:diff:research:bundle, paper:backtest:diff:research:index,
-                #                    paper:backtest:diff:research:portfolio)
+                #                    paper:backtest:diff:research:portfolio,
+                #                    paper:backtest:research:pack)
     web/        # Phase 8 dashboard (placeholder)
   packages/
     core/       # @soulmaker/core      — config schema, modes, risk caps, LIVE GATE
@@ -228,7 +237,8 @@ soulmaker/
                 #            Sprint 19 adds the research bundle diff + campaign index diff;
                 #            Sprint 20 adds the research campaign history/trend report;
                 #            Sprint 21 adds the research portfolio rollup across campaigns;
-                #            Sprint 22 adds the research portfolio diff (two portfolio reports)
+                #            Sprint 22 adds the research portfolio diff (two portfolio reports);
+                #            Sprint 23 adds the research artifact pack (summarizes many artifacts)
                 #            (still pure: the package never scans dirs or reads/writes files)
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
@@ -440,6 +450,14 @@ pnpm soulmaker paper:backtest:research:portfolio --history scalping=<scalping-hi
 # campaign is a change, NOT a regression. Reads the two named files only, writes nothing:
 pnpm soulmaker paper:backtest:diff:research:portfolio --base <portfolio-before.json> --next <portfolio-after.json>
 pnpm soulmaker paper:backtest:diff:research:portfolio --base <portfolio-before.json> --next <portfolio-after.json> --fail-on-regression --fail-on-new-attention
+
+# Sprint 23 — ARTIFACT PACK: collect many local research artifacts into one navigable integrity +
+# navigation summary — each artifact's kind/recognized-status/flags, the aggregate counts, which
+# chain layers are present/missing, and a CI decision. Each --artifact is "label=path"; a known
+# artifact is strictly validated, an unknown schema is reported as unsupported. Reads the named
+# files only; writes nothing unless --out is given (then only the pack JSON, --force to overwrite):
+pnpm soulmaker paper:backtest:research:pack --artifact campaigns=campaign-history.json --artifact portfolio=portfolio.json --artifact diff=portfolio-diff.json
+pnpm soulmaker paper:backtest:research:pack --artifact portfolio=portfolio.json --artifact diff=portfolio-diff.json --fail-on-regression --fail-on-unsupported --out research-pack.json
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

@@ -793,3 +793,48 @@ pnpm soulmaker paper:backtest:diff:research:portfolio --base portfolio-before.js
 > **not** a live result, **not** advice, and **not** a profitability claim; the digests behind the
 > summaries are non-cryptographic content fingerprints, not an anti-tamper guarantee. Nothing here
 > touches a wallet, key, signing, sending, or the network; Phases 6 and 7 remain **not started**.
+
+## Packing a research run into one navigable summary (Sprint 23)
+
+A real research run produces several artifacts — a campaign history, a portfolio report, a portfolio
+diff, maybe a manifest/bundle/status. The **artifact pack** collects them into one navigable
+integrity + navigation summary so a human or CI can see the whole run's state without opening every
+file. Keep the artifact JSON files and point `paper:backtest:research:pack` at them, each keyed by a
+label.
+
+```bash
+# 1) Produce the per-layer artifacts (Sprints 16–22), keeping each --json output as a file, e.g.:
+pnpm soulmaker paper:backtest:research:history --index t0.json --index t1.json --json > campaign-history.json
+pnpm soulmaker paper:backtest:research:portfolio --history scalping=campaign-history.json --json > portfolio.json
+pnpm soulmaker paper:backtest:diff:research:portfolio --base portfolio-before.json --next portfolio.json --json > portfolio-diff.json
+
+# 2) PACK — collect them into one summary (human-readable). Each --artifact is "label=path":
+pnpm soulmaker paper:backtest:research:pack --artifact history=campaign-history.json --artifact portfolio=portfolio.json --artifact diff=portfolio-diff.json
+# --json for the machine-readable pack (schema backtest.research.artifact.pack.v1).
+# --out research-pack.json writes ONLY the pack JSON (refuses overwrite without --force).
+
+# 3) STRICT behaviour for CI — each flag sets a non-zero exit across the pack:
+#    --fail-on-change                    any artifact reports a change
+#    --fail-on-regression                any artifact reports a conservative integrity regression
+#    --fail-on-attention                 any artifact reports current attention
+#    --fail-on-new-attention             any artifact reports newly-needed attention
+#    --fail-on-unsupported               any artifact has an unsupported schema
+#    --fail-on-missing-recommended-layer a recommended chain layer is missing
+pnpm soulmaker paper:backtest:research:pack --artifact portfolio=portfolio.json --artifact diff=portfolio-diff.json --fail-on-regression --fail-on-unsupported
+```
+
+> **Classifies and validates real artifacts; never invents a type, never overclaims completeness.**
+> Each artifact is classified by its `schemaVersion` against the **ten real research schemas only**.
+> A KNOWN artifact is strictly validated — a corrupt artifact that claims a known schema is refused;
+> a well-formed but **unknown** schema is reported as an `unsupported` entry (not refused), gated by
+> `--fail-on-unsupported`. Every per-artifact change/regression/attention/recovery flag is read
+> **verbatim** from that artifact (a flag a kind does not carry is `null`, never invented as `false`),
+> so the pack can never disagree with the artifacts it summarizes. The **chain-coverage** tiers
+> (minimal / campaign-level / portfolio-level / diff-ready) describe which layers are **present** —
+> they are **not** a completeness or correctness guarantee. The pack carries no timestamp, so the same
+> set yields a byte-identical pack. It reads the named files only, follows no nested paths, and makes
+> no network call; it writes nothing unless `--out` is given (then only the pack JSON). This is local
+> bookkeeping over injected, simulated artifacts — **not** a live result, **not** advice, and **not**
+> a profitability claim; the digests behind the artifacts are non-cryptographic content fingerprints,
+> not an anti-tamper guarantee. Nothing here touches a wallet, key, signing, sending, or the network;
+> Phases 6 and 7 remain **not started**.
