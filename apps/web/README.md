@@ -35,6 +35,10 @@ pnpm web:build           # regenerate public/*.html from src/
 # Inspect ONE local PAPER report JSON as a static page (local-only, no network):
 pnpm web:inspect --input <report.json> --out apps/web/public/research-artifact.html --force
 pnpm web:inspect --input <report.json> --json   # print a summary, write nothing
+
+# Index a local FOLDER of report JSON and summarize diff verdicts (local-only):
+pnpm web:inspect --dir <folder> --out apps/web/public/research-folder.html --force
+pnpm web:inspect --dir <folder> --json          # print a folder summary, write nothing
 ```
 
 Gates (run from the repo root):
@@ -58,9 +62,12 @@ apps/web/
                  schema-aware typed views (artifact-views.ts)
     pages/       one render function per route + a registry
     build.ts     static-site generator (reads styles/, writes public/)
-    inspect.ts   Node-only command: read ONE local report JSON → one static page
+    inspect.ts   Node-only command: read ONE report JSON (--input) OR scan a
+                 FOLDER of report JSON (--dir) → one static page
   fixtures/      committed benign sample report/suite/sensitivity/research JSON
-                 (inspect smoke + tests)
+                 (inspect smoke + tests); folder-sample/ holds a mixed sample
+                 folder (valid + diff + unknown + malformed + non-JSON) for the
+                 folder-index tests
   styles/        theme.css (dark command-center theme)
   tests/         Vitest tests (rendering, safety, schema, normalizer, CLI, drift)
   public/        GENERATED static site — do not edit by hand
@@ -84,6 +91,24 @@ When the inspector recognizes a schema, it renders a **typed, schema-aware view*
 fall back to the generic view safely. Typed rendering is **UI-only** — it reads
 the parsed JSON defensively (no backend import) and escapes/caps everything. Full
 details:
+[`../../docs/WEB_LOCAL_ARTIFACT_INSPECTOR.md`](../../docs/WEB_LOCAL_ARTIFACT_INSPECTOR.md).
+
+## Local artifact folder index
+
+`pnpm web:inspect --dir <folder>` scans **one local folder** of report JSON
+(no recursion) into a static index (`public/research-folder.html`) with a safe
+**diff-verdict overview**: which artifacts were found, each one's schema and
+stable/unknown status, whether it indicates `hasRegression` / `hasChange`, counts
+by schema and verdict, and a same-page link to each artifact's rendered view. It
+is the same **local-only** posture as the single-artifact inspector — reads local
+files, writes one HTML file, no upload/server/network/wallet/keys.
+
+The scan is fail-soft: non-`.json` files and subdirectories are skipped with an
+honest count, malformed JSON is listed (not interpreted) instead of crashing, and
+unknown/absent schemas are labelled honestly. Verdicts are **schema-aware and
+conservative** — a `hasRegression` / `hasChange` value is reported only when the
+recognized diff schema actually carries that field; a missing field reads as
+`missing` (never `no`), and an unknown schema never produces a verdict. See
 [`../../docs/WEB_LOCAL_ARTIFACT_INSPECTOR.md`](../../docs/WEB_LOCAL_ARTIFACT_INSPECTOR.md).
 
 ## Data policy
