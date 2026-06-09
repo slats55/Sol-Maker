@@ -55,12 +55,17 @@ import {
   formatSniperTokenPreflightReport,
   buildPaperSniperDecisionReport,
   formatPaperSniperDecisionReport,
+  validateSniperTokenPreflightReport,
+  validatePaperSniperDecisionReport,
+  buildSniperWorkflowPlan,
+  formatSniperWorkflowPlan,
   SNIPER_CANDIDATE_LIST_SCHEMA_VERSION,
   type SniperCandidateList,
   type SniperTokenPreflightReport,
   type SniperPreflightCandidateData,
   type SniperPaperDecisionReport,
   type SniperDecisionRules,
+  type SniperWorkflowStageState,
 } from "@soulmaker/sniper";
 import {
   runPaperSession,
@@ -4349,6 +4354,85 @@ export function paperSniperDecideReport(
     return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
   }
   return { text: formatPaperSniperDecisionReport(report, { label: opts.candidatesPath }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 28 — paper:sniper:workflow
+//   Operator helper: check which LOCAL sniper artifacts exist + validate, and
+//   print the recommended next command in the intake -> preflight -> decide
+//   sequence. It DESCRIBES the sequence only — it executes no stage, runs no
+//   live action, reaches no network, and touches no wallet. Reads the named
+//   files only (to check validity); writes nothing.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperWorkflowCommandOptions {
+  /** Candidate list JSON path (optional). */
+  candidatesPath?: string;
+  /** Preflight report JSON path (optional). */
+  preflightPath?: string;
+  /** Decision report JSON path (optional). */
+  decisionPath?: string;
+  json?: boolean;
+}
+
+/** Resolve one artifact's workflow state: exists? validates as the expected kind? (read-only). */
+function sniperArtifactState(
+  ctx: CommandContext,
+  path: string | undefined,
+  kind: "candidates" | "preflight" | "decide",
+): SniperWorkflowStageState {
+  if (!path) return { path: null, present: false, valid: null };
+  const resolved = resolvePath(ctx, path);
+  if (!existsSync(resolved)) return { path, present: false, valid: null };
+  let value: unknown;
+  try {
+    value = readJsonValue(ctx, path, `${kind} artifact`);
+  } catch (err) {
+    return { path, present: true, valid: false, detail: redactString((err as Error).message) };
+  }
+  try {
+    if (kind === "candidates") {
+      if (!isPlainObject(value)) throw new Error("not a candidate list object");
+      if (value.schemaVersion !== undefined && value.schemaVersion !== SNIPER_CANDIDATE_LIST_SCHEMA_VERSION) {
+        throw new Error(`wrong schemaVersion "${String(value.schemaVersion)}"`);
+      }
+      const list = normalizeSniperCandidateList({
+        sourceLabel: typeof value.sourceLabel === "string" ? value.sourceLabel : path,
+        candidates: (value.candidates ?? []) as never,
+      });
+      return { path, present: true, valid: true, detail: `${list.candidateCount} candidate(s)` };
+    }
+    if (kind === "preflight") {
+      const pf = validateSniperTokenPreflightReport(value);
+      return { path, present: true, valid: true, detail: `${pf.candidateCount} candidate(s) preflighted` };
+    }
+    const dec = validatePaperSniperDecisionReport(value);
+    return { path, present: true, valid: true, detail: `${dec.candidateCount} decision(s)` };
+  } catch (err) {
+    return { path, present: true, valid: false, detail: redactString((err as Error).message) };
+  }
+}
+
+/**
+ * `soulmaker paper:sniper:workflow` — print the recommended LOCAL, PAPER-only sniper command sequence
+ * (intake → preflight → decide) and where the operator is in it. For each supplied artifact path it
+ * checks existence and light validity (read-only), then emits a deterministic plan: each stage's
+ * status (`done` / `ready` / `blocked` / `todo`), its command, and the single recommended NEXT command.
+ * It DESCRIBES the sequence only — it executes no stage, runs no live action, makes no network call,
+ * and touches no wallet. `--json` emits the plan. It writes nothing.
+ */
+export function paperSniperWorkflowReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperWorkflowCommandOptions = {},
+): CliReport {
+  const candidates = sniperArtifactState(ctx, opts.candidatesPath, "candidates");
+  const preflight = sniperArtifactState(ctx, opts.preflightPath, "preflight");
+  const decide = sniperArtifactState(ctx, opts.decisionPath, "decide");
+  const plan = buildSniperWorkflowPlan({ candidates, preflight, decide });
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(plan), null, 2), exitCode: 0 };
+  }
+  return { text: formatSniperWorkflowPlan(plan), exitCode: 0 };
 }
 
 function yesNo(value: boolean): string {

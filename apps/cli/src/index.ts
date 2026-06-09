@@ -44,6 +44,7 @@ import {
   paperSniperCandidatesValidateReport,
   paperSniperPreflightReport,
   paperSniperDecideReport,
+  paperSniperWorkflowReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1174,5 +1175,28 @@ program
       if (exitCode !== 0) process.exitCode = exitCode;
     },
   );
+
+program
+  .command("paper:sniper:workflow")
+  .description(
+    "Operator helper: print the recommended LOCAL, PAPER-only sniper command sequence (intake -> preflight -> decide) and where you are in it (`sniper.workflow.plan.v1`). For each supplied artifact path it checks existence + light validity (read-only) and emits each stage's status (done/ready/blocked/todo), its command, and the single recommended NEXT command. It DESCRIBES the sequence only — it executes no stage, runs no live action, makes no network call, and touches no wallet. Writes nothing",
+  )
+  .option("--candidates <path>", "candidate list JSON (optional)")
+  .option("--preflight <path>", "preflight report JSON (optional)")
+  .option("--decision <path>", "decision report JSON (optional)")
+  .option("--json", "emit the workflow plan as stable JSON")
+  .action((opts: { candidates?: string; preflight?: string; decision?: string; json?: boolean }) => {
+    const { text, exitCode } = paperSniperWorkflowReport(
+      {},
+      {
+        candidatesPath: opts.candidates,
+        preflightPath: opts.preflight,
+        decisionPath: opts.decision,
+        json: Boolean(opts.json),
+      },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
 
 program.parseAsync(process.argv);
