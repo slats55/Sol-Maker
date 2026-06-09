@@ -28,7 +28,8 @@ do I/O, network, or RPC themselves.
    reusing existing read-only Solana inspection + advisory risk output; never a trade signal.
 3. **Paper-only decisions** (Sprint 27 — implemented) — candidate list + preflight + operator rules →
    a simulated `skip` / `watch` / `paper-enter` / `paper-reject` / `unknown` decision per candidate.
-4. **Operator workflow** (Sprint 28 — planned) — fixtures + a runbook tying the path together.
+4. **Operator workflow** (Sprint 28 — implemented) — a `paper:sniper:workflow` helper + the
+   [`SNIPER_RUNBOOK.md`](SNIPER_RUNBOOK.md) tying the path together.
 5. **Phase 6 simulation boundary** (Sprint 29 — spec only, no implementation).
 6. **Simulation engine**, then **burner/live** — only after heavy, explicit safety work.
 
@@ -207,7 +208,19 @@ only the report JSON, refusing overwrite without `--force`). `--fail-on-paper-en
 gate to ensure no candidate auto-enters; `--fail-on-risk` trips when any candidate was rejected on
 risk. No network, no wallet, no transaction build/sign/send.
 
+## Operator workflow (Sprint 28)
+
+`paper:sniper:workflow` is the operator's "where am I / what do I run next" helper. The pure
+`buildSniperWorkflowPlan` (schema `sniper.workflow.plan.v1`) takes the per-stage artifact STATES
+(present? valid?) — the CLI checks file existence + light validity read-only and hands those in — and
+produces a deterministic ordered plan: each stage (`candidates` → `preflight` → `decide`) marked
+`done` / `ready` / `blocked` / `todo`, its command, and the single recommended NEXT command.
+`preflight` and `decide` are `blocked` until `candidates` is `done`; an invalid present artifact is
+always `blocked`. It **describes** the sequence only — it executes no stage, runs no live action, makes
+no network call, and touches no wallet. The full operator walkthrough is in
+[`SNIPER_RUNBOOK.md`](SNIPER_RUNBOOK.md).
+
 ## What is intentionally NOT here yet
 
-- **No operator runbook / end-to-end workflow helper** yet — that is Sprint 28.
-- **No transaction planning / signing / sending / wallet / burner** — Phases 6 and 7, not started.
+- **No transaction planning / signing / sending / wallet / burner** — Phases 6 and 7, not started. The
+  Phase 6 boundary prerequisites are listed in [`SNIPER_RUNBOOK.md`](SNIPER_RUNBOOK.md).

@@ -29,7 +29,7 @@ packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [s
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
 packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup + research portfolio diff + research artifact pack + research artifact pack diff (Sprint 8–24)  [strategy, paper, security]
-packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (Sprint 25) + token preflight (Sprint 26) + paper decisions (Sprint 27); NO chain capability  [risk, security]
+packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (S25) + token preflight (S26) + paper decisions (S27) + operator workflow helper (S28); NO chain capability  [risk, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -354,6 +354,15 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   preflight). A `paper-enter` is a paper-only decision — NOT a buy/sell order, a transaction, or live
   readiness. `--fail-on-paper-enter` / `--fail-on-risk` are CI gates; the CLI writes nothing unless
   `--out`. Phase 6/7 remain untouched.
+- **(Sprint 28)** `@soulmaker/sniper` adds the **operator workflow helper** + runbook: `workflow.ts`
+  (`buildSniperWorkflowPlan`, `validate…`, `format…`; schema `sniper.workflow.plan.v1`), exposed by the
+  CLI as `paper:sniper:workflow [--candidates <path>] [--preflight <path>] [--decision <path>]`. The
+  pure builder takes the operator's per-stage artifact STATES (present? valid?) — the CLI checks
+  existence + light validity read-only and hands those booleans in — and produces a deterministic,
+  ordered plan: each stage's status (`done` / `ready` / `blocked` / `todo`), its command, and the
+  single recommended NEXT command. It **describes** the sequence only — it executes no stage, runs no
+  live action, makes no network call, and touches no wallet. The companion operator runbook is
+  `docs/SNIPER_RUNBOOK.md`.
 
 ## The live boundary
 

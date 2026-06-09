@@ -580,7 +580,14 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   satisfied. It re-derives no risk and reads no chain (it consumes the preflight). A `paper-enter` is a
   paper-only decision — NOT a buy/sell order, NOT a transaction, NOT live readiness. Writes nothing
   unless `--out`.
-- ⬜ **(Sprint 28 — planned) Sniper operator workflow** — fixtures + runbook tying the path together.
+- ✅ **(Sprint 28) Sniper operator workflow** — a read-only helper + runbook tying the path together.
+  `@soulmaker/sniper` exports `buildSniperWorkflowPlan`, `validateSniperWorkflowPlan`,
+  `formatSniperWorkflowPlan` (schema `sniper.workflow.plan.v1`); the CLI adds
+  `paper:sniper:workflow [--candidates <path>] [--preflight <path>] [--decision <path>] [--json]`,
+  which checks which local artifacts exist + validate (read-only) and prints each stage's status
+  (`done` / `ready` / `blocked` / `todo`) + the recommended NEXT command. It DESCRIBES the
+  intake → preflight → decide sequence only — it executes no stage, runs no live action, and writes
+  nothing. The operator runbook is `docs/SNIPER_RUNBOOK.md`; a worked example is in `examples/sniper/`.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

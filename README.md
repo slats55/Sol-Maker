@@ -205,7 +205,14 @@ with reasons, blocking risk flags, applied rules, and assumptions. A candidate r
 only when the preflight passed and every rule is satisfied. A `paper-enter` is a **paper-only**
 decision — **not** a buy/sell order, **not** a transaction, **not** live readiness. `--fail-on-paper-enter`
 and `--fail-on-risk` are CI gates; it writes nothing unless `--out`. No network, no wallet, no
-transaction build/sign/send. See [`docs/SNIPER_MODEL.md`](docs/SNIPER_MODEL.md).
+transaction build/sign/send.
+
+Sprint 28 ties the path together with an operator helper and a runbook:
+`paper:sniper:workflow` checks which local artifacts exist + validate and prints the recommended NEXT
+command in the intake → preflight → decide sequence (`sniper.workflow.plan.v1`). It **describes** the
+sequence only — it executes no stage, runs no live action, and writes nothing. The full operator
+walkthrough lives in [`docs/SNIPER_RUNBOOK.md`](docs/SNIPER_RUNBOOK.md); the model/design is in
+[`docs/SNIPER_MODEL.md`](docs/SNIPER_MODEL.md).
 
 ## Non-negotiable security rules (summary)
 
@@ -289,8 +296,10 @@ soulmaker/
                 #            pass/warn/fail/unknown per candidate from already-loaded read-only
                 #            inspection + advisory risk;
                 #            Sprint 27 adds paper decisions (sniper.paper.decision.report.v1):
-                #            skip/watch/paper-enter/paper-reject/unknown from preflight + rules
-                #            (paper-only decisions) — NO chain capability, NO wallet, NO network
+                #            skip/watch/paper-enter/paper-reject/unknown from preflight + rules;
+                #            Sprint 28 adds the operator workflow helper (sniper.workflow.plan.v1):
+                #            describes the intake->preflight->decide sequence, executes nothing
+                #            (paper-only) — NO chain capability, NO wallet, NO network
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
     backtest/   # injected, copyable example scenarios + fixtures (NOT historical market data)
@@ -544,6 +553,12 @@ pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> --risk c1=c
 pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight preflight.json
 pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight preflight.json --rules rules.json --json
 pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight preflight.json --fail-on-paper-enter
+
+# Sprint 28 — SNIPER OPERATOR WORKFLOW: a read-only helper that checks which local artifacts exist +
+# validate and prints the recommended NEXT command in the intake -> preflight -> decide sequence. It
+# DESCRIBES the sequence only — it executes no stage, runs no live action, and writes nothing:
+pnpm soulmaker paper:sniper:workflow
+pnpm soulmaker paper:sniper:workflow --candidates candidates.json --preflight preflight.json --decision decision.json --json
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

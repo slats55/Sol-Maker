@@ -94,3 +94,15 @@ pnpm soulmaker paper:sniper:decide --candidates candidates.example.json --prefli
 
 Without `--preflight`, every candidate is conservatively `watch`ed. The command reads the named files
 only and **writes nothing** unless `--out` is given.
+
+## Operator workflow helper (Sprint 28)
+
+At any time, ask the helper where you are and what to run next. It checks which artifacts exist +
+validate and prints the recommended NEXT command — it **executes nothing**:
+
+```bash
+pnpm soulmaker paper:sniper:workflow --candidates candidates.example.json
+pnpm soulmaker paper:sniper:workflow --candidates candidates.example.json --preflight preflight.json --decision decision.json --json
+```
+
+See [`docs/SNIPER_RUNBOOK.md`](../../docs/SNIPER_RUNBOOK.md) for the full operator runbook.
