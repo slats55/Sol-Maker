@@ -59,3 +59,23 @@ export type {
   SniperTokenPreflightReport,
   FormatSniperTokenPreflightReportOptions,
 } from "./token-preflight.js";
+
+export {
+  buildPaperSniperDecisionReport,
+  validatePaperSniperDecisionReport,
+  formatPaperSniperDecisionReport,
+  PaperSniperDecisionReportError,
+  SNIPER_PAPER_DECISION_REPORT_SCHEMA_VERSION,
+  SNIPER_PAPER_DECISION_REPORT_BANNER,
+  SNIPER_PAPER_DECISION_REPORT_DISCLAIMERS,
+} from "./paper-decision.js";
+
+export type {
+  SniperDecisionRules,
+  ResolvedSniperDecisionRules,
+  BuildPaperSniperDecisionReportInput,
+  SniperDecision,
+  SniperDecisionEntry,
+  SniperPaperDecisionReport,
+  FormatPaperSniperDecisionReportOptions,
+} from "./paper-decision.js";
