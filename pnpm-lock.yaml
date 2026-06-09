@@ -47,6 +47,9 @@ importers:
       '@soulmaker/security':
         specifier: workspace:*
         version: link:../../packages/security
+      '@soulmaker/sniper':
+        specifier: workspace:*
+        version: link:../../packages/sniper
       '@soulmaker/solana':
         specifier: workspace:*
         version: link:../../packages/solana
@@ -97,6 +100,12 @@ importers:
         version: link:../security
 
   packages/security: {}
+
+  packages/sniper:
+    dependencies:
+      '@soulmaker/security':
+        specifier: workspace:*
+        version: link:../security
 
   packages/solana:
     dependencies:

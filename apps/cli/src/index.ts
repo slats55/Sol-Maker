@@ -41,6 +41,7 @@ import {
   paperBacktestDiffResearchPortfolioReport,
   paperBacktestResearchPackReport,
   paperBacktestDiffResearchPackReport,
+  paperSniperCandidatesValidateReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1048,6 +1049,29 @@ program
           failOnAttention: Boolean(opts.failOnAttention),
           failOnNewAttention: Boolean(opts.failOnNewAttention),
           failOnUnsupported: Boolean(opts.failOnUnsupported),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:candidates:validate")
+  .description(
+    "Validate + normalize a LOCAL sniper candidate list (PAPER ONLY; operator intake): every mint is validated as a 32-byte Solana public key (secret-length / private-key-like input is REFUSED), candidate ids must be unique, duplicate mints are surfaced as warnings; accepts operator-friendly raw input or a canonical `sniper.candidate.list.v1`; reads the named file only, writes nothing, no network/RPC/wallet — intake validation, NOT a trade signal or a verified on-chain fact",
+  )
+  .option("--input <path>", "candidate list JSON (operator intake)")
+  .option("--json", "emit the normalized candidate list as stable JSON")
+  .option("--fail-on-warning", "exit non-zero when the normalized list carries any warning (e.g. duplicate mints)")
+  .action(
+    (opts: { input?: string; json?: boolean; failOnWarning?: boolean }) => {
+      const { text, exitCode } = paperSniperCandidatesValidateReport(
+        {},
+        {
+          inputPath: opts.input,
+          json: Boolean(opts.json),
+          failOnWarning: Boolean(opts.failOnWarning),
         },
       );
       console.log(text);

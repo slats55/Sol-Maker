@@ -13,6 +13,7 @@
     "@soulmaker/paper": "workspace:*",
     "@soulmaker/risk": "workspace:*",
     "@soulmaker/security": "workspace:*",
+    "@soulmaker/sniper": "workspace:*",
     "@soulmaker/solana": "workspace:*",
     "@soulmaker/strategy": "workspace:*",
     "commander": "^12.1.0"

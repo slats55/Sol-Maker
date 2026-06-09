@@ -49,6 +49,12 @@ import {
   type TokenRiskInput,
 } from "@soulmaker/risk";
 import {
+  normalizeSniperCandidateList,
+  formatSniperCandidateList,
+  SNIPER_CANDIDATE_LIST_SCHEMA_VERSION,
+  type SniperCandidateList,
+} from "@soulmaker/sniper";
+import {
   runPaperSession,
   parseJournal,
   reduceJournal,
@@ -4014,6 +4020,79 @@ export function paperBacktestDiffResearchPackReport(
     text: formatBacktestResearchArtifactPackDiff(diff, { baseLabel: opts.basePath, nextLabel: opts.nextPath }),
     exitCode,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 25 — paper:sniper:candidates:validate
+//   Validate + normalize a LOCAL sniper candidate list (operator intake): every
+//   mint is validated as a 32-byte Solana public key (secret-length / private-
+//   key-like input is REFUSED), candidate ids must be unique, and duplicate
+//   mints are surfaced as warnings. Reads the named file only, writes nothing,
+//   no network, no RPC, no wallet. This is intake validation — NOT a trade
+//   signal and NOT a verified on-chain fact.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperCandidatesValidateCommandOptions {
+  /** Candidate list JSON path (operator intake). Required. */
+  inputPath?: string;
+  json?: boolean;
+  /** Exit non-zero when the normalized list carries any warning (e.g. duplicate mints). */
+  failOnWarning?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:candidates:validate` — validate + normalize a LOCAL sniper candidate list.
+ * Reads ONLY the named local file (BOM-tolerant). The file may be operator-friendly raw input
+ * (`{candidates: [...]}`) or a canonical `sniper.candidate.list.v1`; if it carries a `schemaVersion`,
+ * it must be the candidate-list schema (a wrong-schema file is refused so an operator can't point this
+ * at, say, a portfolio report). Every mint is validated as a 32-byte Solana public key — secret-length
+ * / private-key-like input is refused (exit 1) — candidate ids must be unique, and duplicate mints are
+ * surfaced as warnings. `--json` emits the normalized canonical list; `--fail-on-warning` exits 1 on
+ * any warning. Writes nothing, no network, no RPC, no wallet.
+ */
+export function paperSniperCandidatesValidateReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperCandidatesValidateCommandOptions = {},
+): CliReport {
+  if (!opts.inputPath) return { text: "Refusing: --input <path> is required.", exitCode: 1 };
+
+  let value: unknown;
+  try {
+    value = readJsonValue(ctx, opts.inputPath, "sniper candidate list");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (!isPlainObject(value)) {
+    return { text: "Refusing: candidate list must be a JSON object with a candidates array.", exitCode: 1 };
+  }
+  // If a schemaVersion is present it must be the candidate-list schema (don't normalize a portfolio
+  // report, etc.). An absent schemaVersion is fine — operator-friendly raw input is accepted.
+  if (value.schemaVersion !== undefined && value.schemaVersion !== SNIPER_CANDIDATE_LIST_SCHEMA_VERSION) {
+    return {
+      text: redactString(
+        `Refusing: schemaVersion must be "${SNIPER_CANDIDATE_LIST_SCHEMA_VERSION}" (got "${String(value.schemaVersion)}").`,
+      ),
+      exitCode: 1,
+    };
+  }
+
+  let list: SniperCandidateList;
+  try {
+    list = normalizeSniperCandidateList({
+      sourceLabel: typeof value.sourceLabel === "string" ? value.sourceLabel : opts.inputPath,
+      candidates: (value.candidates ?? []) as never,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const exitCode = opts.failOnWarning && list.warnings.length > 0 ? 1 : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(list), null, 2), exitCode };
+  }
+  return { text: formatSniperCandidateList(list, { label: opts.inputPath }), exitCode };
 }
 
 function yesNo(value: boolean): string {
