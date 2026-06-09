@@ -596,6 +596,12 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
 > Note: "Sprint 6" in this repo delivered the **strategy → paper plan pipeline**
 > (an extension of Phase 5, above), **not** this roadmap phase. Transaction
 > planning/simulation remains entirely unstarted — by design.
+>
+> The boundary contract + the exact prerequisites that must be satisfied before any
+> Phase 6 implementation begins are specified in
+> [`PHASE_6_SIMULATION_BOUNDARY.md`](PHASE_6_SIMULATION_BOUNDARY.md) (Sprint 29 — SPEC
+> ONLY, no code). Key invariants: planner ⟂ signer separated forever, dry-run by default,
+> no keys/signing/sending, operator approval + audit logs + kill switch required.
 
 - ⬜ Transaction **plan** object (explicit destinations, amounts, fees).
 - ⬜ Human-readable preview (no blind signing).

@@ -134,8 +134,9 @@ Phase 6 is **not started** and must not begin until ALL of these are stable:
 9. Test coverage for every boundary, and an explicit, documented **planner ⟂ signer** separation
    (the transaction planner must never have access to a signer).
 
-Phase 6 itself is **planning + simulation only** — still no sending. See
-[`ROADMAP.md`](ROADMAP.md) Phase 6.
+Phase 6 itself is **planning + simulation only** — still no sending. The full boundary contract +
+prerequisites are specified in [`PHASE_6_SIMULATION_BOUNDARY.md`](PHASE_6_SIMULATION_BOUNDARY.md); see
+also [`ROADMAP.md`](ROADMAP.md) Phase 6.
 
 ## Prerequisites before Phase 7 (burner / live)
 
