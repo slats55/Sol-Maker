@@ -45,6 +45,7 @@ src/lib/         pure data + the html engine (no components)
   command-reference.ts factual CLI command reference data (+ web build/inspect)
   local-artifact.ts    defensive normalizer for a local report JSON (pure, bounded)
   json-access.ts       defensive accessors/formatters for untrusted JSON (pure, bounded)
+  folder-index.ts      pure folder-index builder + schema-aware diff-verdict extraction
   sample-data.ts       clearly-labelled, non-live fixtures
 
 src/components/  pure RawHtml builders (import lib, never pages)
@@ -58,9 +59,12 @@ src/components/  pure RawHtml builders (import lib, never pages)
 
 src/pages/       one render function per page + registry.ts (the page list)
   artifact.ts          renderArtifact (empty state) + renderArtifactReport (loaded)
+  folder.ts            renderFolder (empty state) + renderFolderIndex (loaded)
 src/build.ts     generator: wraps each page in the shell, writes public/
-src/inspect.ts   Node-only command: reads ONE local report JSON, writes one page
-fixtures/        committed, benign sample report JSON (for the inspect smoke/tests)
+src/inspect.ts   Node-only command: --input reads ONE report JSON; --dir scans a
+                 folder of report JSON; writes one static page either way
+fixtures/        committed, benign sample report JSON (for the inspect smoke/tests);
+                 folder-sample/ is a mixed sample folder for the folder-index tests
 styles/theme.css the dark command-center theme
 tests/           Vitest tests
 public/          GENERATED output (committed; do not hand-edit)
@@ -79,13 +83,56 @@ language automatically.
 `tests/pages.test.ts` re-renders each page and asserts the committed file
 matches — so forgetting to rebuild fails the test, not review.
 
-`pnpm web:inspect` (`apps/web/src/inspect.ts`) is a second, separate writer: it
-reads exactly one local report JSON, normalizes it via `lib/local-artifact.ts`,
-and renders the loaded artifact through the **same** `DashboardShell` to a single
-flat file (default `public/research-artifact.html`). It shares the safety
-guarantees of the generator — no upload, no network, no server, no wallet, no
-keys — and never executes report content (everything is escaped and capped). See
+`pnpm web:inspect` (`apps/web/src/inspect.ts`) is a second, separate writer with
+two modes:
+
+- `--input <report.json>` reads exactly one local report JSON, normalizes it via
+  `lib/local-artifact.ts`, and renders the loaded artifact through the **same**
+  `DashboardShell` to a single flat file (default `public/research-artifact.html`).
+- `--dir <folder>` scans one local folder of report JSON (no recursion), builds a
+  bounded folder index via `lib/folder-index.ts`, and renders it through the same
+  shell to `public/research-folder.html`, with a per-artifact section for each
+  recognized artifact that reuses the single-artifact inspector view.
+
+Both modes share the safety guarantees of the generator — no upload, no network,
+no server, no wallet, no keys — and never execute report content (everything is
+escaped and capped). See
 [`WEB_LOCAL_ARTIFACT_INSPECTOR.md`](WEB_LOCAL_ARTIFACT_INSPECTOR.md).
+
+## Folder index + diff verdicts (`src/lib/folder-index.ts`)
+
+The folder index is a **pure, total** layer (lib, no component imports): the
+Node-only `--dir` mode reads the directory and hands `buildFolderIndex` a list of
+already-read entries (`{ name, type: "json", text }` or `{ name, type: "skipped",
+reason }`). It parses each JSON entry defensively, normalizes valid artifacts,
+extracts a verdict, and aggregates honest counts (scanned / valid / malformed /
+skipped / unknown / with-regression / with-change) plus a by-schema breakdown.
+Output is **deterministic** — entries are sorted by name first, so the same folder
+always yields byte-identical HTML.
+
+`extractVerdict(schemaVersion, raw)` is the conservative core. Each verdict field
+is `"yes" | "no" | "missing" | "not-applicable"`:
+
+- A recognized **diff** schema's real `hasRegression` / `hasChange` boolean is
+  reflected (`true` → "yes", `false` → "no"). The set of which schema carries
+  which field mirrors the backend diff interfaces verified on `master`
+  (`packages/backtest/src/*-diff.ts`): sensitivity / suite / matrix diffs carry
+  `hasRegression` only; the research-manifest diff carries `hasChange` only; the
+  research bundle and campaign diffs carry both.
+- A field the schema **carries but is missing** (absent or wrong type) →
+  `"missing"`, never silently `"no"` — a missing verdict is not a clean one.
+- A recognized **non-diff** schema → `"not-applicable"` (it has no such concept).
+- An **unknown / absent** schema → `"not-applicable"`; verdict fields are **not**
+  read from unrecognized shapes, so an unknown artifact can never fabricate a
+  verdict even if it literally contains those booleans.
+
+`hasTypedView` is **injected** into `buildFolderIndex` (rather than imported from
+the component layer) so the lib stays dependency-free; the inspect command and the
+folder-index tests pass the real predicate from `components/artifact-views.ts`.
+The page (`pages/folder.ts`) renders verdict badges (`.sm-verdict--regression` /
+`--changed` / `--clean`, with muted `missing` / `n/a`), a by-schema table, an
+artifact list that links to per-artifact sections, a skipped-files table, and a
+verdict legend — all escaped and capped like the rest of the inspector.
 
 ## Schema-aware typed views (`src/components/artifact-views.ts`)
 
