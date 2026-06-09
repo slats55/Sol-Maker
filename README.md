@@ -176,6 +176,18 @@ of this fetches live data or begins transaction planning (roadmap Phase 6 remain
 Phase 7 burner live remains not started). The default mode is `PAPER`. See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
+Sprint 25 begins the **sniper** path proper with a safe, offline **candidate intake** layer in a new
+pure `@soulmaker/sniper` package: `paper:sniper:candidates:validate --input <path>` validates +
+normalizes a local candidate list (`sniper.candidate.list.v1`). Every mint is validated as a 32-byte
+Solana **public** key — secret-length / private-key-like input is **refused** so a private key or seed
+phrase can never be pasted in and accepted — candidate ids must be unique, and duplicate mints are
+surfaced as warnings. The package carries **no chain capability** (no `@solana/web3.js`, no
+`@soulmaker/solana`): mint validation uses a pure base58 decoder, and the operator-supplied
+liquidity / market / social context is intake metadata that is **not** verified on-chain by this step
+(a later read-only preflight does that). It reads the named file only and writes nothing. This is
+intake validation — **not** a trade signal, **not** a verified on-chain fact, and **not** advice. See
+[`docs/SNIPER_MODEL.md`](docs/SNIPER_MODEL.md).
+
 ## Non-negotiable security rules (summary)
 
 The full, authoritative list is in [`SECURITY.md`](SECURITY.md). The short form:
@@ -250,10 +262,15 @@ soulmaker/
                 #            Sprint 23 adds the research artifact pack (summarizes many artifacts);
                 #            Sprint 24 adds the research artifact pack diff (two packs)
                 #            (still pure: the package never scans dirs or reads/writes files)
+    sniper/     # @soulmaker/sniper    — Phase 5+ PAPER-only, offline sniper decision support;
+                #            Sprint 25 adds candidate intake (sniper.candidate.list.v1): pure mint
+                #            validation (32-byte pubkey; secret-length input refused), unique ids,
+                #            duplicate-mint warnings — NO chain capability, NO wallet, NO network
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
     backtest/   # injected, copyable example scenarios + fixtures (NOT historical market data)
-  docs/         # ARCHITECTURE, ROADMAP, WALLET_SAFETY_MODEL, RISK_MODEL, REFERENCE_REPO_AUDIT
+    sniper/     # injected, copyable candidate-list fixtures (NOT live data, NOT trading results)
+  docs/         # ARCHITECTURE, ROADMAP, SNIPER_MODEL, WALLET_SAFETY_MODEL, RISK_MODEL
   scripts/      # thin operational scripts
   tests/        # cross-package integration tests (unit tests live beside code)
   references/   # study-only clones (gitignored, never committed, never run with funds)
@@ -476,6 +493,14 @@ pnpm soulmaker paper:backtest:research:pack --artifact portfolio=portfolio.json 
 # writes nothing:
 pnpm soulmaker paper:backtest:diff:research:pack --base <pack-before.json> --next <pack-now.json>
 pnpm soulmaker paper:backtest:diff:research:pack --base <pack-before.json> --next <pack-now.json> --fail-on-regression --fail-on-unsupported
+
+# Sprint 25 — SNIPER CANDIDATE INTAKE: validate + normalize a LOCAL candidate list (operator intake).
+# Every mint is validated as a 32-byte Solana public key (secret-length / private-key-like input is
+# REFUSED), candidate ids must be unique, and duplicate mints are surfaced as warnings. Reads the named
+# file only, writes nothing, no network/RPC/wallet — intake validation, NOT a trade signal:
+pnpm soulmaker paper:sniper:candidates:validate --input examples/sniper/candidates.example.json
+pnpm soulmaker paper:sniper:candidates:validate --input examples/sniper/candidates.example.json --json
+pnpm soulmaker paper:sniper:candidates:validate --input examples/sniper/candidates.example.json --fail-on-warning
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

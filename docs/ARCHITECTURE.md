@@ -29,6 +29,7 @@ packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [s
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
 packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup + research portfolio diff + research artifact pack + research artifact pack diff (Sprint 8–24)  [strategy, paper, security]
+packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (Sprint 25); NO chain capability  [security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -70,6 +71,13 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   contract — the backtest is the orchestrator that drives a session. It is pure
   (no `core`, `solana`, `@solana/web3.js`, RPC, filesystem, network, `Date.now`,
   or `Math.random`).
+- `@soulmaker/sniper` (Sprint 25) is a **pure, offline** package depending only on
+  `@soulmaker/security` (redaction). It deliberately carries **no chain capability**
+  — it does NOT depend on `@soulmaker/solana` or `@solana/web3.js` (a forbidden-import
+  test enforces this), validating mints with a pure base58 decoder instead. The CLI
+  composes it with the read-only client / risk engine in later sniper sprints by
+  passing already-loaded data into its pure builders; the package itself never does
+  I/O, RPC, or network.
 - **(Sprint 10)** `@soulmaker/backtest` also exports pure, offline helpers that sit
   *beside* the replay engine rather than driving it: `validateBacktestReport` +
   `diffBacktestReports`/`formatBacktestReportDiff` (compare two already-produced
@@ -305,6 +313,19 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   decision, imports only `@soulmaker/security` plus its Sprint 23 sibling (no fs/net, no
   `Date.now`/`Math.random`), and the CLI reads the two named files only and **writes nothing**. A pack
   diff is bookkeeping over two local summaries — not a live result, prediction, or advice.
+- **(Sprint 25)** A NEW pure package `@soulmaker/sniper` begins the **sniper decision-support** path
+  with a safe, offline **candidate intake** layer: `mint-address.ts` (`parseMintAddress` /
+  `isValidMintAddress`) + `candidate-list.ts` (`normalizeSniperCandidateList`, `validate…`, `format…`;
+  schema `sniper.candidate.list.v1`), exposed by the CLI as `paper:sniper:candidates:validate --input
+  <path>`. The package carries **no chain capability** — it does NOT import `@solana/web3.js` or
+  `@soulmaker/solana` (a forbidden-import test enforces this); mint validation uses a pure base58
+  decoder that mirrors `@soulmaker/solana`'s safety semantics (a 32-byte public key is 32–44 base58
+  chars; secret-length input — a ~88-char 64-byte secret key — is refused before decoding and never
+  echoed). It validates every mint, enforces unique candidate ids, surfaces duplicate mints as
+  warnings, treats every liquidity / market / social / observed value as operator-supplied intake
+  metadata (NOT verified on-chain here), uses no wall-clock time, and never mutates inputs. The CLI
+  reads the named file only and **writes nothing**. Intake validation — not a trade signal, not a
+  verified on-chain fact, not advice. See `docs/SNIPER_MODEL.md`.
 
 ## The live boundary
 

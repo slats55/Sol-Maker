@@ -537,6 +537,30 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   decision; it reads the two named files only and **writes nothing**; the package stays pure (no
   fs/net, no `Date.now`/`Math.random`; the formatter redacts internally). Local bookkeeping over two
   local summaries — not a live result, not advice, not a profitability claim.
+
+### Sniper decision-support path (PAPER-only, offline) — `@soulmaker/sniper`
+
+> The product direction the research/PAPER foundation supports: candidate intake → token preflight →
+> paper-only decisions → operator workflow, all offline and behind the live boundary. See
+> [`SNIPER_MODEL.md`](SNIPER_MODEL.md). Nothing here holds a key or builds/signs/sends a transaction.
+
+- ✅ **(Sprint 25) Sniper candidate intake** — a NEW pure, offline package `@soulmaker/sniper`
+  (deps: only `@soulmaker/security`) with **no chain capability** (no `@solana/web3.js`, no
+  `@soulmaker/solana`; a forbidden-import test enforces this). Exports `normalizeSniperCandidateList`,
+  `validateSniperCandidateList`, `formatSniperCandidateList`, `parseMintAddress` / `isValidMintAddress`
+  (schema `sniper.candidate.list.v1`); the CLI adds
+  `paper:sniper:candidates:validate --input <path> [--json] [--fail-on-warning]`. Every mint is
+  validated as a 32-byte Solana public key by a pure base58 decoder mirroring `@soulmaker/solana`'s
+  safety semantics (secret-length / private-key-like input is refused before decoding and never
+  echoed); candidate ids must be unique; duplicate mints are surfaced as warnings; operator-supplied
+  liquidity / market / social / observed context is intake metadata that is **NOT verified on-chain**
+  here. Deterministic, no wall-clock time, no mutation; the CLI reads the named file only and writes
+  nothing. Intake validation — not a trade signal, not a verified on-chain fact, not advice.
+- ⬜ **(Sprint 26 — planned) Sniper token preflight** — a read-only safety/research summary per
+  candidate, reusing existing read-only Solana inspection + advisory risk code; never a trade signal.
+- ⬜ **(Sprint 27 — planned) Paper-only sniper decisions** — candidate list + preflight/risk + strategy
+  rules → a simulated `skip` / `watch` / `paper-enter` / `paper-reject` decision per candidate.
+- ⬜ **(Sprint 28 — planned) Sniper operator workflow** — fixtures + runbook tying the path together.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 
