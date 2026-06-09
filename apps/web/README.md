@@ -104,11 +104,20 @@ is the same **local-only** posture as the single-artifact inspector — reads lo
 files, writes one HTML file, no upload/server/network/wallet/keys.
 
 The scan is fail-soft: non-`.json` files and subdirectories are skipped with an
-honest count, malformed JSON is listed (not interpreted) instead of crashing, and
-unknown/absent schemas are labelled honestly. Verdicts are **schema-aware and
-conservative** — a `hasRegression` / `hasChange` value is reported only when the
-recognized diff schema actually carries that field; a missing field reads as
-`missing` (never `no`), and an unknown schema never produces a verdict. See
+honest count (they are **not** artifacts), malformed JSON is listed (not
+interpreted) instead of crashing, and unknown/absent schemas are labelled
+honestly. Verdicts are **schema-aware and conservative** — a `hasRegression` /
+`hasChange` value is reported only when the recognized diff schema actually
+carries that field; a missing field reads as `missing` (never `no`), and an
+unknown schema never produces a verdict.
+
+The loaded page also groups the scan into **five pre-rendered, static filter
+sections** — all / regression / changed / unknown-or-malformed / clean — with
+summary cards that link to them. These are generated at inspect time with **no
+JavaScript, no query params, and no dynamic browser behaviour**; each section's
+heading count matches its rows, and the same counts ride in the `--json` summary
+under `filters`. Unknown/malformed artifacts are never grouped as changed or
+regression, and a `missing` verdict is never treated as `false`. See
 [`../../docs/WEB_LOCAL_ARTIFACT_INSPECTOR.md`](../../docs/WEB_LOCAL_ARTIFACT_INSPECTOR.md).
 
 ## Data policy

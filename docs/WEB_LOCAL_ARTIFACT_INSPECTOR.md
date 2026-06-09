@@ -224,6 +224,9 @@ For the folder it summarizes:
 - **Per-artifact sections** — every recognized artifact links to a section on the
   same page rendered with the typed inspector view; malformed files are clearly
   labelled and never parsed into a fake view.
+- **Static filter sections** — the scan is also grouped into pre-rendered
+  all / regression / changed / unknown-or-malformed / clean sections (no
+  JavaScript; see [Static filter sections](#static-filter-sections-pre-rendered-no-javascript)).
 
 ### Fail-soft scanning
 
@@ -275,6 +278,43 @@ Two rules keep the overview honest:
   infer regression from text, filenames, or invented fields, so it cannot show a
   fake verdict. (The committed `fixtures/folder-sample/unknown-schema.json` proves
   this: it carries both booleans set to `true`, yet renders as `not-applicable`.)
+
+### Static filter sections (pre-rendered, no JavaScript)
+
+The loaded folder page groups the same scan into **five pre-rendered filter
+sections**, plus a row of summary cards that link to them. These are generated at
+inspect time from the local folder summary — there is **no JavaScript, no query
+params, and no dynamic browser behaviour**. Each card is a plain in-page fragment
+link (`#sm-filter-…`) to a section further down the page.
+
+| Section                           | Membership                                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------------------------- |
+| **All artifacts**                 | Every JSON file found (valid or malformed). Keeps the `sm-folder-artifacts` anchor.         |
+| **Regression artifacts**          | Recognized diff artifacts whose own `hasRegression` flag is `yes`.                          |
+| **Changed artifacts**             | Recognized diff artifacts whose own `hasChange` flag is `yes` (a regression is **not** required). |
+| **Unknown or malformed artifacts**| Unrecognized schemas, artifacts with no `schemaVersion`, and malformed JSON.                |
+| **Clean / no-change artifacts**   | Recognized artifacts with **no** regression or change flagged.                              |
+
+The grouping is deterministic and conservative — it derives entirely from each
+artifact's status / schema / verdict, exactly like the verdict layer above:
+
+- An artifact may appear in **both** Regression and Changed when its own flags say
+  so; Unknown and Clean never overlap each other or the regression/changed pair.
+- **Unknown / absent / malformed artifacts are never** counted as regression,
+  change, or clean — even if an unknown artifact literally contains
+  `hasRegression` / `hasChange` booleans, they are not trusted, so it lands only in
+  the Unknown-or-malformed section.
+- **Malformed JSON** always appears in the Unknown-or-malformed section (never in a
+  group that implies it was interpreted). Skipped non-`.json` files are **not
+  artifacts** — they stay in the separate Skipped-files table and are absent from
+  every filter section.
+- A recognized diff whose verdict field is **`missing`** is not a regression or a
+  change (because `missing` is never treated as `yes`), and it is a recognized
+  schema (so it is not unknown/malformed) — it therefore appears under
+  Clean / no-change with an honest `missing` badge, never a faked `no`.
+- Each section's **heading count equals the rows it renders**, and the same counts
+  ride along in the `--json` summary under a `filters` object
+  (`{ all, regression, changed, unknown, clean }`).
 
 ### Sample folder fixture
 
