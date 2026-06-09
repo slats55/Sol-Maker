@@ -49,6 +49,7 @@ import {
   paperBacktestDiffResearchIndexReport,
   paperBacktestResearchHistoryReport,
   paperBacktestResearchPortfolioReport,
+  paperBacktestDiffResearchPortfolioReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -59,7 +60,9 @@ import {
   buildBacktestResearchCampaignIndex,
   buildBacktestResearchCampaignHistoryReport,
   validateBacktestResearchCampaignHistoryReport,
+  buildBacktestResearchPortfolioReport,
   validateBacktestResearchPortfolioReport,
+  validateBacktestResearchPortfolioDiff,
   type BacktestArtifactDescriptor,
 } from "@soulmaker/backtest";
 import type {
@@ -6022,6 +6025,204 @@ describe("paperBacktestResearchPortfolioReport (Sprint 21)", () => {
       writeJson(cwd, "b.json", regressedHist());
       const before = listFilesRec(cwd);
       paperBacktestResearchPortfolioReport({ cwd, env: {} }, { histories: ["a=a.json", "b=b.json"], json: true });
+      expect(listFilesRec(cwd)).toEqual(before);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperBacktestDiffResearchPortfolioReport (Sprint 22)", () => {
+  function desc(over: Partial<BacktestArtifactDescriptor> = {}): BacktestArtifactDescriptor {
+    return { path: "a.report.json", kind: "backtest-report", schemaVersion: "backtest.report.v1", digest: "d1", sizeBytes: 100, ...over };
+  }
+  const okRun = (runId: string, digest = "d1") => ({ runId, artifacts: [desc({ digest })] });
+  const badRun = (runId: string) => ({ runId, artifacts: [desc({ path: "u.json", kind: "unknown-json" as const, schemaVersion: null, digest: "u" })] });
+  function idx(runs: { runId: string; artifacts: BacktestArtifactDescriptor[] }[]) {
+    return buildBacktestResearchCampaignIndex({ campaignName: "c", runs });
+  }
+  function hist(snapshots: { runId: string; artifacts: BacktestArtifactDescriptor[] }[][]) {
+    return buildBacktestResearchCampaignHistoryReport({
+      snapshots: snapshots.map((runs, i) => ({ snapshotId: `s${i}`, index: idx(runs) })),
+    });
+  }
+  const pc = (campaignId: string, report: unknown) => ({ campaignId, report });
+  const portfolio = (campaigns: { campaignId: string; report: unknown }[]) =>
+    buildBacktestResearchPortfolioReport({ campaigns });
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+  function listFilesRec(dir: string): string[] {
+    const out: string[] = [];
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) out.push(...listFilesRec(full));
+      else out.push(full);
+    }
+    return out.sort();
+  }
+  // History-report archetypes (real Sprint 20 reports).
+  const cleanHist = () => hist([[okRun("a")], [okRun("a")]]); // clean + stable
+  const changedHist = () => hist([[okRun("a")], [okRun("a"), okRun("b")]]); // additive valid -> changed, clean
+  const regressedHist = () => hist([[okRun("a", "1")], [okRun("a", "2")]]); // digest change -> regression, still valid
+  const attentionHist = () => hist([[okRun("a"), badRun("bad")], [okRun("a"), badRun("bad")]]); // persistent invalid
+  const newAttentionHist = () => hist([[okRun("a")], [okRun("a"), badRun("b")]]); // new invalid run
+
+  it("refuses when --base or --next is missing", () => {
+    expect(paperBacktestDiffResearchPortfolioReport({}, {}).text).toMatch(/^Refusing: --base/);
+    expect(paperBacktestDiffResearchPortfolioReport({}, { basePath: "b.json" }).text).toMatch(/^Refusing: --next/);
+    expect(paperBacktestDiffResearchPortfolioReport({}, {}).exitCode).toBe(1);
+  });
+
+  it("renders a PAPER-ONLY human diff by default", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = writeJson(cwd, "base.json", portfolio([pc("alpha", cleanHist()), pc("bravo", cleanHist())]));
+      const next = writeJson(cwd, "next.json", portfolio([pc("alpha", cleanHist()), pc("bravo", regressedHist())]));
+      const r = paperBacktestDiffResearchPortfolioReport({ cwd, env: {} }, { basePath: base, nextPath: next });
+      expect(r.text).toContain("SIMULATED PAPER-ONLY RESEARCH PORTFOLIO DIFF");
+      expect(r.text).toContain("PAPER ONLY");
+      expect(r.text.toLowerCase()).toContain("not a live result");
+      expect(r.text).toContain("Regression: YES");
+      expect(r.exitCode).toBe(0); // no fail flag set
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json emits a valid, stable portfolio diff object", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = writeJson(cwd, "base.json", portfolio([pc("alpha", cleanHist())]));
+      const next = writeJson(cwd, "next.json", portfolio([pc("alpha", cleanHist()), pc("charlie", cleanHist())]));
+      const r = paperBacktestDiffResearchPortfolioReport({ cwd, env: {} }, { basePath: base, nextPath: next, json: true });
+      const diff = JSON.parse(r.text) as { schemaVersion: string; hasChange: boolean; addedCampaigns: { campaignId: string }[]; commonCampaignIds: string[] };
+      expect(diff.schemaVersion).toBe("backtest.research.portfolio.diff.v1");
+      expect(diff.hasChange).toBe(true);
+      expect(diff.addedCampaigns.map((c) => c.campaignId)).toEqual(["charlie"]);
+      expect(diff.commonCampaignIds).toEqual(["alpha"]);
+      expect(() => validateBacktestResearchPortfolioDiff(JSON.parse(r.text))).not.toThrow();
+      // byte-stable across repeated calls
+      expect(paperBacktestDiffResearchPortfolioReport({ cwd, env: {} }, { basePath: base, nextPath: next, json: true }).text).toBe(r.text);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-change exits 1 on change, 0 when identical", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = writeJson(cwd, "base.json", portfolio([pc("alpha", cleanHist())]));
+      const same = writeJson(cwd, "same.json", portfolio([pc("alpha", cleanHist())]));
+      const changed = writeJson(cwd, "changed.json", portfolio([pc("alpha", cleanHist()), pc("bravo", cleanHist())]));
+      expect(paperBacktestDiffResearchPortfolioReport({ cwd, env: {} }, { basePath: base, nextPath: same, failOnChange: true }).exitCode).toBe(0);
+      expect(paperBacktestDiffResearchPortfolioReport({ cwd, env: {} }, { basePath: base, nextPath: changed, failOnChange: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-regression ignores a benign added campaign but trips on a newly-regressed common campaign", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = writeJson(cwd, "base.json", portfolio([pc("alpha", cleanHist())]));
+      const added = writeJson(cwd, "added.json", portfolio([pc("alpha", cleanHist()), pc("bravo", cleanHist())]));
+      const regressed = writeJson(cwd, "regressed.json", portfolio([pc("alpha", regressedHist())]));
+      expect(paperBacktestDiffResearchPortfolioReport({ cwd, env: {} }, { basePath: base, nextPath: added, failOnRegression: true }).exitCode).toBe(0);
+      expect(paperBacktestDiffResearchPortfolioReport({ cwd, env: {} }, { basePath: base, nextPath: regressed, failOnRegression: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-attention trips only when current attention newly appears on a common campaign", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = writeJson(cwd, "base.json", portfolio([pc("alpha", cleanHist())]));
+      const regressedOnly = writeJson(cwd, "regressed.json", portfolio([pc("alpha", regressedHist())])); // changed/regressed but still valid
+      const attention = writeJson(cwd, "attention.json", portfolio([pc("alpha", newAttentionHist())]));
+      expect(paperBacktestDiffResearchPortfolioReport({ cwd, env: {} }, { basePath: base, nextPath: regressedOnly, failOnAttention: true }).exitCode).toBe(0);
+      expect(paperBacktestDiffResearchPortfolioReport({ cwd, env: {} }, { basePath: base, nextPath: attention, failOnAttention: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-new-attention trips when new-since-baseline attention newly appears", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = writeJson(cwd, "base.json", portfolio([pc("alpha", cleanHist())]));
+      const changed = writeJson(cwd, "changed.json", portfolio([pc("alpha", changedHist())])); // change, no attention
+      const newAttn = writeJson(cwd, "new.json", portfolio([pc("alpha", newAttentionHist())]));
+      expect(paperBacktestDiffResearchPortfolioReport({ cwd, env: {} }, { basePath: base, nextPath: changed, failOnNewAttention: true }).exitCode).toBe(0);
+      expect(paperBacktestDiffResearchPortfolioReport({ cwd, env: {} }, { basePath: base, nextPath: newAttn, failOnNewAttention: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("an identical portfolio pair exits 0 even with every fail flag set", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = writeJson(cwd, "base.json", portfolio([pc("alpha", attentionHist()), pc("bravo", regressedHist())]));
+      const same = writeJson(cwd, "same.json", portfolio([pc("alpha", attentionHist()), pc("bravo", regressedHist())]));
+      const r = paperBacktestDiffResearchPortfolioReport(
+        { cwd, env: {} },
+        { basePath: base, nextPath: same, failOnChange: true, failOnRegression: true, failOnAttention: true, failOnNewAttention: true },
+      );
+      expect(r.exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed base file", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "bad.json"), "{ not json");
+      const next = writeJson(cwd, "next.json", portfolio([pc("alpha", cleanHist())]));
+      const r = paperBacktestDiffResearchPortfolioReport({ cwd, env: {} }, { basePath: "bad.json", nextPath: next });
+      expect(r.text).toMatch(/^Refusing:/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed next file", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = writeJson(cwd, "base.json", portfolio([pc("alpha", cleanHist())]));
+      writeFileSync(join(cwd, "bad.json"), "{ not json");
+      const r = paperBacktestDiffResearchPortfolioReport({ cwd, env: {} }, { basePath: base, nextPath: "bad.json" });
+      expect(r.text).toMatch(/^Refusing:/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a wrong artifact type (a history report, not a portfolio report)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = writeJson(cwd, "base.json", portfolio([pc("alpha", cleanHist())]));
+      const wrong = writeJson(cwd, "wrong.json", cleanHist()); // a history report, not a portfolio report
+      const r = paperBacktestDiffResearchPortfolioReport({ cwd, env: {} }, { basePath: base, nextPath: wrong });
+      expect(r.text).toMatch(/portfolio report is invalid/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("writes nothing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = writeJson(cwd, "base.json", portfolio([pc("alpha", cleanHist())]));
+      const next = writeJson(cwd, "next.json", portfolio([pc("alpha", regressedHist())]));
+      const before = listFilesRec(cwd);
+      paperBacktestDiffResearchPortfolioReport({ cwd, env: {} }, { basePath: base, nextPath: next, json: true });
       expect(listFilesRec(cwd)).toEqual(before);
     } finally {
       cleanup();
