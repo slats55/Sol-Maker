@@ -1,0 +1,8 @@
+{
+  "_comment": "FICTIONAL DETERMINISTIC FIXTURE — NOT live data. Two candidates share one INVENTED mint to exercise the duplicate-mint WARNING (allowed, but surfaced). Validate with: pnpm soulmaker paper:sniper:candidates:validate --input examples/sniper/candidates.duplicate-mint.json --fail-on-warning (exits 1 on the duplicate-mint warning).",
+  "sourceLabel": "examples/sniper/candidates.duplicate-mint.json",
+  "candidates": [
+    { "candidateId": "dup-a", "mint": "36VASLSKLFD2KokjXG7V28veZvXEsyHRKefLonPaAKzv", "sourceTag": "source-a", "tags": ["fictional"] },
+    { "candidateId": "dup-b", "mint": "36VASLSKLFD2KokjXG7V28veZvXEsyHRKefLonPaAKzv", "sourceTag": "source-b", "tags": ["fictional"] }
+  ]
+}

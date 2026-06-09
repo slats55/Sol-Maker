@@ -2,9 +2,63 @@
 
 > **These are deterministic FIXTURES — NOT live data, NOT trading results, NOT financial advice.**
 > The mints in `candidates.example.json` are real, well-known public token mints used purely as
-> offline, copyable examples. Every liquidity / market-cap / volume / observed value is a made-up
-> operator-supplied number and is **NOT verified on-chain**. Nothing here builds, signs, simulates, or
-> sends a transaction; nothing here is a trade signal.
+> offline, copyable examples. The mints in the `*.fictional.json` / `candidates.invalid-mint.json` /
+> `candidates.duplicate-mint.json` / `preflight-inputs.fictional.json` fixtures are **invented**
+> (synthetic valid 32-byte keys), and their inspection/risk values are **invented** — they are **NOT**
+> the real on-chain state of any token. Every liquidity / market-cap / volume / observed value is a
+> made-up operator-supplied number and is **NOT verified on-chain**. Nothing here builds, signs,
+> simulates, or sends a transaction; nothing here is a trade signal.
+
+## Fixture files
+
+| File | Purpose |
+| --- | --- |
+| `candidates.example.json` | Valid candidate list using real, well-known public mints (copyable). |
+| `candidates.fictional.json` | Valid candidate list of 3 **invented** mints that drive the end-to-end test. |
+| `candidates.duplicate-mint.json` | Two candidates share one mint — exercises the duplicate-mint **warning**. |
+| `candidates.invalid-mint.json` | A candidate with an invalid mint — **negative** fixture (intake refuses it). |
+| `preflight-inputs.fictional.json` | Invented `token:inspect` / `token:risk`-shaped inputs (keyed by candidateId) for the fictional candidates. |
+| `policy.example.json` | A conservative example operator/risk policy (`sniper.policy.config.v1`). |
+
+## End-to-end walkthrough (fictional fixtures)
+
+The full PAPER pipeline, start to finish, over the invented fixtures (the
+[end-to-end test](../../apps/cli/src/sniper-e2e.test.ts) runs exactly this and validates every stage):
+
+```bash
+# 1) Intake — validate + normalize (write the CANONICAL list for later stages):
+pnpm soulmaker paper:sniper:candidates:validate --input examples/sniper/candidates.fictional.json --json > candidates.json
+
+# 2) Preflight — produce per-candidate inspection/risk files from the fixture, then preflight.
+#    (Real inputs come from your own read-only `token:inspect` / `token:risk` output.)
+pnpm soulmaker paper:sniper:preflight --candidates candidates.json \
+  --inspection fic-clean=fic-clean.insp.json --risk fic-clean=fic-clean.risk.json \
+  --inspection fic-freeze=fic-freeze.insp.json --risk fic-reject=fic-reject.risk.json \
+  --out preflight.json                # → 1 pass / 1 warn / 1 fail
+
+# 3) Decide (paper-only):
+pnpm soulmaker paper:sniper:decide --candidates candidates.json --preflight preflight.json --out decision.json
+#   → fic-clean paper-enter, fic-freeze watch, fic-reject paper-reject (SIMULATED)
+
+# 4) Run report (bundle):
+pnpm soulmaker paper:sniper:report --candidates candidates.json --preflight preflight.json --decisions decision.json --out run.json
+
+# 5) Run report diff (vs a candidates-only baseline run):
+pnpm soulmaker paper:sniper:report --candidates candidates.json --out run-base.json
+pnpm soulmaker paper:sniper:diff:report --base run-base.json --next run.json
+
+# 6) Audit log (provenance; no wall-clock time):
+pnpm soulmaker paper:sniper:audit --report run.json --label "e2e-run" --out audit.json
+
+# 7) Session pack (bundle the whole session):
+pnpm soulmaker paper:sniper:session:pack \
+  --artifact candidates=candidates.json --artifact preflight=preflight.json \
+  --artifact decision=decision.json --artifact run=run.json --artifact audit=audit.json \
+  --label "e2e-session" --out pack.json
+```
+
+Every stage is deterministic and **writes nothing** unless `--out` is given. A `paper-enter` is a
+**simulated** classification, never an order.
 
 ## Candidate intake (Sprint 25)
 

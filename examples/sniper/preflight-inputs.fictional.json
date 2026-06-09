@@ -1,0 +1,13 @@
+{
+  "_comment": "FICTIONAL DETERMINISTIC FIXTURE — NOT live data, NOT real on-chain facts. These invented inspection + risk values are token:inspect / token:risk SHAPED but are INVENTED for the synthetic mints in candidates.fictional.json; they are NOT the real on-chain state of any token. Keyed by candidateId. The end-to-end test splits these into per-candidate files and feeds them to paper:sniper:preflight (--inspection / --risk are candidateId=path). Real preflight inputs are produced by the operator from their own read-only token:inspect / token:risk output.",
+  "fic-clean": {
+    "inspection": { "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx", "decimals": 6, "supplyRaw": "1000000", "uiSupply": 1, "mintAuthorityPresent": false, "freezeAuthorityPresent": false, "isInitialized": true, "programLabel": "spl-token" },
+    "risk": { "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx", "score": 10, "decision": "PASS_FOR_PAPER_EVALUATION", "flags": [], "summary": ["fictional: no concern in invented data"] }
+  },
+  "fic-freeze": {
+    "inspection": { "mint": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn", "decimals": 9, "supplyRaw": "5000000", "uiSupply": 5, "mintAuthorityPresent": false, "freezeAuthorityPresent": true, "isInitialized": true, "programLabel": "spl-token" }
+  },
+  "fic-reject": {
+    "risk": { "mint": "2Z8oHviEbrqDD5kg2sW8h8kYceqdVTnrrPL6Lk2nBfRG", "score": 95, "decision": "REJECT", "flags": [{ "id": "fictional-rug-pattern", "severity": "critical", "title": "Fictional rug pattern (invented)" }], "summary": ["fictional: invented critical flag"] }
+  }
+}

@@ -648,6 +648,15 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   (`isMinimal` / `isDecisionReady` / `isAudited` — never a completeness/readiness claim), and a CI
   section; duplicate labels are refused. Pure (no fs/net, no `Date.now`/`Math.random`); reads the named
   files only, writes nothing unless `--out`.
+- ✅ **(Sprint 35) End-to-end sniper fixture suite** — a rigorous `examples/sniper/` fixture set + an
+  end-to-end test (`apps/cli/src/sniper-e2e.test.ts`) proving the whole PAPER pipeline works together
+  through the real CLI: intake → preflight → decide → run report → run report diff → audit → session pack.
+  New FICTIONAL fixtures (invented synthetic mints + invented inspection/risk values, clearly labeled —
+  never real on-chain facts): `candidates.fictional.json`, `candidates.duplicate-mint.json` (warning),
+  `candidates.invalid-mint.json` (negative — refused), `preflight-inputs.fictional.json`. Every shipped
+  `examples/sniper/*.json` is validated against a production validator; every generated artifact is
+  validated + coherence-checked + determinism-checked. Generated artifacts live in a temp dir (never
+  committed) so they cannot drift. The `examples/sniper/README.md` has the full end-to-end walkthrough.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

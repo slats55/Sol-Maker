@@ -1,0 +1,40 @@
+{
+  "_comment": "FICTIONAL DETERMINISTIC FIXTURE — NOT live data, NOT trading results, NOT financial advice. The mints below are INVENTED (synthetic valid 32-byte base58 keys), NOT real tokens; every observed value is a made-up operator-supplied number and is NOT verified on-chain. This list drives the end-to-end PAPER pipeline test. Validate with: pnpm soulmaker paper:sniper:candidates:validate --input examples/sniper/candidates.fictional.json",
+  "sourceLabel": "examples/sniper/candidates.fictional.json",
+  "candidates": [
+    {
+      "candidateId": "fic-clean",
+      "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+      "symbol": "CLEAN",
+      "name": "Fictional Clean Token",
+      "sourceTag": "fixture",
+      "sourceNote": "Invented token used to exercise a clean preflight pass + paper-enter.",
+      "observedLiquidityUsd": 50000,
+      "observedVolumeUsd": 12000,
+      "tags": ["fictional"],
+      "operatorNotes": ["Fixture candidate; invented; not a recommendation."]
+    },
+    {
+      "candidateId": "fic-freeze",
+      "mint": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+      "symbol": "FREEZE",
+      "name": "Fictional Freeze-Authority Token",
+      "sourceTag": "fixture",
+      "sourceNote": "Invented token used to exercise a preflight WARN (freeze authority) -> watch.",
+      "observedLiquidityUsd": 8000,
+      "tags": ["fictional"],
+      "operatorNotes": ["Fixture candidate; invented; not a recommendation."]
+    },
+    {
+      "candidateId": "fic-reject",
+      "mint": "2Z8oHviEbrqDD5kg2sW8h8kYceqdVTnrrPL6Lk2nBfRG",
+      "symbol": "REJECT",
+      "name": "Fictional High-Risk Token",
+      "sourceTag": "fixture",
+      "sourceNote": "Invented token used to exercise a preflight FAIL (risk REJECT) -> paper-reject.",
+      "observedLiquidityUsd": 2000,
+      "tags": ["fictional"],
+      "operatorNotes": ["Fixture candidate; invented; not a recommendation."]
+    }
+  ]
+}

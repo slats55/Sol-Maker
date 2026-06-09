@@ -1,0 +1,8 @@
+{
+  "_comment": "FICTIONAL DETERMINISTIC FIXTURE — NOT live data. The second candidate's mint is intentionally INVALID (not a 32-byte base58 public key) to prove intake REFUSES it (exit 1). This is a negative fixture. Validate with: pnpm soulmaker paper:sniper:candidates:validate --input examples/sniper/candidates.invalid-mint.json (refuses).",
+  "sourceLabel": "examples/sniper/candidates.invalid-mint.json",
+  "candidates": [
+    { "candidateId": "ok", "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx", "tags": ["fictional"] },
+    { "candidateId": "bad", "mint": "not-a-valid-mint-address", "tags": ["fictional"] }
+  ]
+}
