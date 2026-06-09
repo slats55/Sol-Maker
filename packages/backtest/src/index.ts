@@ -459,3 +459,22 @@ export type {
   BacktestResearchCampaignHistoryReport,
   FormatBacktestResearchCampaignHistoryReportOptions,
 } from "./research-campaign-history.js";
+
+export {
+  buildBacktestResearchPortfolioReport,
+  validateBacktestResearchPortfolioReport,
+  formatBacktestResearchPortfolioReport,
+  BacktestResearchPortfolioReportError,
+  BACKTEST_RESEARCH_PORTFOLIO_REPORT_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_PORTFOLIO_REPORT_BANNER,
+  BACKTEST_RESEARCH_PORTFOLIO_REPORT_DISCLAIMERS,
+} from "./research-portfolio.js";
+
+export type {
+  BacktestResearchPortfolioCampaignInput,
+  BuildBacktestResearchPortfolioReportInput,
+  BacktestResearchPortfolioCampaignStatus,
+  BacktestResearchPortfolioCampaignSummary,
+  BacktestResearchPortfolioReport,
+  FormatBacktestResearchPortfolioReportOptions,
+} from "./research-portfolio.js";

@@ -88,6 +88,7 @@ describe("@soulmaker/backtest — forbidden-import regression", () => {
     expect(names).toContain("research-bundle-diff.ts");
     expect(names).toContain("research-campaign-index-diff.ts");
     expect(names).toContain("research-campaign-history.ts");
+    expect(names).toContain("research-portfolio.ts");
   });
 
   it("imports no chain/network/filesystem/socket capability module", () => {
