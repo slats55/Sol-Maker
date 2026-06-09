@@ -32,6 +32,19 @@ describe("theme.css asset", () => {
     }
   });
 
+  it("styles the folder-index + diff-verdict hooks", () => {
+    for (const hook of [
+      ".sm-folderindex",
+      ".sm-artifactlist",
+      ".sm-verdict",
+      ".sm-verdict--regression",
+      ".sm-verdict--changed",
+      ".sm-verdict--clean",
+    ]) {
+      expect(source, `theme.css should style ${hook}`).toContain(hook);
+    }
+  });
+
   it("contains no network/external CSS (no url(), @import, or external URLs)", () => {
     expect(source).not.toMatch(/@import/);
     expect(source).not.toMatch(/url\(/);
