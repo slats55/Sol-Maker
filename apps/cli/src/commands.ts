@@ -124,6 +124,8 @@ import {
   formatBacktestResearchCampaignIndexDiff,
   buildBacktestResearchCampaignHistoryReport,
   formatBacktestResearchCampaignHistoryReport,
+  buildBacktestResearchPortfolioReport,
+  formatBacktestResearchPortfolioReport,
   digestContent,
   BACKTEST_RESEARCH_MANIFEST_SCHEMA_VERSION,
   BACKTEST_RESEARCH_VERIFY_SCHEMA_VERSION,
@@ -161,6 +163,8 @@ import {
   type BacktestResearchCampaignHistoryReport,
   type BacktestResearchCampaignHistorySnapshotInput,
   type BacktestResearchCampaignHistoryBaselineSelector,
+  type BacktestResearchPortfolioReport,
+  type BacktestResearchPortfolioCampaignInput,
 } from "@soulmaker/backtest";
 
 export interface CommandContext {
@@ -3622,6 +3626,97 @@ export function paperBacktestResearchHistoryReport(
     return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
   }
   return { text: formatBacktestResearchCampaignHistoryReport(report), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 21 — paper:backtest:research:portfolio
+//   Roll up MANY campaign history reports — one per campaign — into a single
+//   deterministic, PAPER-only integrity-triage portfolio view: which campaigns
+//   need attention / regressed / changed / are clean, the top concerns, and a
+//   CI decision. Reads the named files only, runs no backtest, and writes
+//   nothing. No network, no wallet.
+// ---------------------------------------------------------------------------
+
+export interface PaperBacktestResearchPortfolioCommandOptions {
+  /** Repeatable "campaignId=path" specs (one per campaign history report). Required (>=1). */
+  histories?: string[];
+  json?: boolean;
+  /** Exit non-zero when any campaign changed since baseline. */
+  failOnChange?: boolean;
+  /** Exit non-zero only on a conservative integrity regression in any campaign. */
+  failOnRegression?: boolean;
+  /** Exit non-zero when any campaign currently needs attention. */
+  failOnAttention?: boolean;
+  /** Exit non-zero when any campaign newly needs attention since baseline. */
+  failOnNewAttention?: boolean;
+}
+
+/** Split a `--history campaignId=path` spec on its FIRST `=` (paths may contain `=`). */
+function parsePortfolioHistoryArg(spec: string): { campaignId: string; path: string } | null {
+  const eq = spec.indexOf("=");
+  if (eq <= 0 || eq === spec.length - 1) return null;
+  return { campaignId: spec.slice(0, eq), path: spec.slice(eq + 1) };
+}
+
+/**
+ * `soulmaker paper:backtest:research:portfolio` — roll up MANY campaign history report JSON files
+ * into one deterministic portfolio report. Reads ONLY the named local files (BOM-tolerant; a
+ * missing/malformed/non-history/wrong-schema file refuses), runs no backtest, and writes nothing.
+ * Each `--history campaignId=path` names one campaign; every per-campaign signal is carried verbatim
+ * from its history report, the per-campaign rollup is emitted in integrity-triage order
+ * (most-concerning first), and the `--fail-on-*` flags set a non-zero exit for change / regression /
+ * current attention / new attention across the portfolio. A bad spec, a duplicate campaignId, or
+ * zero histories refuses with exit 1. No network, no wallet. The report embeds no artifact contents
+ * and is not a live result, advice, or a profitability claim.
+ */
+export function paperBacktestResearchPortfolioReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestResearchPortfolioCommandOptions = {},
+): CliReport {
+  const specs = opts.histories ?? [];
+  if (specs.length === 0) {
+    return { text: "Refusing: at least one --history <campaignId=path> is required.", exitCode: 1 };
+  }
+
+  // Read each campaign history report file; the campaignId is the key supplied on the CLI, and the
+  // path is recorded as the campaign's sourceLabel. Duplicate-id detection is left to the builder.
+  const campaigns: BacktestResearchPortfolioCampaignInput[] = [];
+  for (const spec of specs) {
+    const parsed = parsePortfolioHistoryArg(spec);
+    if (!parsed) {
+      return {
+        text: redactString(`Refusing: --history must be "campaignId=path" (got "${spec}").`),
+        exitCode: 1,
+      };
+    }
+    let value: unknown;
+    try {
+      value = readJsonValue(ctx, parsed.path, `campaign history report (${parsed.campaignId})`);
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    campaigns.push({ campaignId: parsed.campaignId, report: value, sourceLabel: parsed.path });
+  }
+
+  let report: BacktestResearchPortfolioReport;
+  try {
+    report = buildBacktestResearchPortfolioReport({ campaigns });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const exitCode =
+    (opts.failOnChange && report.hasChange) ||
+    (opts.failOnRegression && report.hasRegression) ||
+    (opts.failOnAttention && report.hasAttention) ||
+    (opts.failOnNewAttention && report.hasNewAttentionSinceBaseline)
+      ? 1
+      : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
+  }
+  return { text: formatBacktestResearchPortfolioReport(report), exitCode };
 }
 
 function yesNo(value: boolean): string {

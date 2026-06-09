@@ -37,6 +37,7 @@ import {
   paperBacktestDiffResearchBundleReport,
   paperBacktestDiffResearchIndexReport,
   paperBacktestResearchHistoryReport,
+  paperBacktestResearchPortfolioReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -864,6 +865,47 @@ program
         {
           indexPaths: opts.index ?? [],
           baseline: opts.baseline,
+          json: Boolean(opts.json),
+          failOnChange: Boolean(opts.failOnChange),
+          failOnRegression: Boolean(opts.failOnRegression),
+          failOnAttention: Boolean(opts.failOnAttention),
+          failOnNewAttention: Boolean(opts.failOnNewAttention),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:backtest:research:portfolio")
+  .description(
+    "Roll up MANY campaign history report JSON files into one deterministic integrity-triage portfolio report (PAPER ONLY; per-campaign change/attention/regression carried verbatim, integrity-triage ordering, clean/stable lists, top concerns, summed run totals, CI decision; reads the named files only, writes nothing)",
+  )
+  .option(
+    "--history <campaignId=path>",
+    "campaign history report JSON, keyed by a campaign id (repeatable)",
+    (value: string, previous: string[]) => previous.concat(value),
+    [] as string[],
+  )
+  .option("--json", "emit the portfolio report as stable JSON")
+  .option("--fail-on-change", "exit non-zero when any campaign changed since baseline")
+  .option("--fail-on-regression", "exit non-zero only on a conservative integrity regression in any campaign")
+  .option("--fail-on-attention", "exit non-zero when any campaign currently needs attention")
+  .option("--fail-on-new-attention", "exit non-zero when any campaign newly needs attention since baseline")
+  .action(
+    (opts: {
+      history?: string[];
+      json?: boolean;
+      failOnChange?: boolean;
+      failOnRegression?: boolean;
+      failOnAttention?: boolean;
+      failOnNewAttention?: boolean;
+    }) => {
+      const { text, exitCode } = paperBacktestResearchPortfolioReport(
+        {},
+        {
+          histories: opts.history ?? [],
           json: Boolean(opts.json),
           failOnChange: Boolean(opts.failOnChange),
           failOnRegression: Boolean(opts.failOnRegression),
