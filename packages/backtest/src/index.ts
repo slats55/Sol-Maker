@@ -478,3 +478,23 @@ export type {
   BacktestResearchPortfolioReport,
   FormatBacktestResearchPortfolioReportOptions,
 } from "./research-portfolio.js";
+
+export {
+  diffBacktestResearchPortfolioReports,
+  validateBacktestResearchPortfolioDiff,
+  formatBacktestResearchPortfolioDiff,
+  BacktestResearchPortfolioDiffError,
+  BACKTEST_RESEARCH_PORTFOLIO_DIFF_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_PORTFOLIO_DIFF_BANNER,
+  BACKTEST_RESEARCH_PORTFOLIO_DIFF_DISCLAIMERS,
+} from "./research-portfolio-diff.js";
+
+export type {
+  ResearchPortfolioNumberDelta,
+  ResearchPortfolioFlagTransition,
+  ResearchPortfolioCampaignRef,
+  ResearchPortfolioCampaignChange,
+  BacktestResearchPortfolioDiff,
+  DiffBacktestResearchPortfolioReportsOptions,
+  FormatBacktestResearchPortfolioDiffOptions,
+} from "./research-portfolio-diff.js";
