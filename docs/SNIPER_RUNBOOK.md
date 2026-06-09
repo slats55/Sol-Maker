@@ -296,6 +296,12 @@ Phase 7 remain not started — beginning Phase 6 requires an explicit human deci
 - `paper:sniper:safety:gates` — exits 1 when NOT ready (fail-closed); `--allow-*` to permit expected
   conditions, `--fail-on-warning` to also fail on allowed-but-warned conditions.
 
+## Security boundary
+
+The full security review of this PAPER-only pipeline — the boundary, the ten invariants that hold it, and
+the automated backstop tests that fail loudly if any is weakened — is in
+[`SNIPER_SECURITY_REVIEW.md`](SNIPER_SECURITY_REVIEW.md).
+
 ## What is intentionally NOT implemented
 
 - **No execution**: no order placement, no transaction build/sign/send, no wallet, no signer, no

@@ -693,6 +693,14 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   the source never sets `executable: true` or a satisfied approval). Pure (no fs/net, no
   `Date.now`/`Math.random`). Phase 6/7 remain not started — this is data shapes for review, not a step
   toward sending.
+- ✅ **(Sprint 43) Security review doc + test backstops** — a focused `docs/SNIPER_SECURITY_REVIEW.md`
+  documenting the PAPER-only boundary + the ten invariants that hold it, plus two consolidated backstop
+  tests: `packages/sniper/src/security-boundary.test.ts` (package-wide source scan over **every**
+  auto-discovered non-test module — no capability token, no chain/IO/network import, chain-free dep set;
+  fails the day a new module forgets its own safety test) and `apps/cli/src/sniper-security.test.ts`
+  (behavioral: a private-key-shaped mint is refused and never echoed; an unknown `privateKey`/`secretKey`
+  field is dropped; a mnemonic-shaped note is redacted; every shipped `examples/sniper/*.json` is labeled
+  fictional and carries no key/seed field and no secret-length blob).
 - ✅ **(Sprint 36) Sniper CLI cohesion** — a cross-command cohesion test
   (`apps/cli/src/sniper-cohesion.test.ts`) that locks the `paper:sniper:*` surface's safety/consistency
   contract: every command with a required argument refuses (exit 1, `Refusing:` message) when it is

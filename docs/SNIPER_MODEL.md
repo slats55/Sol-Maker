@@ -505,6 +505,11 @@ pnpm soulmaker paper:phase6:intent:plan --decisions decision.json --amount-label
 
 It reads the decision report only and **writes nothing** unless `--out`.
 
+## Security boundary
+
+The pipeline's PAPER-only security boundary — the ten invariants and the automated backstop tests that
+enforce them — is documented in [`SNIPER_SECURITY_REVIEW.md`](SNIPER_SECURITY_REVIEW.md).
+
 ## What is intentionally NOT here yet
 
 - **No transaction planning / signing / sending / wallet / burner** — Phases 6 and 7, not started. The
