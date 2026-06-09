@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "backtest.report.v1",
+  "paperOnly": true,
+  "simulated": true,
+  "scenarioName": "sample-buy-hold",
+  "scenarioDigest": "sample-report-digest-000000000000",
+  "stepCount": 12,
+  "totalCandidateCount": 4,
+  "simulatedNotionalUsd": 1000,
+  "planCounts": {
+    "paperBuyCandidateCount": 2,
+    "paperSellCandidateCount": 1,
+    "watchCount": 1,
+    "skippedCount": 0,
+    "rejectedCount": 0
+  },
+  "fillCounts": { "buyCount": 2, "sellCount": 1 },
+  "positionCounts": { "open": 1, "closed": 1 },
+  "rejectedCounts": { "total": 0 },
+  "pnl": { "realizedUsd": 12, "unrealizedUsd": -3, "totalUsd": 9 },
+  "disclaimers": [
+    "SIMULATED PAPER-ONLY sample report — not a live result, not advice, not a profitability claim."
+  ]
+}

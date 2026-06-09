@@ -11,6 +11,7 @@ import { renderReports } from "./reports.js";
 import { renderMatrix } from "./matrix.js";
 import { renderCoverage } from "./coverage.js";
 import { renderArtifact } from "./artifact.js";
+import { renderFolder } from "./folder.js";
 import { renderCommands } from "./commands.js";
 import { renderSafety } from "./safety.js";
 import { renderSettings } from "./settings.js";
@@ -27,6 +28,7 @@ export const PAGES: readonly PageDef[] = [
   { nav: navItem("matrix"), render: renderMatrix },
   { nav: navItem("coverage"), render: renderCoverage },
   { nav: navItem("artifact"), render: renderArtifact },
+  { nav: navItem("folder"), render: renderFolder },
   { nav: navItem("commands"), render: renderCommands },
   { nav: navItem("safety"), render: renderSafety },
   { nav: navItem("settings"), render: renderSettings },
