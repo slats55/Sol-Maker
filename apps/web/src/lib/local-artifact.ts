@@ -43,6 +43,12 @@ export const ARTIFACT_LIMITS = {
   maxPreviewChars: 4000,
   /** Max characters kept for an identity/digest value. */
   maxIdentityValue: 240,
+  /**
+   * Max characters kept for a `schemaVersion` value. Comfortably above the
+   * longest catalogued id (~37 chars), so a real schema is never clipped, but
+   * bounded so a hostile artifact cannot bloat a badge or a by-schema group key.
+   */
+  maxSchemaValue: 120,
 } as const;
 
 export type ParseResult =
@@ -297,7 +303,16 @@ export function normalizeArtifact(value: unknown): NormalizedArtifact {
   const record = isRecord(value) ? value : null;
 
   const rawSchema = record?.["schemaVersion"];
-  const schemaVersion = typeof rawSchema === "string" && rawSchema.length > 0 ? rawSchema : null;
+  let schemaVersion: string | null = null;
+  if (typeof rawSchema === "string" && rawSchema.length > 0) {
+    const clamped = clampString(rawSchema, ARTIFACT_LIMITS.maxSchemaValue);
+    schemaVersion = clamped.text;
+    if (clamped.truncated) {
+      notes.push(
+        `\`schemaVersion\` exceeded ${ARTIFACT_LIMITS.maxSchemaValue} characters and was truncated for display.`,
+      );
+    }
+  }
   if (record && rawSchema !== undefined && schemaVersion === null) {
     notes.push("`schemaVersion` is present but is not a non-empty string; treated as absent.");
   }

@@ -17,11 +17,14 @@
 
 import { html, type HtmlValue, type RawHtml } from "../lib/html.js";
 import { navItem, ICONS } from "../lib/nav.js";
-import type {
-  FolderArtifactEntry,
-  FolderIndex,
-  VerdictState,
+import {
+  buildFolderFilterSections,
+  type FolderArtifactEntry,
+  type FolderFilterSection,
+  type FolderIndex,
+  type VerdictState,
 } from "../lib/folder-index.js";
+import { truncateText } from "../lib/json-access.js";
 import { PageHeader } from "../components/layout.js";
 import { EmptyState, Pill, RiskNotice, Section, StatusCard } from "../components/ui.js";
 import { DataTable, type TableColumn } from "../components/tables.js";
@@ -29,6 +32,14 @@ import { ReportSchemaBadge } from "../components/reports.js";
 import { ArtifactReportView } from "../components/artifact.js";
 
 const DASH = "—";
+
+/** Max characters of a filename shown in a cell/title; the anchor stays unique regardless. */
+const NAME_DISPLAY_MAX = 96;
+
+/** Cap an overly long filename for display only (escaping happens at render time). */
+function displayName(name: string): string {
+  return truncateText(name, NAME_DISPLAY_MAX);
+}
 
 /** Where the loaded folder came from (basename only — never a full path). */
 export interface FolderSource {
@@ -146,6 +157,8 @@ function whatItDoesSection(): RawHtml {
       <li>Recognized diff artifacts surface a <code>hasRegression</code> / <code>hasChange</code> verdict;
         everything else is <code>n/a</code>.</li>
       <li>Recognized artifacts link to a per-artifact section rendered with the typed inspector view.</li>
+      <li>The loaded index groups the scan into <strong>pre-rendered, static</strong> filter sections —
+        all / regression / changed / unknown-or-malformed / clean — with no JavaScript and no query params.</li>
     </ul>`,
   });
 }
@@ -252,33 +265,70 @@ function artifactSchemaCell(entry: FolderArtifactEntry): HtmlValue {
   return ReportSchemaBadge(entry.schemaVersion);
 }
 
-function artifactListSection(index: FolderIndex): RawHtml {
-  const columns: readonly TableColumn[] = [
-    { header: "Artifact" },
-    { header: "Schema" },
-    { header: "Status" },
-    { header: "Typed view" },
-    { header: "Regression" },
-    { header: "Change" },
-  ];
-  const rows: readonly (readonly HtmlValue[])[] = index.artifacts.map((entry) => [
-    html`<a href="#${entry.anchor}"><code>${entry.name}</code></a>`,
+/** Columns shared by every artifact-list table (the "all" list and each filter group). */
+const ARTIFACT_COLUMNS: readonly TableColumn[] = [
+  { header: "Artifact" },
+  { header: "Schema" },
+  { header: "Status" },
+  { header: "Typed view" },
+  { header: "Regression" },
+  { header: "Change" },
+];
+
+/** One artifact row, shared by the full list and the filtered groups. */
+function artifactRow(entry: FolderArtifactEntry): readonly HtmlValue[] {
+  return [
+    html`<a href="#${entry.anchor}"><code>${displayName(entry.name)}</code></a>`,
     artifactSchemaCell(entry),
     entry.status === "malformed" ? Pill("malformed JSON", "danger") : Pill("valid JSON", "safe"),
     entry.status === "valid" ? (entry.hasTypedView ? Pill("typed view", "safe") : Pill("generic", "muted")) : DASH,
     verdictBadge(entry.verdict.hasRegression, "regression"),
     verdictBadge(entry.verdict.hasChange, "change"),
-  ]);
+  ];
+}
+
+/** A summary card linking to one filter section's anchor (no JS, just a fragment link). */
+function filterCard(section: FolderFilterSection): RawHtml {
+  return html`<a class="sm-filtercard sm-filtercard--${section.category}" href="#${section.anchor}">
+    <span class="sm-filtercard__count">${String(section.artifacts.length)}</span>
+    <span class="sm-filtercard__label">${section.title}</span>
+  </a>`;
+}
+
+/** One pre-rendered filter group: a counted header plus its (subset) table. */
+function filterSection(section: FolderFilterSection): RawHtml {
+  const count = section.artifacts.length;
+  return html`<section class="sm-filtersection sm-filtersection--${section.category}" id="${section.anchor}">
+    <div class="sm-filtersection__summary">
+      <h3 class="sm-filtersection__title">
+        ${section.title}
+        <span class="sm-filtersection__count">${String(count)}</span>
+      </h3>
+      <p class="sm-filtersection__desc">${section.description}</p>
+    </div>
+    ${
+      count === 0
+        ? html`<p class="sm-muted-line">No artifacts in this group.</p>`
+        : DataTable({ columns: ARTIFACT_COLUMNS, rows: section.artifacts.map((entry) => artifactRow(entry)) })
+    }
+  </section>`;
+}
+
+/**
+ * The artifact list, rendered as static, pre-filtered sections (no JavaScript).
+ * The "all" group keeps the `sm-folder-artifacts` id so the per-artifact
+ * "back to list" links still resolve; the four filtered groups get their own
+ * deterministic anchors. Each group's header count equals the rows it renders.
+ */
+function artifactListSection(index: FolderIndex): RawHtml {
+  const sections = buildFolderFilterSections(index);
   return Section({
-    id: "sm-folder-artifacts",
     title: "Artifacts",
-    description: "Every JSON file found, recognized or not. Click an artifact to jump to its rendered section.",
-    body: html`<div class="sm-artifactlist">
-      ${DataTable({
-        columns,
-        rows,
-        emptyMessage: "No JSON artifacts were found in this folder.",
-      })}
+    description:
+      "Every JSON file found, recognized or not. Click an artifact to jump to its rendered section, or use the pre-rendered filter groups below — they are static (no JavaScript, no query params).",
+    body: html`<div class="sm-artifactlist sm-filtersections">
+      <div class="sm-filtercards">${sections.map((section) => filterCard(section))}</div>
+      ${sections.map((section) => filterSection(section))}
     </div>`,
   });
 }
@@ -291,7 +341,7 @@ function skippedSection(index: FolderIndex): RawHtml {
     });
   }
   const rows: readonly (readonly HtmlValue[])[] = index.skipped.map((entry) => [
-    html`<code>${entry.name}</code>`,
+    html`<code>${displayName(entry.name)}</code>`,
     entry.reason,
   ]);
   return Section({
@@ -325,7 +375,7 @@ function artifactSection(entry: FolderArtifactEntry): RawHtml {
   if (entry.status === "malformed" || entry.view === null) {
     return Section({
       id: entry.anchor,
-      title: entry.name,
+      title: displayName(entry.name),
       aside: backToList(),
       body: RiskNotice({
         tone: "caution",
@@ -337,7 +387,7 @@ function artifactSection(entry: FolderArtifactEntry): RawHtml {
   }
   return Section({
     id: entry.anchor,
-    title: entry.name,
+    title: displayName(entry.name),
     aside: backToList(),
     body: ArtifactReportView(entry.view, entry.raw),
   });

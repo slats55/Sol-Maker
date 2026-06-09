@@ -888,6 +888,104 @@ h3 {
   color: var(--text-faint);
 }
 
+/* ---- Static filter sections -------------------------------------------- */
+/* Pre-rendered, script-free groupings of the folder scan. No JavaScript, no
+   query params: each card is a plain in-page fragment link to a group below. */
+.sm-filtersections {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.sm-filtercards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.sm-filtercard {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  text-decoration: none;
+  color: inherit;
+}
+.sm-filtercard__count {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.sm-filtercard__label {
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+.sm-filtercard--regression {
+  border-left-color: var(--danger);
+}
+.sm-filtercard--changed {
+  border-left-color: var(--info);
+}
+.sm-filtercard--unknown {
+  border-left-color: var(--caution);
+}
+.sm-filtercard--clean {
+  border-left-color: var(--safe);
+}
+.sm-filtercard--all {
+  border-left-color: var(--border-strong, var(--border));
+}
+
+.sm-filtersection {
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  background: var(--bg-elev);
+}
+.sm-filtersection__summary {
+  margin-bottom: 12px;
+}
+.sm-filtersection__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  margin: 0;
+}
+.sm-filtersection__count {
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  background: var(--bg-card);
+}
+.sm-filtersection__desc {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+.sm-filtersection--regression {
+  border-left-color: var(--danger);
+}
+.sm-filtersection--changed {
+  border-left-color: var(--info);
+}
+.sm-filtersection--unknown {
+  border-left-color: var(--caution);
+}
+.sm-filtersection--clean {
+  border-left-color: var(--safe);
+}
+.sm-filtersection--all {
+  border-left-color: var(--border-strong, var(--border));
+}
+
 /* ---- Tables ------------------------------------------------------------- */
 
 .sm-tablewrap {
