@@ -519,3 +519,23 @@ export type {
   BacktestResearchArtifactPack,
   FormatBacktestResearchArtifactPackOptions,
 } from "./research-artifact-pack.js";
+
+export {
+  diffBacktestResearchArtifactPacks,
+  validateBacktestResearchArtifactPackDiff,
+  formatBacktestResearchArtifactPackDiff,
+  BacktestResearchArtifactPackDiffError,
+  BACKTEST_RESEARCH_ARTIFACT_PACK_DIFF_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_ARTIFACT_PACK_DIFF_BANNER,
+  BACKTEST_RESEARCH_ARTIFACT_PACK_DIFF_DISCLAIMERS,
+} from "./research-artifact-pack-diff.js";
+
+export type {
+  ResearchArtifactPackNumberDelta,
+  ResearchArtifactPackFlagTransition,
+  ResearchArtifactPackEntryRef,
+  ResearchArtifactPackEntryChange,
+  BacktestResearchArtifactPackDiff,
+  DiffBacktestResearchArtifactPacksOptions,
+  FormatBacktestResearchArtifactPackDiffOptions,
+} from "./research-artifact-pack-diff.js";
