@@ -422,18 +422,51 @@ describe("validatePaperSniperDecisionReportV2 — strict backstop", () => {
   });
 });
 
-describe("formatPaperSniperDecisionReportV2 — deterministic operator output", () => {
-  it("shows the banner, the code summary, per-candidate code trails, and the disclaimers", () => {
+describe("formatPaperSniperDecisionReportV2 — deterministic operator output (Sprint 49 quality pass)", () => {
+  it("shows the banner, the classified code table, the grouped reason trail, and the disclaimers", () => {
     const list = listOf(cand({ candidateId: "c1", mint: USDC }));
     const pf = preflightFor(list, [{ candidateId: "c1", risk: riskReject(USDC) }]);
     const r = buildV2(list, pf);
     const text = formatPaperSniperDecisionReportV2(r, { label: "t" });
     expect(text).toContain(SNIPER_PAPER_DECISION_REPORT_V2_BANNER);
     expect(text).toContain("Reason codes (per-candidate occurrences, sorted):");
-    expect(text).toContain("- preflight-fail  ×1  [preflight]");
-    expect(text).toContain("codes: preflight-fail, risk-blocked, paper-reject-candidate");
+    expect(text).toContain("- preflight-fail  ×1  [preflight blocking]");
+    expect(text).toContain("PAPER-REJECT (1):");
+    expect(text).toContain("codes: preflight-fail → risk-blocked → paper-reject-candidate");
+    expect(text).toContain("risk flags: rug (critical)");
     expect(text).toContain("Not a trade signal.");
     expect(formatPaperSniperDecisionReportV2(r, { label: "t" })).toBe(text);
+  });
+
+  it("groups decisions in stable order (paper-enter → paper-reject → watch → skip → unknown)", () => {
+    const list = listOf(
+      cand({ candidateId: "watcher", mint: WSOL }),
+      cand({ candidateId: "enterer", mint: USDC }),
+    );
+    // the enterer has NO risk report → its entry records an explicit assumption
+    const pf = preflightFor(list, [{ candidateId: "enterer", inspection: cleanInspection(USDC) }]);
+    const text = formatPaperSniperDecisionReportV2(buildV2(list, pf));
+    const enterAt = text.indexOf("PAPER-ENTER (1):");
+    const watchAt = text.indexOf("WATCH (1):");
+    expect(enterAt).toBeGreaterThan(-1);
+    expect(watchAt).toBeGreaterThan(enterAt);
+    // each entry carries its preflight status and assumptions inline
+    expect(text).toContain("(preflight: unknown)");
+    expect(text).toContain("assumes: ");
+  });
+
+  it("shows the policy summary, the risk summary, and the CI verdict sections", () => {
+    const list = listOf(cand({ candidateId: "c1", mint: USDC }));
+    const pf = preflightFor(list, [{ candidateId: "c1", inspection: cleanInspection(USDC), risk: riskPass(USDC) }]);
+    const r = buildV2(list, pf, undefined, policyOf({ policyLabel: "ops" }));
+    const text = formatPaperSniperDecisionReportV2(r);
+    expect(text).toContain("Policy:");
+    expect(text).toContain("- applied: ops (sniper.policy.config.v1)");
+    expect(text).toContain("- rules: requirePreflightPass=true");
+    expect(text).toContain("Risk summary:");
+    expect(text).toContain("- candidates with blocking risk flags: 0");
+    expect(text).toContain("CI verdict:");
+    expect(text).toContain("- any paper-enter:  YES");
   });
 
   it("caps rows at maxRows and summarizes the rest", () => {

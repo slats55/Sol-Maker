@@ -304,6 +304,30 @@ pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight <p
 The default stays `v1` (backward compatible). All other flags (`--rules` / `--policy` / `--out` /
 `--force` / `--fail-on-paper-enter` / `--fail-on-risk`) behave identically in both modes.
 
+### Operator-grade v2 output (Sprint 49)
+
+The v2 human formatter renders stable, grouped sections (deterministic — same input, same bytes):
+
+```
+SIMULATED PAPER-ONLY SNIPER DECISION REPORT V2 (PAPER ONLY)
+…run facts (source / preflight / decision tally)…
+
+Policy:                      ← applied policy (label + schemaVersion) and the resolved base rules
+Reason codes (…, sorted):    ← code ×count [category blocking|warning] table; run-level codes
+PAPER-ENTER (n): / PAPER-REJECT (n): / WATCH (n): / SKIP (n): / UNKNOWN (n):
+  - <id>  <mint>  (preflight: <status>)
+      codes: a → b → outcome     ← the candidate's full reason trail in emission order
+      · …prose reasons…
+      risk flags: id (severity)  ← blocking risk flags, when present
+      assumes: …                 ← explicit assumptions, when present
+Risk summary:                ← risk-related code total, flagged candidates, any-risk-reject
+CI verdict:                  ← any paper-enter / paper-reject / risk-reject + gate reasons
+Warnings / Notes / disclaimers
+```
+
+Groups print most-actionable-first; candidate order is preserved within a group; `maxRows` caps the
+printed rows and the rest are summarized honestly. JSON output is unchanged by the quality pass.
+
 ## Policy config v2 — `sniper.policy.config.v2` (Sprint 48)
 
 V2 = everything the v1 policy carries, plus an explicit **policy mode** and structured,

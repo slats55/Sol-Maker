@@ -600,11 +600,27 @@ export interface FormatPaperSniperDecisionReportV2Options {
   maxRows?: number;
 }
 
+/** The stable order in which decision groups are printed (most actionable first). */
+const DECISION_GROUP_ORDER: readonly SniperDecision[] = ["paper-enter", "paper-reject", "watch", "skip", "unknown"];
+
+/** Render one candidate's full reason trail (codes, reasons, blocking flags, assumptions). */
+function formatEntryV2(d: SniperDecisionEntryV2, lines: string[]): void {
+  lines.push(`- ${d.candidateId}  ${d.mint}${d.preflightStatus !== null ? `  (preflight: ${d.preflightStatus})` : "  (no preflight data)"}`);
+  lines.push(`    codes: ${d.reasonCodes.join(" → ")}`);
+  for (const reason of d.reasons) lines.push(`    · ${reason}`);
+  if (d.blockingRiskFlags.length > 0) {
+    lines.push(`    risk flags: ${d.blockingRiskFlags.map((f) => `${f.id} (${f.severity})`).join(", ")}`);
+  }
+  for (const a of d.assumptions) lines.push(`    assumes: ${a}`);
+}
+
 /**
- * Render a redacted, stable, human-readable v2 decision report. Deterministic and path-stable (no
- * timestamps). Leads with the PAPER-ONLY banner and the decision tally, shows the sorted reason-code
- * summary, lists each candidate's decision + concise code trail + reasons, and closes with the CI
- * verdict and the simulated-only disclaimers. The whole output is passed through the shared redactor.
+ * Render a redacted, stable, human-readable v2 decision report — the operator-grade view (Sprint 49).
+ * Deterministic and path-stable (no timestamps). Sections, in order: header + run facts, the policy
+ * summary, the sorted reason-code table (with category and blocking/warning class), the decisions
+ * grouped by outcome (paper-enter first — each with its full reason trail: codes, reasons, blocking
+ * risk flags, assumptions), the risk summary, the CI verdict, warnings, notes, and the simulated-only
+ * disclaimers. The whole output is passed through the shared redactor.
  */
 export function formatPaperSniperDecisionReportV2(
   report: SniperPaperDecisionReportV2,
@@ -617,13 +633,21 @@ export function formatPaperSniperDecisionReportV2(
   if (opts.label) lines.push(`label:      ${opts.label}`);
   lines.push(`source:     ${report.sourceLabel ?? "(none)"}`);
   lines.push(`preflight:  ${report.hasPreflight ? "supplied" : "(none — every candidate conservatively watched)"}`);
-  lines.push(
-    `policy:     ${report.policyApplied === null ? "(not determinable — upgraded from v1)" : report.policyApplied ? `applied (${report.policyLabel ?? "unlabeled"}; ${report.policySchemaVersion})` : "(none)"}`,
-  );
   if (report.upgradedFromV1) lines.push("origin:     upgraded from a v1 artifact (codes are a conservative subset)");
   lines.push(
     `decisions:  ${report.candidateCount} (${report.paperEnterCount} paper-enter / ${report.watchCount} watch / ${report.skipCount} skip / ${report.paperRejectCount} paper-reject / ${report.unknownCount} unknown)`,
   );
+
+  lines.push("");
+  lines.push("Policy:");
+  if (report.policyApplied === null) {
+    lines.push("- (not determinable — this report was upgraded from a v1 artifact)");
+  } else if (!report.policyApplied) {
+    lines.push("- (none applied — only the base operator rules governed this run)");
+  } else {
+    lines.push(`- applied: ${report.policyLabel ?? "(unlabeled)"} (${report.policySchemaVersion})`);
+  }
+  lines.push(`- rules: requirePreflightPass=${report.rules.requirePreflightPass}, maxRiskScore=${report.rules.maxRiskScore ?? "(none)"}, minObservedLiquidityUsd=${report.rules.minObservedLiquidityUsd ?? "(none)"}, denyMints=${report.rules.denyMints.length > 0 ? report.rules.denyMints.join(", ") : "(none)"}`);
 
   lines.push("");
   lines.push("Reason codes (per-candidate occurrences, sorted):");
@@ -633,35 +657,48 @@ export function formatPaperSniperDecisionReportV2(
   } else {
     for (const code of codeKeys) {
       const definition = SNIPER_DECISION_REASON_CODE_DEFINITIONS[code as SniperDecisionReasonCode];
-      lines.push(`- ${code}  ×${report.reasonCodeCounts[code]}  [${definition.category}]`);
+      const klass = definition.blocking ? " blocking" : definition.warning ? " warning" : "";
+      lines.push(`- ${code}  ×${report.reasonCodeCounts[code]}  [${definition.category}${klass}]`);
     }
   }
   if (report.reportReasonCodes.length > 0) {
     lines.push(`Run-level codes: ${report.reportReasonCodes.join(", ")}`);
   }
 
-  lines.push("");
-  lines.push("Decisions:");
-  if (report.decisions.length === 0) {
-    lines.push("- (none)");
-  } else {
-    for (const d of report.decisions.slice(0, maxRows)) {
-      lines.push(`- [${d.decision.toUpperCase()}] ${d.candidateId}  ${d.mint}`);
-      lines.push(`    codes: ${d.reasonCodes.join(", ")}`);
-      for (const reason of d.reasons) lines.push(`    · ${reason}`);
+  // Decisions, grouped by outcome (stable order; candidate order preserved within a group).
+  let printed = 0;
+  for (const group of DECISION_GROUP_ORDER) {
+    const members = report.decisions.filter((d) => d.decision === group);
+    if (members.length === 0) continue;
+    lines.push("");
+    lines.push(`${group.toUpperCase()} (${members.length}):`);
+    for (const d of members) {
+      if (printed >= maxRows) break;
+      formatEntryV2(d, lines);
+      printed += 1;
     }
-    const hidden = report.decisions.length - Math.min(report.decisions.length, maxRows);
-    if (hidden > 0) lines.push(`- … and ${hidden} more (summarized; see the report JSON for the full set)`);
+  }
+  if (report.decisions.length === 0) {
+    lines.push("");
+    lines.push("Decisions: (none)");
+  } else if (report.decisions.length > printed) {
+    lines.push(`… and ${report.decisions.length - printed} more (summarized; see the report JSON for the full set)`);
   }
 
   lines.push("");
-  lines.push(`Any paper-enter: ${report.hasPaperEnter ? "YES" : "no"}`);
-  lines.push(`Any paper-reject: ${report.hasPaperReject ? "YES" : "no"}`);
-  lines.push(`Any risk reject:  ${report.hasRiskReject ? "YES" : "no"}`);
-  if (report.ciFailReasons.length > 0) {
-    lines.push("CI gate reasons:");
-    for (const r of report.ciFailReasons) lines.push(`- ${r}`);
-  }
+  lines.push("Risk summary:");
+  const riskCodeTotal = report.decisions.reduce((n, d) => n + d.riskReasonCodes.length, 0);
+  const riskFlagged = report.decisions.filter((d) => d.blockingRiskFlags.length > 0);
+  lines.push(`- risk-related codes: ${riskCodeTotal}`);
+  lines.push(`- candidates with blocking risk flags: ${riskFlagged.length}${riskFlagged.length > 0 ? ` (${riskFlagged.map((d) => d.candidateId).join(", ")})` : ""}`);
+  lines.push(`- any risk reject: ${report.hasRiskReject ? "YES" : "no"}`);
+
+  lines.push("");
+  lines.push("CI verdict:");
+  lines.push(`- any paper-enter:  ${report.hasPaperEnter ? "YES" : "no"}`);
+  lines.push(`- any paper-reject: ${report.hasPaperReject ? "YES" : "no"}`);
+  lines.push(`- any risk reject:  ${report.hasRiskReject ? "YES" : "no"}`);
+  for (const r of report.ciFailReasons) lines.push(`- ${r}`);
 
   if (report.warnings.length > 0) {
     lines.push("");
