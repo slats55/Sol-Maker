@@ -28,7 +28,7 @@ packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.j
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
-packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report (Sprint 8–20)  [strategy, paper, security]
+packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup (Sprint 8–21)  [strategy, paper, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -231,6 +231,22 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   **writes nothing**; `--baseline first|previous|<path>` chooses the reference and the `--fail-on-*`
   flags gate CI on change / regression / current attention / new attention. A history report is
   bookkeeping over an ordered set of **summaries** — not a live result, prediction, or advice.
+- **(Sprint 21)** `@soulmaker/backtest` adds the **research portfolio layer** above the Sprint 20
+  history report: `research-portfolio.ts` (`buildBacktestResearchPortfolioReport`, `validate…`,
+  `format…`; schema `backtest.research.portfolio.report.v1`), exposed by the CLI as
+  `paper:backtest:research:portfolio`. It rolls up many per-campaign history reports (each strictly
+  validated via `validateBacktestResearchCampaignHistoryReport`, so a non-history / wrong-schema
+  input or a duplicate campaign id is refused) into one integrity-triage view — per-campaign status
+  (regression > attention > changed > clean), the clean/stable campaign lists, the top concerns, and
+  run totals **summed** across campaigns (run ids are campaign-scoped and never de-duplicated). Every
+  per-campaign signal is carried **verbatim** from its history report, and the rollup is emitted in
+  integrity-triage order (most-concerning first — not a trading ranking), so the output is
+  independent of the order campaigns were supplied in. The module imports only `@soulmaker/security`
+  (redacting formatter) plus its Sprint 20 sibling — no fs/net, no `Date.now`/`Math.random`. The CLI
+  takes `--history <campaignId=path>` (repeatable), reads the named files only and **writes
+  nothing**, and the `--fail-on-*` flags gate CI on change / regression / current attention / new
+  attention across the portfolio. A portfolio report is bookkeeping over a set of campaign
+  **summaries** — not a live result, prediction, or advice.
 
 ## The live boundary
 

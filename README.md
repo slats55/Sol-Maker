@@ -140,7 +140,14 @@ count (`backtest.research.campaign.history.report.v1`). It REUSES the Sprint 19 
 the since-baseline / since-previous deltas — so `hasChange` and the conservative `hasRegression`
 are byte-identical to the diff — and adds `--fail-on-change` / `--fail-on-regression` /
 `--fail-on-attention` / `--fail-on-new-attention` for CI, with `--baseline first|previous|<path>`
-to pick the reference snapshot. It reads only the named files and writes nothing. None of this fetches live
+to pick the reference snapshot. It reads only the named files and writes nothing. Sprint 21 rolls up
+a **portfolio** of campaign history reports into one integrity-triage view:
+`paper:backtest:research:portfolio --history <campaignId=path> …` folds many per-campaign history
+reports (one per campaign) into a single report (`backtest.research.portfolio.report.v1`) that
+carries each campaign's change/attention/regression signal **verbatim**, orders campaigns by
+integrity triage (most-concerning first), lists the clean/stable campaigns and the top concerns,
+sums run totals across campaigns (run ids are campaign-scoped, never de-duplicated), and exposes the
+same four `--fail-on-*` CI flags. It reads only the named files and writes nothing. None of this fetches live
 data or begins transaction planning (roadmap Phase 6 remains not started; Phase 7 burner
 live remains not started). The default mode is `PAPER`. See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
@@ -184,6 +191,7 @@ soulmaker/
                 #                    paper:backtest:research:manifest/verify, paper:backtest:diff:research:manifest,
                 #                    paper:backtest:research:bundle, paper:backtest:research:status,
                 #                    paper:backtest:research:index, paper:backtest:research:history,
+                #                    paper:backtest:research:portfolio,
                 #                    paper:backtest:diff:research:bundle, paper:backtest:diff:research:index)
     web/        # Phase 8 dashboard (placeholder)
   packages/
@@ -210,7 +218,8 @@ soulmaker/
                 #            Sprint 17 adds the research run bundle + integrity/status summary;
                 #            Sprint 18 adds the cross-run research campaign index;
                 #            Sprint 19 adds the research bundle diff + campaign index diff;
-                #            Sprint 20 adds the research campaign history/trend report
+                #            Sprint 20 adds the research campaign history/trend report;
+                #            Sprint 21 adds the research portfolio rollup across campaigns
                 #            (still pure: the package never scans dirs or reads/writes files)
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
@@ -408,6 +417,13 @@ pnpm soulmaker paper:backtest:diff:research:index --base <campA/index.json> --ne
 # the reference (first|previous|<path>); the --fail-on-* flags set a non-zero CI exit:
 pnpm soulmaker paper:backtest:research:history --index <t0/index.json> --index <t1/index.json> --index <t2/index.json>
 pnpm soulmaker paper:backtest:research:history --index <t0/index.json> --index <t1/index.json> --fail-on-regression --fail-on-new-attention
+
+# Sprint 21 — PORTFOLIO: roll up many per-campaign history reports (one per campaign) into one
+# integrity-triage view — which campaigns need attention / regressed / changed / are clean, the top
+# concerns, and summed run totals. Reads the named files only, writes nothing. Each --history is
+# keyed by a campaign id; the --fail-on-* flags set a non-zero CI exit across the portfolio:
+pnpm soulmaker paper:backtest:research:portfolio --history scalping=<scalping-history.json> --history momentum=<momentum-history.json>
+pnpm soulmaker paper:backtest:research:portfolio --history scalping=<scalping-history.json> --history momentum=<momentum-history.json> --fail-on-regression --fail-on-new-attention
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

@@ -128,7 +128,9 @@ comparable summary with a deterministic top-level campaign digest;
 Sprint 19 research bundle diff + campaign index diff — compare two bundles or two campaign
 indexes with a conservative regression flag;
 Sprint 20 research campaign history report — fold an ordered set of campaign index snapshots
-into one deterministic trend report with per-run streaks and a conservative regression signal):
+into one deterministic trend report with per-run streaks and a conservative regression signal;
+Sprint 21 research portfolio rollup — roll up many per-campaign history reports into one
+integrity-triage portfolio view with clean/stable lists, top concerns, and CI flags):
 
 - ✅ Deterministic, **paper-only** rules engine: turns an advisory
   `@soulmaker/risk` report + injected, read-only metrics into a single decision —
@@ -463,6 +465,23 @@ into one deterministic trend report with per-run streaks and a conservative regr
   ONLY the named files (in order) and **writes nothing**; the package stays pure (no fs/net, no
   `Date.now`/`Math.random`; the formatter redacts internally). Local bookkeeping — not a live
   result, not advice, not a profitability claim; the conservative regression flag is an
+  integrity/reproducibility signal, never a trading recommendation.
+- ✅ **(Sprint 21) Research portfolio rollup** — the BREADTH layer **above** the Sprint 20 history
+  report. `@soulmaker/backtest` exports the pure `buildBacktestResearchPortfolioReport`, `validate…`,
+  `format…` (schema `backtest.research.portfolio.report.v1`); the CLI adds
+  `paper:backtest:research:portfolio --history <campaignId=path> … [--json] [--fail-on-change] [--fail-on-regression] [--fail-on-attention] [--fail-on-new-attention]`.
+  It takes many per-campaign history reports (each strictly validated as a Sprint 20
+  `backtest.research.campaign.history.report.v1`; a non-history / wrong-schema file or a duplicate
+  campaign id is refused) and carries **verbatim** each campaign's change / attention / regression /
+  streak / count signals — so the portfolio view can never disagree with the reports it summarizes.
+  It derives a per-campaign severity status (regression > attention > changed > clean), emits the
+  rollup in **integrity-triage order** (most-concerning first — NOT a trading ranking), lists the
+  clean (no concern) and stable (no change) campaigns, surfaces the top integrity concerns, and sums
+  run totals **across** campaigns (run ids are campaign-scoped and never de-duplicated). The
+  `--fail-on-*` flags set a non-zero exit for change / regression / current attention / new attention
+  across the portfolio. It reads ONLY the named files and **writes nothing**; the package stays pure
+  (no fs/net, no `Date.now`/`Math.random`; the formatter redacts internally). Local bookkeeping —
+  not a live result, not advice, not a profitability claim; the conservative regression flag is an
   integrity/reproducibility signal, never a trading recommendation.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).

@@ -711,3 +711,44 @@ pnpm soulmaker paper:backtest:research:history --index t0-index.json --index t2-
 > fingerprint; this is local bookkeeping over injected, simulated summaries — **not** a live result,
 > **not** advice, and **not** a profitability claim — and nothing here touches a wallet, key,
 > signing, sending, or the network; Phases 6 and 7 remain **not started**.
+
+## Rolling up a portfolio of campaigns (Sprint 21)
+
+The history report tracks **one** campaign over time; the **portfolio** report rolls up **many**
+per-campaign history reports — one per campaign — into a single integrity-triage view: which
+campaigns need attention, which regressed, which are clean/stable, the top concerns, and a CI
+decision. Produce one history report per campaign (Sprint 20), keep the JSON files, and point
+`paper:backtest:research:portfolio` at them, keyed by a campaign id.
+
+```bash
+# 1) Produce one history report per campaign (each from that campaign's ordered index snapshots):
+pnpm soulmaker paper:backtest:research:history --index scalping/t0.json --index scalping/t1.json --json > scalping-history.json
+pnpm soulmaker paper:backtest:research:history --index momentum/t0.json --index momentum/t1.json --json > momentum-history.json
+
+# 2) PORTFOLIO — roll the per-campaign history reports up into one view (human-readable). Each
+#    --history is "campaignId=path"; the campaign id is how the campaign is labelled in the report:
+pnpm soulmaker paper:backtest:research:portfolio --history scalping=scalping-history.json --history momentum=momentum-history.json
+# --json for the machine-readable report (schema backtest.research.portfolio.report.v1).
+
+# 3) STRICT behaviour for CI — each flag sets a non-zero exit across the WHOLE portfolio:
+#    --fail-on-change        any campaign changed since baseline
+#    --fail-on-regression    ONLY a conservative integrity regression in any campaign
+#    --fail-on-attention     any campaign currently needs attention
+#    --fail-on-new-attention any campaign newly needs attention since baseline
+pnpm soulmaker paper:backtest:research:portfolio --history scalping=scalping-history.json --history momentum=momentum-history.json --fail-on-regression --fail-on-new-attention
+```
+
+> **Carries the campaign signals verbatim; orders by triage, not performance.** Every per-campaign
+> flag (change / attention / regression), count, and streak is copied straight from that campaign's
+> history report, so the portfolio view can never disagree with the per-campaign reports. Campaigns
+> are listed in **integrity-triage order** (most-concerning first) — this is a *read-worst-first*
+> order, **not** a trading "best/worst" ranking. "Clean" (no integrity concern) and "stable" (no
+> change at all) are distinct: a campaign with a persistently-broken run is *stable* yet not *clean*.
+> Run totals are **summed** across campaigns — run ids are campaign-scoped, so there is no
+> cross-campaign de-duplication. Each `--history` file must be a real
+> `backtest.research.campaign.history.report.v1` (a campaign index, a bundle, a malformed file, a bad
+> `campaignId=path` spec, or a duplicate campaign id is refused); the report carries no timestamp and
+> is independent of the order campaigns are supplied in, so an identical set yields a byte-identical
+> report. This is local bookkeeping over injected, simulated summaries — **not** a live result,
+> **not** advice, and **not** a profitability claim — and nothing here touches a wallet, key,
+> signing, sending, or the network; Phases 6 and 7 remain **not started**.
