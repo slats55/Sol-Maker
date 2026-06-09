@@ -18,6 +18,7 @@ practical "how do I run this" companion to [`SNIPER_MODEL.md`](SNIPER_MODEL.md) 
 | 2. Read-only inputs | `token:inspect`, `token:risk` | (existing) | Existing read-only commands that produce per-mint inspection + advisory risk JSON. |
 | 3. Token preflight | `paper:sniper:preflight` | `sniper.token.preflight.report.v1` | Combines mint validity + inspection + risk into `pass` / `warn` / `fail` / `unknown` per candidate. |
 | 4. Paper decisions | `paper:sniper:decide` | `sniper.paper.decision.report.v1` | Folds the candidate list + preflight + rules into `skip` / `watch` / `paper-enter` / `paper-reject` / `unknown`. |
+| 5. Run report | `paper:sniper:report` | `sniper.run.report.v1` | Joins candidate list + preflight + decision + workflow into one navigable per-candidate view (reason trail, grouped ids, navigation, CI section). |
 
 All of stages 1, 3, and 4 live in the pure `@soulmaker/sniper` package, which carries **no chain
 capability** (no `@solana/web3.js`, no `@soulmaker/solana`; a forbidden-import test enforces this). The
@@ -94,6 +95,27 @@ Each candidate gets `skip` / `watch` / `paper-enter` / `paper-reject` / `unknown
 `paper-enter` **only** when the preflight passed and every rule is satisfied — and even then it is a
 **simulated** decision, never an order.
 
+### 5. Run report (bundle the run)
+
+Bundle the artifacts into one navigable report an operator (or CI) can read at a glance:
+
+```bash
+pnpm soulmaker paper:sniper:report --candidates candidates.json \
+  --preflight preflight.json --decisions decision.json --workflow workflow.json \
+  --operator "alice@run-7" --out run.json
+```
+
+The candidate list is the spine; the preflight, decision, and workflow are optional and strictly
+validated (a sub-artifact referencing a candidate id not in the list is refused as a wrong pairing).
+The report carries a per-candidate **reason trail** (each candidate's preflight status + simulated
+decision, with provenance-prefixed reasons), the grouped id lists (`paperEnterIds`, `paperRejectIds`,
+`skipIds`, `watchIds`, `riskBlockedIds`, `watchedMissingInfoIds`, `preflightFailedIds`,
+`preflightUnknownIds`, `invalidCandidateIds`), a compact **navigation** index, and a CI section. Every
+status/decision is carried **verbatim** — the report re-derives nothing. It writes nothing unless
+`--out`. CI gates: `--fail-on-invalid`, `--fail-on-preflight-fail`, `--fail-on-risk`,
+`--fail-on-paper-enter`, `--fail-on-unknown`, `--fail-on-missing-recommended`. A `paper-enter` carried
+through is a **simulated** classification, never an order.
+
 ## How to inspect risk reasons
 
 - The **preflight** entry for a candidate lists its `warnings`, `disqualifiers`, and a capped
@@ -107,6 +129,8 @@ Each candidate gets `skip` / `watch` / `paper-enter` / `paper-reject` / `unknown
 - `paper:sniper:candidates:validate --fail-on-warning` — fail on a duplicate mint, etc.
 - `paper:sniper:preflight --fail-on-fail` / `--fail-on-warning`.
 - `paper:sniper:decide --fail-on-paper-enter` (ensure nothing auto-enters) / `--fail-on-risk`.
+- `paper:sniper:report --fail-on-invalid` / `--fail-on-preflight-fail` / `--fail-on-risk` /
+  `--fail-on-paper-enter` / `--fail-on-unknown` / `--fail-on-missing-recommended` — gate the bundled run.
 
 ## What is intentionally NOT implemented
 

@@ -45,6 +45,7 @@ import {
   paperSniperPreflightReport,
   paperSniperDecideReport,
   paperSniperWorkflowReport,
+  paperSniperReportReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1198,5 +1199,65 @@ program
     console.log(text);
     if (exitCode !== 0) process.exitCode = exitCode;
   });
+
+program
+  .command("paper:sniper:report")
+  .description(
+    "Bundle a LOCAL candidate list + an optional preflight + an optional decision report + an optional workflow plan into one navigable PAPER-only run report (`sniper.run.report.v1`). Per-candidate reason trail (preflight status + simulated decision), grouped id lists (paper-enter / paper-reject / skip / watch / risk-blocked / missing-info / unknown / invalid), a navigation index, and a CI section. The candidate list is the spine; each sub-artifact is strictly validated and must reference only candidates in the list. Every status/decision is carried VERBATIM — nothing is re-derived. Reads the named files only, writes nothing unless --out. A paper-enter carried through is a SIMULATED classification — NOT a buy/sell order, NOT a transaction, NOT live readiness. No network, no wallet",
+  )
+  .option("--candidates <path>", "candidate list JSON")
+  .option("--preflight <path>", "preflight report JSON (sniper.token.preflight.report.v1)")
+  .option("--decisions <path>", "decision report JSON (sniper.paper.decision.report.v1)")
+  .option("--workflow <path>", "workflow plan JSON (sniper.workflow.plan.v1)")
+  .option("--operator <label>", "operator label echoed into the report (a string only)")
+  .option("--json", "emit the run report as stable JSON")
+  .option("--out <path>", "write ONLY the run report JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-invalid", "exit non-zero when any candidate reported an invalid mint")
+  .option("--fail-on-preflight-fail", "exit non-zero when any candidate failed preflight")
+  .option("--fail-on-risk", "exit non-zero when any candidate is blocked on risk")
+  .option("--fail-on-paper-enter", "exit non-zero when any candidate carried a SIMULATED paper-enter")
+  .option("--fail-on-unknown", "exit non-zero when any candidate could not be classified")
+  .option("--fail-on-missing-recommended", "exit non-zero when a recommended artifact (preflight/decision) is absent")
+  .action(
+    (opts: {
+      candidates?: string;
+      preflight?: string;
+      decisions?: string;
+      workflow?: string;
+      operator?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnInvalid?: boolean;
+      failOnPreflightFail?: boolean;
+      failOnRisk?: boolean;
+      failOnPaperEnter?: boolean;
+      failOnUnknown?: boolean;
+      failOnMissingRecommended?: boolean;
+    }) => {
+      const { text, exitCode } = paperSniperReportReport(
+        {},
+        {
+          candidatesPath: opts.candidates,
+          preflightPath: opts.preflight,
+          decisionsPath: opts.decisions,
+          workflowPath: opts.workflow,
+          operatorLabel: opts.operator,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnInvalid: Boolean(opts.failOnInvalid),
+          failOnPreflightFail: Boolean(opts.failOnPreflightFail),
+          failOnRisk: Boolean(opts.failOnRisk),
+          failOnPaperEnter: Boolean(opts.failOnPaperEnter),
+          failOnUnknown: Boolean(opts.failOnUnknown),
+          failOnMissingRecommended: Boolean(opts.failOnMissingRecommended),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
 
 program.parseAsync(process.argv);

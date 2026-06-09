@@ -59,6 +59,8 @@ import {
   validatePaperSniperDecisionReport,
   buildSniperWorkflowPlan,
   formatSniperWorkflowPlan,
+  buildSniperRunReport,
+  formatSniperRunReport,
   SNIPER_CANDIDATE_LIST_SCHEMA_VERSION,
   type SniperCandidateList,
   type SniperTokenPreflightReport,
@@ -66,6 +68,7 @@ import {
   type SniperPaperDecisionReport,
   type SniperDecisionRules,
   type SniperWorkflowStageState,
+  type SniperRunReport,
 } from "@soulmaker/sniper";
 import {
   runPaperSession,
@@ -4433,6 +4436,143 @@ export function paperSniperWorkflowReport(
     return { text: JSON.stringify(redactValue(plan), null, 2), exitCode: 0 };
   }
   return { text: formatSniperWorkflowPlan(plan), exitCode: 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 30 — paper:sniper:report
+//   Bundle a LOCAL candidate list + optional preflight + optional decision +
+//   optional workflow plan into one navigable, operator-readable run report
+//   (`sniper.run.report.v1`). Per-candidate reason trail (preflight status +
+//   simulated decision), grouped id lists, a navigation index, and a CI section.
+//   Reads the named files only; writes nothing unless --out. No network, no
+//   wallet. A paper-enter carried through is a SIMULATED classification — NOT a
+//   buy/sell order, NOT a transaction, NOT live readiness.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperReportCommandOptions {
+  /** Candidate list JSON path. Required. */
+  candidatesPath?: string;
+  /** Optional preflight report JSON path (sniper.token.preflight.report.v1). */
+  preflightPath?: string;
+  /** Optional decision report JSON path (sniper.paper.decision.report.v1). */
+  decisionsPath?: string;
+  /** Optional workflow plan JSON path (sniper.workflow.plan.v1). */
+  workflowPath?: string;
+  /** Optional operator label echoed into the report (a string only). */
+  operatorLabel?: string;
+  json?: boolean;
+  /** Optional path to write the run report JSON (writes nothing if omitted). */
+  outPath?: string;
+  /** Overwrite an existing --out file (refused by default). */
+  force?: boolean;
+  failOnInvalid?: boolean;
+  failOnPreflightFail?: boolean;
+  failOnRisk?: boolean;
+  failOnPaperEnter?: boolean;
+  failOnUnknown?: boolean;
+  failOnMissingRecommended?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:report` — bundle a LOCAL candidate list + an optional preflight + an optional
+ * decision report + an optional workflow plan into one navigable run report (`sniper.run.report.v1`).
+ * Reads ONLY the named local files (BOM-tolerant). The candidate list is the spine; each supplied
+ * sub-artifact is STRICTLY validated and must reference only candidates in the list (a wrong pairing is
+ * refused). Every preflight status and decision is carried VERBATIM — nothing is re-derived. `--json`
+ * emits the report; `--out` writes ONLY the report JSON (refusing overwrite without `--force`, creating
+ * no directories); the `--fail-on-*` flags set the exit code. A `paper-enter` carried through is a
+ * SIMULATED classification — NOT a buy/sell order, a transaction, or live readiness. No network, no
+ * wallet, no transaction build/sign/send.
+ */
+export function paperSniperReportReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperReportCommandOptions = {},
+): CliReport {
+  if (!opts.candidatesPath) return { text: "Refusing: --candidates <path> is required.", exitCode: 1 };
+
+  // 1) Read + normalize the candidate list (same wrong-schema guard as the other sniper commands).
+  let raw: unknown;
+  try {
+    raw = readJsonValue(ctx, opts.candidatesPath, "sniper candidate list");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  if (!isPlainObject(raw)) {
+    return { text: "Refusing: candidate list must be a JSON object with a candidates array.", exitCode: 1 };
+  }
+  if (raw.schemaVersion !== undefined && raw.schemaVersion !== SNIPER_CANDIDATE_LIST_SCHEMA_VERSION) {
+    return {
+      text: redactString(`Refusing: candidate list schemaVersion must be "${SNIPER_CANDIDATE_LIST_SCHEMA_VERSION}".`),
+      exitCode: 1,
+    };
+  }
+  let list: SniperCandidateList;
+  try {
+    list = normalizeSniperCandidateList({
+      sourceLabel: typeof raw.sourceLabel === "string" ? raw.sourceLabel : opts.candidatesPath,
+      candidates: (raw.candidates ?? []) as never,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // 2) Optional sub-artifacts (the builder strictly validates each).
+  const readOptional = (path: string | undefined, label: string): { ok: true; value: unknown } | { ok: false; text: string } => {
+    if (!path) return { ok: true, value: undefined };
+    try {
+      return { ok: true, value: readJsonValue(ctx, path, label) };
+    } catch (err) {
+      return { ok: false, text: redactString(`Refusing: ${(err as Error).message}`) };
+    }
+  };
+  const pf = readOptional(opts.preflightPath, "preflight report");
+  if (!pf.ok) return { text: pf.text, exitCode: 1 };
+  const dec = readOptional(opts.decisionsPath, "decision report");
+  if (!dec.ok) return { text: dec.text, exitCode: 1 };
+  const wf = readOptional(opts.workflowPath, "workflow plan");
+  if (!wf.ok) return { text: wf.text, exitCode: 1 };
+
+  // 3) Build the run report.
+  let report: SniperRunReport;
+  try {
+    report = buildSniperRunReport({
+      candidateList: list,
+      preflight: pf.value,
+      decision: dec.value,
+      workflow: wf.value,
+      operatorLabel: opts.operatorLabel ?? null,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // 4) Optional write: ONLY the report JSON, refuse overwrite without --force, create no directories.
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(report), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write run report at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  const exitCode =
+    (opts.failOnInvalid && report.hasInvalidCandidate) ||
+    (opts.failOnPreflightFail && report.hasPreflightFailure) ||
+    (opts.failOnRisk && report.hasRiskBlock) ||
+    (opts.failOnPaperEnter && report.hasPaperEnter) ||
+    (opts.failOnUnknown && report.hasUnknown) ||
+    (opts.failOnMissingRecommended && report.hasMissingRecommendedArtifact)
+      ? 1
+      : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
+  }
+  return { text: formatSniperRunReport(report, { label: opts.candidatesPath }), exitCode };
 }
 
 function yesNo(value: boolean): string {

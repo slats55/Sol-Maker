@@ -105,4 +105,22 @@ pnpm soulmaker paper:sniper:workflow --candidates candidates.example.json
 pnpm soulmaker paper:sniper:workflow --candidates candidates.example.json --preflight preflight.json --decision decision.json --json
 ```
 
+## Run report (Sprint 30)
+
+Bundle the candidate list + preflight + decision + workflow into one navigable run report. The candidate
+list is the spine; the rest are optional and strictly validated (a sub-artifact built from a different
+candidate list is refused as a wrong pairing). It **writes nothing** unless `--out`:
+
+```bash
+pnpm soulmaker paper:sniper:report --candidates candidates.example.json
+pnpm soulmaker paper:sniper:report --candidates candidates.example.json \
+  --preflight preflight.json --decisions decision.json --workflow workflow.json --operator "me" --json
+pnpm soulmaker paper:sniper:report --candidates candidates.example.json --preflight preflight.json --fail-on-risk
+```
+
+The report carries a per-candidate reason trail (each candidate's preflight status + simulated decision),
+the grouped id lists, a navigation index, and a CI section. Every status/decision is carried **verbatim**
+— it re-derives nothing. A `paper-enter` carried through is a **simulated** classification, never an
+order.
+
 See [`docs/SNIPER_RUNBOOK.md`](../../docs/SNIPER_RUNBOOK.md) for the full operator runbook.

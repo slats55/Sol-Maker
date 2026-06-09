@@ -18,6 +18,7 @@ import {
   paperBacktestResearchManifestReport,
   paperBacktestResearchVerifyReport,
   paperSniperCandidatesValidateReport,
+  paperSniperReportReport,
 } from "./commands.js";
 
 const EXAMPLES_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../examples/backtest");
@@ -259,5 +260,26 @@ describe("examples/sniper — fixtures validate", () => {
         { inputPath: "candidates.example.json", failOnWarning: true },
       ).exitCode,
     ).toBe(0);
+  });
+
+  it("the shipped candidate list bundles into a run report (PAPER ONLY; candidates-only run)", () => {
+    const r = paperSniperReportReport(
+      { cwd: SNIPER_EXAMPLES_DIR, env: {} },
+      { candidatesPath: "candidates.example.json", json: true },
+    );
+    expect(r.exitCode).toBe(0);
+    const report = JSON.parse(r.text) as {
+      schemaVersion: string;
+      candidateCount: number;
+      hasMissingRecommendedArtifact: boolean;
+      hasPaperEnter: boolean;
+      watchedMissingInfoIds: string[];
+    };
+    expect(report.schemaVersion).toBe("sniper.run.report.v1");
+    expect(report.candidateCount).toBe(2);
+    // A candidates-only run has no preflight/decision (recommended artifacts), so nothing paper-enters.
+    expect(report.hasMissingRecommendedArtifact).toBe(true);
+    expect(report.hasPaperEnter).toBe(false);
+    expect(report.watchedMissingInfoIds).toEqual(["example-usdc", "example-wsol"]);
   });
 });

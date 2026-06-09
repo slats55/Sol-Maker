@@ -588,6 +588,19 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   (`done` / `ready` / `blocked` / `todo`) + the recommended NEXT command. It DESCRIBES the
   intake → preflight → decide sequence only — it executes no stage, runs no live action, and writes
   nothing. The operator runbook is `docs/SNIPER_RUNBOOK.md`; a worked example is in `examples/sniper/`.
+- ✅ **(Sprint 30) Sniper run report** — the navigation + summary layer over the whole sniper path (the
+  sniper analogue of the research artifact pack). `@soulmaker/sniper` exports `buildSniperRunReport`,
+  `validateSniperRunReport`, `formatSniperRunReport` (schema `sniper.run.report.v1`); the CLI adds
+  `paper:sniper:report --candidates <path> [--preflight <path>] [--decisions <path>] [--workflow <path>]
+  [--operator <label>] [--json] [--out <path>] [--force] [--fail-on-invalid] [--fail-on-preflight-fail]
+  [--fail-on-risk] [--fail-on-paper-enter] [--fail-on-unknown] [--fail-on-missing-recommended]`. The pure
+  builder takes the candidate list as the spine and joins the (optional, strictly-validated) preflight,
+  decision, and workflow artifacts into one navigable per-candidate view (preflight status + simulated
+  decision + a provenance-prefixed reason trail), the grouped id lists, a navigation index, and a CI
+  section. Every status/decision is carried VERBATIM (re-derives nothing); a sub-artifact referencing a
+  candidate id not in the list is refused. Writes nothing unless `--out`; the package stays pure (no
+  fs/net, no `Date.now`/`Math.random`; the formatter redacts internally). A carried-through `paper-enter`
+  is a SIMULATED classification — NOT a buy/sell order, NOT a transaction, NOT live readiness.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

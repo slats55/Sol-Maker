@@ -214,6 +214,16 @@ sequence only — it executes no stage, runs no live action, and writes nothing.
 walkthrough lives in [`docs/SNIPER_RUNBOOK.md`](docs/SNIPER_RUNBOOK.md); the model/design is in
 [`docs/SNIPER_MODEL.md`](docs/SNIPER_MODEL.md).
 
+Sprint 30 bundles the path's artifacts into one navigable **run report**: `paper:sniper:report
+--candidates <path> [--preflight <path>] [--decisions <path>] [--workflow <path>]` joins the candidate
+list, the preflight, the decision report, and the workflow plan into one operator-readable
+`sniper.run.report.v1` — a per-candidate reason trail (preflight status + simulated decision), grouped
+id lists (paper-enter / paper-reject / skip / watch / risk-blocked / missing-info / unknown / invalid),
+a navigation index, and a CI section (`--fail-on-invalid` / `--fail-on-preflight-fail` / `--fail-on-risk`
+/ `--fail-on-paper-enter` / `--fail-on-unknown` / `--fail-on-missing-recommended`). Every status and
+decision is carried **verbatim** — the report re-derives nothing. It writes nothing unless `--out`; a
+`paper-enter` carried through is a **simulated** classification, never an order.
+
 ## Non-negotiable security rules (summary)
 
 The full, authoritative list is in [`SECURITY.md`](SECURITY.md). The short form:
@@ -298,8 +308,10 @@ soulmaker/
                 #            Sprint 27 adds paper decisions (sniper.paper.decision.report.v1):
                 #            skip/watch/paper-enter/paper-reject/unknown from preflight + rules;
                 #            Sprint 28 adds the operator workflow helper (sniper.workflow.plan.v1):
-                #            describes the intake->preflight->decide sequence, executes nothing
-                #            (paper-only) — NO chain capability, NO wallet, NO network
+                #            describes the intake->preflight->decide sequence, executes nothing;
+                #            Sprint 30 adds the run report (sniper.run.report.v1): joins candidate
+                #            list + preflight + decision + workflow into one navigable per-candidate
+                #            view (paper-only) — NO chain capability, NO wallet, NO network
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
     backtest/   # injected, copyable example scenarios + fixtures (NOT historical market data)

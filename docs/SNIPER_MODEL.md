@@ -220,6 +220,60 @@ always `blocked`. It **describes** the sequence only — it executes no stage, r
 no network call, and touches no wallet. The full operator walkthrough is in
 [`SNIPER_RUNBOOK.md`](SNIPER_RUNBOOK.md).
 
+## Sniper run report (Sprint 30)
+
+The run report is the **navigation + summary** layer over the whole sniper path — the sniper analogue
+of the research artifact pack. The pure `buildSniperRunReport` (schema `sniper.run.report.v1`) takes the
+candidate list as the **spine** and folds in the optional, strictly-validated preflight, decision, and
+workflow artifacts. It is **pure** — the CLI loads the files and hands the parsed values in; the package
+still carries no chain capability.
+
+> Every preflight status and decision is carried **VERBATIM** — the report re-derives nothing. A
+> `paper-enter` carried through is a **SIMULATED, paper-only** classification — **not** a buy/sell order,
+> a transaction, or live-trading readiness.
+
+### Schema — `sniper.run.report.v1`
+
+Carries the PAPER-ONLY banner + disclaimers, an optional `operatorLabel`, the `sourceLabel`, the
+`candidateCount`, an `artifactsPresent` block, projected `preflightSummary` / `decisionSummary` /
+`workflowSummary` (each null when absent), a per-candidate `candidates` array (each entry: `candidateId`,
+`mint`, `mintValid`, `preflightStatus`, `decision`, `riskBlocked`, `watchedMissingInfo`, a merged
+`reasons` trail, and `blockingRiskFlags`), the grouped id lists (`paperEnterIds`, `paperRejectIds`,
+`skipIds`, `watchIds`, `decisionUnknownIds`, `preflightFailedIds`, `preflightUnknownIds`,
+`riskBlockedIds`, `watchedMissingInfoIds`, `invalidCandidateIds`), the CI flags (`hasInvalidCandidate`,
+`hasPreflightFailure`, `hasRiskBlock`, `hasPaperEnter`, `hasUnknown`, `hasMissingRecommendedArtifact`),
+the `failReasons`, and a compact `navigation` index (only non-empty groups).
+
+### Joining + pairing rules (conservative, honest)
+
+- The **candidate list defines the candidate set + order**. Each candidate is joined to its preflight
+  entry and decision entry by `candidateId`.
+- A preflight / decision entry that references a `candidateId` **not** in the list is **refused** (the
+  operator paired the wrong artifacts).
+- A list candidate that a sub-artifact does not cover keeps a `null` `preflightStatus` / `decision` — the
+  report never fabricates a status it was not given.
+- `mintValid` is read **verbatim** from a supplied preflight entry (a list candidate is always valid, but
+  a hand-edited preflight reporting an invalid mint is surfaced as `hasInvalidCandidate`).
+- A missing preflight **or** decision sets `hasMissingRecommendedArtifact` (the workflow plan is
+  informational, not a recommended-artifact gate).
+
+### CLI — `paper:sniper:report`
+
+```bash
+pnpm soulmaker paper:sniper:report --candidates <candidates.json> \
+  --preflight <preflight.json> --decisions <decision.json> --workflow <workflow.json> \
+  --operator "alice@run-7" --out run.json
+pnpm soulmaker paper:sniper:report --candidates <candidates.json> --json
+pnpm soulmaker paper:sniper:report --candidates <candidates.json> --preflight <preflight.json> --fail-on-risk
+```
+
+`--preflight`, `--decisions`, `--workflow`, and `--operator` are optional. The command reads only the
+named files and **writes nothing** unless `--out` is given (then only the report JSON, refusing overwrite
+without `--force`, creating no directories). The `--fail-on-*` flags
+(`--fail-on-invalid` / `--fail-on-preflight-fail` / `--fail-on-risk` / `--fail-on-paper-enter` /
+`--fail-on-unknown` / `--fail-on-missing-recommended`) set the exit code. No network, no wallet, no
+transaction build/sign/send.
+
 ## What is intentionally NOT here yet
 
 - **No transaction planning / signing / sending / wallet / burner** — Phases 6 and 7, not started. The

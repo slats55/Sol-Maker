@@ -56,6 +56,7 @@ import {
   paperSniperPreflightReport,
   paperSniperDecideReport,
   paperSniperWorkflowReport,
+  paperSniperReportReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -7029,6 +7030,141 @@ describe("paperSniperWorkflowReport (Sprint 28)", () => {
       expect(plan.complete).toBe(true);
       expect(plan.doneCount).toBe(3);
       expect(plan.nextStage).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperSniperReportReport (Sprint 30)", () => {
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const WSOL = "So11111111111111111111111111111111111111112";
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+  const cleanInspection = (mint: string) => ({ mint, decimals: 6, supplyRaw: "1", uiSupply: 1, mintAuthorityPresent: false, freezeAuthorityPresent: false, isInitialized: true, programLabel: "spl-token" });
+  const riskPass = (mint: string) => ({ mint, score: 10, decision: "PASS_FOR_PAPER_EVALUATION", flags: [], summary: [] });
+  const riskReject = (mint: string) => ({ mint, score: 95, decision: "REJECT", flags: [{ id: "rug", severity: "critical", title: "Rug" }], summary: [] });
+
+  /** Build candidate + preflight + decision + workflow files via the real commands. */
+  function setup(cwd: string): { cands: string; preflight: string; decision: string; workflow: string } {
+    const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "good", mint: USDC, observedLiquidityUsd: 50000 }, { candidateId: "bad", mint: WSOL }] });
+    writeJson(cwd, "good.insp.json", cleanInspection(USDC));
+    writeJson(cwd, "good.risk.json", riskPass(USDC));
+    writeJson(cwd, "bad.risk.json", riskReject(WSOL));
+    expect(paperSniperPreflightReport(
+      { cwd, env: {} },
+      { candidatesPath: cands, inspections: ["good=good.insp.json"], risks: ["good=good.risk.json", "bad=bad.risk.json"], outPath: "preflight.json" },
+    ).exitCode).toBe(0);
+    expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: "preflight.json", outPath: "decision.json" }).exitCode).toBe(0);
+    // A workflow plan over the three artifacts (read-only).
+    const wf = paperSniperWorkflowReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: "preflight.json", decisionPath: "decision.json", json: true });
+    writeFileSync(join(cwd, "workflow.json"), wf.text);
+    return { cands, preflight: "preflight.json", decision: "decision.json", workflow: "workflow.json" };
+  }
+
+  it("refuses when --candidates is missing", () => {
+    expect(paperSniperReportReport({}, {}).text).toMatch(/^Refusing: --candidates/);
+    expect(paperSniperReportReport({}, {}).exitCode).toBe(1);
+  });
+
+  it("renders a PAPER-ONLY human run report bundling all four artifacts", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { cands, preflight, decision, workflow } = setup(cwd);
+      const r = paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, decisionsPath: decision, workflowPath: workflow });
+      expect(r.exitCode).toBe(0);
+      expect(r.text).toContain("SIMULATED PAPER-ONLY SNIPER RUN REPORT");
+      expect(r.text).toContain("Navigation:");
+      expect(r.text).toContain("Any paper-enter (SIMULATED):  YES");
+      expect(r.text.toLowerCase()).toContain("not a trade signal");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json emits a valid, stable run report", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { cands, preflight, decision, workflow } = setup(cwd);
+      const r = paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, decisionsPath: decision, workflowPath: workflow, operatorLabel: "op-1", json: true });
+      const obj = JSON.parse(r.text) as { schemaVersion: string; operatorLabel: string; paperEnterIds: string[]; paperRejectIds: string[]; hasMissingRecommendedArtifact: boolean; artifactsPresent: { workflow: boolean } };
+      expect(obj.schemaVersion).toBe("sniper.run.report.v1");
+      expect(obj.operatorLabel).toBe("op-1");
+      expect(obj.paperEnterIds).toEqual(["good"]);
+      expect(obj.paperRejectIds).toEqual(["bad"]);
+      expect(obj.hasMissingRecommendedArtifact).toBe(false);
+      expect(obj.artifactsPresent.workflow).toBe(true);
+      // deterministic
+      expect(paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, decisionsPath: decision, workflowPath: workflow, operatorLabel: "op-1", json: true }).text).toBe(r.text);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("flags hasMissingRecommendedArtifact with only a candidate list", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      const r = paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, json: true });
+      const obj = JSON.parse(r.text) as { hasMissingRecommendedArtifact: boolean; watchedMissingInfoIds: string[] };
+      expect(obj.hasMissingRecommendedArtifact).toBe(true);
+      expect(obj.watchedMissingInfoIds).toEqual(["c1"]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("the --fail-on-* flags set the exit code", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { cands, preflight, decision } = setup(cwd);
+      const base = { candidatesPath: cands, preflightPath: preflight, decisionsPath: decision } as const;
+      expect(paperSniperReportReport({ cwd, env: {} }, { ...base, failOnPaperEnter: true }).exitCode).toBe(1);
+      expect(paperSniperReportReport({ cwd, env: {} }, { ...base, failOnRisk: true }).exitCode).toBe(1);
+      expect(paperSniperReportReport({ cwd, env: {} }, { ...base, failOnPreflightFail: true }).exitCode).toBe(1);
+      // missing-recommended: with full artifacts it does NOT trip.
+      expect(paperSniperReportReport({ cwd, env: {} }, { ...base, failOnMissingRecommended: true }).exitCode).toBe(0);
+      // with only candidates, missing-recommended DOES trip, but paper-enter does not.
+      expect(paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, failOnMissingRecommended: true }).exitCode).toBe(1);
+      expect(paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, failOnPaperEnter: true }).exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--out writes ONLY the report JSON and refuses overwrite without --force", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { cands, preflight, decision } = setup(cwd);
+      const before = readdirSync(cwd).length;
+      const r1 = paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, decisionsPath: decision, outPath: "run.json" });
+      expect(r1.exitCode).toBe(0);
+      expect(readdirSync(cwd).length).toBe(before + 1);
+      const written = JSON.parse(readFileSync(join(cwd, "run.json"), "utf8")) as { schemaVersion: string };
+      expect(written.schemaVersion).toBe("sniper.run.report.v1");
+      expect(paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, decisionsPath: decision, outPath: "run.json" }).exitCode).toBe(1);
+      expect(paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, decisionsPath: decision, outPath: "run.json", force: true }).exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed candidate file, a wrong-schema preflight, and a mismatched-pairing decision", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      writeFileSync(join(cwd, "malformed.json"), "{ not json");
+      expect(paperSniperReportReport({ cwd, env: {} }, { candidatesPath: "malformed.json" }).exitCode).toBe(1);
+      const wrongPf = writeJson(cwd, "wrongpf.json", { schemaVersion: "backtest.report.v1" });
+      expect(paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: wrongPf }).exitCode).toBe(1);
+      // A decision report built from a DIFFERENT candidate id is a wrong pairing.
+      const otherCands = writeJson(cwd, "other.json", { candidates: [{ candidateId: "ghost", mint: WSOL }] });
+      paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: otherCands, outPath: "ghost-dec.json" });
+      const r = paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, decisionsPath: "ghost-dec.json" });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toMatch(/unknown candidateId/);
     } finally {
       cleanup();
     }

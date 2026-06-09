@@ -99,3 +99,25 @@ export type {
   SniperWorkflowPlan,
   FormatSniperWorkflowPlanOptions,
 } from "./workflow.js";
+
+export {
+  buildSniperRunReport,
+  validateSniperRunReport,
+  formatSniperRunReport,
+  SniperRunReportError,
+  SNIPER_RUN_REPORT_SCHEMA_VERSION,
+  SNIPER_RUN_REPORT_BANNER,
+  SNIPER_RUN_REPORT_DISCLAIMERS,
+} from "./run-report.js";
+
+export type {
+  BuildSniperRunReportInput,
+  SniperRunCandidateEntry,
+  SniperRunPreflightSummary,
+  SniperRunDecisionSummary,
+  SniperRunWorkflowSummary,
+  SniperRunArtifactsPresent,
+  SniperRunNavigationEntry,
+  SniperRunReport,
+  FormatSniperRunReportOptions,
+} from "./run-report.js";
