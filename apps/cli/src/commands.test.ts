@@ -55,6 +55,7 @@ import {
   paperSniperCandidatesValidateReport,
   paperSniperPreflightReport,
   paperSniperDecideReport,
+  paperSniperWorkflowReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -6945,6 +6946,89 @@ describe("paperSniperDecideReport (Sprint 27)", () => {
       expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: wrongPf }).exitCode).toBe(1);
       writeFileSync(join(cwd, "badrules.json"), "[]");
       expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, rulesPath: "badrules.json" }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperSniperWorkflowReport (Sprint 28)", () => {
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+  const riskPass = (mint: string) => ({ mint, score: 10, decision: "PASS_FOR_PAPER_EVALUATION", flags: [], summary: [] });
+
+  it("with nothing supplied, recommends candidate intake first and writes nothing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const before = readdirSync(cwd).sort();
+      const r = paperSniperWorkflowReport({ cwd, env: {} }, {});
+      expect(r.exitCode).toBe(0);
+      expect(r.text).toContain("SIMULATED PAPER-ONLY SNIPER WORKFLOW PLAN");
+      expect(r.text).toContain("Next: soulmaker paper:sniper:candidates:validate");
+      expect(r.text.toLowerCase()).toContain("executes no stage");
+      expect(readdirSync(cwd).sort()).toEqual(before); // writes nothing
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("recognizes a valid candidate list as done and recommends preflight next", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      const r = paperSniperWorkflowReport({ cwd, env: {} }, { candidatesPath: cands, json: true });
+      const plan = JSON.parse(r.text) as { schemaVersion: string; stages: { stage: string; status: string }[]; nextStage: string };
+      expect(plan.schemaVersion).toBe("sniper.workflow.plan.v1");
+      expect(plan.stages.find((s) => s.stage === "candidates")!.status).toBe("done");
+      expect(plan.stages.find((s) => s.stage === "preflight")!.status).toBe("ready");
+      expect(plan.nextStage).toBe("preflight");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("flags an invalid candidate file as blocked (hasInvalidArtifact)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const bad = writeJson(cwd, "bad.json", { schemaVersion: "backtest.report.v1", candidates: [] });
+      const r = paperSniperWorkflowReport({ cwd, env: {} }, { candidatesPath: bad, json: true });
+      const plan = JSON.parse(r.text) as { stages: { stage: string; status: string; valid: boolean }[]; hasInvalidArtifact: boolean };
+      expect(plan.hasInvalidArtifact).toBe(true);
+      expect(plan.stages.find((s) => s.stage === "candidates")!.status).toBe("blocked");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("treats a missing supplied path as not-present (not invalid)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const r = paperSniperWorkflowReport({ cwd, env: {} }, { candidatesPath: "does-not-exist.json", json: true });
+      const plan = JSON.parse(r.text) as { stages: { stage: string; present: boolean; valid: boolean | null }[]; hasInvalidArtifact: boolean };
+      const c = plan.stages.find((s) => s.stage === "candidates")!;
+      expect(c.present).toBe(false);
+      expect(c.valid).toBeNull();
+      expect(plan.hasInvalidArtifact).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("reports the full chain complete when all three artifacts validate", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      writeJson(cwd, "c1.risk.json", riskPass(USDC));
+      paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, risks: ["c1=c1.risk.json"], outPath: "pf.json" });
+      paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: "pf.json", outPath: "dec.json" });
+      const r = paperSniperWorkflowReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: "pf.json", decisionPath: "dec.json", json: true });
+      const plan = JSON.parse(r.text) as { complete: boolean; doneCount: number; nextStage: string | null };
+      expect(plan.complete).toBe(true);
+      expect(plan.doneCount).toBe(3);
+      expect(plan.nextStage).toBeNull();
     } finally {
       cleanup();
     }
