@@ -92,6 +92,7 @@ describe("@soulmaker/sniper — forbidden-import regression", () => {
     expect(names).toContain("paper-decision-v2.ts");
     expect(names).toContain("workflow.ts");
     expect(names).toContain("run-report.ts");
+    expect(names).toContain("run-report-v2.ts");
     expect(names).toContain("run-report-diff.ts");
     expect(names).toContain("policy-config.ts");
     expect(names).toContain("policy-config-v2.ts");

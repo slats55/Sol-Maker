@@ -391,6 +391,39 @@ always `blocked`. It **describes** the sequence only — it executes no stage, r
 no network call, and touches no wallet. The full operator walkthrough is in
 [`SNIPER_RUNBOOK.md`](SNIPER_RUNBOOK.md).
 
+## Run report v2 — `sniper.run.report.v2` (Sprint 50)
+
+V2 = the v1 run report plus the machine-readable layers the v2 pipeline produces. The v1 core join
+is REUSED unchanged (a v2 decision is projected onto its exact v1 surface for the join); the v2
+layers are carried **verbatim, never invented**:
+
+- **Reason-code rollups** — with a v2 decision: its per-code/per-category counts verbatim, a derived
+  blocking-code rollup (recomputed by the validator), run-level codes, and each run entry's code
+  trail. With a v1 decision the rollup is `null` and every trail is empty — honesty over invention.
+- **Policy visibility** (`policySummary`) — the decision-echoed facts (`appliedPerDecision` /
+  `policyLabel` / `policySchemaVersion`) plus the optionally-supplied policy artifact's
+  `policyMode` + verbatim risk limits. A supplied-vs-applied schemaVersion mismatch is a warning.
+- **Preflight-input coverage** — the supplied `sniper.preflight.input.v1`'s coverage counts. When a
+  v2 policy declares `requirePreflightInputArtifact` and none was supplied,
+  `missingRequiredPreflightInput` is true and that is operator-blocking.
+- **Unresolved unknowns** (`unresolvedUnknownIds`, recomputed by the validator) and
+  **operator-blocking reasons** — one deterministic list of everything an operator must resolve
+  (missing artifacts, required-but-missing preflight input, invalid mints, unresolved unknowns,
+  risk blocks, SIMULATED paper-enters needing review).
+
+`upgradeSniperRunReportV1ToV2` lifts a v1 run report from structured fields only (no rollup or
+policy fact is invented). V1 keeps building/validating unchanged.
+
+### CLI
+
+```bash
+pnpm soulmaker paper:sniper:report --candidates c.json --preflight pf.json --decisions decision-v2.json --schema-version v2 --json
+pnpm soulmaker paper:sniper:report --candidates c.json --decisions decision-v2.json --policy policy-v2.json --preflight-input pf-input.json --schema-version v2 --fail-on-blocking
+```
+
+`--preflight-input` / `--policy` / `--fail-on-blocking` require `--schema-version v2` (refused on
+the v1 path — fail-closed). The v1 default is unchanged.
+
 ## Sniper run report (Sprint 30)
 
 The run report is the **navigation + summary** layer over the whole sniper path — the sniper analogue

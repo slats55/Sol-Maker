@@ -7284,6 +7284,44 @@ describe("paperSniperReportReport (Sprint 30)", () => {
     expect(paperSniperReportReport({}, {}).exitCode).toBe(1);
   });
 
+  it("--schema-version v2 (Sprint 50): rollups from a v2 decision, v2-only flags gated, fail-on-blocking", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { cands, preflight } = setup(cwd);
+      // a v2 decision (codes) + a v2 policy requiring a preflight input artifact
+      expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, schemaVersion: "v2", outPath: "decision-v2.json" }).exitCode).toBe(0);
+      const policy = writeJson(cwd, "policy-v2.json", JSON.parse(paperSniperPolicyValidateReport({ cwd, env: {} }, { inputPath: writeJson(cwd, "rawpol.json", { riskLimits: { requirePreflightInputArtifact: true } }), schemaVersion: "v2", json: true }).text));
+      // v2-only flags are refused on the v1 path (fail-closed)
+      expect(paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, policyPath: policy }).exitCode).toBe(1);
+      // v2 report with a v2 decision: rollup + per-candidate codes + policy summary
+      const r = paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, decisionsPath: "decision-v2.json", policyPath: policy, schemaVersion: "v2", json: true });
+      expect(r.exitCode).toBe(0);
+      const obj = JSON.parse(r.text) as {
+        schemaVersion: string;
+        decisionSchemaVersion: string;
+        reasonCodeRollup: { reasonCodeCounts: Record<string, number> } | null;
+        missingRequiredPreflightInput: boolean;
+        operatorBlockingReasons: string[];
+        candidates: { candidateId: string; reasonCodes: string[] }[];
+      };
+      expect(obj.schemaVersion).toBe("sniper.run.report.v2");
+      expect(obj.decisionSchemaVersion).toBe("sniper.paper.decision.report.v2");
+      expect(obj.reasonCodeRollup).not.toBeNull();
+      expect(obj.candidates.find((c) => c.candidateId === "bad")!.reasonCodes).toContain("preflight-fail");
+      // the policy requires a preflight input and none was supplied → blocking
+      expect(obj.missingRequiredPreflightInput).toBe(true);
+      expect(obj.operatorBlockingReasons.length).toBeGreaterThan(0);
+      expect(paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, decisionsPath: "decision-v2.json", policyPath: policy, schemaVersion: "v2", failOnBlocking: true }).exitCode).toBe(1);
+      // human output shows the v2 sections
+      const human = paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, decisionsPath: "decision-v2.json", schemaVersion: "v2" });
+      expect(human.text).toContain("SIMULATED PAPER-ONLY SNIPER RUN REPORT V2");
+      expect(human.text).toContain("Reason-code rollup (v2):");
+      expect(human.text).toContain("Operator-blocking reasons:");
+    } finally {
+      cleanup();
+    }
+  });
+
   it("renders a PAPER-ONLY human run report bundling all four artifacts", () => {
     const { cwd, cleanup } = withConfig({ mode: "PAPER" });
     try {

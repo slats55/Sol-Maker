@@ -52,7 +52,7 @@ invariants.
 | `paper:sniper:decide` | `--candidates` | `--out` only | `sniper.paper.decision.report.v1` (or `.v2` via `--schema-version v2`) |
 | `paper:sniper:policy:validate` | `--input` | never | `sniper.policy.config.v1` (or `.v2` via `--schema-version v2`) |
 | `paper:sniper:workflow` | (none) | never | `sniper.workflow.plan.v1` |
-| `paper:sniper:report` | `--candidates` | `--out` only | `sniper.run.report.v1` |
+| `paper:sniper:report` | `--candidates` | `--out` only | `sniper.run.report.v1` (or `.v2` via `--schema-version v2`) |
 | `paper:sniper:diff:report` | `--base`, `--next` | never | `sniper.run.report.diff.v1` |
 | `paper:sniper:audit` | `--report` | `--out` only | `sniper.audit.log.v1` |
 | `paper:sniper:session:pack` | `--artifact` (≥1) | `--out` only | `sniper.session.pack.v1` |

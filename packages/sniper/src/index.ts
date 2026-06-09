@@ -193,6 +193,27 @@ export type {
 } from "./run-report-diff.js";
 
 export {
+  buildSniperRunReportV2,
+  validateSniperRunReportV2,
+  formatSniperRunReportV2,
+  upgradeSniperRunReportV1ToV2,
+  SniperRunReportV2Error,
+  SNIPER_RUN_REPORT_V2_SCHEMA_VERSION,
+  SNIPER_RUN_REPORT_V2_BANNER,
+  SNIPER_RUN_REPORT_V2_DISCLAIMERS,
+} from "./run-report-v2.js";
+
+export type {
+  SniperRunCandidateEntryV2,
+  SniperRunReasonCodeRollup,
+  SniperRunPolicySummary,
+  SniperRunPreflightInputCoverage,
+  SniperRunReportV2,
+  BuildSniperRunReportV2Input,
+  FormatSniperRunReportV2Options,
+} from "./run-report-v2.js";
+
+export {
   normalizeSniperPolicyConfig,
   validateSniperPolicyConfig,
   formatSniperPolicyConfig,

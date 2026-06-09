@@ -1261,8 +1261,11 @@ program
   )
   .option("--candidates <path>", "candidate list JSON")
   .option("--preflight <path>", "preflight report JSON (sniper.token.preflight.report.v1)")
-  .option("--decisions <path>", "decision report JSON (sniper.paper.decision.report.v1)")
+  .option("--decisions <path>", "decision report JSON (sniper.paper.decision.report.v1, or .v2 with --schema-version v2)")
   .option("--workflow <path>", "workflow plan JSON (sniper.workflow.plan.v1)")
+  .option("--preflight-input <path>", "preflight input artifact JSON (sniper.preflight.input.v1; requires --schema-version v2)")
+  .option("--policy <path>", "policy config JSON (sniper.policy.config.v1|v2; requires --schema-version v2)")
+  .option("--schema-version <version>", "run report schema to produce: v1 (default) or v2 (rollups/policy/coverage/blocking reasons)")
   .option("--operator <label>", "operator label echoed into the report (a string only)")
   .option("--json", "emit the run report as stable JSON")
   .option("--out <path>", "write ONLY the run report JSON to this path (writes nothing if omitted)")
@@ -1273,12 +1276,16 @@ program
   .option("--fail-on-paper-enter", "exit non-zero when any candidate carried a SIMULATED paper-enter")
   .option("--fail-on-unknown", "exit non-zero when any candidate could not be classified")
   .option("--fail-on-missing-recommended", "exit non-zero when a recommended artifact (preflight/decision) is absent")
+  .option("--fail-on-blocking", "exit non-zero when any operator-blocking reason is present (v2 only)")
   .action(
     (opts: {
       candidates?: string;
       preflight?: string;
       decisions?: string;
       workflow?: string;
+      preflightInput?: string;
+      policy?: string;
+      schemaVersion?: string;
       operator?: string;
       json?: boolean;
       out?: string;
@@ -1289,6 +1296,7 @@ program
       failOnPaperEnter?: boolean;
       failOnUnknown?: boolean;
       failOnMissingRecommended?: boolean;
+      failOnBlocking?: boolean;
     }) => {
       const { text, exitCode } = paperSniperReportReport(
         {},
@@ -1297,6 +1305,9 @@ program
           preflightPath: opts.preflight,
           decisionsPath: opts.decisions,
           workflowPath: opts.workflow,
+          preflightInputPath: opts.preflightInput,
+          policyPath: opts.policy,
+          schemaVersion: opts.schemaVersion,
           operatorLabel: opts.operator,
           json: Boolean(opts.json),
           outPath: opts.out,
@@ -1307,6 +1318,7 @@ program
           failOnPaperEnter: Boolean(opts.failOnPaperEnter),
           failOnUnknown: Boolean(opts.failOnUnknown),
           failOnMissingRecommended: Boolean(opts.failOnMissingRecommended),
+          failOnBlocking: Boolean(opts.failOnBlocking),
         },
       );
       console.log(text);

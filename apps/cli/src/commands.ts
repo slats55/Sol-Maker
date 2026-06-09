@@ -66,6 +66,8 @@ import {
   formatSniperWorkflowPlan,
   buildSniperRunReport,
   formatSniperRunReport,
+  buildSniperRunReportV2,
+  formatSniperRunReportV2,
   diffSniperRunReports,
   formatSniperRunReportDiff,
   normalizeSniperPolicyConfig,
@@ -99,6 +101,7 @@ import {
   type SniperDecisionRules,
   type SniperWorkflowStageState,
   type SniperRunReport,
+  type SniperRunReportV2,
   type SniperRunReportDiff,
   type SniperPolicyConfig,
   type SniperPolicyConfigV2,
@@ -4743,11 +4746,21 @@ export interface PaperSniperReportCommandOptions {
   failOnPaperEnter?: boolean;
   failOnUnknown?: boolean;
   failOnMissingRecommended?: boolean;
+  /** Exit non-zero when the v2 report carries any operator-blocking reason (v2 only). */
+  failOnBlocking?: boolean;
+  /** Run report schema to produce: "v1" (default; unchanged) or "v2" (rollups/policy/coverage). */
+  schemaVersion?: string;
+  /** Optional preflight input artifact JSON path (sniper.preflight.input.v1; v2 only). */
+  preflightInputPath?: string;
+  /** Optional policy config JSON path (sniper.policy.config.v1|v2; v2 only). */
+  policyPath?: string;
 }
 
 /**
  * `soulmaker paper:sniper:report` — bundle a LOCAL candidate list + an optional preflight + an optional
- * decision report + an optional workflow plan into one navigable run report (`sniper.run.report.v1`).
+ * decision report + an optional workflow plan into one navigable run report (`sniper.run.report.v1`,
+ * or `.v2` with `--schema-version v2`, which adds reason-code rollups from a v2 decision, policy
+ * visibility, preflight-input coverage, unresolved unknowns, and operator-blocking reasons).
  * Reads ONLY the named local files (BOM-tolerant). The candidate list is the spine; each supplied
  * sub-artifact is STRICTLY validated and must reference only candidates in the list (a wrong pairing is
  * refused). Every preflight status and decision is carried VERBATIM — nothing is re-derived. `--json`
@@ -4761,6 +4774,13 @@ export function paperSniperReportReport(
   opts: PaperSniperReportCommandOptions = {},
 ): CliReport {
   if (!opts.candidatesPath) return { text: "Refusing: --candidates <path> is required.", exitCode: 1 };
+  const schemaVersion = opts.schemaVersion ?? "v1";
+  if (schemaVersion !== "v1" && schemaVersion !== "v2") {
+    return { text: 'Refusing: --schema-version must be "v1" or "v2".', exitCode: 1 };
+  }
+  if (schemaVersion === "v1" && (opts.preflightInputPath || opts.policyPath || opts.failOnBlocking)) {
+    return { text: "Refusing: --preflight-input / --policy / --fail-on-blocking require --schema-version v2.", exitCode: 1 };
+  }
 
   // 1) Read + normalize the candidate list (same wrong-schema guard as the other sniper commands).
   let raw: unknown;
@@ -4803,17 +4823,40 @@ export function paperSniperReportReport(
   if (!dec.ok) return { text: dec.text, exitCode: 1 };
   const wf = readOptional(opts.workflowPath, "workflow plan");
   if (!wf.ok) return { text: wf.text, exitCode: 1 };
+  const pfInput = readOptional(opts.preflightInputPath, "preflight input");
+  if (!pfInput.ok) return { text: pfInput.text, exitCode: 1 };
+  const pol = readOptional(opts.policyPath, "policy config");
+  if (!pol.ok) return { text: pol.text, exitCode: 1 };
 
-  // 3) Build the run report.
-  let report: SniperRunReport;
+  // 3) Build the run report (v1 unchanged; v2 adds rollups/policy/coverage/blocking reasons).
+  let report: SniperRunReport | SniperRunReportV2;
+  let formatted: string;
+  let blocking = false;
   try {
-    report = buildSniperRunReport({
-      candidateList: list,
-      preflight: pf.value,
-      decision: dec.value,
-      workflow: wf.value,
-      operatorLabel: opts.operatorLabel ?? null,
-    });
+    if (schemaVersion === "v2") {
+      const v2 = buildSniperRunReportV2({
+        candidateList: list,
+        preflight: pf.value,
+        preflightInput: pfInput.value,
+        decision: dec.value,
+        policy: pol.value,
+        workflow: wf.value,
+        operatorLabel: opts.operatorLabel ?? null,
+      });
+      report = v2;
+      blocking = v2.operatorBlockingReasons.length > 0;
+      formatted = formatSniperRunReportV2(v2, { label: opts.candidatesPath });
+    } else {
+      const v1 = buildSniperRunReport({
+        candidateList: list,
+        preflight: pf.value,
+        decision: dec.value,
+        workflow: wf.value,
+        operatorLabel: opts.operatorLabel ?? null,
+      });
+      report = v1;
+      formatted = formatSniperRunReport(v1, { label: opts.candidatesPath });
+    }
   } catch (err) {
     return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
   }
@@ -4837,14 +4880,15 @@ export function paperSniperReportReport(
     (opts.failOnRisk && report.hasRiskBlock) ||
     (opts.failOnPaperEnter && report.hasPaperEnter) ||
     (opts.failOnUnknown && report.hasUnknown) ||
-    (opts.failOnMissingRecommended && report.hasMissingRecommendedArtifact)
+    (opts.failOnMissingRecommended && report.hasMissingRecommendedArtifact) ||
+    (opts.failOnBlocking && blocking)
       ? 1
       : 0;
 
   if (opts.json) {
     return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
   }
-  return { text: formatSniperRunReport(report, { label: opts.candidatesPath }), exitCode };
+  return { text: formatted, exitCode };
 }
 
 // ---------------------------------------------------------------------------
