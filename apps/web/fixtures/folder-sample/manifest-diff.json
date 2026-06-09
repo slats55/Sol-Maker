@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "backtest.research.manifest.diff.v1",
+  "paperOnly": true,
+  "simulated": true,
+  "baseRunName": "sample-run-e",
+  "nextRunName": "sample-run-f",
+  "manifestSchemaMatch": true,
+  "artifactCount": { "base": 3, "next": 4, "delta": 1 },
+  "totalSizeBytes": { "base": 6144, "next": 8192, "delta": 2048 },
+  "added": [
+    {
+      "path": "reports/extra.report.json",
+      "kind": "report",
+      "schemaVersion": "backtest.report.v1",
+      "digest": "sample-add-666666666666"
+    }
+  ],
+  "removed": [],
+  "changed": [],
+  "hasChange": true,
+  "changeReasons": ["1 artifact(s) added"],
+  "disclaimers": [
+    "SIMULATED PAPER-ONLY sample manifest diff — not a live result, not advice, not a profitability claim."
+  ]
+}

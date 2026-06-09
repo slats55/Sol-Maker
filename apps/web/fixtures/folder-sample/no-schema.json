@@ -1,0 +1,5 @@
+{
+  "paperOnly": true,
+  "note": "Sample artifact with NO schemaVersion field. The folder index labels it absent and interprets no verdict.",
+  "value": 42
+}
