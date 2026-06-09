@@ -59,6 +59,7 @@ import {
   paperSniperReportReport,
   paperSniperDiffReportReport,
   paperSniperPolicyValidateReport,
+  paperSniperAuditReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -7339,6 +7340,99 @@ describe("paperSniperPolicyValidateReport + decide --policy (Sprint 32)", () => 
       expect(both.text).toMatch(/mutually exclusive/);
       const wrong = writeJson(cwd, "wrong.json", { schemaVersion: "backtest.report.v1" });
       expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, policyPath: wrong }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperSniperAuditReport (Sprint 33)", () => {
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const WSOL = "So11111111111111111111111111111111111111112";
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+  const cleanInspection = (mint: string) => ({ mint, decimals: 6, supplyRaw: "1", uiSupply: 1, mintAuthorityPresent: false, freezeAuthorityPresent: false, isInitialized: true, programLabel: "spl-token" });
+  const riskPass = (mint: string) => ({ mint, score: 10, decision: "PASS_FOR_PAPER_EVALUATION", flags: [], summary: [] });
+  const riskReject = (mint: string) => ({ mint, score: 95, decision: "REJECT", flags: [{ id: "rug", severity: "critical", title: "Rug" }], summary: [] });
+
+  /** Build a run report file via the real commands; returns its path. */
+  function runReportFile(cwd: string): string {
+    const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "good", mint: USDC, observedLiquidityUsd: 50000 }, { candidateId: "bad", mint: WSOL }] });
+    writeJson(cwd, "good.insp.json", cleanInspection(USDC));
+    writeJson(cwd, "good.risk.json", riskPass(USDC));
+    writeJson(cwd, "bad.risk.json", riskReject(WSOL));
+    paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, inspections: ["good=good.insp.json"], risks: ["good=good.risk.json", "bad=bad.risk.json"], outPath: "pf.json" });
+    paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: "pf.json", outPath: "dec.json" });
+    const r = paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: "pf.json", decisionsPath: "dec.json", json: true });
+    writeFileSync(join(cwd, "run.json"), r.text);
+    return "run.json";
+  }
+
+  it("refuses when --report is missing", () => {
+    expect(paperSniperAuditReport({}, {}).text).toMatch(/^Refusing: --report/);
+    expect(paperSniperAuditReport({}, {}).exitCode).toBe(1);
+  });
+
+  it("renders a PAPER-ONLY human audit log over a run report", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const run = runReportFile(cwd);
+      const r = paperSniperAuditReport({ cwd, env: {} }, { reportPath: run, label: "run-7" });
+      expect(r.exitCode).toBe(0);
+      expect(r.text).toContain("SIMULATED PAPER-ONLY SNIPER AUDIT LOG");
+      expect(r.text).toContain("run:        run-7");
+      expect(r.text).toContain("Steps:");
+      expect(r.text.toLowerCase()).toContain("no wall-clock time");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json emits a valid, stable audit log; --fail-on-failure trips on a risk block", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const run = runReportFile(cwd);
+      const r = paperSniperAuditReport({ cwd, env: {} }, { reportPath: run, label: "r", json: true });
+      const obj = JSON.parse(r.text) as { schemaVersion: string; stepCount: number; hasFailure: boolean; steps: { stepId: string }[] };
+      expect(obj.schemaVersion).toBe("sniper.audit.log.v1");
+      expect(obj.stepCount).toBe(4);
+      expect(obj.steps.map((s) => s.stepId)).toEqual(["intake", "preflight", "decide", "report"]);
+      expect(obj.hasFailure).toBe(true); // a risk-blocked candidate is a failure
+      expect(paperSniperAuditReport({ cwd, env: {} }, { reportPath: run, label: "r", json: true }).text).toBe(r.text); // deterministic
+      expect(paperSniperAuditReport({ cwd, env: {} }, { reportPath: run, failOnFailure: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--out writes ONLY the log JSON and refuses overwrite without --force", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const run = runReportFile(cwd);
+      const before = readdirSync(cwd).length;
+      const r1 = paperSniperAuditReport({ cwd, env: {} }, { reportPath: run, label: "r", outPath: "audit.json" });
+      expect(r1.exitCode).toBe(0);
+      expect(readdirSync(cwd).length).toBe(before + 1);
+      const written = JSON.parse(readFileSync(join(cwd, "audit.json"), "utf8")) as { schemaVersion: string };
+      expect(written.schemaVersion).toBe("sniper.audit.log.v1");
+      expect(paperSniperAuditReport({ cwd, env: {} }, { reportPath: run, outPath: "audit.json" }).exitCode).toBe(1);
+      expect(paperSniperAuditReport({ cwd, env: {} }, { reportPath: run, outPath: "audit.json", force: true }).exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed / wrong-schema run report", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "malformed.json"), "{ not json");
+      expect(paperSniperAuditReport({ cwd, env: {} }, { reportPath: "malformed.json" }).exitCode).toBe(1);
+      const wrong = writeJson(cwd, "wrong.json", { schemaVersion: "sniper.candidate.list.v1" });
+      const r = paperSniperAuditReport({ cwd, env: {} }, { reportPath: wrong });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toMatch(/run report is invalid/);
     } finally {
       cleanup();
     }

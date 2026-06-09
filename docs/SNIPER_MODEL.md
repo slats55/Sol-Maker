@@ -348,6 +348,32 @@ pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight <p
 resulting decision report is still a valid `sniper.paper.decision.report.v1` (so it pipes straight into the
 run report). A worked example policy is in [`examples/sniper/policy.example.json`](../examples/sniper/README.md).
 
+## Sniper audit log (Sprint 33)
+
+The audit log is a deterministic **provenance** record of a paper run — a prerequisite before any Phase 6
+simulation can be contemplated. The pure `buildSniperAuditLog` (schema `sniper.audit.log.v1`) derives it
+from a single run report: one entry per pipeline step (candidate intake → token preflight → paper decision
+→ run report), each with input/output artifact **labels**, a one-line decision summary, and the step's
+warnings + failures — all read **verbatim** from the run report.
+
+> The audit log carries **NO wall-clock time**. Every "when" is an operator-supplied LABEL (`runLabel` /
+> step labels), never `Date.now()`, so the same run report yields a byte-identical log. A dedicated safety
+> test forbids `Date.now`, `new Date`, and `Math.random` in the module.
+
+A recommended-but-absent step (preflight / decision) is recorded with `ran: false` rather than omitted, so
+the trail is complete and honest. The log surfaces the run's aggregate signals (`hasFailure`,
+`hasWarning`, `hasPaperEnter`, `hasRiskBlock`, `hasUnknown`, `hasMissingRecommendedArtifact`).
+
+### CLI — `paper:sniper:audit`
+
+```bash
+pnpm soulmaker paper:sniper:audit --report <run.json> --label "2025-06-09-run-7" --out audit.json
+pnpm soulmaker paper:sniper:audit --report <run.json> --label "run-7" --note "reviewed" --json --fail-on-failure
+```
+
+It reads the run report only and **writes nothing** unless `--out`. `--fail-on-failure` /
+`--fail-on-warning` set the exit code. Provenance over a SIMULATED run — never a live result or an order.
+
 ## What is intentionally NOT here yet
 
 - **No transaction planning / signing / sending / wallet / burner** — Phases 6 and 7, not started. The

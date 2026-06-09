@@ -625,6 +625,17 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   only (no currency / profit / ROI claim). Conservative by default; `enforceSniperPolicy` can ONLY tighten
   a run (downgrade a SIMULATED paper-enter to watch/reject or skip a duplicate mint), never loosen it, and
   enables no live behaviour. Pure (no fs/net, no `Date.now`/`Math.random`).
+- ✅ **(Sprint 33) Sniper audit log** — a deterministic local provenance record for a PAPER sniper run,
+  required before any Phase 6 simulation. `@soulmaker/sniper` exports `buildSniperAuditLog`,
+  `validateSniperAuditLog`, `formatSniperAuditLog` (schema `sniper.audit.log.v1`); the CLI adds
+  `paper:sniper:audit --report <path> [--label <string>] [--note <string>] [--json] [--out <path>]
+  [--force] [--fail-on-failure] [--fail-on-warning]`. From a single run report it emits one entry per
+  pipeline step (candidate intake → token preflight → paper decision → run report) with input/output
+  artifact labels, a one-line decision summary, and the step's warnings + failures — all VERBATIM; a
+  recommended-but-absent step is recorded `ran: false`, not omitted. It carries **NO wall-clock time**
+  (`runLabel` is operator-supplied; a safety test forbids `Date.now` / `new Date` / `Math.random`), so the
+  same run report yields a byte-identical log. Pure; reads the run report only and writes nothing unless
+  `--out`. Provenance over a SIMULATED run — not a live result, not an order.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

@@ -48,6 +48,7 @@ import {
   paperSniperReportReport,
   paperSniperDiffReportReport,
   paperSniperPolicyValidateReport,
+  paperSniperAuditReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1326,5 +1327,52 @@ program
     console.log(text);
     if (exitCode !== 0) process.exitCode = exitCode;
   });
+
+program
+  .command("paper:sniper:audit")
+  .description(
+    "Build a deterministic local AUDIT LOG (`sniper.audit.log.v1`) from a LOCAL run report (`sniper.run.report.v1`): one entry per pipeline step (intake -> preflight -> decide -> report) with input/output artifact labels, a one-line decision summary, and the step's warnings + failures (read VERBATIM). It carries NO wall-clock time — --label is an operator-supplied string. Reads the named file only, writes nothing unless --out. Provenance over a SIMULATED run — NOT a live result, NOT an order. No network, no wallet",
+  )
+  .option("--report <path>", "run report JSON (sniper.run.report.v1)")
+  .option("--label <string>", "operator-supplied run label (a string only — never system time)")
+  .option(
+    "--note <string>",
+    "operator-supplied note (repeatable)",
+    (value: string, previous: string[]) => previous.concat(value),
+    [] as string[],
+  )
+  .option("--json", "emit the audit log as stable JSON")
+  .option("--out <path>", "write ONLY the audit log JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-failure", "exit non-zero when any step recorded a failure")
+  .option("--fail-on-warning", "exit non-zero when any step recorded a warning")
+  .action(
+    (opts: {
+      report?: string;
+      label?: string;
+      note?: string[];
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnFailure?: boolean;
+      failOnWarning?: boolean;
+    }) => {
+      const { text, exitCode } = paperSniperAuditReport(
+        {},
+        {
+          reportPath: opts.report,
+          label: opts.label,
+          notes: opts.note ?? [],
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnFailure: Boolean(opts.failOnFailure),
+          failOnWarning: Boolean(opts.failOnWarning),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
 
 program.parseAsync(process.argv);

@@ -21,6 +21,7 @@ practical "how do I run this" companion to [`SNIPER_MODEL.md`](SNIPER_MODEL.md) 
 | 5. Run report | `paper:sniper:report` | `sniper.run.report.v1` | Joins candidate list + preflight + decision + workflow into one navigable per-candidate view (reason trail, grouped ids, navigation, CI section). |
 | 6. Run report diff | `paper:sniper:diff:report` | `sniper.run.report.diff.v1` | Compares two run reports: added/removed candidates, decision + preflight-status transitions, conservative got-worse/recovered flags. |
 | —. Policy config | `paper:sniper:policy:validate` | `sniper.policy.config.v1` | Validates a conservative, tighten-only operator/risk policy; `paper:sniper:decide --policy` governs a run with it. |
+| 7. Audit log | `paper:sniper:audit` | `sniper.audit.log.v1` | Deterministic per-step provenance over a run report (intake → preflight → decide → report); no wall-clock time. |
 
 All of stages 1, 3, and 4 live in the pure `@soulmaker/sniper` package, which carries **no chain
 capability** (no `@solana/web3.js`, no `@soulmaker/solana`; a forbidden-import test enforces this). The
@@ -152,6 +153,22 @@ base has **none** in the next. It reads the two files only and **writes nothing*
 `--fail-on-change`, `--fail-on-new-invalid`, `--fail-on-new-preflight-fail`, `--fail-on-new-risk`,
 `--fail-on-new-paper-enter`, `--fail-on-new-unknown`.
 
+### 7. Audit log (provenance)
+
+Leave a deterministic audit trail for a run — required before any future Phase 6 simulation:
+
+```bash
+pnpm soulmaker paper:sniper:audit --report run.json --label "2025-06-09-run-7" --out audit.json
+pnpm soulmaker paper:sniper:audit --report run.json --label "run-7" --note "manual review ok" --json --fail-on-failure
+```
+
+It derives one entry per pipeline step (intake → preflight → decide → report) from the run report, with
+the step's input/output artifact labels, a one-line decision summary, and its warnings + failures (all
+verbatim). A recommended-but-absent step (preflight/decision) is recorded `ran: false`, not omitted. The
+log carries **no wall-clock time** — `--label` is an operator-supplied string, never system time — so the
+same run report yields a byte-identical log. It reads the run report only and **writes nothing** unless
+`--out`. CI gates: `--fail-on-failure`, `--fail-on-warning`.
+
 ## How to inspect risk reasons
 
 - The **preflight** entry for a candidate lists its `warnings`, `disqualifiers`, and a capped
@@ -170,6 +187,7 @@ base has **none** in the next. It reads the two files only and **writes nothing*
 - `paper:sniper:diff:report --fail-on-change` / `--fail-on-new-invalid` / `--fail-on-new-preflight-fail` /
   `--fail-on-new-risk` / `--fail-on-new-paper-enter` / `--fail-on-new-unknown` — gate a run-vs-run diff.
 - `paper:sniper:policy:validate --fail-on-warning` — gate a policy config that carries a warning.
+- `paper:sniper:audit --fail-on-failure` / `--fail-on-warning` — gate a run's audit trail.
 
 ## What is intentionally NOT implemented
 
@@ -191,7 +209,8 @@ Phase 6 is **not started** and must not begin until ALL of these are stable:
 3. Paper decisions stable (Sprint 27 ✅).
 4. Operator workflow + runbook stable (Sprint 28 ✅).
 5. Risk limits / operator config stable and explicitly versioned.
-6. Audit logging + a dry-run-by-default posture designed.
+6. Audit logging (Sprint 33 ✅ — `paper:sniper:audit`, deterministic, no wall-clock time) + a
+   dry-run-by-default posture designed.
 7. A kill-switch design.
 8. A secrets policy and burner-wallet **isolation** design (no main-wallet config ever).
 9. Test coverage for every boundary, and an explicit, documented **planner ⟂ signer** separation

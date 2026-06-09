@@ -241,6 +241,13 @@ plus **tighten-only** enforcement (`allowPaperEnter`, `failClosedOnUnknownPrefli
 currency, profit, or ROI claim). Enforcement can only make a run **more** conservative — it may downgrade
 a simulated `paper-enter` to `watch`/`paper-reject`, never the reverse, and enables no live behaviour.
 
+Sprint 33 adds a deterministic **audit log** — a prerequisite for any future Phase 6 simulation:
+`paper:sniper:audit --report <run.json> --label <run-id>` builds a `sniper.audit.log.v1`, one entry per
+pipeline step (intake → preflight → decide → report) with input/output artifact labels, a one-line
+decision summary, and the step's warnings/failures. It carries **no wall-clock time** — the run label is
+operator-supplied, never `Date.now()` — so the same run report yields a byte-identical log. It writes
+nothing unless `--out`; `--fail-on-failure` / `--fail-on-warning` gate CI.
+
 ## Non-negotiable security rules (summary)
 
 The full, authoritative list is in [`SECURITY.md`](SECURITY.md). The short form:
@@ -331,7 +338,9 @@ soulmaker/
                 #            view; Sprint 31 adds the run report diff (sniper.run.report.diff.v1):
                 #            compares two run reports (added/removed/transitions/recovery);
                 #            Sprint 32 adds the policy config (sniper.policy.config.v1): explicit,
-                #            conservative, tighten-only operator/risk policy for paper:sniper:decide
+                #            conservative, tighten-only operator/risk policy for paper:sniper:decide;
+                #            Sprint 33 adds the audit log (sniper.audit.log.v1): deterministic
+                #            per-step provenance over a run report, no wall-clock time
                 #            (paper-only) — NO chain capability, NO wallet, NO network
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/

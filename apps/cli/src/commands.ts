@@ -67,6 +67,8 @@ import {
   formatSniperPolicyConfig,
   deriveSniperDecisionRules,
   enforceSniperPolicy,
+  buildSniperAuditLog,
+  formatSniperAuditLog,
   SNIPER_CANDIDATE_LIST_SCHEMA_VERSION,
   SNIPER_POLICY_CONFIG_SCHEMA_VERSION,
   type SniperCandidateList,
@@ -78,6 +80,7 @@ import {
   type SniperRunReport,
   type SniperRunReportDiff,
   type SniperPolicyConfig,
+  type SniperAuditLog,
 } from "@soulmaker/sniper";
 import {
   runPaperSession,
@@ -4754,6 +4757,85 @@ export function paperSniperPolicyValidateReport(
     return { text: JSON.stringify(redactValue(config), null, 2), exitCode };
   }
   return { text: formatSniperPolicyConfig(config, { label: opts.inputPath }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 33 — paper:sniper:audit
+//   Build a deterministic local AUDIT LOG (`sniper.audit.log.v1`) from a LOCAL
+//   run report: one entry per pipeline step (intake → preflight → decide →
+//   report) with input/output artifact labels, a one-line decision summary, and
+//   the step's warnings + failures. Carries NO wall-clock time — the run label is
+//   operator-supplied. Reads the named file only; writes nothing unless --out.
+//   No network, no wallet. Provenance over a SIMULATED run — not a live result.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperAuditCommandOptions {
+  /** Run report JSON path (sniper.run.report.v1). Required. */
+  reportPath?: string;
+  /** Operator-supplied run label (a string only — never system time). */
+  label?: string;
+  /** Repeatable operator-supplied notes. */
+  notes?: string[];
+  json?: boolean;
+  /** Optional path to write the audit log JSON (writes nothing if omitted). */
+  outPath?: string;
+  /** Overwrite an existing --out file (refused by default). */
+  force?: boolean;
+  /** Exit non-zero when any step recorded a failure. */
+  failOnFailure?: boolean;
+  /** Exit non-zero when any step recorded a warning. */
+  failOnWarning?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:audit` — build a deterministic local audit log from a LOCAL run report
+ * (`sniper.run.report.v1`). Reads ONLY the named file (BOM-tolerant). It emits one entry per pipeline
+ * step (intake → preflight → decide → report) with input/output artifact labels, a one-line decision
+ * summary, and the step's warnings + failures — read VERBATIM from the run report. It carries NO
+ * wall-clock time: `--label` is an operator-supplied string. `--json` emits the log; `--out` writes ONLY
+ * the log JSON (refusing overwrite without `--force`, creating no directories); `--fail-on-failure` /
+ * `--fail-on-warning` set the exit code. Provenance over a SIMULATED run — not a live result, not an
+ * order. No network, no wallet.
+ */
+export function paperSniperAuditReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperAuditCommandOptions = {},
+): CliReport {
+  if (!opts.reportPath) return { text: "Refusing: --report <path> is required.", exitCode: 1 };
+
+  let value: unknown;
+  try {
+    value = readJsonValue(ctx, opts.reportPath, "run report");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let log: SniperAuditLog;
+  try {
+    log = buildSniperAuditLog({ runReport: value, runLabel: opts.label ?? null, notes: opts.notes });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(log), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write audit log at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  const exitCode =
+    (opts.failOnFailure && log.hasFailure) || (opts.failOnWarning && log.hasWarning) ? 1 : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(log), null, 2), exitCode };
+  }
+  return { text: formatSniperAuditLog(log, { label: opts.reportPath }), exitCode };
 }
 
 function yesNo(value: boolean): string {

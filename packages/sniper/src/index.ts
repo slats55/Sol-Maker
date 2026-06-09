@@ -161,3 +161,21 @@ export type {
   EnforceSniperPolicyOptions,
   FormatSniperPolicyConfigOptions,
 } from "./policy-config.js";
+
+export {
+  buildSniperAuditLog,
+  validateSniperAuditLog,
+  formatSniperAuditLog,
+  SniperAuditLogError,
+  SNIPER_AUDIT_LOG_SCHEMA_VERSION,
+  SNIPER_AUDIT_LOG_BANNER,
+  SNIPER_AUDIT_LOG_DISCLAIMERS,
+} from "./audit-log.js";
+
+export type {
+  SniperAuditStepKind,
+  SniperAuditEntry,
+  SniperAuditLog,
+  BuildSniperAuditLogInput,
+  FormatSniperAuditLogOptions,
+} from "./audit-log.js";

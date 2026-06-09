@@ -29,7 +29,7 @@ packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [s
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
 packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup + research portfolio diff + research artifact pack + research artifact pack diff (Sprint 8–24)  [strategy, paper, security]
-packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (S25) + token preflight (S26) + paper decisions (S27) + operator workflow helper (S28) + run report (S30) + run report diff (S31) + policy config (S32); NO chain capability  [risk, security]
+packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (S25) + token preflight (S26) + paper decisions (S27) + operator workflow helper (S28) + run report (S30) + run report diff (S31) + policy config (S32) + audit log (S33); NO chain capability  [risk, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -401,6 +401,18 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   conservative** as the input — it can downgrade a SIMULATED `paper-enter` to `watch`/`paper-reject` or
   skip a duplicate mint, but never the reverse, and enables no live behaviour. Conservative by default;
   pure (no fs/net, no `Date.now`/`Math.random`); the package stays chain-free.
+- **(Sprint 33)** `@soulmaker/sniper` adds the **audit log** (a prerequisite for any future Phase 6
+  simulation): `audit-log.ts` (`buildSniperAuditLog`, `validate…`, `format…`; schema
+  `sniper.audit.log.v1`), exposed by the CLI as `paper:sniper:audit --report <path> [--label <string>]
+  [--note <string>] [--json] [--out <path>] [--force] [--fail-on-failure] [--fail-on-warning]`. The pure
+  builder derives a deterministic, step-by-step provenance record from a single run report: one entry per
+  pipeline step (candidate intake → token preflight → paper decision → run report) with input/output
+  artifact LABELS, a one-line decision summary, and the step's warnings + failures — all read VERBATIM. A
+  recommended-but-absent step is recorded `ran: false` rather than omitted, so the trail is complete. It
+  carries **NO wall-clock time** — `runLabel` is an operator-supplied string, never `Date.now()` — so the
+  same run report yields a byte-identical log (a dedicated safety test forbids `Date.now` / `new Date` /
+  `Math.random` in the module). It reads the run report only and writes nothing unless `--out`; the
+  package stays pure and chain-free. Provenance over a SIMULATED run — not a live result, not an order.
 
 ## The live boundary
 
