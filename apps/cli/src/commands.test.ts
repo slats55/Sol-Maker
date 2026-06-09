@@ -54,6 +54,7 @@ import {
   paperBacktestDiffResearchPackReport,
   paperSniperCandidatesValidateReport,
   paperSniperPreflightReport,
+  paperSniperDecideReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -6824,6 +6825,126 @@ describe("paperSniperPreflightReport (Sprint 26)", () => {
       const before = readdirSync(cwd).sort();
       paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, risks: ["c1=c1.risk.json"], json: true });
       expect(readdirSync(cwd).sort()).toEqual(before);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperSniperDecideReport (Sprint 27)", () => {
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const WSOL = "So11111111111111111111111111111111111111112";
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+  const cleanInspection = (mint: string) => ({ mint, decimals: 6, supplyRaw: "1", uiSupply: 1, mintAuthorityPresent: false, freezeAuthorityPresent: false, isInitialized: true, programLabel: "spl-token" });
+  const riskPass = (mint: string) => ({ mint, score: 10, decision: "PASS_FOR_PAPER_EVALUATION", flags: [], summary: [] });
+  const riskReject = (mint: string) => ({ mint, score: 95, decision: "REJECT", flags: [{ id: "rug", severity: "critical", title: "Rug" }], summary: [] });
+
+  /** Build a candidate file + a preflight file for it via the real preflight command. */
+  function setup(cwd: string): { cands: string; preflight: string } {
+    const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "good", mint: USDC, observedLiquidityUsd: 50000 }, { candidateId: "bad", mint: WSOL }] });
+    writeJson(cwd, "good.insp.json", cleanInspection(USDC));
+    writeJson(cwd, "good.risk.json", riskPass(USDC));
+    writeJson(cwd, "bad.risk.json", riskReject(WSOL));
+    const pf = paperSniperPreflightReport(
+      { cwd, env: {} },
+      { candidatesPath: cands, inspections: ["good=good.insp.json"], risks: ["good=good.risk.json", "bad=bad.risk.json"], outPath: "preflight.json" },
+    );
+    expect(pf.exitCode).toBe(0);
+    return { cands, preflight: "preflight.json" };
+  }
+
+  it("refuses when --candidates is missing", () => {
+    expect(paperSniperDecideReport({}, {}).text).toMatch(/^Refusing: --candidates/);
+    expect(paperSniperDecideReport({}, {}).exitCode).toBe(1);
+  });
+
+  it("renders a PAPER-ONLY human decision report (paper-enter + paper-reject)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { cands, preflight } = setup(cwd);
+      const r = paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight });
+      expect(r.text).toContain("SIMULATED PAPER-ONLY SNIPER DECISION REPORT");
+      expect(r.text).toContain("[PAPER-ENTER]");
+      expect(r.text).toContain("[PAPER-REJECT]");
+      expect(r.text.toLowerCase()).toContain("not a trade signal");
+      expect(r.exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json emits a valid, stable decision report", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { cands, preflight } = setup(cwd);
+      const r = paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, json: true });
+      const obj = JSON.parse(r.text) as { schemaVersion: string; paperEnterCount: number; paperRejectCount: number; decisions: { candidateId: string; decision: string }[] };
+      expect(obj.schemaVersion).toBe("sniper.paper.decision.report.v1");
+      expect(obj.paperEnterCount).toBe(1);
+      expect(obj.paperRejectCount).toBe(1);
+      expect(obj.decisions.find((d) => d.candidateId === "good")!.decision).toBe("paper-enter");
+      expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, json: true }).text).toBe(r.text);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-paper-enter and --fail-on-risk set the exit code", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { cands, preflight } = setup(cwd);
+      expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, failOnPaperEnter: true }).exitCode).toBe(1);
+      expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, failOnRisk: true }).exitCode).toBe(1);
+      // with no preflight, everything is watched → neither gate trips
+      expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, failOnPaperEnter: true, failOnRisk: true }).exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("applies a rules file (denylist → skip)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { cands, preflight } = setup(cwd);
+      const rules = writeJson(cwd, "rules.json", { denyMints: [USDC] });
+      const r = paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, rulesPath: rules, json: true });
+      const obj = JSON.parse(r.text) as { decisions: { candidateId: string; decision: string }[] };
+      expect(obj.decisions.find((d) => d.candidateId === "good")!.decision).toBe("skip");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--out writes ONLY the report JSON and refuses overwrite without --force", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { cands, preflight } = setup(cwd);
+      const before = readdirSync(cwd).length;
+      const r1 = paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, outPath: "decision.json" });
+      expect(r1.exitCode).toBe(0);
+      expect(readdirSync(cwd).length).toBe(before + 1);
+      const written = JSON.parse(readFileSync(join(cwd, "decision.json"), "utf8")) as { schemaVersion: string };
+      expect(written.schemaVersion).toBe("sniper.paper.decision.report.v1");
+      expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, outPath: "decision.json" }).exitCode).toBe(1);
+      expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, outPath: "decision.json", force: true }).exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed candidate file, a wrong-schema preflight, and bad rules", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      writeFileSync(join(cwd, "malformed.json"), "{ not json");
+      expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: "malformed.json" }).exitCode).toBe(1);
+      const wrongPf = writeJson(cwd, "wrongpf.json", { schemaVersion: "backtest.report.v1" });
+      expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: wrongPf }).exitCode).toBe(1);
+      writeFileSync(join(cwd, "badrules.json"), "[]");
+      expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, rulesPath: "badrules.json" }).exitCode).toBe(1);
     } finally {
       cleanup();
     }
