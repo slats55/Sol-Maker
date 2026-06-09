@@ -613,6 +613,18 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   is computed VERBATIM (re-derives nothing); it reads the two files only and writes nothing; the package
   stays pure (no fs/net, no `Date.now`/`Math.random`; the formatter redacts internally). A `paper-enter`
   transition is between two SIMULATED classifications — never an order.
+- ✅ **(Sprint 32) Sniper policy config** — an explicit, versioned operator/risk policy for the paper
+  decision pipeline, instead of implicit assumptions. `@soulmaker/sniper` exports
+  `normalizeSniperPolicyConfig`, `validateSniperPolicyConfig`, `formatSniperPolicyConfig`,
+  `deriveSniperDecisionRules`, `enforceSniperPolicy` (schema `sniper.policy.config.v1`); the CLI adds
+  `paper:sniper:policy:validate --input <path> [--json] [--fail-on-warning]` and a `--policy <path>`
+  option on `paper:sniper:decide` (mutually exclusive with `--rules`). A policy carries base decision
+  rules, tighten-only enforcement (`allowPaperEnter` / `failClosedOnUnknownPreflight` /
+  `failClosedOnMissingRisk` / `disallowedRiskFlags`), candidate-list guards (`maxCandidatesPerRun` /
+  `duplicateMintPolicy`), operator labels, and paper sizing assumptions that are LABELS / simulated units
+  only (no currency / profit / ROI claim). Conservative by default; `enforceSniperPolicy` can ONLY tighten
+  a run (downgrade a SIMULATED paper-enter to watch/reject or skip a duplicate mint), never loosen it, and
+  enables no live behaviour. Pure (no fs/net, no `Date.now`/`Math.random`).
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

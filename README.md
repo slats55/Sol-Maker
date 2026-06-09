@@ -232,6 +232,15 @@ preflight-status transitions, conservative directional flags (`--fail-on-new-inv
 reads only the two files and **writes nothing**; every transition is computed verbatim from the two
 reports.
 
+Sprint 32 makes the decision policy explicit and versioned: `paper:sniper:policy:validate --input
+<policy.json>` validates + normalizes a `sniper.policy.config.v1` (conservative by default), and
+`paper:sniper:decide --policy <policy.json>` governs a run with it. A policy carries base decision rules
+plus **tighten-only** enforcement (`allowPaperEnter`, `failClosedOnUnknownPreflight`,
+`failClosedOnMissingRisk`, `disallowedRiskFlags`), candidate-list guards (`maxCandidatesPerRun`,
+`duplicateMintPolicy`), and paper sizing assumptions that are **labels / simulated units only** (no
+currency, profit, or ROI claim). Enforcement can only make a run **more** conservative — it may downgrade
+a simulated `paper-enter` to `watch`/`paper-reject`, never the reverse, and enables no live behaviour.
+
 ## Non-negotiable security rules (summary)
 
 The full, authoritative list is in [`SECURITY.md`](SECURITY.md). The short form:
@@ -320,7 +329,9 @@ soulmaker/
                 #            Sprint 30 adds the run report (sniper.run.report.v1): joins candidate
                 #            list + preflight + decision + workflow into one navigable per-candidate
                 #            view; Sprint 31 adds the run report diff (sniper.run.report.diff.v1):
-                #            compares two run reports (added/removed/transitions/recovery)
+                #            compares two run reports (added/removed/transitions/recovery);
+                #            Sprint 32 adds the policy config (sniper.policy.config.v1): explicit,
+                #            conservative, tighten-only operator/risk policy for paper:sniper:decide
                 #            (paper-only) — NO chain capability, NO wallet, NO network
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/

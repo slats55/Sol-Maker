@@ -1,0 +1,20 @@
+{
+  "_comment": "DETERMINISTIC FIXTURE — NOT live data, NOT trading results, NOT financial advice. A conservative example sniper policy config. Paper sizing fields are LABELS / simulated units only (NOT currency, NOT profit). Validate with: pnpm soulmaker paper:sniper:policy:validate --input examples/sniper/policy.example.json",
+  "policyLabel": "example-conservative",
+  "operatorLabels": ["example"],
+  "requirePreflightPass": true,
+  "maxRiskScore": 60,
+  "minObservedLiquidityUsd": 1000,
+  "denyMints": [],
+  "allowPaperEnter": true,
+  "failClosedOnUnknownPreflight": true,
+  "failClosedOnMissingRisk": true,
+  "disallowedRiskFlags": [],
+  "maxCandidatesPerRun": 50,
+  "duplicateMintPolicy": "warn",
+  "paperSizing": {
+    "budgetLabel": "small-test",
+    "maxPaperPositionUnits": 100,
+    "maxCandidatesToPaperEnter": 3
+  }
+}

@@ -29,7 +29,7 @@ packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [s
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
 packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup + research portfolio diff + research artifact pack + research artifact pack diff (Sprint 8–24)  [strategy, paper, security]
-packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (S25) + token preflight (S26) + paper decisions (S27) + operator workflow helper (S28) + run report (S30) + run report diff (S31); NO chain capability  [risk, security]
+packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (S25) + token preflight (S26) + paper decisions (S27) + operator workflow helper (S28) + run report (S30) + run report diff (S31) + policy config (S32); NO chain capability  [risk, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -388,6 +388,19 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   had a concern in base has none in next). Every transition is computed VERBATIM (re-derives nothing). It
   reads the two named files only and writes nothing; the package stays pure. A `paper-enter` transition
   is between two SIMULATED classifications, never an order.
+- **(Sprint 32)** `@soulmaker/sniper` adds the **policy config**: `policy-config.ts`
+  (`normalizeSniperPolicyConfig`, `validate…`, `format…`, `deriveSniperDecisionRules`,
+  `enforceSniperPolicy`; schema `sniper.policy.config.v1`), exposed by the CLI as
+  `paper:sniper:policy:validate --input <path> [--json] [--fail-on-warning]` and as a `--policy <path>`
+  option on `paper:sniper:decide` (mutually exclusive with `--rules`). A policy carries base decision
+  rules (which `deriveSniperDecisionRules` projects onto the existing `SniperDecisionRules`), tighten-only
+  enforcement switches (`allowPaperEnter` / `failClosedOnUnknownPreflight` / `failClosedOnMissingRisk` /
+  `disallowedRiskFlags`), candidate-list guards (`maxCandidatesPerRun` / `duplicateMintPolicy`), operator
+  labels, and paper sizing assumptions that are LABELS / simulated units only (no currency / profit /
+  ROI claim). `enforceSniperPolicy` returns a new, schema-valid decision report that is **at least as
+  conservative** as the input — it can downgrade a SIMULATED `paper-enter` to `watch`/`paper-reject` or
+  skip a duplicate mint, but never the reverse, and enables no live behaviour. Conservative by default;
+  pure (no fs/net, no `Date.now`/`Math.random`); the package stays chain-free.
 
 ## The live boundary
 

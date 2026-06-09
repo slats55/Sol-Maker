@@ -19,6 +19,7 @@ import {
   paperBacktestResearchVerifyReport,
   paperSniperCandidatesValidateReport,
   paperSniperReportReport,
+  paperSniperPolicyValidateReport,
 } from "./commands.js";
 
 const EXAMPLES_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../examples/backtest");
@@ -281,5 +282,25 @@ describe("examples/sniper — fixtures validate", () => {
     expect(report.hasMissingRecommendedArtifact).toBe(true);
     expect(report.hasPaperEnter).toBe(false);
     expect(report.watchedMissingInfoIds).toEqual(["example-usdc", "example-wsol"]);
+  });
+
+  it("the shipped policy config validates and normalizes (PAPER ONLY, conservative)", () => {
+    const r = paperSniperPolicyValidateReport(
+      { cwd: SNIPER_EXAMPLES_DIR, env: {} },
+      { inputPath: "policy.example.json", json: true },
+    );
+    expect(r.exitCode).toBe(0);
+    const policy = JSON.parse(r.text) as {
+      schemaVersion: string;
+      policyLabel: string;
+      requirePreflightPass: boolean;
+      duplicateMintPolicy: string;
+      paperSizing: { budgetLabel: string; maxCandidatesToPaperEnter: number };
+    };
+    expect(policy.schemaVersion).toBe("sniper.policy.config.v1");
+    expect(policy.policyLabel).toBe("example-conservative");
+    expect(policy.requirePreflightPass).toBe(true);
+    expect(policy.duplicateMintPolicy).toBe("warn");
+    expect(policy.paperSizing.maxCandidatesToPaperEnter).toBe(3);
   });
 });

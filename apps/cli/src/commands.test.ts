@@ -58,6 +58,7 @@ import {
   paperSniperWorkflowReport,
   paperSniperReportReport,
   paperSniperDiffReportReport,
+  paperSniperPolicyValidateReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -7246,6 +7247,98 @@ describe("paperSniperDiffReportReport (Sprint 31)", () => {
       const r = paperSniperDiffReportReport({ cwd, env: {} }, { basePath: base, nextPath: wrong });
       expect(r.exitCode).toBe(1);
       expect(r.text).toMatch(/next run report is invalid/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperSniperPolicyValidateReport + decide --policy (Sprint 32)", () => {
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+  const cleanInspection = (mint: string) => ({ mint, decimals: 6, supplyRaw: "1", uiSupply: 1, mintAuthorityPresent: false, freezeAuthorityPresent: false, isInitialized: true, programLabel: "spl-token" });
+  const riskPass = (mint: string) => ({ mint, score: 10, decision: "PASS_FOR_PAPER_EVALUATION", flags: [], summary: [] });
+
+  it("refuses when --input is missing and validates a raw policy with conservative defaults", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      expect(paperSniperPolicyValidateReport({}, {}).text).toMatch(/^Refusing: --input/);
+      const f = writeJson(cwd, "policy.json", { policyLabel: "strict", maxRiskScore: 60 });
+      const r = paperSniperPolicyValidateReport({ cwd, env: {} }, { inputPath: f, json: true });
+      const obj = JSON.parse(r.text) as { schemaVersion: string; requirePreflightPass: boolean; failClosedOnMissingRisk: boolean; duplicateMintPolicy: string };
+      expect(obj.schemaVersion).toBe("sniper.policy.config.v1");
+      expect(obj.requirePreflightPass).toBe(true);
+      expect(obj.failClosedOnMissingRisk).toBe(true);
+      expect(obj.duplicateMintPolicy).toBe("warn");
+      expect(r.exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("renders a PAPER-ONLY human policy and refuses a wrong schemaVersion / bad field", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const f = writeJson(cwd, "policy.json", { allowPaperEnter: false });
+      const r = paperSniperPolicyValidateReport({ cwd, env: {} }, { inputPath: f });
+      expect(r.text).toContain("SIMULATED PAPER-ONLY SNIPER POLICY CONFIG");
+      expect(r.text).toContain("Enforcement (tighten-only):");
+      const wrong = writeJson(cwd, "wrong.json", { schemaVersion: "backtest.report.v1" });
+      expect(paperSniperPolicyValidateReport({ cwd, env: {} }, { inputPath: wrong }).exitCode).toBe(1);
+      const bad = writeJson(cwd, "bad.json", { duplicateMintPolicy: "nuke" });
+      expect(paperSniperPolicyValidateReport({ cwd, env: {} }, { inputPath: bad }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-warning trips when the policy carries a warning (allowPaperEnter:false)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const f = writeJson(cwd, "policy.json", { allowPaperEnter: false });
+      expect(paperSniperPolicyValidateReport({ cwd, env: {} }, { inputPath: f, failOnWarning: true }).exitCode).toBe(1);
+      const clean = writeJson(cwd, "clean.json", { maxRiskScore: 50, allowPaperEnter: true });
+      expect(paperSniperPolicyValidateReport({ cwd, env: {} }, { inputPath: clean, failOnWarning: true }).exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("decide --policy tightens a paper-enter to watch (allowPaperEnter:false)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      writeJson(cwd, "c1.insp.json", cleanInspection(USDC));
+      writeJson(cwd, "c1.risk.json", riskPass(USDC));
+      paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, inspections: ["c1=c1.insp.json"], risks: ["c1=c1.risk.json"], outPath: "pf.json" });
+      // baseline: paper-enter
+      const base = paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: "pf.json", json: true });
+      expect((JSON.parse(base.text) as { paperEnterCount: number }).paperEnterCount).toBe(1);
+      // with a no-paper-enter policy: tightened to watch
+      const policy = writeJson(cwd, "policy.json", { allowPaperEnter: false });
+      const r = paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: "pf.json", policyPath: policy, json: true });
+      const obj = JSON.parse(r.text) as { paperEnterCount: number; watchCount: number; decisions: { decision: string }[] };
+      expect(obj.paperEnterCount).toBe(0);
+      expect(obj.decisions[0]!.decision).toBe("watch");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("decide refuses --rules and --policy together; refuses a wrong-schema policy", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      const rules = writeJson(cwd, "rules.json", { denyMints: [] });
+      const policy = writeJson(cwd, "policy.json", { allowPaperEnter: false });
+      const both = paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, rulesPath: rules, policyPath: policy });
+      expect(both.exitCode).toBe(1);
+      expect(both.text).toMatch(/mutually exclusive/);
+      const wrong = writeJson(cwd, "wrong.json", { schemaVersion: "backtest.report.v1" });
+      expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, policyPath: wrong }).exitCode).toBe(1);
     } finally {
       cleanup();
     }

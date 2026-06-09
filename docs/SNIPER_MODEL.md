@@ -306,6 +306,48 @@ It reads only the two named files and **writes nothing**. The `--fail-on-*` flag
 `--fail-on-new-unknown`) set the exit code. A `paper-enter` transition is a change between two
 **simulated** classifications, never an order.
 
+## Sniper policy config (Sprint 32)
+
+The policy config makes the assumptions a paper run is governed by **explicit and versioned**, instead of
+implicit. The pure `normalizeSniperPolicyConfig` (schema `sniper.policy.config.v1`) builds a canonical,
+**conservative-by-default** config; `enforceSniperPolicy` applies it to a built decision report.
+
+> A policy enables **no live behaviour** — there is no key, signer, wallet, or sending field anywhere in
+> it. Its enforcement is **tighten-only**: it can downgrade a SIMULATED `paper-enter` to `watch` /
+> `paper-reject` or skip a candidate, but it can **never** turn a non-enter into an enter, and it makes no
+> currency, profit, ROI, or win-rate claim.
+
+### Fields
+
+- **Base decision rules** (projected onto the existing `SniperDecisionRules` by
+  `deriveSniperDecisionRules`, so they drive the decision *build*): `requirePreflightPass`, `maxRiskScore`,
+  `minObservedLiquidityUsd`, `denyMints`.
+- **Tighten-only enforcement** (applied *after* the build by `enforceSniperPolicy`): `allowPaperEnter` (the
+  decision-mode gate — when false, no candidate may paper-enter), `failClosedOnUnknownPreflight` (a watch
+  driven by an unknown / absent preflight becomes `paper-reject`), `failClosedOnMissingRisk` (a paper-enter
+  with no supplied risk data becomes `watch`), and `disallowedRiskFlags` (a candidate whose preflight risk
+  carries a disallowed flag id is `paper-reject`ed — needs the preflight, which `decide` supplies).
+- **Candidate-list guards**: `maxCandidatesPerRun` (a longer run is flagged, never silently truncated) and
+  `duplicateMintPolicy` (`allow` / `warn` / `reject` — `reject` skips the duplicate-mint candidates).
+- **Operator labels**: `policyLabel`, `operatorLabels`.
+- **Paper sizing assumptions** (LABELS / simulated units only): `budgetLabel` (an operator label, **not**
+  real funds), `maxPaperPositionUnits` (a simulated unit cap, **not** a currency amount), and
+  `maxCandidatesToPaperEnter` (cap on simulated paper-enters per run — excess is watched).
+
+### CLI
+
+```bash
+pnpm soulmaker paper:sniper:policy:validate --input <policy.json>
+pnpm soulmaker paper:sniper:policy:validate --input <policy.json> --json --fail-on-warning
+# Govern a decision run with a policy (mutually exclusive with --rules):
+pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight <preflight.json> --policy <policy.json>
+```
+
+`paper:sniper:policy:validate` reads only the named file and **writes nothing**. On `paper:sniper:decide`,
+`--policy` derives the base rules (driving the build) and then applies the tighten-only enforcement; the
+resulting decision report is still a valid `sniper.paper.decision.report.v1` (so it pipes straight into the
+run report). A worked example policy is in [`examples/sniper/policy.example.json`](../examples/sniper/README.md).
+
 ## What is intentionally NOT here yet
 
 - **No transaction planning / signing / sending / wallet / burner** — Phases 6 and 7, not started. The

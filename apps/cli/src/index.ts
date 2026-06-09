@@ -47,6 +47,7 @@ import {
   paperSniperWorkflowReport,
   paperSniperReportReport,
   paperSniperDiffReportReport,
+  paperSniperPolicyValidateReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1144,6 +1145,7 @@ program
   .option("--candidates <path>", "candidate list JSON")
   .option("--preflight <path>", "preflight report JSON (sniper.token.preflight.report.v1)")
   .option("--rules <path>", "decision rules JSON (requirePreflightPass / maxRiskScore / minObservedLiquidityUsd / denyMints)")
+  .option("--policy <path>", "policy config JSON (sniper.policy.config.v1; tighten-only; mutually exclusive with --rules)")
   .option("--json", "emit the decision report as stable JSON")
   .option("--out <path>", "write ONLY the decision report JSON to this path (writes nothing if omitted)")
   .option("--force", "overwrite an existing --out file (refused by default)")
@@ -1154,6 +1156,7 @@ program
       candidates?: string;
       preflight?: string;
       rules?: string;
+      policy?: string;
       json?: boolean;
       out?: string;
       force?: boolean;
@@ -1166,6 +1169,7 @@ program
           candidatesPath: opts.candidates,
           preflightPath: opts.preflight,
           rulesPath: opts.rules,
+          policyPath: opts.policy,
           json: Boolean(opts.json),
           outPath: opts.out,
           force: Boolean(opts.force),
@@ -1305,5 +1309,22 @@ program
       if (exitCode !== 0) process.exitCode = exitCode;
     },
   );
+
+program
+  .command("paper:sniper:policy:validate")
+  .description(
+    "Validate + normalize a LOCAL sniper policy config (`sniper.policy.config.v1`): base decision rules, tighten-only enforcement switches (allowPaperEnter / failClosedOnUnknownPreflight / failClosedOnMissingRisk / disallowedRiskFlags), candidate-list guards (maxCandidatesPerRun / duplicateMintPolicy), operator labels, and paper sizing assumptions (LABELS / simulated units only — no currency / profit claims). Conservative by default; a policy enables NO live behaviour. Accepts operator-friendly raw input or a canonical config; reads the named file only, writes nothing, no network/RPC/wallet",
+  )
+  .option("--input <path>", "policy config JSON (operator-friendly raw input or a canonical config)")
+  .option("--json", "emit the normalized canonical policy config as stable JSON")
+  .option("--fail-on-warning", "exit non-zero when the normalized policy carries any warning")
+  .action((opts: { input?: string; json?: boolean; failOnWarning?: boolean }) => {
+    const { text, exitCode } = paperSniperPolicyValidateReport(
+      {},
+      { inputPath: opts.input, json: Boolean(opts.json), failOnWarning: Boolean(opts.failOnWarning) },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
 
 program.parseAsync(process.argv);

@@ -140,3 +140,24 @@ export type {
   SniperRunReportDiff,
   FormatSniperRunReportDiffOptions,
 } from "./run-report-diff.js";
+
+export {
+  normalizeSniperPolicyConfig,
+  validateSniperPolicyConfig,
+  formatSniperPolicyConfig,
+  deriveSniperDecisionRules,
+  enforceSniperPolicy,
+  SniperPolicyConfigError,
+  SNIPER_POLICY_CONFIG_SCHEMA_VERSION,
+  SNIPER_POLICY_CONFIG_BANNER,
+  SNIPER_POLICY_CONFIG_DISCLAIMERS,
+} from "./policy-config.js";
+
+export type {
+  SniperPolicyConfig,
+  NormalizeSniperPolicyConfigInput,
+  SniperPaperSizing,
+  SniperDuplicateMintPolicy,
+  EnforceSniperPolicyOptions,
+  FormatSniperPolicyConfigOptions,
+} from "./policy-config.js";

@@ -123,4 +123,21 @@ the grouped id lists, a navigation index, and a CI section. Every status/decisio
 — it re-derives nothing. A `paper-enter` carried through is a **simulated** classification, never an
 order.
 
+## Policy config (Sprint 32)
+
+`policy.example.json` is a conservative example operator/risk policy (`sniper.policy.config.v1`). Its paper
+sizing fields are **labels / simulated units only** — `budgetLabel` is a label (not real funds) and
+`maxPaperPositionUnits` is a simulated unit cap (not a currency amount). Validate it, then use it to govern
+a decision run:
+
+```bash
+pnpm soulmaker paper:sniper:policy:validate --input policy.example.json
+pnpm soulmaker paper:sniper:policy:validate --input policy.example.json --json --fail-on-warning
+# Govern a run (mutually exclusive with --rules); enforcement is tighten-only:
+pnpm soulmaker paper:sniper:decide --candidates candidates.example.json --preflight preflight.json --policy policy.example.json
+```
+
+A policy can only make the run **more** conservative (downgrade a simulated `paper-enter` to
+`watch`/`paper-reject`, or skip a duplicate mint) — never the reverse, and never live.
+
 See [`docs/SNIPER_RUNBOOK.md`](../../docs/SNIPER_RUNBOOK.md) for the full operator runbook.

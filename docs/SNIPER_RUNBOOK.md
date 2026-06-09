@@ -20,6 +20,7 @@ practical "how do I run this" companion to [`SNIPER_MODEL.md`](SNIPER_MODEL.md) 
 | 4. Paper decisions | `paper:sniper:decide` | `sniper.paper.decision.report.v1` | Folds the candidate list + preflight + rules into `skip` / `watch` / `paper-enter` / `paper-reject` / `unknown`. |
 | 5. Run report | `paper:sniper:report` | `sniper.run.report.v1` | Joins candidate list + preflight + decision + workflow into one navigable per-candidate view (reason trail, grouped ids, navigation, CI section). |
 | 6. Run report diff | `paper:sniper:diff:report` | `sniper.run.report.diff.v1` | Compares two run reports: added/removed candidates, decision + preflight-status transitions, conservative got-worse/recovered flags. |
+| —. Policy config | `paper:sniper:policy:validate` | `sniper.policy.config.v1` | Validates a conservative, tighten-only operator/risk policy; `paper:sniper:decide --policy` governs a run with it. |
 
 All of stages 1, 3, and 4 live in the pure `@soulmaker/sniper` package, which carries **no chain
 capability** (no `@solana/web3.js`, no `@soulmaker/solana`; a forbidden-import test enforces this). The
@@ -96,6 +97,22 @@ Each candidate gets `skip` / `watch` / `paper-enter` / `paper-reject` / `unknown
 `paper-enter` **only** when the preflight passed and every rule is satisfied — and even then it is a
 **simulated** decision, never an order.
 
+#### Governing a run with a policy (Sprint 32)
+
+Instead of ad-hoc `--rules`, an operator can govern a run with an explicit, versioned **policy**
+(`sniper.policy.config.v1`, conservative by default — see `examples/sniper/policy.example.json`):
+
+```bash
+pnpm soulmaker paper:sniper:policy:validate --input policy.json --json     # validate + normalize first
+pnpm soulmaker paper:sniper:decide --candidates candidates.json --preflight preflight.json --policy policy.json --out decision.json
+```
+
+`--policy` (mutually exclusive with `--rules`) derives the base rules (driving the build) and then applies
+the policy's **tighten-only** enforcement: `allowPaperEnter` (off ⇒ no paper-enter), fail-closed on
+unknown preflight / missing risk, `disallowedRiskFlags`, `duplicateMintPolicy`, and a
+`paperSizing.maxCandidatesToPaperEnter` cap. Enforcement can only make the run **more** conservative —
+never the reverse, and never live. The output is still a `sniper.paper.decision.report.v1`.
+
 ### 5. Run report (bundle the run)
 
 Bundle the artifacts into one navigable report an operator (or CI) can read at a glance:
@@ -152,6 +169,7 @@ base has **none** in the next. It reads the two files only and **writes nothing*
   `--fail-on-paper-enter` / `--fail-on-unknown` / `--fail-on-missing-recommended` — gate the bundled run.
 - `paper:sniper:diff:report --fail-on-change` / `--fail-on-new-invalid` / `--fail-on-new-preflight-fail` /
   `--fail-on-new-risk` / `--fail-on-new-paper-enter` / `--fail-on-new-unknown` — gate a run-vs-run diff.
+- `paper:sniper:policy:validate --fail-on-warning` — gate a policy config that carries a warning.
 
 ## What is intentionally NOT implemented
 

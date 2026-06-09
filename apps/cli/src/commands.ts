@@ -63,7 +63,12 @@ import {
   formatSniperRunReport,
   diffSniperRunReports,
   formatSniperRunReportDiff,
+  normalizeSniperPolicyConfig,
+  formatSniperPolicyConfig,
+  deriveSniperDecisionRules,
+  enforceSniperPolicy,
   SNIPER_CANDIDATE_LIST_SCHEMA_VERSION,
+  SNIPER_POLICY_CONFIG_SCHEMA_VERSION,
   type SniperCandidateList,
   type SniperTokenPreflightReport,
   type SniperPreflightCandidateData,
@@ -72,6 +77,7 @@ import {
   type SniperWorkflowStageState,
   type SniperRunReport,
   type SniperRunReportDiff,
+  type SniperPolicyConfig,
 } from "@soulmaker/sniper";
 import {
   runPaperSession,
@@ -4257,6 +4263,8 @@ export interface PaperSniperDecideCommandOptions {
   preflightPath?: string;
   /** Optional decision rules JSON path. */
   rulesPath?: string;
+  /** Optional policy config JSON path (sniper.policy.config.v1). Mutually exclusive with --rules. */
+  policyPath?: string;
   json?: boolean;
   /** Optional path to write the decision report JSON (writes nothing if omitted). */
   outPath?: string;
@@ -4273,15 +4281,21 @@ export interface PaperSniperDecideCommandOptions {
  * candidate list, an optional preflight report, and optional operator rules. Reads ONLY the named
  * local files (BOM-tolerant). Each candidate gets a SIMULATED `skip` / `watch` / `paper-enter` /
  * `paper-reject` / `unknown` decision with reasons — a `paper-enter` is a paper-only decision, never a
- * buy/sell order, a transaction, or live readiness. `--json` emits the report; `--out` writes ONLY the
- * report JSON (refusing overwrite without `--force`, creating no directories); `--fail-on-paper-enter`
- * / `--fail-on-risk` set the exit code. No network, no wallet, no transaction build/sign/send.
+ * buy/sell order, a transaction, or live readiness. `--policy <path>` (a `sniper.policy.config.v1`,
+ * mutually exclusive with `--rules`) governs the run: its base rules drive the build and its
+ * tighten-only enforcement is applied afterward (it can only downgrade a SIMULATED paper-enter, never
+ * the reverse). `--json` emits the report; `--out` writes ONLY the report JSON (refusing overwrite
+ * without `--force`, creating no directories); `--fail-on-paper-enter` / `--fail-on-risk` set the exit
+ * code. No network, no wallet, no transaction build/sign/send.
  */
 export function paperSniperDecideReport(
   ctx: CommandContext = {},
   opts: PaperSniperDecideCommandOptions = {},
 ): CliReport {
   if (!opts.candidatesPath) return { text: "Refusing: --candidates <path> is required.", exitCode: 1 };
+  if (opts.rulesPath && opts.policyPath) {
+    return { text: "Refusing: --rules and --policy are mutually exclusive.", exitCode: 1 };
+  }
 
   // 1) Read + normalize the candidate list (same wrong-schema guard as the other sniper commands).
   let raw: unknown;
@@ -4332,10 +4346,35 @@ export function paperSniperDecideReport(
     rules = rulesValue as SniperDecisionRules;
   }
 
-  // 3) Build the decision report.
+  // 2b) Optional policy (mutually exclusive with --rules): its base rules drive the build and its
+  //     tighten-only enforcement is applied to the built report afterward.
+  let policy: SniperPolicyConfig | undefined;
+  if (opts.policyPath) {
+    let policyValue: unknown;
+    try {
+      policyValue = readJsonValue(ctx, opts.policyPath, "policy config");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (!isPlainObject(policyValue)) {
+      return { text: "Refusing: policy config must be a JSON object.", exitCode: 1 };
+    }
+    if (policyValue.schemaVersion !== undefined && policyValue.schemaVersion !== SNIPER_POLICY_CONFIG_SCHEMA_VERSION) {
+      return { text: redactString(`Refusing: policy config schemaVersion must be "${SNIPER_POLICY_CONFIG_SCHEMA_VERSION}".`), exitCode: 1 };
+    }
+    try {
+      policy = normalizeSniperPolicyConfig(policyValue as never);
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    rules = deriveSniperDecisionRules(policy);
+  }
+
+  // 3) Build the decision report, then apply the policy's tighten-only enforcement (if any).
   let report: SniperPaperDecisionReport;
   try {
     report = buildPaperSniperDecisionReport({ candidateList: list, preflight, rules });
+    if (policy) report = enforceSniperPolicy(report, policy, { preflight });
   } catch (err) {
     return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
   }
@@ -4653,6 +4692,68 @@ export function paperSniperDiffReportReport(
     return { text: JSON.stringify(redactValue(diff), null, 2), exitCode };
   }
   return { text: formatSniperRunReportDiff(diff, { label: `${opts.basePath} → ${opts.nextPath}` }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 32 — paper:sniper:policy:validate
+//   Validate + normalize a LOCAL sniper policy config (`sniper.policy.config.v1`):
+//   base decision rules, tighten-only enforcement switches, candidate-list guards,
+//   operator labels, and paper sizing assumptions (LABELS / simulated units only —
+//   no currency / profit claims). Conservative by default. Reads the named file
+//   only, writes nothing, no network/RPC/wallet. A policy enables NO live behaviour.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperPolicyValidateCommandOptions {
+  /** Policy config JSON path (operator-friendly raw input or a canonical config). Required. */
+  inputPath?: string;
+  json?: boolean;
+  /** Exit non-zero when the normalized policy carries any warning. */
+  failOnWarning?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:policy:validate` — validate + normalize a LOCAL sniper policy config. Reads
+ * ONLY the named local file (BOM-tolerant). The file may be operator-friendly raw input or a canonical
+ * `sniper.policy.config.v1`; if it carries a `schemaVersion`, it must be the policy schema. Missing
+ * fields take CONSERVATIVE defaults. `--json` emits the normalized canonical config; `--fail-on-warning`
+ * exits 1 on any warning. A policy enables NO live behaviour and makes no currency / profit claim. Writes
+ * nothing, no network, no RPC, no wallet.
+ */
+export function paperSniperPolicyValidateReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperPolicyValidateCommandOptions = {},
+): CliReport {
+  if (!opts.inputPath) return { text: "Refusing: --input <path> is required.", exitCode: 1 };
+
+  let value: unknown;
+  try {
+    value = readJsonValue(ctx, opts.inputPath, "sniper policy config");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  if (!isPlainObject(value)) {
+    return { text: "Refusing: policy config must be a JSON object.", exitCode: 1 };
+  }
+  if (value.schemaVersion !== undefined && value.schemaVersion !== SNIPER_POLICY_CONFIG_SCHEMA_VERSION) {
+    return {
+      text: redactString(`Refusing: schemaVersion must be "${SNIPER_POLICY_CONFIG_SCHEMA_VERSION}" (got "${String(value.schemaVersion)}").`),
+      exitCode: 1,
+    };
+  }
+
+  let config: SniperPolicyConfig;
+  try {
+    config = normalizeSniperPolicyConfig(value as never);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const exitCode = opts.failOnWarning && config.warnings.length > 0 ? 1 : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(config), null, 2), exitCode };
+  }
+  return { text: formatSniperPolicyConfig(config, { label: opts.inputPath }), exitCode };
 }
 
 function yesNo(value: boolean): string {
