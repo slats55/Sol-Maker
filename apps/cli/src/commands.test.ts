@@ -50,6 +50,7 @@ import {
   paperBacktestResearchHistoryReport,
   paperBacktestResearchPortfolioReport,
   paperBacktestDiffResearchPortfolioReport,
+  paperBacktestResearchPackReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -63,6 +64,9 @@ import {
   buildBacktestResearchPortfolioReport,
   validateBacktestResearchPortfolioReport,
   validateBacktestResearchPortfolioDiff,
+  diffBacktestResearchPortfolioReports,
+  buildBacktestResearchManifest,
+  validateBacktestResearchArtifactPack,
   type BacktestArtifactDescriptor,
 } from "@soulmaker/backtest";
 import type {
@@ -6223,6 +6227,192 @@ describe("paperBacktestDiffResearchPortfolioReport (Sprint 22)", () => {
       const next = writeJson(cwd, "next.json", portfolio([pc("alpha", regressedHist())]));
       const before = listFilesRec(cwd);
       paperBacktestDiffResearchPortfolioReport({ cwd, env: {} }, { basePath: base, nextPath: next, json: true });
+      expect(listFilesRec(cwd)).toEqual(before);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperBacktestResearchPackReport (Sprint 23)", () => {
+  function desc(over: Partial<BacktestArtifactDescriptor> = {}): BacktestArtifactDescriptor {
+    return { path: "a.report.json", kind: "backtest-report", schemaVersion: "backtest.report.v1", digest: "d1", sizeBytes: 100, ...over };
+  }
+  const okRun = (runId: string, digest = "d1") => ({ runId, artifacts: [desc({ digest })] });
+  const badRun = (runId: string) => ({ runId, artifacts: [desc({ path: "u.json", kind: "unknown-json" as const, schemaVersion: null, digest: "u" })] });
+  function idx(runs: { runId: string; artifacts: BacktestArtifactDescriptor[] }[]) {
+    return buildBacktestResearchCampaignIndex({ campaignName: "c", runs });
+  }
+  function hist(snaps: { runId: string; artifacts: BacktestArtifactDescriptor[] }[][]) {
+    return buildBacktestResearchCampaignHistoryReport({ snapshots: snaps.map((runs, i) => ({ snapshotId: `s${i}`, index: idx(runs) })) });
+  }
+  const pc = (campaignId: string, report: unknown) => ({ campaignId, report });
+  const portfolio = (campaigns: { campaignId: string; report: unknown }[]) => buildBacktestResearchPortfolioReport({ campaigns });
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+  function listFilesRec(dir: string): string[] {
+    const out: string[] = [];
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) out.push(...listFilesRec(full));
+      else out.push(full);
+    }
+    return out.sort();
+  }
+  // Real artifact fixtures.
+  const cleanPortfolio = () => portfolio([pc("alpha", hist([[okRun("a")], [okRun("a")]]))]);
+  const regressedPortfolio = () => portfolio([pc("alpha", hist([[okRun("a", "1")], [okRun("a", "2")]]))]);
+  const portfolioDiffRegression = () => diffBacktestResearchPortfolioReports(cleanPortfolio(), regressedPortfolio());
+  const historyNewAttention = () => hist([[okRun("a")], [okRun("a"), badRun("b")]]);
+  const manifest = () => buildBacktestResearchManifest({ artifacts: [desc()] });
+
+  it("refuses when no --artifact is supplied", () => {
+    expect(paperBacktestResearchPackReport({}, {}).text).toMatch(/^Refusing: at least one --artifact/);
+    expect(paperBacktestResearchPackReport({}, { artifacts: [] }).exitCode).toBe(1);
+  });
+
+  it("reads artifacts and renders a PAPER-ONLY human pack", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeJson(cwd, "pf.json", cleanPortfolio());
+      writeJson(cwd, "pd.json", portfolioDiffRegression());
+      const r = paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["pf=pf.json", "pd=pd.json"] });
+      expect(r.text).toContain("SIMULATED PAPER-ONLY RESEARCH ARTIFACT PACK");
+      expect(r.text).toContain("Artifacts:");
+      expect(r.text.toLowerCase()).toContain("not a live result");
+      expect(r.exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json emits a valid, stable pack object", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeJson(cwd, "pf.json", cleanPortfolio());
+      writeJson(cwd, "pd.json", portfolioDiffRegression());
+      const r = paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["pf=pf.json", "pd=pd.json"], json: true });
+      const obj = JSON.parse(r.text) as { schemaVersion: string; recognizedCount: number; artifactLabels: string[] };
+      expect(obj.schemaVersion).toBe("backtest.research.artifact.pack.v1");
+      expect(obj.recognizedCount).toBe(2);
+      expect(obj.artifactLabels).toEqual(["pd", "pf"]);
+      expect(() => validateBacktestResearchArtifactPack(JSON.parse(r.text))).not.toThrow();
+      expect(paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["pf=pf.json", "pd=pd.json"], json: true }).text).toBe(r.text);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-change exits 1 on change, 0 when clean", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeJson(cwd, "pf.json", cleanPortfolio());
+      writeJson(cwd, "pd.json", portfolioDiffRegression());
+      expect(paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["pf=pf.json"], failOnChange: true }).exitCode).toBe(0);
+      expect(paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["pf=pf.json", "pd=pd.json"], failOnChange: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-regression trips on a regression but not a clean pack", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeJson(cwd, "pf.json", cleanPortfolio());
+      writeJson(cwd, "pd.json", portfolioDiffRegression());
+      expect(paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["pf=pf.json"], failOnRegression: true }).exitCode).toBe(0);
+      expect(paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["pd=pd.json"], failOnRegression: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-attention and --fail-on-new-attention trip on an attention artifact", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeJson(cwd, "ci.json", idx([okRun("a"), badRun("b")])); // campaign index with an invalid run
+      writeJson(cwd, "hist.json", historyNewAttention());
+      expect(paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["ci=ci.json"], failOnAttention: true }).exitCode).toBe(1);
+      expect(paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["hist=hist.json"], failOnNewAttention: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-unsupported trips only when an unsupported artifact is present", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeJson(cwd, "pf.json", cleanPortfolio());
+      writeJson(cwd, "weird.json", { schemaVersion: "backtest.unknown.v9", foo: 1 });
+      expect(paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["pf=pf.json"], failOnUnsupported: true }).exitCode).toBe(0);
+      expect(paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["pf=pf.json", "w=weird.json"], failOnUnsupported: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a bad spec, a duplicate label, a missing file, and malformed JSON", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeJson(cwd, "pf.json", cleanPortfolio());
+      writeFileSync(join(cwd, "bad.json"), "{ not json");
+      expect(paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["noequals"] }).exitCode).toBe(1);
+      expect(paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["noequals"] }).text).toMatch(/must be "label=path"/);
+      expect(paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["dup=pf.json", "dup=pf.json"] }).text).toMatch(/duplicate artifact label/);
+      expect(paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["m=missing.json"] }).exitCode).toBe(1);
+      expect(paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["b=bad.json"] }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a corrupt artifact that claims a known schema", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const corrupt = JSON.parse(JSON.stringify(cleanPortfolio())) as { campaignCount: unknown };
+      corrupt.campaignCount = "oops";
+      writeJson(cwd, "corrupt.json", corrupt);
+      const r = paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["pf=corrupt.json"] });
+      expect(r.text).toMatch(/claims schema .* but is invalid/);
+      expect(r.exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--out writes ONLY the pack JSON and refuses overwrite without --force", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeJson(cwd, "pf.json", cleanPortfolio());
+      const before = listFilesRec(cwd);
+      const r = paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["pf=pf.json"], outPath: "pack.json" });
+      expect(r.exitCode).toBe(0);
+      const after = listFilesRec(cwd);
+      expect(after.length).toBe(before.length + 1); // exactly one new file
+      const written = JSON.parse(readFileSync(join(cwd, "pack.json"), "utf8"));
+      expect(() => validateBacktestResearchArtifactPack(written)).not.toThrow();
+      // refuse overwrite without --force
+      const r2 = paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["pf=pf.json"], outPath: "pack.json" });
+      expect(r2.exitCode).toBe(1);
+      expect(r2.text).toMatch(/already exists/);
+      // --force overwrites
+      const r3 = paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["pf=pf.json"], outPath: "pack.json", force: true });
+      expect(r3.exitCode).toBe(0);
+      expect(listFilesRec(cwd).length).toBe(after.length); // still exactly one new file (overwritten)
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("writes nothing without --out", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeJson(cwd, "pf.json", cleanPortfolio());
+      writeJson(cwd, "m.json", manifest());
+      const before = listFilesRec(cwd);
+      paperBacktestResearchPackReport({ cwd, env: {} }, { artifacts: ["pf=pf.json", "m=m.json"], json: true });
       expect(listFilesRec(cwd)).toEqual(before);
     } finally {
       cleanup();
