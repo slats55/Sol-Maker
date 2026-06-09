@@ -39,6 +39,7 @@ import {
   paperBacktestResearchHistoryReport,
   paperBacktestResearchPortfolioReport,
   paperBacktestDiffResearchPortfolioReport,
+  paperBacktestResearchPackReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -951,6 +952,59 @@ program
           failOnRegression: Boolean(opts.failOnRegression),
           failOnAttention: Boolean(opts.failOnAttention),
           failOnNewAttention: Boolean(opts.failOnNewAttention),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:backtest:research:pack")
+  .description(
+    "Collect MANY local research artifact JSON files into one navigable integrity + navigation summary (PAPER ONLY; each --artifact label=path is classified by schemaVersion, a known artifact is strictly validated + summarized, an unknown schema is reported as unsupported; per-artifact kind/status/flags, aggregate counts, chain coverage, CI decision; `backtest.research.artifact.pack.v1`; reads the named files only, writes nothing unless --out)",
+  )
+  .option(
+    "--artifact <label=path>",
+    "research artifact JSON, keyed by a label (repeatable)",
+    (value: string, previous: string[]) => previous.concat(value),
+    [] as string[],
+  )
+  .option("--json", "emit the artifact pack as stable JSON")
+  .option("--fail-on-change", "exit non-zero when any artifact reports a change")
+  .option("--fail-on-regression", "exit non-zero only on a conservative integrity regression in any artifact")
+  .option("--fail-on-attention", "exit non-zero when any artifact reports current attention")
+  .option("--fail-on-new-attention", "exit non-zero when any artifact reports newly-needed attention")
+  .option("--fail-on-unsupported", "exit non-zero when any artifact has an unsupported schema")
+  .option("--fail-on-missing-recommended-layer", "exit non-zero when a recommended chain layer is missing")
+  .option("--out <path>", "write ONLY the pack JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .action(
+    (opts: {
+      artifact?: string[];
+      json?: boolean;
+      failOnChange?: boolean;
+      failOnRegression?: boolean;
+      failOnAttention?: boolean;
+      failOnNewAttention?: boolean;
+      failOnUnsupported?: boolean;
+      failOnMissingRecommendedLayer?: boolean;
+      out?: string;
+      force?: boolean;
+    }) => {
+      const { text, exitCode } = paperBacktestResearchPackReport(
+        {},
+        {
+          artifacts: opts.artifact ?? [],
+          json: Boolean(opts.json),
+          failOnChange: Boolean(opts.failOnChange),
+          failOnRegression: Boolean(opts.failOnRegression),
+          failOnAttention: Boolean(opts.failOnAttention),
+          failOnNewAttention: Boolean(opts.failOnNewAttention),
+          failOnUnsupported: Boolean(opts.failOnUnsupported),
+          failOnMissingRecommendedLayer: Boolean(opts.failOnMissingRecommendedLayer),
+          outPath: opts.out,
+          force: Boolean(opts.force),
         },
       );
       console.log(text);

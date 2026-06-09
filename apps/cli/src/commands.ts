@@ -128,6 +128,8 @@ import {
   formatBacktestResearchPortfolioReport,
   diffBacktestResearchPortfolioReports,
   formatBacktestResearchPortfolioDiff,
+  buildBacktestResearchArtifactPack,
+  formatBacktestResearchArtifactPack,
   digestContent,
   BACKTEST_RESEARCH_MANIFEST_SCHEMA_VERSION,
   BACKTEST_RESEARCH_VERIFY_SCHEMA_VERSION,
@@ -168,6 +170,8 @@ import {
   type BacktestResearchPortfolioReport,
   type BacktestResearchPortfolioCampaignInput,
   type BacktestResearchPortfolioDiff,
+  type BacktestResearchArtifactPackInput,
+  type BacktestResearchArtifactPack,
 } from "@soulmaker/backtest";
 
 export interface CommandContext {
@@ -3804,6 +3808,121 @@ export function paperBacktestDiffResearchPortfolioReport(
     text: formatBacktestResearchPortfolioDiff(diff, { baseLabel: opts.basePath, nextLabel: opts.nextPath }),
     exitCode,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 23 — paper:backtest:research:pack
+//   Collect MANY local research artifact JSON files (manifest / bundle / status
+//   / campaign index / campaign diff / campaign history / portfolio report /
+//   portfolio diff) into one navigable integrity + navigation summary: each
+//   artifact's kind/status/flags, the aggregate counts, chain coverage, and a
+//   CI decision. Reads the named files only; writes nothing unless --out is
+//   given (then only the pack JSON, refusing overwrite without --force). No
+//   network, no wallet.
+// ---------------------------------------------------------------------------
+
+export interface PaperBacktestResearchPackCommandOptions {
+  /** Repeatable "label=path" specs (one per artifact). Required (>=1). */
+  artifacts?: string[];
+  json?: boolean;
+  /** Exit non-zero when any artifact reports a change. */
+  failOnChange?: boolean;
+  /** Exit non-zero only on a conservative integrity regression in any artifact. */
+  failOnRegression?: boolean;
+  /** Exit non-zero when any artifact reports current attention. */
+  failOnAttention?: boolean;
+  /** Exit non-zero when any artifact reports newly-needed attention. */
+  failOnNewAttention?: boolean;
+  /** Exit non-zero when any artifact has an unsupported schema. */
+  failOnUnsupported?: boolean;
+  /** Exit non-zero when a recommended chain layer is missing. */
+  failOnMissingRecommendedLayer?: boolean;
+  /** Optional path to write the pack JSON (writes nothing if omitted). */
+  outPath?: string;
+  /** Overwrite an existing --out file (refused by default). */
+  force?: boolean;
+}
+
+/** Split an `--artifact label=path` spec on its FIRST `=` (paths may contain `=`). */
+function parsePackArtifactArg(spec: string): { label: string; path: string } | null {
+  const eq = spec.indexOf("=");
+  if (eq <= 0 || eq === spec.length - 1) return null;
+  return { label: spec.slice(0, eq), path: spec.slice(eq + 1) };
+}
+
+/**
+ * `soulmaker paper:backtest:research:pack` — collect MANY local research artifact JSON files into one
+ * deterministic artifact pack. Reads ONLY the named local files (BOM-tolerant; a missing/malformed
+ * file, a bad `label=path` spec, a duplicate label, or an artifact that CLAIMS a known schema but
+ * fails validation refuses with exit 1). Each `--artifact label=path` names one artifact; a known
+ * schema is strictly validated and summarized, while an unknown schema is reported as `unsupported`
+ * (gated by `--fail-on-unsupported`). The `--fail-on-*` flags set a non-zero exit for change /
+ * regression / current attention / new attention / an unsupported artifact / a missing recommended
+ * layer. `--json` emits the stable, redacted pack. With `--out <path>` it writes ONLY the pack JSON
+ * (refusing to overwrite an existing file unless `--force` is given, and creating no directories);
+ * without `--out` it writes nothing. No network, no wallet. The pack embeds no artifact contents
+ * beyond their own high-level flags and is not a live result, advice, or a profitability claim.
+ */
+export function paperBacktestResearchPackReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestResearchPackCommandOptions = {},
+): CliReport {
+  const specs = opts.artifacts ?? [];
+  if (specs.length === 0) {
+    return { text: "Refusing: at least one --artifact <label=path> is required.", exitCode: 1 };
+  }
+
+  // Read each artifact file; the label is the key supplied on the CLI, the path is its sourceLabel.
+  // Duplicate-label detection is left to the builder.
+  const artifacts: BacktestResearchArtifactPackInput[] = [];
+  for (const spec of specs) {
+    const parsed = parsePackArtifactArg(spec);
+    if (!parsed) {
+      return { text: redactString(`Refusing: --artifact must be "label=path" (got "${spec}").`), exitCode: 1 };
+    }
+    let value: unknown;
+    try {
+      value = readJsonValue(ctx, parsed.path, `research artifact (${parsed.label})`);
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    artifacts.push({ label: parsed.label, value, sourceLabel: parsed.path });
+  }
+
+  let pack: BacktestResearchArtifactPack;
+  try {
+    pack = buildBacktestResearchArtifactPack({ artifacts });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // Optional write: ONLY the pack JSON, refuse overwrite without --force, create no directories.
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(pack), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write pack file at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  const exitCode =
+    (opts.failOnChange && pack.hasChange) ||
+    (opts.failOnRegression && pack.hasRegression) ||
+    (opts.failOnAttention && pack.hasAttention) ||
+    (opts.failOnNewAttention && pack.hasNewAttention) ||
+    (opts.failOnUnsupported && pack.hasUnsupportedArtifact) ||
+    (opts.failOnMissingRecommendedLayer && pack.hasMissingRecommendedLayer)
+      ? 1
+      : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(pack), null, 2), exitCode };
+  }
+  return { text: formatBacktestResearchArtifactPack(pack), exitCode };
 }
 
 function yesNo(value: boolean): string {
