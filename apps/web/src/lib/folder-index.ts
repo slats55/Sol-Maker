@@ -222,12 +222,18 @@ function byName(a: { name: string }, b: { name: string }): number {
   return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 }
 
+/** Max characters of filename slug kept in an anchor id (the index prefix keeps it unique). */
+const MAX_ANCHOR_SLUG = 48;
+
 /** A sanitized, unique, same-page anchor id (index keeps it unique + ordered). */
 function anchorFor(name: string, index: number): string {
   const slug = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/^-+|-+$/g, "")
+    .slice(0, MAX_ANCHOR_SLUG)
+    // A slice can land on a separator; trim a trailing dash so the id stays tidy.
+    .replace(/-+$/g, "");
   return `sm-artifact-${index}-${slug.length > 0 ? slug : "file"}`;
 }
 
@@ -347,6 +353,147 @@ export function buildFolderIndex(
 }
 
 /* ------------------------------------------------------------------ *
+ * Static filter sections (pre-rendered, script-free groupings).
+ * ------------------------------------------------------------------ */
+
+export type FolderFilterCategory = "all" | "regression" | "changed" | "unknown" | "clean";
+
+/** A confirmed regression: the artifact's OWN `hasRegression` flag is true. */
+export function isRegressionArtifact(entry: FolderArtifactEntry): boolean {
+  return entry.status === "valid" && entry.verdict.hasRegression === "yes";
+}
+
+/**
+ * A confirmed change: the artifact's OWN `hasChange` flag is true. Independent of
+ * regression — a changed artifact need not be a regression (and vice versa).
+ */
+export function isChangedArtifact(entry: FolderArtifactEntry): boolean {
+  return entry.status === "valid" && entry.verdict.hasChange === "yes";
+}
+
+/**
+ * Unknown schema, absent schema, or malformed JSON. These never carry a trusted
+ * verdict (see {@link extractVerdict}), so a boolean-looking field inside an
+ * unknown artifact can never push it into the regression or changed groups.
+ */
+export function isUnknownOrMalformedArtifact(entry: FolderArtifactEntry): boolean {
+  return (
+    entry.status === "malformed" ||
+    entry.schemaStatus === "unknown" ||
+    entry.schemaStatus === "absent"
+  );
+}
+
+/**
+ * Clean / no-change: a valid artifact with a RECOGNIZED schema for which neither
+ * a regression nor a change was flagged. A recognized non-diff artifact (which
+ * carries no verdict at all) is clean; a recognized diff whose own flags are
+ * `no`/`missing` is clean. Unknown / absent / malformed artifacts are NEVER
+ * clean — they belong to the unknown-or-malformed group instead.
+ */
+export function isCleanArtifact(entry: FolderArtifactEntry): boolean {
+  return (
+    !isUnknownOrMalformedArtifact(entry) &&
+    !isRegressionArtifact(entry) &&
+    !isChangedArtifact(entry)
+  );
+}
+
+export interface FolderFilterSection {
+  readonly category: FolderFilterCategory;
+  readonly title: string;
+  /** Deterministic, unique same-page anchor (distinct from per-artifact anchors). */
+  readonly anchor: string;
+  /** One-line description of the membership rule (rendered above the table). */
+  readonly description: string;
+  /** Matching artifacts, preserving the index's stable by-name order. */
+  readonly artifacts: readonly FolderArtifactEntry[];
+}
+
+/** Fixed anchor ids for the filter sections. `all` reuses the existing list id. */
+const FILTER_ANCHORS: Readonly<Record<FolderFilterCategory, string>> = {
+  all: "sm-folder-artifacts",
+  regression: "sm-filter-regression",
+  changed: "sm-filter-changed",
+  unknown: "sm-filter-unknown",
+  clean: "sm-filter-clean",
+};
+
+/**
+ * Group the (already name-sorted) artifacts into the five static filter sections
+ * rendered on the loaded folder page. Pure and deterministic: membership is a
+ * total function of each artifact's status / schema / verdict — no JavaScript, no
+ * query params, no browser behaviour. An artifact may appear in BOTH `regression`
+ * and `changed` when its own flags say so; `unknown` and `clean` are mutually
+ * exclusive with each other and with regression/changed. Every artifact appears
+ * in `all` and in exactly one of {a regression/changed pair, unknown, clean}.
+ */
+export function buildFolderFilterSections(index: FolderIndex): readonly FolderFilterSection[] {
+  const all = index.artifacts;
+  return [
+    {
+      category: "all",
+      title: "All artifacts",
+      anchor: FILTER_ANCHORS.all,
+      description: "Every JSON file found in the folder, valid or malformed.",
+      artifacts: all,
+    },
+    {
+      category: "regression",
+      title: "Regression artifacts",
+      anchor: FILTER_ANCHORS.regression,
+      description: "Recognized diff artifacts whose own hasRegression flag is true.",
+      artifacts: all.filter(isRegressionArtifact),
+    },
+    {
+      category: "changed",
+      title: "Changed artifacts",
+      anchor: FILTER_ANCHORS.changed,
+      description:
+        "Recognized diff artifacts whose own hasChange flag is true (a regression is not required).",
+      artifacts: all.filter(isChangedArtifact),
+    },
+    {
+      category: "unknown",
+      title: "Unknown or malformed artifacts",
+      anchor: FILTER_ANCHORS.unknown,
+      description:
+        "Unrecognized schemas, artifacts with no schemaVersion, and malformed JSON. No verdict is interpreted for these.",
+      artifacts: all.filter(isUnknownOrMalformedArtifact),
+    },
+    {
+      category: "clean",
+      title: "Clean / no-change artifacts",
+      anchor: FILTER_ANCHORS.clean,
+      description: "Recognized artifacts with no regression or change flagged.",
+      artifacts: all.filter(isCleanArtifact),
+    },
+  ];
+}
+
+export interface FolderFilterCounts {
+  readonly all: number;
+  readonly regression: number;
+  readonly changed: number;
+  readonly unknown: number;
+  readonly clean: number;
+}
+
+/** Per-category counts for the filter sections (mirrors {@link buildFolderFilterSections}). */
+export function toFolderFilterCounts(index: FolderIndex): FolderFilterCounts {
+  const sections = buildFolderFilterSections(index);
+  const count = (category: FolderFilterCategory): number =>
+    sections.find((section) => section.category === category)?.artifacts.length ?? 0;
+  return {
+    all: count("all"),
+    regression: count("regression"),
+    changed: count("changed"),
+    unknown: count("unknown"),
+    clean: count("clean"),
+  };
+}
+
+/* ------------------------------------------------------------------ *
  * Machine-readable summary (for the `--json` CLI flag).
  * ------------------------------------------------------------------ */
 
@@ -363,6 +510,8 @@ export interface FolderArtifactSummaryJson {
 
 export interface FolderIndexSummaryJson {
   readonly counts: FolderIndexCounts;
+  /** Per-category counts for the static filter sections. */
+  readonly filters: FolderFilterCounts;
   readonly schemaCounts: readonly FolderSchemaCount[];
   readonly artifacts: readonly FolderArtifactSummaryJson[];
   readonly skipped: readonly FolderSkippedEntry[];
@@ -373,6 +522,7 @@ export interface FolderIndexSummaryJson {
 export function toFolderSummaryJson(index: FolderIndex): FolderIndexSummaryJson {
   return {
     counts: index.counts,
+    filters: toFolderFilterCounts(index),
     schemaCounts: index.schemaCounts,
     artifacts: index.artifacts.map((a) => ({
       name: a.name,
