@@ -1,0 +1,44 @@
+{
+  "_comment": "DETERMINISTIC FIXTURE — NOT live data, NOT verified on-chain facts, NOT financial advice. The inspection/risk values below are INVENTED, token:inspect / token:risk SHAPED examples for the well-known mints in candidates.example.json. example-wsol deliberately has no risk section to show the missing-risk warning. Validate with: pnpm soulmaker paper:sniper:preflight:input:validate --input examples/sniper/preflight-input.example.json --candidates examples/sniper/candidates.example.json",
+  "sourceLabel": "examples/sniper/preflight-input.example.json",
+  "candidateListRef": "examples/sniper/candidates.example.json",
+  "entries": [
+    {
+      "candidateId": "example-usdc",
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "inspection": {
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "decimals": 6,
+        "supplyRaw": "1000000",
+        "uiSupply": 1,
+        "mintAuthorityPresent": false,
+        "freezeAuthorityPresent": false,
+        "isInitialized": true,
+        "programLabel": "spl-token"
+      },
+      "risk": {
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "score": 10,
+        "decision": "PASS_FOR_PAPER_EVALUATION",
+        "flags": [],
+        "summary": ["fixture: invented example values — not a verified on-chain fact"]
+      },
+      "sourceLabel": "fixture"
+    },
+    {
+      "candidateId": "example-wsol",
+      "mint": "So11111111111111111111111111111111111111112",
+      "inspection": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "decimals": 9,
+        "supplyRaw": "5000000",
+        "uiSupply": 5,
+        "mintAuthorityPresent": false,
+        "freezeAuthorityPresent": false,
+        "isInitialized": true,
+        "programLabel": "spl-token"
+      },
+      "sourceLabel": "fixture"
+    }
+  ]
+}

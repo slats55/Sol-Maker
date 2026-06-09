@@ -43,6 +43,7 @@ import {
   paperBacktestDiffResearchPackReport,
   paperSniperCandidatesValidateReport,
   paperSniperPreflightReport,
+  paperSniperPreflightInputValidateReport,
   paperSniperDecideReport,
   paperSniperWorkflowReport,
   paperSniperReportReport,
@@ -1109,6 +1110,7 @@ program
     (value: string, previous: string[]) => previous.concat(value),
     [] as string[],
   )
+  .option("--preflight-input <path>", "validated preflight input artifact (sniper.preflight.input.v1; mutually exclusive with --inspection/--risk)")
   .option("--json", "emit the preflight report as stable JSON")
   .option("--out <path>", "write ONLY the preflight report JSON to this path (writes nothing if omitted)")
   .option("--force", "overwrite an existing --out file (refused by default)")
@@ -1119,6 +1121,7 @@ program
       candidates?: string;
       inspection?: string[];
       risk?: string[];
+      preflightInput?: string;
       json?: boolean;
       out?: string;
       force?: boolean;
@@ -1131,11 +1134,48 @@ program
           candidatesPath: opts.candidates,
           inspections: opts.inspection ?? [],
           risks: opts.risk ?? [],
+          preflightInputPath: opts.preflightInput,
           json: Boolean(opts.json),
           outPath: opts.out,
           force: Boolean(opts.force),
           failOnFail: Boolean(opts.failOnFail),
           failOnWarning: Boolean(opts.failOnWarning),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:preflight:input:validate")
+  .description(
+    "Validate + normalize a LOCAL sniper preflight INPUT artifact (`sniper.preflight.input.v1`): per-candidate, already-loaded token:inspect / token:risk shaped values, projected with the SAME logic paper:sniper:preflight uses, so an unsupported shape / missing section / mint mismatch surfaces HERE instead of silently mid-preflight. Mints are validated as 32-byte public keys (secret-length input is REFUSED, never echoed). --candidates optionally CROSS-CHECKS entries against the list (unknown candidateId or disagreeing mint = refusal; uncovered candidates = warning). LOCAL-ONLY: fetches nothing, verifies NO on-chain fact. Reads the named files only, writes nothing, no network/RPC/wallet",
+  )
+  .option("--input <path>", "preflight input JSON (raw operator input or a canonical artifact)")
+  .option("--candidates <path>", "candidate list JSON to cross-check entries against (optional)")
+  .option("--json", "emit the normalized canonical preflight input artifact as stable JSON")
+  .option("--fail-on-warning", "exit non-zero when the validated artifact carries any warning")
+  .option("--fail-on-missing-risk", "exit non-zero when any entry has no usable risk report")
+  .option("--fail-on-missing-inspection", "exit non-zero when any entry has no usable inspection")
+  .action(
+    (opts: {
+      input?: string;
+      candidates?: string;
+      json?: boolean;
+      failOnWarning?: boolean;
+      failOnMissingRisk?: boolean;
+      failOnMissingInspection?: boolean;
+    }) => {
+      const { text, exitCode } = paperSniperPreflightInputValidateReport(
+        {},
+        {
+          inputPath: opts.input,
+          candidatesPath: opts.candidates,
+          json: Boolean(opts.json),
+          failOnWarning: Boolean(opts.failOnWarning),
+          failOnMissingRisk: Boolean(opts.failOnMissingRisk),
+          failOnMissingInspection: Boolean(opts.failOnMissingInspection),
         },
       );
       console.log(text);

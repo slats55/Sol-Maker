@@ -208,6 +208,42 @@ only the report JSON, refusing overwrite without `--force`). `--fail-on-paper-en
 gate to ensure no candidate auto-enters; `--fail-on-risk` trips when any candidate was rejected on
 risk. No network, no wallet, no transaction build/sign/send.
 
+## Preflight input artifact — `sniper.preflight.input.v1` (Sprint 47)
+
+The preflight consumes already-loaded `token:inspect` / `token:risk` JSON. Before Sprint 47 those
+inputs were loose files wired with repeatable flags, and a shape problem only surfaced as a
+silently-absent section mid-preflight. `sniper.preflight.input.v1` is a **validated input bundle** the
+operator checks FIRST:
+
+```
+candidates → preflight input validate → preflight report → decisions
+```
+
+Each entry pairs `candidateId` + `mint` (validated with the pure base58 parser — secret-length input
+is REFUSED and never echoed) with its raw inspection/risk values carried **VERBATIM**, plus
+projections computed with the **same** functions the preflight uses
+(`projectSniperPreflightInspection` / `projectSniperPreflightRisk`) — so `unsupported shape`,
+`missing inspection/risk`, and `mint mismatch` are explicit warnings here, with recomputed-on-validate
+aggregates (`missingInspectionCount`, `missingRiskCount`, `unsupportedShapeCount`,
+`mintMismatchCount`). Supplying a candidate list cross-checks entries (unknown `candidateId` or a
+disagreeing mint = refusal; uncovered candidates = warning, never invented).
+
+> **LOCAL-ONLY.** This validates files the operator already has. Nothing fetches chain data, and a
+> clean validation verifies NO on-chain fact — it means the inputs are *well-formed*, nothing more.
+
+### CLI
+
+```bash
+pnpm soulmaker paper:sniper:preflight:input:validate --input pf-input.json --candidates candidates.json --json
+pnpm soulmaker paper:sniper:preflight:input:validate --input pf-input.json --fail-on-missing-risk --fail-on-missing-inspection
+pnpm soulmaker paper:sniper:preflight --candidates candidates.json --preflight-input pf-input.json --out preflight.json
+```
+
+`paper:sniper:preflight --preflight-input` (mutually exclusive with `--inspection`/`--risk`)
+normalizes + cross-checks the artifact against the candidate list, then drives the standard build
+with the verbatim values — the result is byte-identical to wiring the same files by hand. The
+validate command reads only the named files and **writes nothing**.
+
 ## Decision reason codes — `sniper.paper.decision.report.v2` (Sprint 46)
 
 The v1 report explains decisions with free-text `reasons` strings — fine for an operator, but **not a

@@ -54,6 +54,7 @@ import {
   paperBacktestDiffResearchPackReport,
   paperSniperCandidatesValidateReport,
   paperSniperPreflightReport,
+  paperSniperPreflightInputValidateReport,
   paperSniperDecideReport,
   paperSniperWorkflowReport,
   paperSniperReportReport,
@@ -69,7 +70,7 @@ import {
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
 import { parseJournal, reduceJournal } from "@soulmaker/paper";
-import { validatePaperSniperDecisionReportV2 } from "@soulmaker/sniper";
+import { validatePaperSniperDecisionReportV2, validateSniperPreflightInput, validateSniperTokenPreflightReport } from "@soulmaker/sniper";
 import {
   runBacktest,
   buildBacktestResearchBundle,
@@ -7028,6 +7029,116 @@ describe("paperSniperDecideReport (Sprint 27)", () => {
         cleanup();
       }
     });
+  });
+});
+
+describe("paperSniperPreflightInputValidateReport (Sprint 47)", () => {
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const WSOL = "So11111111111111111111111111111111111111112";
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+  const cleanInspection = (mint: string) => ({ mint, decimals: 6, supplyRaw: "1", uiSupply: 1, mintAuthorityPresent: false, freezeAuthorityPresent: false, isInitialized: true, programLabel: "spl-token" });
+  const riskPass = (mint: string) => ({ mint, score: 10, decision: "PASS_FOR_PAPER_EVALUATION", flags: [], summary: [] });
+
+  it("refuses when --input is missing", () => {
+    const r = paperSniperPreflightInputValidateReport({}, {});
+    expect(r.exitCode).toBe(1);
+    expect(r.text).toMatch(/^Refusing: --input/);
+  });
+
+  it("--json emits a VALID canonical artifact and writes nothing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const input = writeJson(cwd, "pf-input.json", {
+        entries: [{ candidateId: "c1", mint: USDC, inspection: cleanInspection(USDC), risk: riskPass(USDC) }],
+      });
+      const before = readdirSync(cwd).sort();
+      const r = paperSniperPreflightInputValidateReport({ cwd, env: {} }, { inputPath: input, json: true });
+      expect(r.exitCode).toBe(0);
+      const obj = JSON.parse(r.text);
+      expect(() => validateSniperPreflightInput(obj)).not.toThrow();
+      expect(obj.validationStatus).toBe("valid");
+      expect(readdirSync(cwd).sort()).toEqual(before);
+      expect(paperSniperPreflightInputValidateReport({ cwd, env: {} }, { inputPath: input, json: true }).text).toBe(r.text);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("fail flags: --fail-on-warning / --fail-on-missing-risk / --fail-on-missing-inspection", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const full = writeJson(cwd, "full.json", {
+        entries: [{ candidateId: "c1", mint: USDC, inspection: cleanInspection(USDC), risk: riskPass(USDC) }],
+      });
+      const bare = writeJson(cwd, "bare.json", { entries: [{ candidateId: "c1", mint: USDC }] });
+      expect(paperSniperPreflightInputValidateReport({ cwd, env: {} }, { inputPath: full, failOnWarning: true, failOnMissingRisk: true, failOnMissingInspection: true }).exitCode).toBe(0);
+      expect(paperSniperPreflightInputValidateReport({ cwd, env: {} }, { inputPath: bare, failOnWarning: true }).exitCode).toBe(1);
+      expect(paperSniperPreflightInputValidateReport({ cwd, env: {} }, { inputPath: bare, failOnMissingRisk: true }).exitCode).toBe(1);
+      expect(paperSniperPreflightInputValidateReport({ cwd, env: {} }, { inputPath: bare, failOnMissingInspection: true }).exitCode).toBe(1);
+      expect(paperSniperPreflightInputValidateReport({ cwd, env: {} }, { inputPath: bare }).exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--candidates cross-checks: unknown candidateId and disagreeing mint are refused", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      const ghost = writeJson(cwd, "ghost.json", { entries: [{ candidateId: "ghost", mint: USDC }] });
+      const wrongMint = writeJson(cwd, "wrong.json", { entries: [{ candidateId: "c1", mint: WSOL }] });
+      expect(paperSniperPreflightInputValidateReport({ cwd, env: {} }, { inputPath: ghost, candidatesPath: cands }).exitCode).toBe(1);
+      expect(paperSniperPreflightInputValidateReport({ cwd, env: {} }, { inputPath: wrongMint, candidatesPath: cands }).exitCode).toBe(1);
+      // without the cross-check both still validate (with warnings only)
+      expect(paperSniperPreflightInputValidateReport({ cwd, env: {} }, { inputPath: ghost }).exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses malformed JSON, a wrong schemaVersion, and an unsupported-shape stays a warning", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      writeFileSync(join(cwd, "malformed.json"), "{ not json");
+      expect(paperSniperPreflightInputValidateReport({ cwd, env: {} }, { inputPath: "malformed.json" }).exitCode).toBe(1);
+      const wrong = writeJson(cwd, "wrong-schema.json", { schemaVersion: "backtest.report.v1", entries: [] });
+      expect(paperSniperPreflightInputValidateReport({ cwd, env: {} }, { inputPath: wrong }).exitCode).toBe(1);
+      const odd = writeJson(cwd, "odd.json", { entries: [{ candidateId: "c1", mint: USDC, inspection: "not-an-object" }] });
+      const r = paperSniperPreflightInputValidateReport({ cwd, env: {} }, { inputPath: odd });
+      expect(r.exitCode).toBe(0);
+      expect(r.text).toContain("unsupported");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("paper:sniper:preflight --preflight-input drives the build (and is exclusive with --inspection/--risk)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }, { candidateId: "c2", mint: WSOL }] });
+      writeJson(cwd, "c1.insp.json", cleanInspection(USDC));
+      writeJson(cwd, "c1.risk.json", riskPass(USDC));
+      const input = writeJson(cwd, "pf-input.json", {
+        entries: [{ candidateId: "c1", mint: USDC, inspection: cleanInspection(USDC), risk: riskPass(USDC) }],
+      });
+      const viaInput = paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, preflightInputPath: input, json: true });
+      expect(viaInput.exitCode).toBe(0);
+      const viaFlags = paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, inspections: ["c1=c1.insp.json"], risks: ["c1=c1.risk.json"], json: true });
+      expect(viaInput.text).toBe(viaFlags.text);
+      expect(() => validateSniperTokenPreflightReport(JSON.parse(viaInput.text))).not.toThrow();
+      // mutual exclusion
+      const r = paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, preflightInputPath: input, inspections: ["c1=c1.insp.json"] });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toMatch(/mutually exclusive/);
+      // cross-check inside preflight: an input for an unknown candidate refuses
+      const ghost = writeJson(cwd, "ghost-input.json", { entries: [{ candidateId: "ghost", mint: USDC }] });
+      expect(paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, preflightInputPath: ghost }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
   });
 });
 

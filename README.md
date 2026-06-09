@@ -634,6 +634,13 @@ pnpm soulmaker token:risk <mint> --json > c1.risk.json         # existing adviso
 pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> --inspection c1=c1.inspect.json --risk c1=c1.risk.json
 pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> --risk c1=c1.risk.json --fail-on-fail
 
+# Sprint 47 — PREFLIGHT INPUT VALIDATION: bundle the LOCAL inspection/risk inputs into ONE validated
+# artifact (sniper.preflight.input.v1) and check it BEFORE the preflight — unsupported shapes, missing
+# sections, and mint mismatches surface here (local-only; verifies NO on-chain fact; writes nothing):
+pnpm soulmaker paper:sniper:preflight:input:validate --input pf-input.json --candidates <candidates.json> --json
+pnpm soulmaker paper:sniper:preflight:input:validate --input pf-input.json --fail-on-missing-risk
+pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> --preflight-input pf-input.json
+
 # Sprint 27 — PAPER SNIPER DECISIONS: fold the candidate list + preflight + optional operator rules
 # into a per-candidate SIMULATED decision — skip / watch / paper-enter / paper-reject / unknown — with
 # reasons. A paper-enter is a PAPER-ONLY decision, NOT a buy/sell order, NOT a transaction, NOT live

@@ -61,6 +61,24 @@ export type {
 } from "./token-preflight.js";
 
 export {
+  normalizeSniperPreflightInput,
+  validateSniperPreflightInput,
+  formatSniperPreflightInput,
+  SniperPreflightInputError,
+  SNIPER_PREFLIGHT_INPUT_SCHEMA_VERSION,
+  SNIPER_PREFLIGHT_INPUT_BANNER,
+  SNIPER_PREFLIGHT_INPUT_DISCLAIMERS,
+} from "./preflight-input.js";
+
+export type {
+  SniperPreflightInputEntryInput,
+  NormalizeSniperPreflightInputInput,
+  SniperPreflightInputEntry,
+  SniperPreflightInput,
+  FormatSniperPreflightInputOptions,
+} from "./preflight-input.js";
+
+export {
   buildPaperSniperDecisionReport,
   validatePaperSniperDecisionReport,
   formatPaperSniperDecisionReport,

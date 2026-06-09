@@ -18,6 +18,7 @@ import {
   paperBacktestResearchManifestReport,
   paperBacktestResearchVerifyReport,
   paperSniperCandidatesValidateReport,
+  paperSniperPreflightInputValidateReport,
   paperSniperReportReport,
   paperSniperPolicyValidateReport,
 } from "./commands.js";
@@ -282,6 +283,35 @@ describe("examples/sniper — fixtures validate", () => {
     expect(report.hasMissingRecommendedArtifact).toBe(true);
     expect(report.hasPaperEnter).toBe(false);
     expect(report.watchedMissingInfoIds).toEqual(["example-usdc", "example-wsol"]);
+  });
+
+  it("the shipped preflight input validates + cross-checks against the shipped candidate list", () => {
+    const r = paperSniperPreflightInputValidateReport(
+      { cwd: SNIPER_EXAMPLES_DIR, env: {} },
+      { inputPath: "preflight-input.example.json", candidatesPath: "candidates.example.json", json: true },
+    );
+    expect(r.exitCode).toBe(0);
+    const artifact = JSON.parse(r.text) as {
+      schemaVersion: string;
+      entryCount: number;
+      crossCheckedAgainstCandidateList: boolean;
+      uncoveredCandidateCount: number;
+      missingRiskCount: number;
+      validationStatus: string;
+    };
+    expect(artifact.schemaVersion).toBe("sniper.preflight.input.v1");
+    expect(artifact.entryCount).toBe(2);
+    expect(artifact.crossCheckedAgainstCandidateList).toBe(true);
+    expect(artifact.uncoveredCandidateCount).toBe(0);
+    // example-wsol deliberately ships without a risk section (shows the honest warning path).
+    expect(artifact.missingRiskCount).toBe(1);
+    expect(artifact.validationStatus).toBe("valid-with-warnings");
+    expect(
+      paperSniperPreflightInputValidateReport(
+        { cwd: SNIPER_EXAMPLES_DIR, env: {} },
+        { inputPath: "preflight-input.example.json", failOnMissingRisk: true },
+      ).exitCode,
+    ).toBe(1);
   });
 
   it("the shipped policy config validates and normalizes (PAPER ONLY, conservative)", () => {

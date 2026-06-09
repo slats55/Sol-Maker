@@ -53,6 +53,9 @@ import {
   formatSniperCandidateList,
   buildSniperTokenPreflightReport,
   formatSniperTokenPreflightReport,
+  normalizeSniperPreflightInput,
+  formatSniperPreflightInput,
+  SNIPER_PREFLIGHT_INPUT_SCHEMA_VERSION,
   buildPaperSniperDecisionReport,
   formatPaperSniperDecisionReport,
   buildPaperSniperDecisionReportV2,
@@ -86,6 +89,7 @@ import {
   type SniperCandidateList,
   type SniperTokenPreflightReport,
   type SniperPreflightCandidateData,
+  type SniperPreflightInput,
   type SniperPaperDecisionReport,
   type SniperPaperDecisionReportV2,
   type SniperDecisionRules,
@@ -4159,6 +4163,12 @@ export interface PaperSniperPreflightCommandOptions {
   inspections?: string[];
   /** Repeatable "candidateId=path" advisory risk JSON files (token:risk output). */
   risks?: string[];
+  /**
+   * Optional validated preflight input artifact (`sniper.preflight.input.v1`, or raw operator input
+   * accepted by the validator). Mutually exclusive with --inspection / --risk; its verbatim
+   * per-candidate inspection/risk values drive the build.
+   */
+  preflightInputPath?: string;
   json?: boolean;
   /** Optional path to write the preflight report JSON (writes nothing if omitted). */
   outPath?: string;
@@ -4187,6 +4197,9 @@ export function paperSniperPreflightReport(
   opts: PaperSniperPreflightCommandOptions = {},
 ): CliReport {
   if (!opts.candidatesPath) return { text: "Refusing: --candidates <path> is required.", exitCode: 1 };
+  if (opts.preflightInputPath && ((opts.inspections?.length ?? 0) > 0 || (opts.risks?.length ?? 0) > 0)) {
+    return { text: "Refusing: --preflight-input is mutually exclusive with --inspection / --risk.", exitCode: 1 };
+  }
 
   // 1) Read + normalize the candidate list (same wrong-schema guard as the validate command).
   let raw: unknown;
@@ -4238,6 +4251,41 @@ export function paperSniperPreflightReport(
   const riskErr = loadInto(opts.risks, "risk");
   if (riskErr) return { text: redactString(`Refusing: ${riskErr}`), exitCode: 1 };
 
+  // 2b) Or: a validated preflight input artifact (Sprint 47). Its verbatim per-candidate values
+  //     drive the build; it is normalized + CROSS-CHECKED against the candidate list first, so an
+  //     unknown candidateId or a disagreeing mint refuses here instead of failing mid-build.
+  if (opts.preflightInputPath) {
+    let inputRaw: unknown;
+    try {
+      inputRaw = readJsonValue(ctx, opts.preflightInputPath, "preflight input");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (!isPlainObject(inputRaw)) {
+      return { text: "Refusing: preflight input must be a JSON object with an entries array.", exitCode: 1 };
+    }
+    if (inputRaw.schemaVersion !== undefined && inputRaw.schemaVersion !== SNIPER_PREFLIGHT_INPUT_SCHEMA_VERSION) {
+      return { text: redactString(`Refusing: preflight input schemaVersion must be "${SNIPER_PREFLIGHT_INPUT_SCHEMA_VERSION}".`), exitCode: 1 };
+    }
+    let inputArtifact: SniperPreflightInput;
+    try {
+      inputArtifact = normalizeSniperPreflightInput({
+        sourceLabel: typeof inputRaw.sourceLabel === "string" ? inputRaw.sourceLabel : opts.preflightInputPath,
+        candidateListRef: typeof inputRaw.candidateListRef === "string" ? inputRaw.candidateListRef : null,
+        entries: (inputRaw.entries ?? []) as never,
+        candidateList: list,
+      });
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    for (const e of inputArtifact.entries) {
+      const entry: SniperPreflightCandidateData = { candidateId: e.candidateId };
+      if (e.inspection !== null) entry.inspection = e.inspection;
+      if (e.risk !== null) entry.risk = e.risk;
+      dataById.set(e.candidateId, entry);
+    }
+  }
+
   // 3) Build the preflight report.
   let report: SniperTokenPreflightReport;
   try {
@@ -4266,6 +4314,113 @@ export function paperSniperPreflightReport(
     return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
   }
   return { text: formatSniperTokenPreflightReport(report, { label: opts.candidatesPath }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 47 — paper:sniper:preflight:input:validate
+//   Validate a LOCAL preflight input artifact (sniper.preflight.input.v1):
+//   per-candidate token:inspect / token:risk shaped values, projected with the
+//   SAME logic the preflight uses. LOCAL-ONLY: no RPC, no network, no wallet.
+//   Reads the named files only; writes nothing.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperPreflightInputValidateCommandOptions {
+  /** Preflight input JSON path (raw operator input or a canonical artifact). Required. */
+  inputPath?: string;
+  /** Optional candidate list JSON path to CROSS-CHECK entries against. */
+  candidatesPath?: string;
+  json?: boolean;
+  /** Exit non-zero when the validated artifact carries any warning. */
+  failOnWarning?: boolean;
+  /** Exit non-zero when any entry has no usable risk report. */
+  failOnMissingRisk?: boolean;
+  /** Exit non-zero when any entry has no usable inspection. */
+  failOnMissingInspection?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:preflight:input:validate` — validate + normalize a LOCAL preflight input
+ * artifact (`sniper.preflight.input.v1`): per-candidate, already-loaded read-only inspection
+ * (token:inspect output) and advisory risk (token:risk output) values, projected with the SAME logic
+ * the preflight itself uses, so an unsupported shape / missing section / mint mismatch surfaces HERE
+ * instead of silently mid-preflight. `--candidates` (optional) cross-checks entries against the list
+ * (unknown candidateId or disagreeing mint = refusal; uncovered candidates = warning). LOCAL-ONLY: it
+ * fetches nothing and verifies NO on-chain fact. Reads the named files only and writes nothing.
+ */
+export function paperSniperPreflightInputValidateReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperPreflightInputValidateCommandOptions = {},
+): CliReport {
+  if (!opts.inputPath) return { text: "Refusing: --input <path> is required.", exitCode: 1 };
+
+  let raw: unknown;
+  try {
+    raw = readJsonValue(ctx, opts.inputPath, "preflight input");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  if (!isPlainObject(raw)) {
+    return { text: "Refusing: preflight input must be a JSON object with an entries array.", exitCode: 1 };
+  }
+  if (raw.schemaVersion !== undefined && raw.schemaVersion !== SNIPER_PREFLIGHT_INPUT_SCHEMA_VERSION) {
+    return {
+      text: redactString(`Refusing: preflight input schemaVersion must be "${SNIPER_PREFLIGHT_INPUT_SCHEMA_VERSION}".`),
+      exitCode: 1,
+    };
+  }
+
+  // Optional candidate list for the cross-check (same wrong-schema guard as the sibling commands).
+  let candidateList: unknown;
+  if (opts.candidatesPath) {
+    let candsRaw: unknown;
+    try {
+      candsRaw = readJsonValue(ctx, opts.candidatesPath, "sniper candidate list");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (!isPlainObject(candsRaw)) {
+      return { text: "Refusing: candidate list must be a JSON object with a candidates array.", exitCode: 1 };
+    }
+    if (candsRaw.schemaVersion !== undefined && candsRaw.schemaVersion !== SNIPER_CANDIDATE_LIST_SCHEMA_VERSION) {
+      return {
+        text: redactString(`Refusing: candidate list schemaVersion must be "${SNIPER_CANDIDATE_LIST_SCHEMA_VERSION}".`),
+        exitCode: 1,
+      };
+    }
+    try {
+      candidateList = normalizeSniperCandidateList({
+        sourceLabel: typeof candsRaw.sourceLabel === "string" ? candsRaw.sourceLabel : opts.candidatesPath,
+        candidates: (candsRaw.candidates ?? []) as never,
+      });
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+  }
+
+  let artifact: SniperPreflightInput;
+  try {
+    artifact = normalizeSniperPreflightInput({
+      sourceLabel: typeof raw.sourceLabel === "string" ? raw.sourceLabel : opts.inputPath,
+      candidateListRef:
+        typeof raw.candidateListRef === "string" ? raw.candidateListRef : (opts.candidatesPath ?? null),
+      entries: (raw.entries ?? []) as never,
+      candidateList,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const exitCode =
+    (opts.failOnWarning && artifact.hasWarnings) ||
+    (opts.failOnMissingRisk && artifact.missingRiskCount > 0) ||
+    (opts.failOnMissingInspection && artifact.missingInspectionCount > 0)
+      ? 1
+      : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(artifact), null, 2), exitCode };
+  }
+  return { text: formatSniperPreflightInput(artifact, { label: opts.inputPath }), exitCode };
 }
 
 // ---------------------------------------------------------------------------

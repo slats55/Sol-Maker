@@ -19,6 +19,7 @@ import { join } from "node:path";
 import {
   paperSniperCandidatesValidateReport,
   paperSniperPreflightReport,
+  paperSniperPreflightInputValidateReport,
   paperSniperDecideReport,
   paperSniperWorkflowReport,
   paperSniperReportReport,
@@ -69,6 +70,7 @@ describe("paper:sniper:* — required-argument refusals (consistent, never a cra
   const cases: { name: string; run: () => CliReport }[] = [
     { name: "candidates:validate (--input)", run: () => paperSniperCandidatesValidateReport({}, {}) },
     { name: "preflight (--candidates)", run: () => paperSniperPreflightReport({}, {}) },
+    { name: "preflight:input:validate (--input)", run: () => paperSniperPreflightInputValidateReport({}, {}) },
     { name: "decide (--candidates)", run: () => paperSniperDecideReport({}, {}) },
     { name: "report (--candidates)", run: () => paperSniperReportReport({}, {}) },
     { name: "diff:report (--base)", run: () => paperSniperDiffReportReport({}, {}) },

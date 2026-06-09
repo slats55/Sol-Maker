@@ -169,8 +169,11 @@ const SEVERITY_RANK: Record<string, number> = { critical: 5, high: 4, medium: 3,
 /** Cap on the number of flags echoed per candidate (concise; the risk JSON holds the full list). */
 const MAX_TOP_FLAGS = 5;
 
-/** Project a parsed inspection value into a validated summary (or null if not an object). */
-function projectInspection(value: unknown, mint: string): SniperPreflightInspection | null {
+/**
+ * INTERNAL building block (also consumed by the preflight INPUT validator): project a parsed
+ * inspection value into a validated summary, or null if it is not an object. Pure.
+ */
+export function projectSniperPreflightInspection(value: unknown, mint: string): SniperPreflightInspection | null {
   if (!isObject(value)) return null;
   const inspMint = typeof value.mint === "string" ? value.mint.trim() : null;
   return {
@@ -184,8 +187,11 @@ function projectInspection(value: unknown, mint: string): SniperPreflightInspect
   };
 }
 
-/** Project a parsed risk value into a validated summary (or null if not an object). */
-function projectRisk(value: unknown, mint: string): SniperPreflightRisk | null {
+/**
+ * INTERNAL building block (also consumed by the preflight INPUT validator): project a parsed
+ * advisory risk value into a validated summary, or null if it is not an object. Pure.
+ */
+export function projectSniperPreflightRisk(value: unknown, mint: string): SniperPreflightRisk | null {
   if (!isObject(value)) return null;
   const riskMint = typeof value.mint === "string" ? value.mint.trim() : null;
   const decision = typeof value.decision === "string" && RISK_DECISIONS.has(value.decision)
@@ -219,8 +225,8 @@ function buildEntry(
   data: SniperPreflightCandidateData | undefined,
 ): SniperPreflightEntry {
   const mintValid = isValidMintAddress(mint);
-  const inspection = data?.inspection !== undefined ? projectInspection(data.inspection, mint) : null;
-  const risk = data?.risk !== undefined ? projectRisk(data.risk, mint) : null;
+  const inspection = data?.inspection !== undefined ? projectSniperPreflightInspection(data.inspection, mint) : null;
+  const risk = data?.risk !== undefined ? projectSniperPreflightRisk(data.risk, mint) : null;
 
   const warnings: string[] = [];
   const disqualifiers: string[] = [];

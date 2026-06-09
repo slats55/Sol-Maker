@@ -16,7 +16,8 @@ practical "how do I run this" companion to [`SNIPER_MODEL.md`](SNIPER_MODEL.md) 
 | 0. Where am I? | `paper:sniper:workflow` | `sniper.workflow.plan.v1` | Checks which local artifacts exist + validate, prints the recommended NEXT command. Executes nothing. |
 | 1. Candidate intake | `paper:sniper:candidates:validate` | `sniper.candidate.list.v1` | Validates + normalizes a local candidate list (mint pubkey validity, unique ids, duplicate-mint warnings). |
 | 2. Read-only inputs | `token:inspect`, `token:risk` | (existing) | Existing read-only commands that produce per-mint inspection + advisory risk JSON. |
-| 3. Token preflight | `paper:sniper:preflight` | `sniper.token.preflight.report.v1` | Combines mint validity + inspection + risk into `pass` / `warn` / `fail` / `unknown` per candidate. |
+| 2b. Input validation | `paper:sniper:preflight:input:validate` | `sniper.preflight.input.v1` | Validates the LOCAL inspection/risk inputs as one bundle (unsupported shape / missing section / mint mismatch surface here), optionally cross-checked against the candidate list. |
+| 3. Token preflight | `paper:sniper:preflight` | `sniper.token.preflight.report.v1` | Combines mint validity + inspection + risk into `pass` / `warn` / `fail` / `unknown` per candidate. Accepts `--preflight-input` instead of repeatable flags. |
 | 4. Paper decisions | `paper:sniper:decide` | `sniper.paper.decision.report.v1` | Folds the candidate list + preflight + rules into `skip` / `watch` / `paper-enter` / `paper-reject` / `unknown`. |
 | 5. Run report | `paper:sniper:report` | `sniper.run.report.v1` | Joins candidate list + preflight + decision + workflow into one navigable per-candidate view (reason trail, grouped ids, navigation, CI section). |
 | 6. Run report diff | `paper:sniper:diff:report` | `sniper.run.report.diff.v1` | Compares two run reports: added/removed candidates, decision + preflight-status transitions, conservative got-worse/recovered flags. |
@@ -47,6 +48,7 @@ invariants.
 | --- | --- | --- | --- |
 | `paper:sniper:candidates:validate` | `--input` | never | `sniper.candidate.list.v1` |
 | `paper:sniper:preflight` | `--candidates` | `--out` only | `sniper.token.preflight.report.v1` |
+| `paper:sniper:preflight:input:validate` | `--input` | never | `sniper.preflight.input.v1` |
 | `paper:sniper:decide` | `--candidates` | `--out` only | `sniper.paper.decision.report.v1` (or `.v2` via `--schema-version v2`) |
 | `paper:sniper:policy:validate` | `--input` | never | `sniper.policy.config.v1` |
 | `paper:sniper:workflow` | (none) | never | `sniper.workflow.plan.v1` |
@@ -114,6 +116,22 @@ Each candidate gets `pass` / `warn` / `fail` / `unknown`. A risk `REJECT` or a c
 `fail`; a `CAUTION`, a freeze/mint authority, or a high-severity flag is a `warn`; a candidate with no
 inspection and no risk is `unknown`. This command is **local-only** (no RPC) — it consumes the JSON
 from step 2.
+
+#### Validating the inputs first (Sprint 47)
+
+Instead of wiring loose files with repeatable flags, bundle them into ONE input artifact and validate
+it before the preflight (`sniper.preflight.input.v1`):
+
+```bash
+# pf-input.json: { "entries": [{ "candidateId": "c1", "mint": "<mint>", "inspection": {…}, "risk": {…} }] }
+pnpm soulmaker paper:sniper:preflight:input:validate --input pf-input.json --candidates candidates.json --json
+pnpm soulmaker paper:sniper:preflight --candidates candidates.json --preflight-input pf-input.json --out preflight.json
+```
+
+Unsupported shapes, missing inspection/risk sections, and mint mismatches surface as explicit
+warnings (with `--fail-on-warning` / `--fail-on-missing-risk` / `--fail-on-missing-inspection` CI
+gates); an entry for an unknown candidate or a disagreeing mint is refused. **Local-only** — this
+validates well-formedness, it verifies no on-chain fact.
 
 ### 4. Decide (paper-only)
 

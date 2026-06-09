@@ -18,6 +18,7 @@
 | `candidates.duplicate-mint.json` | Two candidates share one mint — exercises the duplicate-mint **warning**. |
 | `candidates.invalid-mint.json` | A candidate with an invalid mint — **negative** fixture (intake refuses it). |
 | `preflight-inputs.fictional.json` | Invented `token:inspect` / `token:risk`-shaped inputs (keyed by candidateId) for the fictional candidates. |
+| `preflight-input.example.json` | A `sniper.preflight.input.v1` input bundle for the example candidates (one entry deliberately missing risk — shows the honest warning). Validate: `pnpm soulmaker paper:sniper:preflight:input:validate --input examples/sniper/preflight-input.example.json --candidates examples/sniper/candidates.example.json`. |
 | `policy.example.json` | A conservative example operator/risk policy (`sniper.policy.config.v1`). |
 
 ## End-to-end walkthrough (fictional fixtures)
