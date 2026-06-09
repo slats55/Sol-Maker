@@ -43,6 +43,7 @@ import {
   paperBacktestDiffResearchPackReport,
   paperSniperCandidatesValidateReport,
   paperSniperPreflightReport,
+  paperSniperDecideReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1125,6 +1126,48 @@ program
           force: Boolean(opts.force),
           failOnFail: Boolean(opts.failOnFail),
           failOnWarning: Boolean(opts.failOnWarning),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:decide")
+  .description(
+    "Produce a PAPER-only per-candidate decision report from a LOCAL candidate list + an optional preflight + optional operator rules (`sniper.paper.decision.report.v1`). Each candidate gets a SIMULATED skip / watch / paper-enter / paper-reject / unknown with reasons (denylist or invalid mint = skip; preflight fail or risk-score-over-cap = paper-reject; preflight warn / unknown / no preflight / low liquidity = watch; preflight pass + all rules = paper-enter). A paper-enter is a paper-only decision — NOT a buy/sell order, NOT a transaction, NOT live readiness. Reads the named files only, writes nothing unless --out. No network, no wallet",
+  )
+  .option("--candidates <path>", "candidate list JSON")
+  .option("--preflight <path>", "preflight report JSON (sniper.token.preflight.report.v1)")
+  .option("--rules <path>", "decision rules JSON (requirePreflightPass / maxRiskScore / minObservedLiquidityUsd / denyMints)")
+  .option("--json", "emit the decision report as stable JSON")
+  .option("--out <path>", "write ONLY the decision report JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-paper-enter", "exit non-zero when any candidate would paper-enter")
+  .option("--fail-on-risk", "exit non-zero when any candidate was paper-rejected on risk")
+  .action(
+    (opts: {
+      candidates?: string;
+      preflight?: string;
+      rules?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnPaperEnter?: boolean;
+      failOnRisk?: boolean;
+    }) => {
+      const { text, exitCode } = paperSniperDecideReport(
+        {},
+        {
+          candidatesPath: opts.candidates,
+          preflightPath: opts.preflight,
+          rulesPath: opts.rules,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnPaperEnter: Boolean(opts.failOnPaperEnter),
+          failOnRisk: Boolean(opts.failOnRisk),
         },
       );
       console.log(text);

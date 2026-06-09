@@ -53,10 +53,14 @@ import {
   formatSniperCandidateList,
   buildSniperTokenPreflightReport,
   formatSniperTokenPreflightReport,
+  buildPaperSniperDecisionReport,
+  formatPaperSniperDecisionReport,
   SNIPER_CANDIDATE_LIST_SCHEMA_VERSION,
   type SniperCandidateList,
   type SniperTokenPreflightReport,
   type SniperPreflightCandidateData,
+  type SniperPaperDecisionReport,
+  type SniperDecisionRules,
 } from "@soulmaker/sniper";
 import {
   runPaperSession,
@@ -4223,6 +4227,128 @@ export function paperSniperPreflightReport(
     return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
   }
   return { text: formatSniperTokenPreflightReport(report, { label: opts.candidatesPath }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 27 — paper:sniper:decide
+//   Fold a LOCAL candidate list + an optional preflight report + optional
+//   operator rules into a per-candidate SIMULATED decision (skip / watch /
+//   paper-enter / paper-reject / unknown), with reasons. A paper-enter is a
+//   paper-only decision — NOT a buy/sell order, NOT a transaction, NOT live
+//   readiness. Reads the named files only; writes nothing unless --out. No
+//   network, no wallet.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperDecideCommandOptions {
+  /** Candidate list JSON path. Required. */
+  candidatesPath?: string;
+  /** Optional preflight report JSON path (sniper.token.preflight.report.v1). */
+  preflightPath?: string;
+  /** Optional decision rules JSON path. */
+  rulesPath?: string;
+  json?: boolean;
+  /** Optional path to write the decision report JSON (writes nothing if omitted). */
+  outPath?: string;
+  /** Overwrite an existing --out file (refused by default). */
+  force?: boolean;
+  /** Exit non-zero when any candidate would paper-enter. */
+  failOnPaperEnter?: boolean;
+  /** Exit non-zero when any candidate was paper-rejected on risk. */
+  failOnRisk?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:decide` — produce a PAPER-only per-candidate decision report from a LOCAL
+ * candidate list, an optional preflight report, and optional operator rules. Reads ONLY the named
+ * local files (BOM-tolerant). Each candidate gets a SIMULATED `skip` / `watch` / `paper-enter` /
+ * `paper-reject` / `unknown` decision with reasons — a `paper-enter` is a paper-only decision, never a
+ * buy/sell order, a transaction, or live readiness. `--json` emits the report; `--out` writes ONLY the
+ * report JSON (refusing overwrite without `--force`, creating no directories); `--fail-on-paper-enter`
+ * / `--fail-on-risk` set the exit code. No network, no wallet, no transaction build/sign/send.
+ */
+export function paperSniperDecideReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperDecideCommandOptions = {},
+): CliReport {
+  if (!opts.candidatesPath) return { text: "Refusing: --candidates <path> is required.", exitCode: 1 };
+
+  // 1) Read + normalize the candidate list (same wrong-schema guard as the other sniper commands).
+  let raw: unknown;
+  try {
+    raw = readJsonValue(ctx, opts.candidatesPath, "sniper candidate list");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  if (!isPlainObject(raw)) {
+    return { text: "Refusing: candidate list must be a JSON object with a candidates array.", exitCode: 1 };
+  }
+  if (raw.schemaVersion !== undefined && raw.schemaVersion !== SNIPER_CANDIDATE_LIST_SCHEMA_VERSION) {
+    return {
+      text: redactString(`Refusing: candidate list schemaVersion must be "${SNIPER_CANDIDATE_LIST_SCHEMA_VERSION}".`),
+      exitCode: 1,
+    };
+  }
+  let list: SniperCandidateList;
+  try {
+    list = normalizeSniperCandidateList({
+      sourceLabel: typeof raw.sourceLabel === "string" ? raw.sourceLabel : opts.candidatesPath,
+      candidates: (raw.candidates ?? []) as never,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // 2) Optional preflight + rules (the builder strictly validates each).
+  let preflight: unknown;
+  if (opts.preflightPath) {
+    try {
+      preflight = readJsonValue(ctx, opts.preflightPath, "preflight report");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+  }
+  let rules: SniperDecisionRules | undefined;
+  if (opts.rulesPath) {
+    let rulesValue: unknown;
+    try {
+      rulesValue = readJsonValue(ctx, opts.rulesPath, "decision rules");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (!isPlainObject(rulesValue)) {
+      return { text: "Refusing: decision rules must be a JSON object.", exitCode: 1 };
+    }
+    rules = rulesValue as SniperDecisionRules;
+  }
+
+  // 3) Build the decision report.
+  let report: SniperPaperDecisionReport;
+  try {
+    report = buildPaperSniperDecisionReport({ candidateList: list, preflight, rules });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // 4) Optional write: ONLY the report JSON, refuse overwrite without --force, create no directories.
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(report), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write decision report at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  const exitCode =
+    (opts.failOnPaperEnter && report.hasPaperEnter) || (opts.failOnRisk && report.hasRiskReject) ? 1 : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
+  }
+  return { text: formatPaperSniperDecisionReport(report, { label: opts.candidatesPath }), exitCode };
 }
 
 function yesNo(value: boolean): string {
