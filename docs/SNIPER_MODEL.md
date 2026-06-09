@@ -374,6 +374,40 @@ pnpm soulmaker paper:sniper:audit --report <run.json> --label "run-7" --note "re
 It reads the run report only and **writes nothing** unless `--out`. `--fail-on-failure` /
 `--fail-on-warning` set the exit code. Provenance over a SIMULATED run — never a live result or an order.
 
+## Sniper session pack (Sprint 34)
+
+The session pack is the sniper analogue of the research artifact pack — it bundles a whole local operator
+session into one navigable artifact. The pure `buildSniperSessionPack` (schema `sniper.session.pack.v1`)
+takes an already-loaded set of artifacts and classifies each by its `schemaVersion` against a registry of
+the **eight known** sniper schemas (candidate list, token preflight, paper decision, workflow plan, run
+report, run report diff, policy config, audit log).
+
+> Pack the **canonical** artifacts (each carrying a `schemaVersion`) — e.g. the candidate list from
+> `paper:sniper:candidates:validate --json`, not the raw intake file. A known schema is **strictly
+> validated** (a corrupt artifact claiming a known schema is **refused**) and its high-level flags are
+> read **verbatim**; an unknown / absent schema becomes an `unsupported` entry — surfaced honestly, never
+> silently trusted.
+
+The pack reports per-artifact flags (`hasPaperEnter` / `hasRiskBlock` / `hasUnknown` / `hasFailure`, each
+`null` when not applicable to that kind), `recognizedCount` / `unsupportedCount`, the classified
+`kindsPresent`, and **presence-only** chain-coverage tiers: `isMinimal` (a candidate list is present),
+`isDecisionReady` (candidate list + preflight + decision present), and `isAudited` (decision-ready plus a
+run report and an audit log present). These tiers describe **presence only** — never completeness,
+correctness, or trading readiness. Duplicate labels are refused.
+
+### CLI — `paper:sniper:session:pack`
+
+```bash
+pnpm soulmaker paper:sniper:session:pack \
+  --artifact candidates=candidates.json --artifact preflight=preflight.json \
+  --artifact decision=decision.json --artifact run=run.json --artifact audit=audit.json \
+  --label "session-7" --out session.json
+```
+
+It reads the named files only and **writes nothing** unless `--out`. The `--fail-on-*` flags
+(`--fail-on-risk`, `--fail-on-unknown`, `--fail-on-paper-enter`, `--fail-on-unsupported`) set the exit
+code. A `paper-enter` flag carried through is a **simulated** classification, never an order.
+
 ## What is intentionally NOT here yet
 
 - **No transaction planning / signing / sending / wallet / burner** — Phases 6 and 7, not started. The

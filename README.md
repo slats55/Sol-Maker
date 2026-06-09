@@ -248,6 +248,15 @@ decision summary, and the step's warnings/failures. It carries **no wall-clock t
 operator-supplied, never `Date.now()` — so the same run report yields a byte-identical log. It writes
 nothing unless `--out`; `--fail-on-failure` / `--fail-on-warning` gate CI.
 
+Sprint 34 bundles a whole local operator session: `paper:sniper:session:pack --artifact <label=path> …`
+collects the sniper artifacts (candidate list, preflight, decision, run report + diff, policy, audit log)
+into one `sniper.session.pack.v1`. Each artifact is classified by its `schemaVersion` against a registry
+of the **known** sniper schemas — a known schema is strictly validated and its flags read verbatim, while
+an **unknown** schema is surfaced honestly as `unsupported` (never silently trusted). Coverage tiers
+(`isMinimal` / `isDecisionReady` / `isAudited`) describe **presence only**, never completeness or trading
+readiness. It writes nothing unless `--out`; `--fail-on-risk` / `--fail-on-unknown` /
+`--fail-on-paper-enter` / `--fail-on-unsupported` gate CI.
+
 ## Non-negotiable security rules (summary)
 
 The full, authoritative list is in [`SECURITY.md`](SECURITY.md). The short form:
@@ -340,7 +349,9 @@ soulmaker/
                 #            Sprint 32 adds the policy config (sniper.policy.config.v1): explicit,
                 #            conservative, tighten-only operator/risk policy for paper:sniper:decide;
                 #            Sprint 33 adds the audit log (sniper.audit.log.v1): deterministic
-                #            per-step provenance over a run report, no wall-clock time
+                #            per-step provenance over a run report, no wall-clock time;
+                #            Sprint 34 adds the session pack (sniper.session.pack.v1): bundles all
+                #            sniper artifacts, classifies each, surfaces unsupported schemas honestly
                 #            (paper-only) — NO chain capability, NO wallet, NO network
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/

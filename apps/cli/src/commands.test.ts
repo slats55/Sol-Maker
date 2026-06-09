@@ -60,6 +60,7 @@ import {
   paperSniperDiffReportReport,
   paperSniperPolicyValidateReport,
   paperSniperAuditReport,
+  paperSniperSessionPackReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -7433,6 +7434,118 @@ describe("paperSniperAuditReport (Sprint 33)", () => {
       const r = paperSniperAuditReport({ cwd, env: {} }, { reportPath: wrong });
       expect(r.exitCode).toBe(1);
       expect(r.text).toMatch(/run report is invalid/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperSniperSessionPackReport (Sprint 34)", () => {
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const WSOL = "So11111111111111111111111111111111111111112";
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+  const cleanInspection = (mint: string) => ({ mint, decimals: 6, supplyRaw: "1", uiSupply: 1, mintAuthorityPresent: false, freezeAuthorityPresent: false, isInitialized: true, programLabel: "spl-token" });
+  const riskPass = (mint: string) => ({ mint, score: 10, decision: "PASS_FOR_PAPER_EVALUATION", flags: [], summary: [] });
+  const riskReject = (mint: string) => ({ mint, score: 95, decision: "REJECT", flags: [{ id: "rug", severity: "critical", title: "Rug" }], summary: [] });
+
+  /** Build candidate + preflight + decision + run report + audit files via the real commands. */
+  function setup(cwd: string): { cands: string; pf: string; dec: string; run: string; audit: string } {
+    const rawCands = writeJson(cwd, "cands.raw.json", { candidates: [{ candidateId: "good", mint: USDC, observedLiquidityUsd: 50000 }, { candidateId: "bad", mint: WSOL }] });
+    // The session pack bundles CANONICAL artifacts — pack the normalized candidate list, not raw intake.
+    const canon = paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: rawCands, json: true });
+    writeFileSync(join(cwd, "cands.json"), canon.text);
+    const cands = "cands.json";
+    writeJson(cwd, "good.insp.json", cleanInspection(USDC));
+    writeJson(cwd, "good.risk.json", riskPass(USDC));
+    writeJson(cwd, "bad.risk.json", riskReject(WSOL));
+    paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, inspections: ["good=good.insp.json"], risks: ["good=good.risk.json", "bad=bad.risk.json"], outPath: "pf.json" });
+    paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: "pf.json", outPath: "dec.json" });
+    const run = paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: "pf.json", decisionsPath: "dec.json", json: true });
+    writeFileSync(join(cwd, "run.json"), run.text);
+    const audit = paperSniperAuditReport({ cwd, env: {} }, { reportPath: "run.json", label: "r", json: true });
+    writeFileSync(join(cwd, "audit.json"), audit.text);
+    return { cands, pf: "pf.json", dec: "dec.json", run: "run.json", audit: "audit.json" };
+  }
+
+  it("refuses when no --artifact is given and on a bad spec", () => {
+    expect(paperSniperSessionPackReport({}, {}).text).toMatch(/^Refusing: at least one --artifact/);
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      expect(paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: ["noeq"] }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("bundles a full session and reports recognized kinds + coverage tiers", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { cands, pf, dec, run, audit } = setup(cwd);
+      const r = paperSniperSessionPackReport({ cwd, env: {} }, {
+        label: "session-7",
+        artifacts: [`cands=${cands}`, `pf=${pf}`, `dec=${dec}`, `run=${run}`, `audit=${audit}`],
+        json: true,
+      });
+      const obj = JSON.parse(r.text) as { schemaVersion: string; recognizedCount: number; coverage: { isAudited: boolean }; hasPaperEnter: boolean; hasRiskBlock: boolean };
+      expect(obj.schemaVersion).toBe("sniper.session.pack.v1");
+      expect(obj.recognizedCount).toBe(5);
+      expect(obj.coverage.isAudited).toBe(true);
+      expect(obj.hasPaperEnter).toBe(true);
+      expect(obj.hasRiskBlock).toBe(true);
+      // deterministic
+      expect(paperSniperSessionPackReport({ cwd, env: {} }, { label: "session-7", artifacts: [`cands=${cands}`, `pf=${pf}`, `dec=${dec}`, `run=${run}`, `audit=${audit}`], json: true }).text).toBe(r.text);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("surfaces an unsupported artifact and gates it with --fail-on-unsupported", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { cands } = setup(cwd);
+      const mystery = writeJson(cwd, "mystery.json", { schemaVersion: "backtest.report.v1" });
+      const r = paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: [`cands=${cands}`, `mystery=${mystery}`], json: true });
+      const obj = JSON.parse(r.text) as { unsupportedCount: number; hasUnsupported: boolean };
+      expect(obj.unsupportedCount).toBe(1);
+      expect(obj.hasUnsupported).toBe(true);
+      expect(paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: [`cands=${cands}`, `mystery=${mystery}`], failOnUnsupported: true }).exitCode).toBe(1);
+      expect(paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: [`cands=${cands}`, `mystery=${mystery}`] }).exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("the --fail-on-* flags set the exit code; --out writes ONLY the pack JSON", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { cands, dec } = setup(cwd);
+      const args = [`cands=${cands}`, `dec=${dec}`];
+      expect(paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: args, failOnPaperEnter: true }).exitCode).toBe(1);
+      expect(paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: args, failOnRisk: true }).exitCode).toBe(1);
+      const before = readdirSync(cwd).length;
+      const r1 = paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: args, outPath: "pack.json" });
+      expect(r1.exitCode).toBe(0);
+      expect(readdirSync(cwd).length).toBe(before + 1);
+      const written = JSON.parse(readFileSync(join(cwd, "pack.json"), "utf8")) as { schemaVersion: string };
+      expect(written.schemaVersion).toBe("sniper.session.pack.v1");
+      expect(paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: args, outPath: "pack.json" }).exitCode).toBe(1);
+      expect(paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: args, outPath: "pack.json", force: true }).exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a corrupt artifact that claims a known schema", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const { cands } = setup(cwd);
+      const corrupt = writeJson(cwd, "corrupt.json", { schemaVersion: "sniper.run.report.v1", banner: "wrong" });
+      const r = paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: [`cands=${cands}`, `bad=${corrupt}`] });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toMatch(/claims sniper.run.report.v1 but is invalid/);
     } finally {
       cleanup();
     }

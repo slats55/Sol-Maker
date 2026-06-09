@@ -49,6 +49,7 @@ import {
   paperSniperDiffReportReport,
   paperSniperPolicyValidateReport,
   paperSniperAuditReport,
+  paperSniperSessionPackReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1368,6 +1369,56 @@ program
           force: Boolean(opts.force),
           failOnFailure: Boolean(opts.failOnFailure),
           failOnWarning: Boolean(opts.failOnWarning),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:session:pack")
+  .description(
+    "Bundle MANY local sniper artifact JSON files into one deterministic session pack (`sniper.session.pack.v1`). Each --artifact label=path is classified by its schemaVersion; a KNOWN sniper schema (candidate list / preflight / decision / workflow / run report / run report diff / policy config / audit log) is strictly validated and its flags read VERBATIM, while an UNKNOWN schema is surfaced honestly as `unsupported`. Coverage tiers describe PRESENCE only (which artifact kinds are present) — never completeness or trading readiness. Reads the named files only, writes nothing unless --out. No network, no wallet",
+  )
+  .option(
+    "--artifact <label=path>",
+    "sniper artifact JSON for the session (repeatable)",
+    (value: string, previous: string[]) => previous.concat(value),
+    [] as string[],
+  )
+  .option("--label <string>", "operator session label")
+  .option("--json", "emit the session pack as stable JSON")
+  .option("--out <path>", "write ONLY the session pack JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-risk", "exit non-zero when any artifact carries a risk block")
+  .option("--fail-on-unknown", "exit non-zero when any artifact carries an unknown classification")
+  .option("--fail-on-paper-enter", "exit non-zero when any artifact carries a SIMULATED paper-enter")
+  .option("--fail-on-unsupported", "exit non-zero when any artifact has an unsupported schema")
+  .action(
+    (opts: {
+      artifact?: string[];
+      label?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnRisk?: boolean;
+      failOnUnknown?: boolean;
+      failOnPaperEnter?: boolean;
+      failOnUnsupported?: boolean;
+    }) => {
+      const { text, exitCode } = paperSniperSessionPackReport(
+        {},
+        {
+          artifacts: opts.artifact ?? [],
+          label: opts.label,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnRisk: Boolean(opts.failOnRisk),
+          failOnUnknown: Boolean(opts.failOnUnknown),
+          failOnPaperEnter: Boolean(opts.failOnPaperEnter),
+          failOnUnsupported: Boolean(opts.failOnUnsupported),
         },
       );
       console.log(text);

@@ -29,7 +29,7 @@ packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [s
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
 packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup + research portfolio diff + research artifact pack + research artifact pack diff (Sprint 8–24)  [strategy, paper, security]
-packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (S25) + token preflight (S26) + paper decisions (S27) + operator workflow helper (S28) + run report (S30) + run report diff (S31) + policy config (S32) + audit log (S33); NO chain capability  [risk, security]
+packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (S25) + token preflight (S26) + paper decisions (S27) + operator workflow helper (S28) + run report (S30) + run report diff (S31) + policy config (S32) + audit log (S33) + session pack (S34); NO chain capability  [risk, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -413,6 +413,19 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   same run report yields a byte-identical log (a dedicated safety test forbids `Date.now` / `new Date` /
   `Math.random` in the module). It reads the run report only and writes nothing unless `--out`; the
   package stays pure and chain-free. Provenance over a SIMULATED run — not a live result, not an order.
+- **(Sprint 34)** `@soulmaker/sniper` adds the **session pack** (the sniper analogue of the research
+  artifact pack): `session-pack.ts` (`buildSniperSessionPack`, `validate…`, `format…`; schema
+  `sniper.session.pack.v1`), exposed by the CLI as `paper:sniper:session:pack --artifact <label=path> …
+  [--label <string>] [--json] [--out <path>] [--force] [--fail-on-risk] [--fail-on-unknown]
+  [--fail-on-paper-enter] [--fail-on-unsupported]`. The pure builder bundles an already-loaded set of
+  sniper artifacts, classifying each by its `schemaVersion` against a registry of the eight KNOWN sniper
+  schemas: a known schema is STRICTLY validated (a corrupt artifact claiming a known schema is REFUSED)
+  and its high-level flags read VERBATIM, while an unknown/absent schema becomes an `unsupported` entry
+  (surfaced, never silently trusted). It reports per-artifact flags, recognized/unsupported counts, the
+  classified kinds present, presence-only chain-coverage tiers (`isMinimal` / `isDecisionReady` /
+  `isAudited` — never a completeness or readiness claim), and a CI section. Duplicate labels are refused.
+  It reads the named files only and writes nothing unless `--out`; the package stays pure (no fs/net, no
+  `Date.now`/`Math.random`) and chain-free.
 
 ## The live boundary
 

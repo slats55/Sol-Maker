@@ -22,6 +22,7 @@ practical "how do I run this" companion to [`SNIPER_MODEL.md`](SNIPER_MODEL.md) 
 | 6. Run report diff | `paper:sniper:diff:report` | `sniper.run.report.diff.v1` | Compares two run reports: added/removed candidates, decision + preflight-status transitions, conservative got-worse/recovered flags. |
 | —. Policy config | `paper:sniper:policy:validate` | `sniper.policy.config.v1` | Validates a conservative, tighten-only operator/risk policy; `paper:sniper:decide --policy` governs a run with it. |
 | 7. Audit log | `paper:sniper:audit` | `sniper.audit.log.v1` | Deterministic per-step provenance over a run report (intake → preflight → decide → report); no wall-clock time. |
+| 8. Session pack | `paper:sniper:session:pack` | `sniper.session.pack.v1` | Bundles all session artifacts; classifies each by schema, surfaces unsupported ones honestly; presence-only coverage tiers. |
 
 All of stages 1, 3, and 4 live in the pure `@soulmaker/sniper` package, which carries **no chain
 capability** (no `@solana/web3.js`, no `@soulmaker/solana`; a forbidden-import test enforces this). The
@@ -169,6 +170,26 @@ log carries **no wall-clock time** — `--label` is an operator-supplied string,
 same run report yields a byte-identical log. It reads the run report only and **writes nothing** unless
 `--out`. CI gates: `--fail-on-failure`, `--fail-on-warning`.
 
+### 8. Session pack (bundle the whole session)
+
+Collect every artifact of a run into one navigable pack for archival / review:
+
+```bash
+pnpm soulmaker paper:sniper:session:pack \
+  --artifact candidates=candidates.json --artifact preflight=preflight.json \
+  --artifact decision=decision.json --artifact run=run.json --artifact audit=audit.json \
+  --label "2025-06-09-session" --out session.json
+```
+
+Pack the **canonical** artifacts (each with a `schemaVersion`) — e.g. the candidate list emitted by
+`paper:sniper:candidates:validate --json`, not the raw intake file. Each `--artifact label=path` is
+classified by its schema: a known sniper schema is strictly validated (a corrupt one claiming a known
+schema is refused) and its flags are read verbatim, while an unknown schema is surfaced as `unsupported`.
+The pack's coverage tiers (`isMinimal` / `isDecisionReady` / `isAudited`) describe **presence only** —
+they never claim completeness, correctness, or trading readiness. It reads the named files only and
+**writes nothing** unless `--out`. CI gates: `--fail-on-risk`, `--fail-on-unknown`,
+`--fail-on-paper-enter`, `--fail-on-unsupported`.
+
 ## How to inspect risk reasons
 
 - The **preflight** entry for a candidate lists its `warnings`, `disqualifiers`, and a capped
@@ -188,6 +209,8 @@ same run report yields a byte-identical log. It reads the run report only and **
   `--fail-on-new-risk` / `--fail-on-new-paper-enter` / `--fail-on-new-unknown` — gate a run-vs-run diff.
 - `paper:sniper:policy:validate --fail-on-warning` — gate a policy config that carries a warning.
 - `paper:sniper:audit --fail-on-failure` / `--fail-on-warning` — gate a run's audit trail.
+- `paper:sniper:session:pack --fail-on-risk` / `--fail-on-unknown` / `--fail-on-paper-enter` /
+  `--fail-on-unsupported` — gate a bundled session.
 
 ## What is intentionally NOT implemented
 

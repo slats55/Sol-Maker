@@ -636,6 +636,18 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   (`runLabel` is operator-supplied; a safety test forbids `Date.now` / `new Date` / `Math.random`), so the
   same run report yields a byte-identical log. Pure; reads the run report only and writes nothing unless
   `--out`. Provenance over a SIMULATED run — not a live result, not an order.
+- ✅ **(Sprint 34) Sniper session pack** — the sniper analogue of the research artifact pack: bundle a
+  whole local operator session into one navigable pack. `@soulmaker/sniper` exports
+  `buildSniperSessionPack`, `validateSniperSessionPack`, `formatSniperSessionPack` (schema
+  `sniper.session.pack.v1`); the CLI adds `paper:sniper:session:pack --artifact <label=path> … [--label
+  <string>] [--json] [--out <path>] [--force] [--fail-on-risk] [--fail-on-unknown] [--fail-on-paper-enter]
+  [--fail-on-unsupported]`. Each artifact is classified by its `schemaVersion` against the eight KNOWN
+  sniper schemas: a known schema is strictly validated (a corrupt artifact claiming a known schema is
+  refused) and its flags read VERBATIM, while an unknown/absent schema is surfaced honestly as
+  `unsupported`. It reports recognized/unsupported counts, the kinds present, presence-only coverage tiers
+  (`isMinimal` / `isDecisionReady` / `isAudited` — never a completeness/readiness claim), and a CI
+  section; duplicate labels are refused. Pure (no fs/net, no `Date.now`/`Math.random`); reads the named
+  files only, writes nothing unless `--out`.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

@@ -179,3 +179,23 @@ export type {
   BuildSniperAuditLogInput,
   FormatSniperAuditLogOptions,
 } from "./audit-log.js";
+
+export {
+  buildSniperSessionPack,
+  validateSniperSessionPack,
+  formatSniperSessionPack,
+  SniperSessionPackError,
+  SNIPER_SESSION_PACK_SCHEMA_VERSION,
+  SNIPER_SESSION_PACK_BANNER,
+  SNIPER_SESSION_PACK_DISCLAIMERS,
+} from "./session-pack.js";
+
+export type {
+  SniperArtifactKind,
+  SniperSessionPackEntry,
+  SniperSessionCoverage,
+  SniperSessionPack,
+  SniperSessionPackArtifactInput,
+  BuildSniperSessionPackInput,
+  FormatSniperSessionPackOptions,
+} from "./session-pack.js";

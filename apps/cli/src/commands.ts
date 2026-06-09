@@ -69,6 +69,8 @@ import {
   enforceSniperPolicy,
   buildSniperAuditLog,
   formatSniperAuditLog,
+  buildSniperSessionPack,
+  formatSniperSessionPack,
   SNIPER_CANDIDATE_LIST_SCHEMA_VERSION,
   SNIPER_POLICY_CONFIG_SCHEMA_VERSION,
   type SniperCandidateList,
@@ -81,6 +83,8 @@ import {
   type SniperRunReportDiff,
   type SniperPolicyConfig,
   type SniperAuditLog,
+  type SniperSessionPack,
+  type SniperSessionPackArtifactInput,
 } from "@soulmaker/sniper";
 import {
   runPaperSession,
@@ -4836,6 +4840,99 @@ export function paperSniperAuditReport(
     return { text: JSON.stringify(redactValue(log), null, 2), exitCode };
   }
   return { text: formatSniperAuditLog(log, { label: opts.reportPath }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 34 — paper:sniper:session:pack
+//   Bundle MANY local sniper artifact JSON files into one deterministic session
+//   pack (`sniper.session.pack.v1`). Each --artifact label=path is classified by
+//   its schemaVersion; a known sniper schema is strictly validated (a corrupt one
+//   is refused), an unknown schema is surfaced honestly as `unsupported`. Reads
+//   the named files only; writes nothing unless --out. No network, no wallet.
+//   Coverage tiers describe PRESENCE only — not completeness or trading readiness.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperSessionPackCommandOptions {
+  /** Repeatable "label=path" sniper artifact JSON files. At least one required. */
+  artifacts?: string[];
+  /** Optional operator session label. */
+  label?: string;
+  json?: boolean;
+  /** Optional path to write the session pack JSON (writes nothing if omitted). */
+  outPath?: string;
+  /** Overwrite an existing --out file (refused by default). */
+  force?: boolean;
+  failOnRisk?: boolean;
+  failOnUnknown?: boolean;
+  failOnPaperEnter?: boolean;
+  failOnUnsupported?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:session:pack` — collect MANY local sniper artifact JSON files into one
+ * deterministic session pack (`sniper.session.pack.v1`). Reads ONLY the named local files (BOM-tolerant;
+ * a missing/malformed file, a bad `label=path` spec, a duplicate label, or an artifact that CLAIMS a
+ * known sniper schema but fails validation refuses with exit 1). A known schema is classified +
+ * validated + its flags read VERBATIM; an unknown schema is surfaced as `unsupported` (gated by
+ * `--fail-on-unsupported`). `--json` emits the pack; `--out` writes ONLY the pack JSON (refusing
+ * overwrite without `--force`, creating no directories); the `--fail-on-*` flags set the exit code.
+ * Coverage tiers describe PRESENCE only. No network, no wallet, no transaction build/sign/send.
+ */
+export function paperSniperSessionPackReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperSessionPackCommandOptions = {},
+): CliReport {
+  const specs = opts.artifacts ?? [];
+  if (specs.length === 0) {
+    return { text: "Refusing: at least one --artifact <label=path> is required.", exitCode: 1 };
+  }
+
+  const artifacts: SniperSessionPackArtifactInput[] = [];
+  for (const spec of specs) {
+    const parsed = parsePackArtifactArg(spec);
+    if (!parsed) {
+      return { text: redactString(`Refusing: --artifact must be "label=path" (got "${spec}").`), exitCode: 1 };
+    }
+    let value: unknown;
+    try {
+      value = readJsonValue(ctx, parsed.path, `sniper artifact (${parsed.label})`);
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    artifacts.push({ label: parsed.label, sourceLabel: parsed.path, value });
+  }
+
+  let pack: SniperSessionPack;
+  try {
+    pack = buildSniperSessionPack({ sessionLabel: opts.label ?? null, artifacts });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(pack), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write session pack at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  const exitCode =
+    (opts.failOnRisk && pack.hasRiskBlock) ||
+    (opts.failOnUnknown && pack.hasUnknown) ||
+    (opts.failOnPaperEnter && pack.hasPaperEnter) ||
+    (opts.failOnUnsupported && pack.hasUnsupported)
+      ? 1
+      : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(pack), null, 2), exitCode };
+  }
+  return { text: formatSniperSessionPack(pack, { label: opts.label }), exitCode };
 }
 
 function yesNo(value: boolean): string {
