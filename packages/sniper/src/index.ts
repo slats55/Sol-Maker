@@ -38,3 +38,24 @@ export type {
   SniperCandidateList,
   FormatSniperCandidateListOptions,
 } from "./candidate-list.js";
+
+export {
+  buildSniperTokenPreflightReport,
+  validateSniperTokenPreflightReport,
+  formatSniperTokenPreflightReport,
+  SniperTokenPreflightReportError,
+  SNIPER_TOKEN_PREFLIGHT_REPORT_SCHEMA_VERSION,
+  SNIPER_TOKEN_PREFLIGHT_REPORT_BANNER,
+  SNIPER_TOKEN_PREFLIGHT_REPORT_DISCLAIMERS,
+} from "./token-preflight.js";
+
+export type {
+  SniperPreflightCandidateData,
+  BuildSniperTokenPreflightReportInput,
+  SniperPreflightStatus,
+  SniperPreflightInspection,
+  SniperPreflightRisk,
+  SniperPreflightEntry,
+  SniperTokenPreflightReport,
+  FormatSniperTokenPreflightReportOptions,
+} from "./token-preflight.js";

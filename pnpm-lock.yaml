@@ -103,6 +103,9 @@ importers:
 
   packages/sniper:
     dependencies:
+      '@soulmaker/risk':
+        specifier: workspace:*
+        version: link:../risk
       '@soulmaker/security':
         specifier: workspace:*
         version: link:../security
