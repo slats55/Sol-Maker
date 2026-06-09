@@ -38,6 +38,7 @@ import {
   paperBacktestDiffResearchIndexReport,
   paperBacktestResearchHistoryReport,
   paperBacktestResearchPortfolioReport,
+  paperBacktestDiffResearchPortfolioReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -906,6 +907,45 @@ program
         {},
         {
           histories: opts.history ?? [],
+          json: Boolean(opts.json),
+          failOnChange: Boolean(opts.failOnChange),
+          failOnRegression: Boolean(opts.failOnRegression),
+          failOnAttention: Boolean(opts.failOnAttention),
+          failOnNewAttention: Boolean(opts.failOnNewAttention),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:backtest:diff:research:portfolio")
+  .description(
+    "Deterministically diff TWO portfolio report JSON files (PAPER ONLY; pairs campaigns by campaignId → added/removed campaigns + per-campaign status/flag/count changes over the common set; conservative newly-regressed / recovered / newly-attention transitions + aggregate count deltas; a conservative regression flag distinct from any change; reads two files, writes nothing)",
+  )
+  .option("--base <path>", "BASE portfolio report JSON (the reference)")
+  .option("--next <path>", "NEXT portfolio report JSON (compared against base)")
+  .option("--json", "emit the portfolio diff as stable JSON")
+  .option("--fail-on-change", "exit non-zero when the diff reports any change")
+  .option("--fail-on-regression", "exit non-zero only on a conservative integrity regression (a common campaign newly regressed)")
+  .option("--fail-on-attention", "exit non-zero when current attention newly appeared on a common campaign")
+  .option("--fail-on-new-attention", "exit non-zero when newly-needed-since-baseline attention newly appeared on a common campaign")
+  .action(
+    (opts: {
+      base?: string;
+      next?: string;
+      json?: boolean;
+      failOnChange?: boolean;
+      failOnRegression?: boolean;
+      failOnAttention?: boolean;
+      failOnNewAttention?: boolean;
+    }) => {
+      const { text, exitCode } = paperBacktestDiffResearchPortfolioReport(
+        {},
+        {
+          basePath: opts.base,
+          nextPath: opts.next,
           json: Boolean(opts.json),
           failOnChange: Boolean(opts.failOnChange),
           failOnRegression: Boolean(opts.failOnRegression),

@@ -126,6 +126,8 @@ import {
   formatBacktestResearchCampaignHistoryReport,
   buildBacktestResearchPortfolioReport,
   formatBacktestResearchPortfolioReport,
+  diffBacktestResearchPortfolioReports,
+  formatBacktestResearchPortfolioDiff,
   digestContent,
   BACKTEST_RESEARCH_MANIFEST_SCHEMA_VERSION,
   BACKTEST_RESEARCH_VERIFY_SCHEMA_VERSION,
@@ -165,6 +167,7 @@ import {
   type BacktestResearchCampaignHistoryBaselineSelector,
   type BacktestResearchPortfolioReport,
   type BacktestResearchPortfolioCampaignInput,
+  type BacktestResearchPortfolioDiff,
 } from "@soulmaker/backtest";
 
 export interface CommandContext {
@@ -3717,6 +3720,90 @@ export function paperBacktestResearchPortfolioReport(
     return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
   }
   return { text: formatBacktestResearchPortfolioReport(report), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 22 — paper:backtest:diff:research:portfolio
+//   Deterministically diff TWO portfolio report JSON files: which campaigns
+//   appeared / disappeared / changed / newly-regressed / recovered / newly-need
+//   attention, the aggregate count deltas, and a CONSERVATIVE regression flag
+//   suitable for CI. Reads the two named files only, runs no backtest, and
+//   writes nothing. No network, no wallet.
+// ---------------------------------------------------------------------------
+
+export interface PaperBacktestDiffResearchPortfolioCommandOptions {
+  /** BASE portfolio report JSON path (the reference). Required. */
+  basePath?: string;
+  /** NEXT portfolio report JSON path (compared against base). Required. */
+  nextPath?: string;
+  json?: boolean;
+  /** Exit non-zero when the diff reports any change. */
+  failOnChange?: boolean;
+  /** Exit non-zero only on a conservative integrity regression (a common campaign newly regressed). */
+  failOnRegression?: boolean;
+  /** Exit non-zero when current attention newly appeared on a common campaign. */
+  failOnAttention?: boolean;
+  /** Exit non-zero when newly-needed-since-baseline attention newly appeared on a common campaign. */
+  failOnNewAttention?: boolean;
+}
+
+/**
+ * `soulmaker paper:backtest:diff:research:portfolio` — deterministically diff TWO portfolio report
+ * JSON files. Reads ONLY the two named local files (BOM-tolerant; a missing/malformed/non-portfolio/
+ * wrong-schema file refuses), runs no backtest, and writes nothing. Campaigns are paired by
+ * campaignId (added / removed / common); status transitions (newly-regressed / recovered /
+ * newly-attention / newly-clean / newly-stable) are computed over the common set, while
+ * appeared/disappeared campaigns are reported as a campaign-set change. `--json` emits the stable,
+ * redacted diff; the `--fail-on-*` flags set a non-zero exit for change / conservative regression /
+ * current attention / new attention. No network, no wallet. The diff embeds no artifact contents and
+ * is not a live result, advice, or a profitability claim.
+ */
+export function paperBacktestDiffResearchPortfolioReport(
+  ctx: CommandContext = {},
+  opts: PaperBacktestDiffResearchPortfolioCommandOptions = {},
+): CliReport {
+  if (!opts.basePath) return { text: "Refusing: --base <path> is required.", exitCode: 1 };
+  if (!opts.nextPath) return { text: "Refusing: --next <path> is required.", exitCode: 1 };
+
+  let baseValue: unknown;
+  try {
+    baseValue = readJsonValue(ctx, opts.basePath, "base portfolio report");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let nextValue: unknown;
+  try {
+    nextValue = readJsonValue(ctx, opts.nextPath, "next portfolio report");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let diff: BacktestResearchPortfolioDiff;
+  try {
+    diff = diffBacktestResearchPortfolioReports(baseValue, nextValue, {
+      baseLabel: opts.basePath,
+      nextLabel: opts.nextPath,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const exitCode =
+    (opts.failOnChange && diff.hasChange) ||
+    (opts.failOnRegression && diff.hasRegression) ||
+    (opts.failOnAttention && diff.hasAttention) ||
+    (opts.failOnNewAttention && diff.hasNewAttention)
+      ? 1
+      : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(diff), null, 2), exitCode };
+  }
+  return {
+    text: formatBacktestResearchPortfolioDiff(diff, { baseLabel: opts.basePath, nextLabel: opts.nextPath }),
+    exitCode,
+  };
 }
 
 function yesNo(value: boolean): string {
