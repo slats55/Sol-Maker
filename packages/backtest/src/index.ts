@@ -498,3 +498,24 @@ export type {
   DiffBacktestResearchPortfolioReportsOptions,
   FormatBacktestResearchPortfolioDiffOptions,
 } from "./research-portfolio-diff.js";
+
+export {
+  buildBacktestResearchArtifactPack,
+  validateBacktestResearchArtifactPack,
+  formatBacktestResearchArtifactPack,
+  BacktestResearchArtifactPackError,
+  BACKTEST_RESEARCH_ARTIFACT_PACK_SCHEMA_VERSION,
+  BACKTEST_RESEARCH_ARTIFACT_PACK_BANNER,
+  BACKTEST_RESEARCH_ARTIFACT_PACK_DISCLAIMERS,
+  BACKTEST_RESEARCH_ARTIFACT_PACK_RECOMMENDED_LAYERS,
+} from "./research-artifact-pack.js";
+
+export type {
+  BacktestResearchArtifactPackInput,
+  BuildBacktestResearchArtifactPackInput,
+  BacktestResearchArtifactPackFlags,
+  BacktestResearchArtifactPackEntry,
+  BacktestResearchArtifactPackNavEntry,
+  BacktestResearchArtifactPack,
+  FormatBacktestResearchArtifactPackOptions,
+} from "./research-artifact-pack.js";
