@@ -208,6 +208,66 @@ only the report JSON, refusing overwrite without `--force`). `--fail-on-paper-en
 gate to ensure no candidate auto-enters; `--fail-on-risk` trips when any candidate was rejected on
 risk. No network, no wallet, no transaction build/sign/send.
 
+## Decision reason codes — `sniper.paper.decision.report.v2` (Sprint 46)
+
+The v1 report explains decisions with free-text `reasons` strings — fine for an operator, but **not a
+machine surface**: downstream tooling must never parse prose. V2 fixes that with a closed, versioned
+vocabulary of stable **reason codes** (`decision-reason-codes.ts`), emitted by the **same branches**
+that produce the decisions and the policy downgrades — never re-derived from text.
+
+> Reason codes are machine-readable **integrity/risk explanations** for SIMULATED paper-only
+> decisions — never trading advice, never a buy/sell signal, never a profitability claim.
+
+### Schema — `sniper.paper.decision.report.v2`
+
+Everything the v1 report carries, plus per candidate:
+
+- `reasonCodes` — the full trail: cause codes in emission order, then exactly one **outcome marker**
+  (`skip-candidate` / `watch-candidate` / `paper-enter-candidate` / `paper-reject-candidate` /
+  `unknown-candidate`).
+- `blockingReasonCodes` / `warningReasonCodes` / `policyReasonCodes` / `riskReasonCodes` — derived
+  subsets per the definition table (blocking = kept the candidate out; warning = soft hold/caution;
+  policy = operator rules + tighten-only enforcement; risk = advisory-risk related). The validator
+  recomputes these and refuses a report where they disagree.
+
+and per report: `reportReasonCodes` (run-level codes such as `missing-preflight-report`,
+`policy-max-candidates-per-run-exceeded`, `duplicate-mints-present`), `reasonCodeCounts` and
+`categoryCounts` (sorted, recomputed by the validator), `policyApplied` (`true` / `false` / `null` —
+null means "not determinable", e.g. when upgraded from v1), `policyLabel`, and `upgradedFromV1`.
+
+Example cause codes (the closed list lives in `SNIPER_DECISION_REASON_CODE_DEFINITIONS`):
+`operator-denylist-mint`, `invalid-mint`, `missing-preflight`, `preflight-fail`, `preflight-warning`,
+`preflight-unknown`, `risk-blocked`, `risk-score-exceeds-cap`, `risk-missing`, `liquidity-unknown`,
+`liquidity-below-floor`, `policy-paper-enter-disabled`, `policy-paper-enter-cap-exceeded`,
+`policy-fail-closed-unknown-preflight`, `policy-fail-closed-missing-risk`,
+`policy-disallowed-risk-flag`, `policy-duplicate-mint`, `policy-allowed-paper-enter`,
+`watched-incomplete-info`. There is intentionally **no** "invalid candidate" code — an invalid
+candidate cannot reach a decision (the candidate-list validator refuses it first), and the vocabulary
+only contains reachable states.
+
+### V1/V2 compatibility
+
+- **V1 is preserved**: `sniper.paper.decision.report.v1` keeps building and validating unchanged, and
+  every existing consumer (run report, audit, session pack, gates) keeps working.
+- `buildPaperSniperDecisionReportV2({ candidateList, preflight, rules | policy })` runs the SAME v1
+  decision logic with codes attached; with a `policy`, its base rules drive the build and its
+  tighten-only enforcement contributes the policy codes (a surviving paper-enter gets
+  `policy-allowed-paper-enter`).
+- `upgradePaperSniperDecisionReportV1ToV2(v1)` lifts an existing v1 artifact using ONLY structured v1
+  fields (`decision`, `preflightStatus`, `blockingRiskFlags`, `appliedRules`) — free-text reasons are
+  **never parsed**, so upgraded codes are an honest, conservative **subset** and `policyApplied` is
+  `null`.
+
+### CLI
+
+```bash
+pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight <preflight.json> --schema-version v2 --json
+pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight <preflight.json> --policy <policy.json> --schema-version v2
+```
+
+The default stays `v1` (backward compatible). All other flags (`--rules` / `--policy` / `--out` /
+`--force` / `--fail-on-paper-enter` / `--fail-on-risk`) behave identically in both modes.
+
 ## Operator workflow (Sprint 28)
 
 `paper:sniper:workflow` is the operator's "where am I / what do I run next" helper. The pure

@@ -641,6 +641,11 @@ pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> --risk c1=c
 pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight preflight.json
 pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight preflight.json --rules rules.json --json
 pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight preflight.json --fail-on-paper-enter
+# Sprint 46 — --schema-version v2 emits sniper.paper.decision.report.v2: the SAME simulated decisions
+# plus stable machine-readable reason codes (per-candidate trails, blocking/warning/policy/risk
+# subsets, sorted summary counts). v1 stays the default; codes are integrity/risk explanations,
+# never trading advice:
+pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight preflight.json --schema-version v2 --json
 
 # Sprint 28 — SNIPER OPERATOR WORKFLOW: a read-only helper that checks which local artifacts exist +
 # validate and prints the recommended NEXT command in the intake -> preflight -> decide sequence. It

@@ -81,6 +81,39 @@ export type {
 } from "./paper-decision.js";
 
 export {
+  SNIPER_DECISION_REASON_CODES,
+  SNIPER_DECISION_REASON_CATEGORIES,
+  SNIPER_DECISION_REASON_CODE_DEFINITIONS,
+  isSniperDecisionReasonCode,
+  sniperDecisionReasonCodeDefinition,
+  dedupeSniperDecisionReasonCodes,
+} from "./decision-reason-codes.js";
+
+export type {
+  SniperDecisionReasonCode,
+  SniperDecisionReasonCategory,
+  SniperDecisionReasonCodeDefinition,
+} from "./decision-reason-codes.js";
+
+export {
+  buildPaperSniperDecisionReportV2,
+  validatePaperSniperDecisionReportV2,
+  formatPaperSniperDecisionReportV2,
+  upgradePaperSniperDecisionReportV1ToV2,
+  PaperSniperDecisionReportV2Error,
+  SNIPER_PAPER_DECISION_REPORT_V2_SCHEMA_VERSION,
+  SNIPER_PAPER_DECISION_REPORT_V2_BANNER,
+  SNIPER_PAPER_DECISION_REPORT_V2_DISCLAIMERS,
+} from "./paper-decision-v2.js";
+
+export type {
+  SniperDecisionEntryV2,
+  SniperPaperDecisionReportV2,
+  BuildPaperSniperDecisionReportV2Input,
+  FormatPaperSniperDecisionReportV2Options,
+} from "./paper-decision-v2.js";
+
+export {
   buildSniperWorkflowPlan,
   validateSniperWorkflowPlan,
   formatSniperWorkflowPlan,

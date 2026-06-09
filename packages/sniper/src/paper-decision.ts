@@ -33,6 +33,7 @@ import {
   type SniperTokenPreflightReport,
   type SniperPreflightEntry,
 } from "./token-preflight.js";
+import type { SniperDecisionReasonCode } from "./decision-reason-codes.js";
 
 /** Stable schema identifier for the decision report. Bump only on a breaking change. */
 export const SNIPER_PAPER_DECISION_REPORT_SCHEMA_VERSION = "sniper.paper.decision.report.v1";
@@ -194,16 +195,28 @@ function resolveRules(rules: SniperDecisionRules | undefined): ResolvedSniperDec
   };
 }
 
-/** Compute one candidate's decision. Conservative + deterministic; reasons explain every branch. */
+/** One candidate's decision plus the machine-readable cause codes emitted by the SAME branches. */
+interface DecisionWithCodes {
+  entry: SniperDecisionEntry;
+  /** Cause-level reason codes in emission (trail) order. Outcome markers are appended by v2. */
+  reasonCodes: SniperDecisionReasonCode[];
+}
+
+/**
+ * Compute one candidate's decision. Conservative + deterministic; reasons explain every branch.
+ * Each branch ALSO emits its stable machine-readable reason code (`decision-reason-codes.ts`) so the
+ * v2 report never has to parse the free-text reasons. The v1 entry shape is unchanged.
+ */
 function decide(
   candidate: SniperCandidate,
   preflight: SniperPreflightEntry | undefined,
   hasPreflight: boolean,
   rules: ResolvedSniperDecisionRules,
-): SniperDecisionEntry {
+): DecisionWithCodes {
   const reasons: string[] = [];
   const appliedRules: string[] = [];
   const assumptions: string[] = [];
+  const codes: SniperDecisionReasonCode[] = [];
   let blockingRiskFlags: { id: string; severity: string; title: string }[] = [];
 
   const base = {
@@ -211,16 +224,22 @@ function decide(
     mint: candidate.mint,
     preflightStatus: preflight ? preflight.status : null,
   };
+  const done = (decision: SniperDecision): DecisionWithCodes => ({
+    entry: { ...base, decision, reasons, blockingRiskFlags, appliedRules, assumptions },
+    reasonCodes: codes,
+  });
 
   // 1) Structural skips (before any evaluation).
   if (rules.denyMints.includes(candidate.mint)) {
     appliedRules.push("denyMints");
     reasons.push("mint is on the operator denylist");
-    return { ...base, decision: "skip", reasons, blockingRiskFlags, appliedRules, assumptions };
+    codes.push("operator-denylist-mint");
+    return done("skip");
   }
   if (!preflight?.mintValid && preflight) {
     reasons.push("mint failed validation in the preflight");
-    return { ...base, decision: "skip", reasons, blockingRiskFlags, appliedRules, assumptions };
+    codes.push("invalid-mint");
+    return done("skip");
   }
 
   // 2) No preflight data → conservative watch (gather data first).
@@ -231,14 +250,17 @@ function decide(
       assumptions.push("no preflight report was supplied");
     }
     reasons.push("no preflight data — run paper:sniper:preflight before any paper entry");
-    return { ...base, decision: "watch", reasons, blockingRiskFlags, appliedRules, assumptions };
+    codes.push("missing-preflight", "watched-incomplete-info");
+    return done("watch");
   }
 
   // 3) Hard rejects.
   if (preflight.status === "fail") {
     reasons.push(...(preflight.disqualifiers.length > 0 ? preflight.disqualifiers : ["preflight failed"]));
     if (preflight.risk) blockingRiskFlags = preflight.risk.topFlags;
-    return { ...base, decision: "paper-reject", reasons, blockingRiskFlags, appliedRules, assumptions };
+    codes.push("preflight-fail");
+    if (blockingRiskFlags.length > 0) codes.push("risk-blocked");
+    return done("paper-reject");
   }
   if (rules.maxRiskScore !== null) {
     appliedRules.push("maxRiskScore");
@@ -246,19 +268,26 @@ function decide(
     if (score !== null && score > rules.maxRiskScore) {
       reasons.push(`risk score ${score} exceeds the max ${rules.maxRiskScore}`);
       if (preflight.risk) blockingRiskFlags = preflight.risk.topFlags;
-      return { ...base, decision: "paper-reject", reasons, blockingRiskFlags, appliedRules, assumptions };
+      codes.push("risk-score-exceeds-cap");
+      if (blockingRiskFlags.length > 0) codes.push("risk-blocked");
+      return done("paper-reject");
     }
-    if (score === null) assumptions.push("no risk score supplied — maxRiskScore rule could not be applied");
+    if (score === null) {
+      assumptions.push("no risk score supplied — maxRiskScore rule could not be applied");
+      codes.push("risk-missing");
+    }
   }
 
   // 4) Soft holds.
   if (preflight.status === "unknown") {
     reasons.push("preflight could not assess this candidate (no inspection/risk data)");
-    return { ...base, decision: "watch", reasons, blockingRiskFlags, appliedRules, assumptions };
+    codes.push("preflight-unknown", "watched-incomplete-info");
+    return done("watch");
   }
   if (preflight.status === "warn") {
     reasons.push(...(preflight.warnings.length > 0 ? preflight.warnings : ["preflight warned"]));
-    return { ...base, decision: "watch", reasons, blockingRiskFlags, appliedRules, assumptions };
+    codes.push("preflight-warning");
+    return done("watch");
   }
 
   // 5) status === "pass": apply entry rules.
@@ -270,40 +299,52 @@ function decide(
       if (liq === null) {
         assumptions.push("no observed liquidity supplied");
         reasons.push(`no observed liquidity (min required ${rules.minObservedLiquidityUsd})`);
-        return { ...base, decision: "watch", reasons, blockingRiskFlags, appliedRules, assumptions };
+        codes.push("liquidity-unknown", "watched-incomplete-info");
+        return done("watch");
       }
       if (liq < rules.minObservedLiquidityUsd) {
         reasons.push(`observed liquidity ${liq} is below the min ${rules.minObservedLiquidityUsd}`);
-        return { ...base, decision: "watch", reasons, blockingRiskFlags, appliedRules, assumptions };
+        codes.push("liquidity-below-floor");
+        return done("watch");
       }
     }
     if (preflight.risk?.decision === "PASS_FOR_PAPER_EVALUATION") {
       reasons.push("risk decision PASS_FOR_PAPER_EVALUATION");
     } else if (!preflight.risk) {
       assumptions.push("no risk report supplied — relying on the clean inspection only");
+      codes.push("risk-missing");
     }
     reasons.push("preflight pass and all deterministic entry rules satisfied (SIMULATED paper entry only)");
-    return { ...base, decision: "paper-enter", reasons, blockingRiskFlags, appliedRules, assumptions };
+    return done("paper-enter");
   }
 
   // 6) Defensive fallback.
   reasons.push(`unrecognized preflight status "${preflight.status}"`);
-  return { ...base, decision: "unknown", reasons, blockingRiskFlags, appliedRules, assumptions };
+  codes.push("preflight-status-unrecognized");
+  return done("unknown");
 }
 
 // --- builder -----------------------------------------------------------------
 
 /**
- * Build a deterministic {@link SniperPaperDecisionReport}. Pure and non-mutating. The candidate list is
- * STRICTLY validated; the preflight, if supplied, is STRICTLY validated and must cover the same
- * candidate ids (an extra preflight entry not in the list is refused). Every candidate gets one of
- * five conservative decisions with explicit reasons, blocking risk flags, applied rules, and
- * assumptions. A `paper-enter` is reached only when the preflight passed and all entry rules are
- * satisfied; it is a SIMULATED, paper-only decision. Carries no wall-clock time.
+ * INTERNAL building block (consumed by the v2 report; not part of the public package surface): the
+ * v1 report PLUS each candidate's machine-readable cause codes, emitted by the same branches that
+ * produced the decisions — never derived from the free-text reasons.
  */
-export function buildPaperSniperDecisionReport(
+export interface PaperSniperDecisionAnalysis {
+  report: SniperPaperDecisionReport;
+  /** candidateId → cause-level reason codes in emission (trail) order. */
+  reasonCodesById: Record<string, SniperDecisionReasonCode[]>;
+}
+
+/**
+ * Build a deterministic {@link SniperPaperDecisionReport} together with the per-candidate reason-code
+ * trails. Same validation and decision semantics as {@link buildPaperSniperDecisionReport} (which is
+ * implemented on top of this). Pure and non-mutating.
+ */
+export function analyzePaperSniperDecisionReport(
   input: BuildPaperSniperDecisionReportInput,
-): SniperPaperDecisionReport {
+): PaperSniperDecisionAnalysis {
   if (!isObject(input)) {
     throw new PaperSniperDecisionReportError("decision input must be an object");
   }
@@ -334,7 +375,10 @@ export function buildPaperSniperDecisionReport(
 
   const rules = resolveRules(input.rules);
 
-  const decisions = list.candidates.map((c) => decide(c, preflightById.get(c.candidateId), hasPreflight, rules));
+  const decided = list.candidates.map((c) => decide(c, preflightById.get(c.candidateId), hasPreflight, rules));
+  const decisions = decided.map((d) => d.entry);
+  const reasonCodesById: Record<string, SniperDecisionReasonCode[]> = {};
+  for (const d of decided) reasonCodesById[d.entry.candidateId] = d.reasonCodes;
 
   const skipCount = decisions.filter((d) => d.decision === "skip").length;
   const watchCount = decisions.filter((d) => d.decision === "watch").length;
@@ -367,7 +411,7 @@ export function buildPaperSniperDecisionReport(
     "A paper-enter is a SIMULATED, paper-only decision — never a buy/sell order, a transaction, or live readiness.",
   ];
 
-  return {
+  const report: SniperPaperDecisionReport = {
     schemaVersion: SNIPER_PAPER_DECISION_REPORT_SCHEMA_VERSION,
     banner: SNIPER_PAPER_DECISION_REPORT_BANNER,
     paperOnly: true,
@@ -395,6 +439,21 @@ export function buildPaperSniperDecisionReport(
     warnings,
     notes,
   };
+  return { report, reasonCodesById };
+}
+
+/**
+ * Build a deterministic {@link SniperPaperDecisionReport}. Pure and non-mutating. The candidate list is
+ * STRICTLY validated; the preflight, if supplied, is STRICTLY validated and must cover the same
+ * candidate ids (an extra preflight entry not in the list is refused). Every candidate gets one of
+ * five conservative decisions with explicit reasons, blocking risk flags, applied rules, and
+ * assumptions. A `paper-enter` is reached only when the preflight passed and all entry rules are
+ * satisfied; it is a SIMULATED, paper-only decision. Carries no wall-clock time.
+ */
+export function buildPaperSniperDecisionReport(
+  input: BuildPaperSniperDecisionReportInput,
+): SniperPaperDecisionReport {
+  return analyzePaperSniperDecisionReport(input).report;
 }
 
 // --- validation (backstop) ---------------------------------------------------

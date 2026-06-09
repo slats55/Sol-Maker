@@ -69,6 +69,7 @@ import {
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
 import { parseJournal, reduceJournal } from "@soulmaker/paper";
+import { validatePaperSniperDecisionReportV2 } from "@soulmaker/sniper";
 import {
   runBacktest,
   buildBacktestResearchBundle,
@@ -6958,6 +6959,75 @@ describe("paperSniperDecideReport (Sprint 27)", () => {
     } finally {
       cleanup();
     }
+  });
+
+  describe("--schema-version v2 (Sprint 46 — structured reason codes)", () => {
+    it("refuses an unknown schema version", () => {
+      const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+      try {
+        const { cands } = setup(cwd);
+        const r = paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, schemaVersion: "v3" });
+        expect(r.exitCode).toBe(1);
+        expect(r.text).toMatch(/^Refusing: --schema-version/);
+      } finally {
+        cleanup();
+      }
+    });
+
+    it("--json emits a VALID v2 report with per-candidate reason codes (default stays v1)", () => {
+      const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+      try {
+        const { cands, preflight } = setup(cwd);
+        const v1 = JSON.parse(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, json: true }).text) as { schemaVersion: string };
+        expect(v1.schemaVersion).toBe("sniper.paper.decision.report.v1");
+        const r = paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, schemaVersion: "v2", json: true });
+        expect(r.exitCode).toBe(0);
+        const obj = JSON.parse(r.text) as { schemaVersion: string; decisions: { candidateId: string; reasonCodes: string[] }[] };
+        expect(obj.schemaVersion).toBe("sniper.paper.decision.report.v2");
+        expect(() => validatePaperSniperDecisionReportV2(obj)).not.toThrow();
+        expect(obj.decisions.find((d) => d.candidateId === "good")!.reasonCodes).toContain("paper-enter-candidate");
+        expect(obj.decisions.find((d) => d.candidateId === "bad")!.reasonCodes).toContain("preflight-fail");
+      } finally {
+        cleanup();
+      }
+    });
+
+    it("v2 honors --policy (codes include the policy trail) and the fail flags", () => {
+      const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+      try {
+        const { cands, preflight } = setup(cwd);
+        const policy = writeJson(cwd, "policy.json", { policyLabel: "test-policy", allowPaperEnter: false });
+        const r = paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, policyPath: policy, schemaVersion: "v2", json: true });
+        const obj = JSON.parse(r.text) as { policyApplied: boolean; policyLabel: string; decisions: { candidateId: string; decision: string; reasonCodes: string[] }[] };
+        expect(obj.policyApplied).toBe(true);
+        expect(obj.policyLabel).toBe("test-policy");
+        const good = obj.decisions.find((d) => d.candidateId === "good")!;
+        expect(good.decision).toBe("watch");
+        expect(good.reasonCodes).toContain("policy-paper-enter-disabled");
+        expect(() => validatePaperSniperDecisionReportV2(obj)).not.toThrow();
+        // fail flags work in v2: no paper-enter (disabled), but a risk reject remains.
+        expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, policyPath: policy, schemaVersion: "v2", failOnPaperEnter: true }).exitCode).toBe(0);
+        expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, policyPath: policy, schemaVersion: "v2", failOnRisk: true }).exitCode).toBe(1);
+      } finally {
+        cleanup();
+      }
+    });
+
+    it("--out writes a v2 report that validates; human output shows the code summary", () => {
+      const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+      try {
+        const { cands, preflight } = setup(cwd);
+        const r = paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, schemaVersion: "v2", outPath: "decision-v2.json" });
+        expect(r.exitCode).toBe(0);
+        const written = JSON.parse(readFileSync(join(cwd, "decision-v2.json"), "utf8"));
+        expect(() => validatePaperSniperDecisionReportV2(written)).not.toThrow();
+        expect(r.text).toContain("SIMULATED PAPER-ONLY SNIPER DECISION REPORT V2");
+        expect(r.text).toContain("Reason codes (per-candidate occurrences, sorted):");
+        expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: preflight, schemaVersion: "v2", outPath: "decision-v2.json" }).exitCode).toBe(1);
+      } finally {
+        cleanup();
+      }
+    });
   });
 });
 

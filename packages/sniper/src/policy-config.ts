@@ -30,6 +30,7 @@ import {
   type SniperTokenPreflightReport,
   type SniperPreflightEntry,
 } from "./token-preflight.js";
+import type { SniperDecisionReasonCode } from "./decision-reason-codes.js";
 
 /** Stable schema identifier for the policy config. Bump only on a breaking change. */
 export const SNIPER_POLICY_CONFIG_SCHEMA_VERSION = "sniper.policy.config.v1";
@@ -307,19 +308,28 @@ function recomputeAggregates(
 }
 
 /**
- * Apply a {@link SniperPolicyConfig} to a built decision report, returning a NEW, schema-valid report
- * that is at least as conservative. Pure and non-mutating. Enforcement is **tighten-only** — it may
- * downgrade a SIMULATED `paper-enter` to `watch`/`paper-reject` or `skip` a duplicate mint, but never the
- * reverse, and never enables live behaviour. When a preflight report is supplied (via `opts.preflight`,
- * strictly validated), per-candidate risk visibility powers `failClosedOnMissingRisk` and
- * `disallowedRiskFlags`. Carries no wall-clock time. Throws {@link SniperPolicyConfigError} on a
- * non-report / non-config / wrong-preflight input.
+ * INTERNAL building block (consumed by the v2 decision report; not part of the public package
+ * surface): the enforced report PLUS the machine-readable policy reason codes emitted by the SAME
+ * tighten-only transforms — never derived from the free-text reasons.
  */
-export function enforceSniperPolicy(
+export interface SniperPolicyEnforcementAnalysis {
+  report: SniperPaperDecisionReport;
+  /** candidateId → policy enforcement codes in emission order (empty array when untouched). */
+  policyReasonCodesById: Record<string, SniperDecisionReasonCode[]>;
+  /** Report-level (run-wide) policy codes in emission order. */
+  reportReasonCodes: SniperDecisionReasonCode[];
+}
+
+/**
+ * Apply a {@link SniperPolicyConfig} to a built decision report, returning a NEW, schema-valid report
+ * that is at least as conservative PLUS the per-candidate policy reason codes. Same semantics as
+ * {@link enforceSniperPolicy} (which is implemented on top of this). Pure and non-mutating.
+ */
+export function enforceSniperPolicyWithReasonCodes(
   reportInput: unknown,
   policyInput: unknown,
   opts: EnforceSniperPolicyOptions = {},
-): SniperPaperDecisionReport {
+): SniperPolicyEnforcementAnalysis {
   let report: SniperPaperDecisionReport;
   try {
     report = validatePaperSniperDecisionReport(reportInput);
@@ -341,10 +351,13 @@ export function enforceSniperPolicy(
 
   const extraWarnings: string[] = [];
   const extraNotes: string[] = [];
+  const reportReasonCodes: SniperDecisionReasonCode[] = [];
+  const policyReasonCodesById: Record<string, SniperDecisionReasonCode[]> = {};
 
   // Candidate-list guards (reported; maxCandidatesPerRun never truncates).
   if (policy.maxCandidatesPerRun !== null && report.candidateCount > policy.maxCandidatesPerRun) {
     extraWarnings.push(`policy: run has ${report.candidateCount} candidate(s), over the maxCandidatesPerRun of ${policy.maxCandidatesPerRun}.`);
+    reportReasonCodes.push("policy-max-candidates-per-run-exceeded");
   }
   const mintCounts = new Map<string, number>();
   for (const d of report.decisions) mintCounts.set(d.mint, (mintCounts.get(d.mint) ?? 0) + 1);
@@ -356,17 +369,19 @@ export function enforceSniperPolicy(
   const adjusted: SniperDecisionEntry[] = report.decisions.map((entry) => {
     let decision = entry.decision;
     const reasons = [...entry.reasons];
+    const codes: SniperDecisionReasonCode[] = [];
     let blockingRiskFlags = entry.blockingRiskFlags;
     const pf = preflightById.get(entry.candidateId);
 
-    const downgrade = (to: SniperDecision, reason: string): void => {
+    const downgrade = (to: SniperDecision, reason: string, code: SniperDecisionReasonCode): void => {
       decision = to;
       reasons.push(`policy ⛔ ${reason}`);
+      codes.push(code);
     };
 
     // duplicateMintPolicy: reject ⇒ skip the duplicate-mint candidates.
     if (policy.duplicateMintPolicy === "reject" && duplicateMints.has(entry.mint) && decision !== "skip") {
-      downgrade("skip", `duplicate mint rejected by policy (${entry.mint})`);
+      downgrade("skip", `duplicate mint rejected by policy (${entry.mint})`, "policy-duplicate-mint");
     }
 
     // disallowedRiskFlags: a candidate whose preflight risk carries a disallowed flag is rejected.
@@ -374,7 +389,7 @@ export function enforceSniperPolicy(
       const hit = pf.risk.topFlags.filter((f) => policy.disallowedRiskFlags.includes(f.id));
       if (hit.length > 0 && decision !== "paper-reject") {
         blockingRiskFlags = hit.map((f) => ({ id: f.id, severity: f.severity, title: f.title }));
-        downgrade("paper-reject", `disallowed risk flag(s): ${hit.map((f) => f.id).join(", ")}`);
+        downgrade("paper-reject", `disallowed risk flag(s): ${hit.map((f) => f.id).join(", ")}`, "policy-disallowed-risk-flag");
       }
     }
 
@@ -382,7 +397,7 @@ export function enforceSniperPolicy(
     if (policy.failClosedOnUnknownPreflight && decision === "watch") {
       const status = entry.preflightStatus;
       if (status === "unknown" || status === null) {
-        downgrade("paper-reject", "fail-closed: preflight could not assess this candidate");
+        downgrade("paper-reject", "fail-closed: preflight could not assess this candidate", "policy-fail-closed-unknown-preflight");
       }
     }
 
@@ -390,18 +405,21 @@ export function enforceSniperPolicy(
     if (decision === "paper-enter") {
       // failClosedOnMissingRisk: a paper-enter with no supplied risk data ⇒ watch.
       if (policy.failClosedOnMissingRisk && pf && pf.risk === null) {
-        downgrade("watch", "fail-closed: paper-enter has no supplied risk data");
+        downgrade("watch", "fail-closed: paper-enter has no supplied risk data", "policy-fail-closed-missing-risk");
       } else if (!policy.allowPaperEnter) {
         // allowPaperEnter=false: the decision-mode gate.
-        downgrade("watch", "paper-enter disabled by policy");
+        downgrade("watch", "paper-enter disabled by policy", "policy-paper-enter-disabled");
       } else if (maxEnter !== null && paperEnterSeen >= maxEnter) {
         // maxCandidatesToPaperEnter: cap reached ⇒ the excess is watched.
-        downgrade("watch", `paper-enter cap of ${maxEnter} reached`);
+        downgrade("watch", `paper-enter cap of ${maxEnter} reached`, "policy-paper-enter-cap-exceeded");
       } else {
         paperEnterSeen += 1;
+        codes.push("policy-allowed-paper-enter");
       }
     }
 
+    policyReasonCodesById[entry.candidateId] = codes;
+    // `policy-allowed-paper-enter` is informational — the entry itself is unchanged in that case.
     return decision === entry.decision && blockingRiskFlags === entry.blockingRiskFlags
       ? entry
       : { ...entry, decision, reasons, blockingRiskFlags };
@@ -409,10 +427,32 @@ export function enforceSniperPolicy(
 
   if (policy.duplicateMintPolicy === "warn" && duplicateMints.size > 0) {
     extraWarnings.push(`policy: ${duplicateMints.size} duplicate mint(s) present: ${[...duplicateMints].sort().join(", ")}.`);
+    reportReasonCodes.push("duplicate-mints-present");
   }
   extraNotes.push(`policy "${policy.policyLabel ?? "(unlabeled)"}" applied (tighten-only).`);
 
-  return recomputeAggregates(report, adjusted, extraWarnings, extraNotes);
+  return {
+    report: recomputeAggregates(report, adjusted, extraWarnings, extraNotes),
+    policyReasonCodesById,
+    reportReasonCodes,
+  };
+}
+
+/**
+ * Apply a {@link SniperPolicyConfig} to a built decision report, returning a NEW, schema-valid report
+ * that is at least as conservative. Pure and non-mutating. Enforcement is **tighten-only** — it may
+ * downgrade a SIMULATED `paper-enter` to `watch`/`paper-reject` or `skip` a duplicate mint, but never the
+ * reverse, and never enables live behaviour. When a preflight report is supplied (via `opts.preflight`,
+ * strictly validated), per-candidate risk visibility powers `failClosedOnMissingRisk` and
+ * `disallowedRiskFlags`. Carries no wall-clock time. Throws {@link SniperPolicyConfigError} on a
+ * non-report / non-config / wrong-preflight input.
+ */
+export function enforceSniperPolicy(
+  reportInput: unknown,
+  policyInput: unknown,
+  opts: EnforceSniperPolicyOptions = {},
+): SniperPaperDecisionReport {
+  return enforceSniperPolicyWithReasonCodes(reportInput, policyInput, opts).report;
 }
 
 // --- validation (backstop) ---------------------------------------------------

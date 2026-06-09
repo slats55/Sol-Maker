@@ -47,7 +47,7 @@ invariants.
 | --- | --- | --- | --- |
 | `paper:sniper:candidates:validate` | `--input` | never | `sniper.candidate.list.v1` |
 | `paper:sniper:preflight` | `--candidates` | `--out` only | `sniper.token.preflight.report.v1` |
-| `paper:sniper:decide` | `--candidates` | `--out` only | `sniper.paper.decision.report.v1` |
+| `paper:sniper:decide` | `--candidates` | `--out` only | `sniper.paper.decision.report.v1` (or `.v2` via `--schema-version v2`) |
 | `paper:sniper:policy:validate` | `--input` | never | `sniper.policy.config.v1` |
 | `paper:sniper:workflow` | (none) | never | `sniper.workflow.plan.v1` |
 | `paper:sniper:report` | `--candidates` | `--out` only | `sniper.run.report.v1` |
@@ -125,6 +125,19 @@ pnpm soulmaker paper:sniper:decide --candidates candidates.json --preflight pref
 Each candidate gets `skip` / `watch` / `paper-enter` / `paper-reject` / `unknown`. A candidate reaches
 `paper-enter` **only** when the preflight passed and every rule is satisfied — and even then it is a
 **simulated** decision, never an order.
+
+#### Machine-readable reason codes (Sprint 46)
+
+Add `--schema-version v2` to emit `sniper.paper.decision.report.v2` — the same decisions plus stable
+**reason codes** (e.g. `preflight-fail`, `risk-score-exceeds-cap`, `policy-paper-enter-disabled`) with
+per-candidate trails, blocking/warning/policy/risk subsets, and sorted summary counts. Tooling should
+read the codes, never the free-text reasons. The default stays v1; an existing v1 artifact can be
+lifted with `upgradePaperSniperDecisionReportV1ToV2` (structured fields only — codes from an upgrade
+are a conservative subset). Codes are integrity/risk explanations, **not** trading advice.
+
+```bash
+pnpm soulmaker paper:sniper:decide --candidates candidates.json --preflight preflight.json --schema-version v2 --json
+```
 
 #### Governing a run with a policy (Sprint 32)
 

@@ -55,6 +55,8 @@ import {
   formatSniperTokenPreflightReport,
   buildPaperSniperDecisionReport,
   formatPaperSniperDecisionReport,
+  buildPaperSniperDecisionReportV2,
+  formatPaperSniperDecisionReportV2,
   validateSniperTokenPreflightReport,
   validatePaperSniperDecisionReport,
   buildSniperWorkflowPlan,
@@ -85,6 +87,7 @@ import {
   type SniperTokenPreflightReport,
   type SniperPreflightCandidateData,
   type SniperPaperDecisionReport,
+  type SniperPaperDecisionReportV2,
   type SniperDecisionRules,
   type SniperWorkflowStageState,
   type SniperRunReport,
@@ -4293,6 +4296,8 @@ export interface PaperSniperDecideCommandOptions {
   failOnPaperEnter?: boolean;
   /** Exit non-zero when any candidate was paper-rejected on risk. */
   failOnRisk?: boolean;
+  /** Artifact schema version to produce: "v1" (default; unchanged) or "v2" (structured reason codes). */
+  schemaVersion?: string;
 }
 
 /**
@@ -4303,9 +4308,11 @@ export interface PaperSniperDecideCommandOptions {
  * buy/sell order, a transaction, or live readiness. `--policy <path>` (a `sniper.policy.config.v1`,
  * mutually exclusive with `--rules`) governs the run: its base rules drive the build and its
  * tighten-only enforcement is applied afterward (it can only downgrade a SIMULATED paper-enter, never
- * the reverse). `--json` emits the report; `--out` writes ONLY the report JSON (refusing overwrite
- * without `--force`, creating no directories); `--fail-on-paper-enter` / `--fail-on-risk` set the exit
- * code. No network, no wallet, no transaction build/sign/send.
+ * the reverse). `--schema-version v2` emits `sniper.paper.decision.report.v2` — the same decisions
+ * plus stable machine-readable reason codes (the v1 default is unchanged). `--json` emits the report;
+ * `--out` writes ONLY the report JSON (refusing overwrite without `--force`, creating no directories);
+ * `--fail-on-paper-enter` / `--fail-on-risk` set the exit code. No network, no wallet, no transaction
+ * build/sign/send.
  */
 export function paperSniperDecideReport(
   ctx: CommandContext = {},
@@ -4314,6 +4321,10 @@ export function paperSniperDecideReport(
   if (!opts.candidatesPath) return { text: "Refusing: --candidates <path> is required.", exitCode: 1 };
   if (opts.rulesPath && opts.policyPath) {
     return { text: "Refusing: --rules and --policy are mutually exclusive.", exitCode: 1 };
+  }
+  const schemaVersion = opts.schemaVersion ?? "v1";
+  if (schemaVersion !== "v1" && schemaVersion !== "v2") {
+    return { text: 'Refusing: --schema-version must be "v1" or "v2".', exitCode: 1 };
   }
 
   // 1) Read + normalize the candidate list (same wrong-schema guard as the other sniper commands).
@@ -4389,11 +4400,25 @@ export function paperSniperDecideReport(
     rules = deriveSniperDecisionRules(policy);
   }
 
-  // 3) Build the decision report, then apply the policy's tighten-only enforcement (if any).
-  let report: SniperPaperDecisionReport;
+  // 3) Build the decision report (v1: build + tighten-only enforcement; v2: codes-aware builder).
+  let report: SniperPaperDecisionReport | SniperPaperDecisionReportV2;
+  let formatted: string;
   try {
-    report = buildPaperSniperDecisionReport({ candidateList: list, preflight, rules });
-    if (policy) report = enforceSniperPolicy(report, policy, { preflight });
+    if (schemaVersion === "v2") {
+      const v2 = buildPaperSniperDecisionReportV2({
+        candidateList: list,
+        preflight,
+        rules: policy ? undefined : rules,
+        policy,
+      });
+      report = v2;
+      formatted = formatPaperSniperDecisionReportV2(v2, { label: opts.candidatesPath });
+    } else {
+      let v1 = buildPaperSniperDecisionReport({ candidateList: list, preflight, rules });
+      if (policy) v1 = enforceSniperPolicy(v1, policy, { preflight });
+      report = v1;
+      formatted = formatPaperSniperDecisionReport(v1, { label: opts.candidatesPath });
+    }
   } catch (err) {
     return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
   }
@@ -4417,7 +4442,7 @@ export function paperSniperDecideReport(
   if (opts.json) {
     return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
   }
-  return { text: formatPaperSniperDecisionReport(report, { label: opts.candidatesPath }), exitCode };
+  return { text: formatted, exitCode };
 }
 
 // ---------------------------------------------------------------------------
