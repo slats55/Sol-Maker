@@ -85,6 +85,7 @@ describe("@soulmaker/sniper — forbidden-import regression", () => {
     expect(names).toContain("index.ts");
     expect(names).toContain("mint-address.ts");
     expect(names).toContain("candidate-list.ts");
+    expect(names).toContain("token-preflight.ts");
   });
 
   it("imports no chain/network/filesystem/socket/wallet capability module", () => {

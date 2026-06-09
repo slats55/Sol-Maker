@@ -53,6 +53,7 @@ import {
   paperBacktestResearchPackReport,
   paperBacktestDiffResearchPackReport,
   paperSniperCandidatesValidateReport,
+  paperSniperPreflightReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -6702,6 +6703,126 @@ describe("paperSniperCandidatesValidateReport (Sprint 25)", () => {
       const f = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
       const before = readdirSync(cwd).sort();
       paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: f, json: true });
+      expect(readdirSync(cwd).sort()).toEqual(before);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperSniperPreflightReport (Sprint 26)", () => {
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const WSOL = "So11111111111111111111111111111111111111112";
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+  const cleanInspection = (mint: string) => ({ mint, decimals: 6, supplyRaw: "1", uiSupply: 1, mintAuthorityPresent: false, freezeAuthorityPresent: false, isInitialized: true, programLabel: "spl-token" });
+  const freezeInspection = (mint: string) => ({ ...cleanInspection(mint), freezeAuthorityPresent: true });
+  const riskPass = (mint: string) => ({ mint, score: 10, decision: "PASS_FOR_PAPER_EVALUATION", flags: [], summary: [] });
+  const riskReject = (mint: string) => ({ mint, score: 95, decision: "REJECT", flags: [{ id: "rug", severity: "critical", title: "Rug" }], summary: [] });
+
+  it("refuses when --candidates is missing", () => {
+    expect(paperSniperPreflightReport({}, {}).text).toMatch(/^Refusing: --candidates/);
+    expect(paperSniperPreflightReport({}, {}).exitCode).toBe(1);
+  });
+
+  it("renders a PAPER-ONLY human preflight (pass + fail + unknown)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "good", mint: USDC }, { candidateId: "bad", mint: WSOL }, { candidateId: "unk", mint: USDC }] });
+      writeJson(cwd, "good.insp.json", cleanInspection(USDC));
+      writeJson(cwd, "good.risk.json", riskPass(USDC));
+      writeJson(cwd, "bad.risk.json", riskReject(WSOL));
+      const r = paperSniperPreflightReport(
+        { cwd, env: {} },
+        { candidatesPath: cands, inspections: ["good=good.insp.json"], risks: ["good=good.risk.json", "bad=bad.risk.json"] },
+      );
+      expect(r.text).toContain("SIMULATED PAPER-ONLY SNIPER TOKEN PREFLIGHT");
+      expect(r.text).toContain("[PASS]");
+      expect(r.text).toContain("[FAIL]");
+      expect(r.text).toContain("[UNKNOWN]");
+      expect(r.text.toLowerCase()).toContain("not a trade signal");
+      expect(r.exitCode).toBe(0); // no fail flag set
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json emits a valid, stable preflight report", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      writeJson(cwd, "c1.risk.json", riskPass(USDC));
+      const r = paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, risks: ["c1=c1.risk.json"], json: true });
+      const obj = JSON.parse(r.text) as { schemaVersion: string; passCount: number; candidates: { status: string }[] };
+      expect(obj.schemaVersion).toBe("sniper.token.preflight.report.v1");
+      expect(obj.passCount).toBe(1);
+      expect(obj.candidates[0]!.status).toBe("pass");
+      // byte-stable
+      expect(paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, risks: ["c1=c1.risk.json"], json: true }).text).toBe(r.text);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-fail and --fail-on-warning set the exit code", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      writeJson(cwd, "reject.json", riskReject(USDC));
+      writeJson(cwd, "freeze.json", freezeInspection(USDC));
+      expect(paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, risks: ["c1=reject.json"], failOnFail: true }).exitCode).toBe(1);
+      expect(paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, inspections: ["c1=freeze.json"], failOnFail: true }).exitCode).toBe(0); // warn, not fail
+      expect(paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, inspections: ["c1=freeze.json"], failOnWarning: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--out writes ONLY the report JSON and refuses overwrite without --force", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      writeJson(cwd, "c1.risk.json", riskPass(USDC));
+      const before = readdirSync(cwd).length;
+      const r1 = paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, risks: ["c1=c1.risk.json"], outPath: "pf.json" });
+      expect(r1.exitCode).toBe(0);
+      expect(readdirSync(cwd).length).toBe(before + 1);
+      const written = JSON.parse(readFileSync(join(cwd, "pf.json"), "utf8")) as { schemaVersion: string };
+      expect(written.schemaVersion).toBe("sniper.token.preflight.report.v1");
+      const r2 = paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, risks: ["c1=c1.risk.json"], outPath: "pf.json" });
+      expect(r2.exitCode).toBe(1);
+      expect(r2.text).toMatch(/already exists/);
+      expect(paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, risks: ["c1=c1.risk.json"], outPath: "pf.json", force: true }).exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses malformed candidate file, a bad spec, and data for an unknown candidateId", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      writeJson(cwd, "c1.risk.json", riskPass(USDC));
+      writeFileSync(join(cwd, "malformed.json"), "{ not json");
+      expect(paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: "malformed.json" }).exitCode).toBe(1);
+      expect(paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, risks: ["noeq"] }).exitCode).toBe(1);
+      const r = paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, risks: ["ghost=c1.risk.json"] });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toMatch(/unknown candidateId/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("writes nothing without --out (read-only by default)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      writeJson(cwd, "c1.risk.json", riskPass(USDC));
+      const before = readdirSync(cwd).sort();
+      paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, risks: ["c1=c1.risk.json"], json: true });
       expect(readdirSync(cwd).sort()).toEqual(before);
     } finally {
       cleanup();
