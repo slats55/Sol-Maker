@@ -1,4 +1,4 @@
-# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow; Sprint 14 paper research lab — rankings, variant-plan explain, sensitivity diff, config perturbations, suite coverage; Sprint 15 cross-scenario sensitivity matrix + matrix diff; Sprint 16 research run manifest — index/verify/diff a run's local artifacts; Sprint 17 research run bundle + integrity/status — package a run into one self-describing bundle with a deterministic run digest, plus a complete/recognized/stable/in-sync directory status; Sprint 18 research campaign index — index many runs under a campaign directory into one comparable summary with a deterministic campaign digest; Sprint 19 research bundle diff + campaign index diff — compare two bundles or two campaign indexes with a conservative regression flag; Sprint 20 research campaign history report — fold an ordered set of campaign index snapshots into one deterministic trend report with per-run valid/attention streaks and a conservative regression signal; Sprint 21 research portfolio rollup — roll up many per-campaign history reports into one integrity-triage portfolio view with clean/stable lists, top concerns, and CI flags)
+# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow; Sprint 14 paper research lab — rankings, variant-plan explain, sensitivity diff, config perturbations, suite coverage; Sprint 15 cross-scenario sensitivity matrix + matrix diff; Sprint 16 research run manifest — index/verify/diff a run's local artifacts; Sprint 17 research run bundle + integrity/status — package a run into one self-describing bundle with a deterministic run digest, plus a complete/recognized/stable/in-sync directory status; Sprint 18 research campaign index — index many runs under a campaign directory into one comparable summary with a deterministic campaign digest; Sprint 19 research bundle diff + campaign index diff — compare two bundles or two campaign indexes with a conservative regression flag; Sprint 20 research campaign history report — fold an ordered set of campaign index snapshots into one deterministic trend report with per-run valid/attention streaks and a conservative regression signal; Sprint 21 research portfolio rollup — roll up many per-campaign history reports into one integrity-triage portfolio view with clean/stable lists, top concerns, and CI flags; Sprint 22 research portfolio diff — compare two portfolio reports for campaign-set changes and common-campaign status transitions with conservative, non-overclaimed change/regression/attention flags)
 
 The paper engine (`@soulmaker/paper` + the `paper:*` CLI commands) is a
 **deterministic, offline, simulated-only** trading sandbox. It exists to prove
@@ -716,6 +716,58 @@ like the history command); the formatter redacts internally and caps long lists.
 over a set of campaign summaries — not a live result, not advice, not a profitability claim; the
 conservative regression flag is an integrity/reproducibility signal, never a trading recommendation.
 
+## Research portfolio diff (Sprint 22)
+
+Sprint 22 closes the research-stack symmetry (index · campaign diff · history · portfolio ·
+**portfolio diff**). Where the portfolio report is a single snapshot across many campaigns, the
+portfolio diff compares **two** such snapshots and answers *"what changed since my last portfolio
+snapshot, and did anything break integrity?"*
+
+`@soulmaker/backtest` exports the pure `diffBacktestResearchPortfolioReports`,
+`validateBacktestResearchPortfolioDiff`, `formatBacktestResearchPortfolioDiff` (schema
+`backtest.research.portfolio.diff.v1`). The CLI adds
+`paper:backtest:diff:research:portfolio --base <path> --next <path>` with
+`[--json] [--fail-on-change] [--fail-on-regression] [--fail-on-attention] [--fail-on-new-attention]`.
+
+Both inputs are **strictly validated** as a Sprint 21 `backtest.research.portfolio.report.v1` (a
+non-portfolio / wrong-schema / malformed file, or a report carrying duplicate campaign ids, refuses
+with exit 1). The diff keeps **two axes** deliberately separate:
+
+- **Campaign-set membership** — campaigns **added** (in `next`, not `base`), **removed** (in `base`,
+  not `next`), and **common** (in both). Added/removed campaigns carry their own status + flags so no
+  information is lost.
+- **Status transitions over the common set only** — a transition needs a *before* and an *after*, so
+  the `newlyRegressed` / `recoveredFromRegression` / `newly-` and `noLonger-NeedingAttention` (current
+  and since-baseline) / `newlyClean` / `noLongerClean` / `newlyStable` / `noLongerStable` lists are
+  computed strictly over campaigns present in **both** reports. Appearances and disappearances are
+  described entirely by the membership axis; the diff never relabels an appearance as a "transition".
+
+It also reports the **aggregate count deltas** (campaign count, clean/stable counts, campaigns-with-
+change/regression/attention/new-attention counts, and the summed run totals) as `{base, next, delta}`
+triples.
+
+The conservative flags are **honest and never overclaimed**:
+
+- `hasCampaignSetChange` — any campaign added or removed.
+- `hasChange` — a campaign-set change OR a common campaign whose tracked fields differ.
+- `hasRegression` — fires **only** when a **common** campaign transitions into a conservative
+  regression (no-regression → regression). A **disappearing** campaign is a change / scope change, not
+  a regression (you choose which campaigns to track, so losing one from the set is not, by itself,
+  integrity breakage). A campaign that is **added** already carrying a regression is surfaced in
+  `addedCampaigns` and in the change reasons, and is gated by `--fail-on-change` — it does **not** set
+  `hasRegression`, because there is no base state for it to have regressed from.
+- `hasAttention` / `hasNewAttention` — symmetric with regression: current / newly-needed-since-
+  baseline attention that **appeared** on a common campaign.
+- `hasRecovery` — a common campaign that recovered from regression or no longer needs current
+  attention (a removed campaign is **not** a "recovery").
+
+The four `wouldFailOn*` gates mirror `hasChange` / `hasRegression` / `hasAttention` / `hasNewAttention`,
+and the `--fail-on-*` flags each set a non-zero exit. The command reads **only** the two named files
+(BOM-tolerant), runs no backtest, and **writes nothing**; the formatter redacts internally and caps
+long lists. The digests behind these summaries are non-cryptographic content fingerprints, not an
+anti-tamper guarantee. Local bookkeeping over two campaign-portfolio summaries — not a live result,
+not advice, not a profitability claim.
+
 ## PnL reporting
 
 `PaperRunSummary`: realized PnL, unrealized PnL, total PnL, open position count,
@@ -755,6 +807,7 @@ simulated, or sent" disclaimer.
 | `paper:backtest:diff:research:index` | diff **two** campaign index JSON files (Sprint 19): pairs runs by runId → added/removed runs + per-run digest/valid/attention changes + campaign-digest/kind/schema/count changes (`backtest.research.campaign.diff.v1`); `hasChange` + a conservative `hasRegression`; `--fail-on-change` / `--fail-on-regression`; reads two files, writes nothing |
 | `paper:backtest:research:history` | fold an **ordered** set of campaign index JSON snapshots into one trend report (Sprint 20): per-run first/last-seen, present/valid/attention now, valid + attention streaks, digest-change count, and since-baseline/since-previous deltas (`backtest.research.campaign.history.report.v1`); reuses the Sprint 19 campaign diff so `hasChange` + conservative `hasRegression` match it, plus `hasAttention` / `hasNewAttentionSinceBaseline`; `--baseline first\|previous\|<path>`, `--fail-on-change` / `--fail-on-regression` / `--fail-on-attention` / `--fail-on-new-attention`; reads the named files only, writes nothing |
 | `paper:backtest:research:portfolio` | roll up **many** per-campaign history report JSON files into one integrity-triage view (Sprint 21): each `--history campaignId=path` names one campaign; carries each campaign's change/attention/regression/streak/count signals **verbatim**, derives a per-campaign status (regression > attention > changed > clean), lists clean (no concern) + stable (no change) campaigns, the top concerns, and run totals **summed** across campaigns (run ids are campaign-scoped, never de-duplicated) (`backtest.research.portfolio.report.v1`); integrity-triage ordering (NOT a trading ranking); `--fail-on-change` / `--fail-on-regression` / `--fail-on-attention` / `--fail-on-new-attention`; refuses a bad spec / duplicate id / non-history file; reads the named files only, writes nothing |
+| `paper:backtest:diff:research:portfolio` | diff **two** portfolio report JSON files (Sprint 22): pairs campaigns by campaignId → added/removed campaigns + per-campaign status/flag/count changes over the **common** set; conservative newly-regressed / recovered / newly-or-no-longer attention (current + since-baseline) / newly-clean / newly-stable transitions + aggregate count deltas (`backtest.research.portfolio.diff.v1`); a disappearing campaign is a change, **not** a regression, and an added-already-regressed campaign sets `hasChange` not `hasRegression`; `--fail-on-change` / `--fail-on-regression` / `--fail-on-attention` / `--fail-on-new-attention`; refuses a non-portfolio / wrong-schema / duplicate-id file; reads two files, writes nothing |
 
 `paper:run` options: `--candidates <path>` `--prices <path>` `--journal <path>`
 `--max-trade-size-usd` `--max-daily-loss-usd` `--max-open-positions`

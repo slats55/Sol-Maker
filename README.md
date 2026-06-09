@@ -147,7 +147,14 @@ reports (one per campaign) into a single report (`backtest.research.portfolio.re
 carries each campaign's change/attention/regression signal **verbatim**, orders campaigns by
 integrity triage (most-concerning first), lists the clean/stable campaigns and the top concerns,
 sums run totals across campaigns (run ids are campaign-scoped, never de-duplicated), and exposes the
-same four `--fail-on-*` CI flags. It reads only the named files and writes nothing. None of this fetches live
+same four `--fail-on-*` CI flags. It reads only the named files and writes nothing. Sprint 22 closes
+the symmetry with a **portfolio diff**: `paper:backtest:diff:research:portfolio --base <path> --next
+<path>` compares two portfolio reports (`backtest.research.portfolio.diff.v1`) — which campaigns
+appeared/disappeared, and, over the campaigns present in **both**, which newly regressed / recovered /
+newly need attention / became clean or stable — plus the aggregate count deltas and a conservative
+regression flag. A disappearing campaign is a change / scope change, **not** a regression; an added
+campaign that already carries a regression sets `hasChange` (gated by `--fail-on-change`), not
+`hasRegression`. It reads only the two named files and writes nothing. None of this fetches live
 data or begins transaction planning (roadmap Phase 6 remains not started; Phase 7 burner
 live remains not started). The default mode is `PAPER`. See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
@@ -192,7 +199,8 @@ soulmaker/
                 #                    paper:backtest:research:bundle, paper:backtest:research:status,
                 #                    paper:backtest:research:index, paper:backtest:research:history,
                 #                    paper:backtest:research:portfolio,
-                #                    paper:backtest:diff:research:bundle, paper:backtest:diff:research:index)
+                #                    paper:backtest:diff:research:bundle, paper:backtest:diff:research:index,
+                #                    paper:backtest:diff:research:portfolio)
     web/        # Phase 8 dashboard (placeholder)
   packages/
     core/       # @soulmaker/core      — config schema, modes, risk caps, LIVE GATE
@@ -219,7 +227,8 @@ soulmaker/
                 #            Sprint 18 adds the cross-run research campaign index;
                 #            Sprint 19 adds the research bundle diff + campaign index diff;
                 #            Sprint 20 adds the research campaign history/trend report;
-                #            Sprint 21 adds the research portfolio rollup across campaigns
+                #            Sprint 21 adds the research portfolio rollup across campaigns;
+                #            Sprint 22 adds the research portfolio diff (two portfolio reports)
                 #            (still pure: the package never scans dirs or reads/writes files)
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
@@ -424,6 +433,13 @@ pnpm soulmaker paper:backtest:research:history --index <t0/index.json> --index <
 # keyed by a campaign id; the --fail-on-* flags set a non-zero CI exit across the portfolio:
 pnpm soulmaker paper:backtest:research:portfolio --history scalping=<scalping-history.json> --history momentum=<momentum-history.json>
 pnpm soulmaker paper:backtest:research:portfolio --history scalping=<scalping-history.json> --history momentum=<momentum-history.json> --fail-on-regression --fail-on-new-attention
+
+# Sprint 22 — PORTFOLIO DIFF: compare two portfolio reports — which campaigns appeared/disappeared,
+# and (over the campaigns in BOTH) which newly regressed / recovered / newly need attention / became
+# clean or stable — plus aggregate count deltas and a conservative regression flag. A disappearing
+# campaign is a change, NOT a regression. Reads the two named files only, writes nothing:
+pnpm soulmaker paper:backtest:diff:research:portfolio --base <portfolio-before.json> --next <portfolio-after.json>
+pnpm soulmaker paper:backtest:diff:research:portfolio --base <portfolio-before.json> --next <portfolio-after.json> --fail-on-regression --fail-on-new-attention
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

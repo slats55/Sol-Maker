@@ -28,7 +28,7 @@ packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.j
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
-packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup (Sprint 8–21)  [strategy, paper, security]
+packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup + research portfolio diff (Sprint 8–22)  [strategy, paper, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -247,6 +247,23 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   nothing**, and the `--fail-on-*` flags gate CI on change / regression / current attention / new
   attention across the portfolio. A portfolio report is bookkeeping over a set of campaign
   **summaries** — not a live result, prediction, or advice.
+- **(Sprint 22)** `@soulmaker/backtest` adds the **research portfolio diff** that closes the
+  research-stack symmetry: `research-portfolio-diff.ts` (`diffBacktestResearchPortfolioReports`,
+  `validateBacktestResearchPortfolioDiff`, `formatBacktestResearchPortfolioDiff`; schema
+  `backtest.research.portfolio.diff.v1`), exposed by the CLI as
+  `paper:backtest:diff:research:portfolio --base <path> --next <path>`. Both inputs are strictly
+  validated as a Sprint 21 portfolio report (a non-portfolio / wrong-schema / duplicate-id file is
+  refused), so the diff never silently mis-reads. It keeps two axes separate: **campaign-set
+  membership** (added / removed / common) and **status transitions over the campaigns present in
+  BOTH** — a transition needs a before AND an after, so the newly-regressed / recovered /
+  newly-attention / newly-clean / newly-stable lists are computed over the common set only, while
+  appearances/disappearances are reported as a campaign-set change. The conservative flags are honest:
+  a disappearing campaign is a change / scope change (not a regression); an added campaign that arrives
+  carrying a regression sets `hasChange` (gated by `--fail-on-change`), not `hasRegression`. The module
+  imports only `@soulmaker/security` (redacting formatter) plus its Sprint 21 sibling — no fs/net, no
+  `Date.now`/`Math.random`. The CLI reads the two named files only and **writes nothing**; the
+  `--fail-on-*` flags gate CI on change / regression / current attention / new attention. A portfolio
+  diff is bookkeeping over two local summaries — not a live result, prediction, or advice.
 
 ## The live boundary
 

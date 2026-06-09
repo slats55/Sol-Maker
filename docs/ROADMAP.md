@@ -483,6 +483,24 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   (no fs/net, no `Date.now`/`Math.random`; the formatter redacts internally). Local bookkeeping —
   not a live result, not advice, not a profitability claim; the conservative regression flag is an
   integrity/reproducibility signal, never a trading recommendation.
+- ✅ **(Sprint 22) Research portfolio diff** — the comparison layer that closes the research-stack
+  symmetry (index · campaign diff · history · portfolio · **portfolio diff**). `@soulmaker/backtest`
+  exports the pure `diffBacktestResearchPortfolioReports`, `validateBacktestResearchPortfolioDiff`,
+  `formatBacktestResearchPortfolioDiff` (schema `backtest.research.portfolio.diff.v1`); the CLI adds
+  `paper:backtest:diff:research:portfolio --base <path> --next <path> [--json] [--fail-on-change] [--fail-on-regression] [--fail-on-attention] [--fail-on-new-attention]`.
+  Both inputs are strictly validated as a Sprint 21 `backtest.research.portfolio.report.v1` (a
+  non-portfolio / wrong-schema / duplicate-id file is refused). It separates two axes: **campaign-set
+  membership** (campaigns added / removed / common) and **status transitions over the campaigns
+  present in BOTH** (newly regressed / recovered / newly-or-no-longer needing attention / newly clean
+  / newly stable), plus the aggregate count deltas. The conservative flags are honest and never
+  overclaimed: a **disappearing** campaign is a change / scope change, **not** a regression; an
+  **added** campaign that already carries a regression sets `hasChange` (gated by `--fail-on-change`),
+  not `hasRegression` (there is no base state for it to have regressed from); `hasRegression` fires
+  only when a **common** campaign transitions into a conservative regression. The `--fail-on-*` flags
+  set a non-zero exit for change / regression / current attention / new attention. It reads ONLY the
+  two named files and **writes nothing**; the package stays pure (no fs/net, no
+  `Date.now`/`Math.random`; the formatter redacts internally). Local bookkeeping — not a live result,
+  not advice, not a profitability claim.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

@@ -752,3 +752,44 @@ pnpm soulmaker paper:backtest:research:portfolio --history scalping=scalping-his
 > report. This is local bookkeeping over injected, simulated summaries — **not** a live result,
 > **not** advice, and **not** a profitability claim — and nothing here touches a wallet, key,
 > signing, sending, or the network; Phases 6 and 7 remain **not started**.
+
+## Diffing two portfolio snapshots (Sprint 22)
+
+The portfolio report is a single snapshot across many campaigns; the **portfolio diff** compares
+**two** such snapshots — e.g. last week's portfolio vs this week's — and answers *which campaigns
+appeared or disappeared, and (over the campaigns present in both) which newly regressed, recovered,
+newly need attention, or became clean/stable*, plus the aggregate count deltas and a CI decision.
+Keep two portfolio report JSON files and point `paper:backtest:diff:research:portfolio` at them.
+
+```bash
+# 1) Produce two portfolio snapshots (Sprint 21), e.g. before and after a change:
+pnpm soulmaker paper:backtest:research:portfolio --history scalping=scalping-history.json --history momentum=momentum-history.json --json > portfolio-before.json
+#    ...make changes, re-run the campaigns, rebuild the history reports...
+pnpm soulmaker paper:backtest:research:portfolio --history scalping=scalping-history.json --history momentum=momentum-history.json --json > portfolio-after.json
+
+# 2) PORTFOLIO DIFF — compare the two snapshots (human-readable):
+pnpm soulmaker paper:backtest:diff:research:portfolio --base portfolio-before.json --next portfolio-after.json
+# --json for the machine-readable diff (schema backtest.research.portfolio.diff.v1).
+
+# 3) STRICT behaviour for CI — each flag sets a non-zero exit:
+#    --fail-on-change        any change at all (incl. a campaign added or removed)
+#    --fail-on-regression    ONLY a common campaign that newly regressed (no-regression -> regression)
+#    --fail-on-attention     current attention newly appeared on a common campaign
+#    --fail-on-new-attention since-baseline attention newly appeared on a common campaign
+pnpm soulmaker paper:backtest:diff:research:portfolio --base portfolio-before.json --next portfolio-after.json --fail-on-regression --fail-on-new-attention
+```
+
+> **Two axes, kept separate — and conservative, non-overclaimed flags.** Campaign **membership**
+> (added / removed / common) is reported separately from **status transitions**, which are computed
+> only over the campaigns present in **both** reports (a transition needs a before *and* an after).
+> A **disappearing** campaign is a change / scope change — **not** a regression (you choose which
+> campaigns to track). A campaign that is **added** already carrying a regression sets `hasChange`
+> (so `--fail-on-change` catches it) but **not** `hasRegression`, because there is no base state for
+> it to have regressed from; `hasRegression` fires only when a **common** campaign transitions into a
+> regression. Both `--base` and `--next` must be a real
+> `backtest.research.portfolio.report.v1` (a history report, a campaign index, a malformed file, or a
+> report with duplicate campaign ids is refused). The diff carries no timestamp, so the same pair
+> yields a byte-identical diff. This is local bookkeeping over two injected, simulated summaries —
+> **not** a live result, **not** advice, and **not** a profitability claim; the digests behind the
+> summaries are non-cryptographic content fingerprints, not an anti-tamper guarantee. Nothing here
+> touches a wallet, key, signing, sending, or the network; Phases 6 and 7 remain **not started**.
