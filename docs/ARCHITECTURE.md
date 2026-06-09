@@ -29,7 +29,7 @@ packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [s
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
 packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup + research portfolio diff + research artifact pack + research artifact pack diff (Sprint 8–24)  [strategy, paper, security]
-packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (S25) + token preflight (S26) + paper decisions (S27) + operator workflow helper (S28) + run report (S30) + run report diff (S31) + policy config (S32) + audit log (S33) + session pack (S34); NO chain capability  [risk, security]
+packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (S25) + token preflight (S26) + paper decisions (S27) + operator workflow helper (S28) + run report (S30) + run report diff (S31) + policy config (S32) + audit log (S33) + session pack (S34) + safety gates (S39); NO chain capability  [risk, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -426,6 +426,17 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   `isAudited` — never a completeness or readiness claim), and a CI section. Duplicate labels are refused.
   It reads the named files only and writes nothing unless `--out`; the package stays pure (no fs/net, no
   `Date.now`/`Math.random`) and chain-free.
+- **(Sprint 39)** `@soulmaker/sniper` adds **operator safety gates**: `safety-gates.ts`
+  (`buildSniperSafetyGatesReport`, `validate…`, `format…`; schema `sniper.safety.gates.report.v1`),
+  exposed by the CLI as `paper:sniper:safety:gates --session <path> [--operator <label>] [--allow-unknown]
+  [--allow-risk-block] [--allow-paper-enter] [--json] [--out <path>] [--force] [--fail-on-warning]`. The
+  pure builder evaluates a FAIL-CLOSED gate set over a session pack: required presence gates (candidate
+  list / decision / audit log), recommended ones (preflight / run report / policy), `NO_UNSUPPORTED_ARTIFACT`,
+  and three allowance gates (`NO_UNKNOWN` / `NO_RISK_BLOCK` / `NO_PAPER_ENTER`) that FAIL unless the
+  operator explicitly allowed the condition. `ready` is true iff no REQUIRED gate failed; the CLI exits 1
+  when not ready (fail-closed). A `PHASE6_NOT_STARTED` gate is always `skip` and the recommendation never
+  authorizes Phase 6 — passing is LOCAL/PAPER readiness only. Pure; reads the session pack only and writes
+  nothing unless `--out`.
 
 ## The live boundary
 

@@ -50,6 +50,7 @@ import {
   paperSniperPolicyValidateReport,
   paperSniperAuditReport,
   paperSniperSessionPackReport,
+  paperSniperSafetyGatesReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1419,6 +1420,51 @@ program
           failOnUnknown: Boolean(opts.failOnUnknown),
           failOnPaperEnter: Boolean(opts.failOnPaperEnter),
           failOnUnsupported: Boolean(opts.failOnUnsupported),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:safety:gates")
+  .description(
+    "Evaluate FAIL-CLOSED operator safety gates over a LOCAL session pack (`sniper.safety.gates.report.v1`): candidate list / decision / audit log present, no unsupported artifacts, and — gated by explicit operator allowances — no unknowns / risk blocks / SIMULATED paper-enters. Exits 1 when NOT ready (by default). Passing is LOCAL/PAPER readiness ONLY — NOT Phase 6 authorization (Phase 6/7 remain not started). Reads the named file only, writes nothing unless --out. No network, no wallet",
+  )
+  .option("--session <path>", "session pack JSON (sniper.session.pack.v1)")
+  .option("--operator <label>", "operator label echoed into the report")
+  .option("--allow-unknown", "allow unknown classifications (downgrades that gate's fail to a warn)")
+  .option("--allow-risk-block", "allow risk blocks (downgrades that gate's fail to a warn)")
+  .option("--allow-paper-enter", "allow SIMULATED paper-enters (downgrades that gate's fail to a warn)")
+  .option("--json", "emit the safety gates report as stable JSON")
+  .option("--out <path>", "write ONLY the gates report JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-warning", "also exit non-zero when any gate warned (even when ready)")
+  .action(
+    (opts: {
+      session?: string;
+      operator?: string;
+      allowUnknown?: boolean;
+      allowRiskBlock?: boolean;
+      allowPaperEnter?: boolean;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnWarning?: boolean;
+    }) => {
+      const { text, exitCode } = paperSniperSafetyGatesReport(
+        {},
+        {
+          sessionPath: opts.session,
+          operatorLabel: opts.operator,
+          allowUnknown: Boolean(opts.allowUnknown),
+          allowRiskBlock: Boolean(opts.allowRiskBlock),
+          allowPaperEnter: Boolean(opts.allowPaperEnter),
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnWarning: Boolean(opts.failOnWarning),
         },
       );
       console.log(text);

@@ -257,6 +257,14 @@ an **unknown** schema is surfaced honestly as `unsupported` (never silently trus
 readiness. It writes nothing unless `--out`; `--fail-on-risk` / `--fail-on-unknown` /
 `--fail-on-paper-enter` / `--fail-on-unsupported` gate CI.
 
+Sprint 39 adds a **fail-closed** pre-simulation safety check: `paper:sniper:safety:gates --session
+<pack.json>` evaluates a `sniper.safety.gates.report.v1` over a session pack — candidate list / decision
+/ audit log present, no unsupported artifacts, and (gated by explicit `--allow-unknown` /
+`--allow-risk-block` / `--allow-paper-enter`) no unknowns / risk blocks / simulated paper-enters. It is
+fail-closed (a concern fails its gate unless explicitly allowed) and **exits 1 when not ready**. Passing
+every gate is **local/paper readiness only — never Phase 6 authorization**; Phase 6 and Phase 7 remain
+not started.
+
 ## Non-negotiable security rules (summary)
 
 The full, authoritative list is in [`SECURITY.md`](SECURITY.md). The short form:
@@ -351,7 +359,9 @@ soulmaker/
                 #            Sprint 33 adds the audit log (sniper.audit.log.v1): deterministic
                 #            per-step provenance over a run report, no wall-clock time;
                 #            Sprint 34 adds the session pack (sniper.session.pack.v1): bundles all
-                #            sniper artifacts, classifies each, surfaces unsupported schemas honestly
+                #            sniper artifacts, classifies each, surfaces unsupported schemas honestly;
+                #            Sprint 39 adds the safety gates (sniper.safety.gates.report.v1): fail-closed
+                #            pre-simulation readiness check (local/paper only, NOT Phase 6 authorization)
                 #            (paper-only) — NO chain capability, NO wallet, NO network
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/

@@ -657,6 +657,17 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   `examples/sniper/*.json` is validated against a production validator; every generated artifact is
   validated + coherence-checked + determinism-checked. Generated artifacts live in a temp dir (never
   committed) so they cannot drift. The `examples/sniper/README.md` has the full end-to-end walkthrough.
+- ✅ **(Sprint 39) Operator safety gates** — a deterministic, fail-closed pre-simulation readiness check.
+  `@soulmaker/sniper` exports `buildSniperSafetyGatesReport`, `validateSniperSafetyGatesReport`,
+  `formatSniperSafetyGatesReport` (schema `sniper.safety.gates.report.v1`); the CLI adds
+  `paper:sniper:safety:gates --session <path> [--operator <label>] [--allow-unknown] [--allow-risk-block]
+  [--allow-paper-enter] [--json] [--out <path>] [--force] [--fail-on-warning]`. Over a session pack it
+  evaluates required presence gates (candidate list / decision / audit log), recommended ones (preflight /
+  run report / policy), `NO_UNSUPPORTED_ARTIFACT`, and three allowance gates (`NO_UNKNOWN` / `NO_RISK_BLOCK`
+  / `NO_PAPER_ENTER`) that FAIL unless the operator explicitly allowed them. The command **exits 1 when not
+  ready** (fail-closed). A `PHASE6_NOT_STARTED` gate is always `skip` and the recommendation never
+  authorizes Phase 6 — passing is LOCAL/PAPER readiness only, never Phase 6 authorization. Pure (no fs/net,
+  no `Date.now`/`Math.random`); reads the session pack only and writes nothing unless `--out`.
 - ✅ **(Sprint 36) Sniper CLI cohesion** — a cross-command cohesion test
   (`apps/cli/src/sniper-cohesion.test.ts`) that locks the `paper:sniper:*` surface's safety/consistency
   contract: every command with a required argument refuses (exit 1, `Refusing:` message) when it is

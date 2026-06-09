@@ -61,6 +61,7 @@ import {
   paperSniperPolicyValidateReport,
   paperSniperAuditReport,
   paperSniperSessionPackReport,
+  paperSniperSafetyGatesReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -7546,6 +7547,90 @@ describe("paperSniperSessionPackReport (Sprint 34)", () => {
       const r = paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: [`cands=${cands}`, `bad=${corrupt}`] });
       expect(r.exitCode).toBe(1);
       expect(r.text).toMatch(/claims sniper.run.report.v1 but is invalid/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperSniperSafetyGatesReport (Sprint 39)", () => {
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const WSOL = "So11111111111111111111111111111111111111112";
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+  const cleanInspection = (mint: string) => ({ mint, decimals: 6, supplyRaw: "1", uiSupply: 1, mintAuthorityPresent: false, freezeAuthorityPresent: false, isInitialized: true, programLabel: "spl-token" });
+  const riskPass = (mint: string) => ({ mint, score: 10, decision: "PASS_FOR_PAPER_EVALUATION", flags: [], summary: [] });
+  const riskReject = (mint: string) => ({ mint, score: 95, decision: "REJECT", flags: [{ id: "rug", severity: "critical", title: "Rug" }], summary: [] });
+
+  /** Build a full session pack file via the real commands; returns its path. */
+  function sessionPackFile(cwd: string): string {
+    const raw = writeJson(cwd, "cands.raw.json", { candidates: [{ candidateId: "good", mint: USDC, observedLiquidityUsd: 50000 }, { candidateId: "bad", mint: WSOL }] });
+    const canon = paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: raw, json: true });
+    writeFileSync(join(cwd, "cands.json"), canon.text);
+    writeJson(cwd, "good.insp.json", cleanInspection(USDC));
+    writeJson(cwd, "good.risk.json", riskPass(USDC));
+    writeJson(cwd, "bad.risk.json", riskReject(WSOL));
+    paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: "cands.json", inspections: ["good=good.insp.json"], risks: ["good=good.risk.json", "bad=bad.risk.json"], outPath: "pf.json" });
+    paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: "cands.json", preflightPath: "pf.json", outPath: "dec.json" });
+    const run = paperSniperReportReport({ cwd, env: {} }, { candidatesPath: "cands.json", preflightPath: "pf.json", decisionsPath: "dec.json", json: true });
+    writeFileSync(join(cwd, "run.json"), run.text);
+    const audit = paperSniperAuditReport({ cwd, env: {} }, { reportPath: "run.json", label: "r", json: true });
+    writeFileSync(join(cwd, "audit.json"), audit.text);
+    const pack = paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: ["cands=cands.json", "pf=pf.json", "dec=dec.json", "run=run.json", "audit=audit.json"], json: true });
+    writeFileSync(join(cwd, "pack.json"), pack.text);
+    return "pack.json";
+  }
+
+  it("refuses when --session is missing", () => {
+    expect(paperSniperSafetyGatesReport({}, {}).text).toMatch(/^Refusing: --session/);
+    expect(paperSniperSafetyGatesReport({}, {}).exitCode).toBe(1);
+  });
+
+  it("is fail-closed: a full session with paper-enter + risk-block is NOT ready (exit 1)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const pack = sessionPackFile(cwd);
+      const r = paperSniperSafetyGatesReport({ cwd, env: {} }, { sessionPath: pack });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toContain("READY:    NO");
+      expect(r.text.toLowerCase()).toContain("not authorization to start phase 6");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("becomes ready (exit 0) when the operator allows risk-block + paper-enter", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const pack = sessionPackFile(cwd);
+      const r = paperSniperSafetyGatesReport({ cwd, env: {} }, { sessionPath: pack, allowRiskBlock: true, allowPaperEnter: true, json: true });
+      const obj = JSON.parse(r.text) as { schemaVersion: string; ready: boolean; allowances: { allowRiskBlock: boolean } };
+      expect(obj.schemaVersion).toBe("sniper.safety.gates.report.v1");
+      expect(obj.ready).toBe(true);
+      expect(obj.allowances.allowRiskBlock).toBe(true);
+      expect(r.exitCode).toBe(0);
+      // --fail-on-warning trips on the downgraded warns even when ready
+      expect(paperSniperSafetyGatesReport({ cwd, env: {} }, { sessionPath: pack, allowRiskBlock: true, allowPaperEnter: true, failOnWarning: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--out writes ONLY the report JSON and refuses overwrite without --force; refuses a wrong-schema input", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const pack = sessionPackFile(cwd);
+      const r1 = paperSniperSafetyGatesReport({ cwd, env: {} }, { sessionPath: pack, allowRiskBlock: true, allowPaperEnter: true, outPath: "gates.json" });
+      expect(r1.exitCode).toBe(0);
+      const written = JSON.parse(readFileSync(join(cwd, "gates.json"), "utf8")) as { schemaVersion: string };
+      expect(written.schemaVersion).toBe("sniper.safety.gates.report.v1");
+      expect(paperSniperSafetyGatesReport({ cwd, env: {} }, { sessionPath: pack, allowRiskBlock: true, allowPaperEnter: true, outPath: "gates.json" }).exitCode).toBe(1);
+      const wrong = writeJson(cwd, "wrong.json", { schemaVersion: "sniper.run.report.v1" });
+      const rw = paperSniperSafetyGatesReport({ cwd, env: {} }, { sessionPath: wrong });
+      expect(rw.exitCode).toBe(1);
+      expect(rw.text).toMatch(/session pack is invalid/);
     } finally {
       cleanup();
     }

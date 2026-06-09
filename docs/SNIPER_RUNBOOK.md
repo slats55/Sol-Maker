@@ -54,6 +54,7 @@ invariants.
 | `paper:sniper:diff:report` | `--base`, `--next` | never | `sniper.run.report.diff.v1` |
 | `paper:sniper:audit` | `--report` | `--out` only | `sniper.audit.log.v1` |
 | `paper:sniper:session:pack` | `--artifact` (≥1) | `--out` only | `sniper.session.pack.v1` |
+| `paper:sniper:safety:gates` | `--session` | `--out` only | `sniper.safety.gates.report.v1` |
 
 Common flags: `--json` (stable JSON), `--out <path>` + `--force` (write the artifact; refuse overwrite
 without `--force`), and command-specific `--fail-on-*` CI gates (see [CI gates](#ci-gates)).
@@ -213,6 +214,27 @@ they never claim completeness, correctness, or trading readiness. It reads the n
 **writes nothing** unless `--out`. CI gates: `--fail-on-risk`, `--fail-on-unknown`,
 `--fail-on-paper-enter`, `--fail-on-unsupported`.
 
+### 9. Safety gates (fail-closed pre-simulation check)
+
+Before relying on a session, run the fail-closed safety gates over its session pack:
+
+```bash
+pnpm soulmaker paper:sniper:safety:gates --session session.json
+#   → READY: NO if anything is missing or any unknown/risk-block/paper-enter is present (exit 1)
+
+# Explicitly allow the expected conditions to reach READY (still local/paper only):
+pnpm soulmaker paper:sniper:safety:gates --session session.json --allow-risk-block --allow-paper-enter --out gates.json
+```
+
+The gates check the required artifacts are present (candidate list / decision / audit log), that there
+are no unsupported artifacts, and — gated by `--allow-unknown` / `--allow-risk-block` /
+`--allow-paper-enter` — that there are no unknowns / risk blocks / simulated paper-enters. It is
+**fail-closed**: a concern fails its gate unless you explicitly allow it, and the command **exits 1 when
+not ready**. A `PHASE6_NOT_STARTED` gate is always present and the recommendation never authorizes Phase
+6 — **passing is local/paper readiness only, never Phase 6 authorization.** It reads the session pack only
+and **writes nothing** unless `--out`. CI: the non-zero exit IS the gate; add `--fail-on-warning` to also
+fail on allowed-but-warned conditions.
+
 ## How to inspect risk reasons
 
 - The **preflight** entry for a candidate lists its `warnings`, `disqualifiers`, and a capped
@@ -234,6 +256,8 @@ they never claim completeness, correctness, or trading readiness. It reads the n
 - `paper:sniper:audit --fail-on-failure` / `--fail-on-warning` — gate a run's audit trail.
 - `paper:sniper:session:pack --fail-on-risk` / `--fail-on-unknown` / `--fail-on-paper-enter` /
   `--fail-on-unsupported` — gate a bundled session.
+- `paper:sniper:safety:gates` — exits 1 when NOT ready (fail-closed); `--allow-*` to permit expected
+  conditions, `--fail-on-warning` to also fail on allowed-but-warned conditions.
 
 ## What is intentionally NOT implemented
 

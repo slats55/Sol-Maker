@@ -408,6 +408,44 @@ It reads the named files only and **writes nothing** unless `--out`. The `--fail
 (`--fail-on-risk`, `--fail-on-unknown`, `--fail-on-paper-enter`, `--fail-on-unsupported`) set the exit
 code. A `paper-enter` flag carried through is a **simulated** classification, never an order.
 
+## Operator safety gates (Sprint 39)
+
+The safety gates are a deterministic, **fail-closed** check that a paper session is in a safe, complete
+state — the gate an operator runs before relying on a session (and a prerequisite posture before any
+future Phase 6 work). The pure `buildSniperSafetyGatesReport` (schema `sniper.safety.gates.report.v1`)
+evaluates a gate set over a single session pack.
+
+> **Fail-closed.** A concern (an unknown classification, a risk block, a SIMULATED paper-enter) is a
+> **FAIL** unless the operator explicitly allowed it; a missing required artifact (candidate list,
+> decision report, audit log) or an unsupported artifact is a **FAIL**. The command **exits 1 when not
+> ready**. Passing every gate is **LOCAL/PAPER readiness only — NOT authorization to start Phase 6,
+> build/sign/send a transaction, or trade.** A `PHASE6_NOT_STARTED` gate is always present and the
+> recommendation never authorizes Phase 6.
+
+### Gates
+
+- **Required presence:** `CANDIDATE_LIST_PRESENT`, `DECISION_PRESENT`, `AUDIT_LOG_PRESENT` (each fails if
+  absent — these block readiness).
+- **Recommended presence:** `PREFLIGHT_PRESENT`, `RUN_REPORT_PRESENT`, `POLICY_PRESENT` (each warns if
+  absent — recommended, not blocking).
+- **`NO_UNSUPPORTED_ARTIFACT`:** fails if the session pack carries any unsupported artifact.
+- **Allowance gates:** `NO_UNKNOWN`, `NO_RISK_BLOCK`, `NO_PAPER_ENTER` — each fails when the condition is
+  present, unless the operator passes `--allow-unknown` / `--allow-risk-block` / `--allow-paper-enter`
+  (which downgrades the fail to a warn). The resolved allowances are echoed in the report.
+- **`PHASE6_NOT_STARTED`:** always `skip` — a reminder that Phase 6 is not started by design.
+
+`ready` is true iff no **required** gate failed.
+
+### CLI — `paper:sniper:safety:gates`
+
+```bash
+pnpm soulmaker paper:sniper:safety:gates --session session.json
+pnpm soulmaker paper:sniper:safety:gates --session session.json --allow-risk-block --allow-paper-enter --out gates.json
+```
+
+It reads the session pack only and **writes nothing** unless `--out`. The non-zero exit when not ready IS
+the gate; `--fail-on-warning` also fails on allowed-but-warned conditions.
+
 ## What is intentionally NOT here yet
 
 - **No transaction planning / signing / sending / wallet / burner** — Phases 6 and 7, not started. The

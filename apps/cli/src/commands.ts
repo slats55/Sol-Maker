@@ -71,6 +71,8 @@ import {
   formatSniperAuditLog,
   buildSniperSessionPack,
   formatSniperSessionPack,
+  buildSniperSafetyGatesReport,
+  formatSniperSafetyGatesReport,
   SNIPER_CANDIDATE_LIST_SCHEMA_VERSION,
   SNIPER_POLICY_CONFIG_SCHEMA_VERSION,
   type SniperCandidateList,
@@ -85,6 +87,7 @@ import {
   type SniperAuditLog,
   type SniperSessionPack,
   type SniperSessionPackArtifactInput,
+  type SniperSafetyGatesReport,
 } from "@soulmaker/sniper";
 import {
   runPaperSession,
@@ -4933,6 +4936,93 @@ export function paperSniperSessionPackReport(
     return { text: JSON.stringify(redactValue(pack), null, 2), exitCode };
   }
   return { text: formatSniperSessionPack(pack, { label: opts.label }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 39 — paper:sniper:safety:gates
+//   Evaluate FAIL-CLOSED operator safety gates over a LOCAL session pack
+//   (`sniper.safety.gates.report.v1`): candidate list / decision / audit log
+//   present, no unsupported artifacts, and — gated by explicit operator
+//   allowances — no unknowns / risk blocks / SIMULATED paper-enters. Exits 1
+//   when NOT ready (by default). Passing is LOCAL/PAPER readiness ONLY — NOT
+//   Phase 6 authorization. Reads the named file only; writes nothing unless --out.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperSafetyGatesCommandOptions {
+  /** Session pack JSON path (sniper.session.pack.v1). Required. */
+  sessionPath?: string;
+  /** Optional operator label echoed into the report. */
+  operatorLabel?: string;
+  allowUnknown?: boolean;
+  allowRiskBlock?: boolean;
+  allowPaperEnter?: boolean;
+  json?: boolean;
+  /** Optional path to write the gates report JSON (writes nothing if omitted). */
+  outPath?: string;
+  /** Overwrite an existing --out file (refused by default). */
+  force?: boolean;
+  /** Also exit non-zero when any gate warned (even when ready). */
+  failOnWarning?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:safety:gates` — evaluate FAIL-CLOSED operator safety gates over a LOCAL session
+ * pack (`sniper.session.pack.v1`). Reads ONLY the named file (BOM-tolerant). It checks the required
+ * artifacts are present (candidate list / decision / audit log), that there are no unsupported artifacts,
+ * and — gated by `--allow-unknown` / `--allow-risk-block` / `--allow-paper-enter` — that there are no
+ * unknowns / risk blocks / SIMULATED paper-enters. It is fail-closed: a concern fails its gate unless
+ * explicitly allowed. The command exits **1 when NOT ready** (by default), 0 when ready (or +1 with
+ * `--fail-on-warning` if any gate warned). `--json` emits the report; `--out` writes ONLY the report JSON
+ * (refusing overwrite without `--force`). Passing is LOCAL/PAPER readiness ONLY — NOT Phase 6
+ * authorization, and Phase 6/7 remain not started. No network, no wallet.
+ */
+export function paperSniperSafetyGatesReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperSafetyGatesCommandOptions = {},
+): CliReport {
+  if (!opts.sessionPath) return { text: "Refusing: --session <path> is required.", exitCode: 1 };
+
+  let value: unknown;
+  try {
+    value = readJsonValue(ctx, opts.sessionPath, "session pack");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let report: SniperSafetyGatesReport;
+  try {
+    report = buildSniperSafetyGatesReport({
+      sessionPack: value,
+      operatorLabel: opts.operatorLabel ?? null,
+      allowances: {
+        allowUnknown: Boolean(opts.allowUnknown),
+        allowRiskBlock: Boolean(opts.allowRiskBlock),
+        allowPaperEnter: Boolean(opts.allowPaperEnter),
+      },
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(report), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write safety gates report at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  // Fail-closed gate: exit 1 when NOT ready, or (with --fail-on-warning) when any gate warned.
+  const exitCode = !report.ready || (opts.failOnWarning && report.hasWarning) ? 1 : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
+  }
+  return { text: formatSniperSafetyGatesReport(report, { label: opts.sessionPath }), exitCode };
 }
 
 function yesNo(value: boolean): string {

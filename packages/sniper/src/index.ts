@@ -199,3 +199,22 @@ export type {
   BuildSniperSessionPackInput,
   FormatSniperSessionPackOptions,
 } from "./session-pack.js";
+
+export {
+  buildSniperSafetyGatesReport,
+  validateSniperSafetyGatesReport,
+  formatSniperSafetyGatesReport,
+  SniperSafetyGatesReportError,
+  SNIPER_SAFETY_GATES_REPORT_SCHEMA_VERSION,
+  SNIPER_SAFETY_GATES_REPORT_BANNER,
+  SNIPER_SAFETY_GATES_REPORT_DISCLAIMERS,
+} from "./safety-gates.js";
+
+export type {
+  SniperGateStatus,
+  SniperSafetyGate,
+  SniperSafetyGateAllowances,
+  BuildSniperSafetyGatesReportInput,
+  SniperSafetyGatesReport,
+  FormatSniperSafetyGatesReportOptions,
+} from "./safety-gates.js";
