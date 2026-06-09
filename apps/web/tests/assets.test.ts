@@ -45,6 +45,20 @@ describe("theme.css asset", () => {
     }
   });
 
+  it("styles the static filter-section hooks", () => {
+    for (const hook of [
+      ".sm-filtersections",
+      ".sm-filtersection",
+      ".sm-filtersection__summary",
+      ".sm-filtersection--regression",
+      ".sm-filtersection--changed",
+      ".sm-filtersection--unknown",
+      ".sm-filtersection--clean",
+    ]) {
+      expect(source, `theme.css should style ${hook}`).toContain(hook);
+    }
+  });
+
   it("contains no network/external CSS (no url(), @import, or external URLs)", () => {
     expect(source).not.toMatch(/@import/);
     expect(source).not.toMatch(/url\(/);

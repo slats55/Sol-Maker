@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildFolderFilterSections,
   buildFolderIndex,
   extractVerdict,
+  isChangedArtifact,
+  isCleanArtifact,
+  isRegressionArtifact,
+  isUnknownOrMalformedArtifact,
+  toFolderFilterCounts,
   toFolderSummaryJson,
+  type FolderArtifactEntry,
+  type FolderFilterCategory,
   type FolderInputEntry,
 } from "../src/lib/folder-index.js";
 import { hasTypedView } from "../src/components/artifact-views.js";
@@ -311,5 +319,252 @@ describe("renderFolderIndex — loaded page", () => {
   it("is deterministic across renders", () => {
     const index = buildFolderIndex(sampleEntries(), OPTS);
     expect(renderLoaded(index, "folder-sample")).toBe(renderLoaded(index, "folder-sample"));
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Hardening (Phase B): bounded anchors, capped values, fail-soft.
+ * ------------------------------------------------------------------ */
+
+describe("buildFolderIndex — bounded, unique anchors", () => {
+  it("caps a pathologically long filename's anchor slug while staying valid", () => {
+    const longName = `${"x".repeat(400)}.json`;
+    const index = buildFolderIndex([json(longName, { schemaVersion: "backtest.report.v1" })], OPTS);
+    const anchor = index.artifacts[0]?.anchor ?? "";
+    expect(anchor).toMatch(/^sm-artifact-\d+-[a-z0-9-]+$/);
+    // index prefix + capped slug — never the full 400-char name, never a trailing dash.
+    expect(anchor.length).toBeLessThan(80);
+    expect(anchor.endsWith("-")).toBe(false);
+  });
+
+  it("never produces duplicate anchors for duplicate or weird filenames", () => {
+    const entries: FolderInputEntry[] = [
+      json("dup.json", { schemaVersion: "backtest.report.v1" }),
+      json("dup.json", { schemaVersion: "backtest.report.v1" }),
+      json("***.json", { schemaVersion: "backtest.report.v1" }),
+      { name: "***.json", type: "json", text: "{ broken,," },
+    ];
+    const index = buildFolderIndex(entries, OPTS);
+    const anchors = index.artifacts.map((a) => a.anchor);
+    expect(new Set(anchors).size).toBe(anchors.length);
+    for (const anchor of anchors) {
+      expect(anchor).toMatch(/^sm-artifact-\d+-[a-z0-9-]+$/);
+    }
+  });
+
+  it("labels a hostile, oversized schemaVersion as unknown and fakes no verdict", () => {
+    const huge = `backtest.report.v1${"X".repeat(5000)}`;
+    const index = buildFolderIndex([json("huge.json", { schemaVersion: huge })], OPTS);
+    const entry = index.artifacts[0];
+    expect(entry?.schemaStatus).toBe("unknown");
+    expect(entry?.hasTypedView).toBe(false);
+    expect(entry?.verdict.hasRegression).toBe("not-applicable");
+    // The capped schema id stored for display is bounded, not the 5000-char original.
+    expect((entry?.schemaVersion ?? "").length).toBeLessThan(200);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Static filter sections (Phase C) — deterministic, conservative.
+ * ------------------------------------------------------------------ */
+
+function sectionFor(
+  index: ReturnType<typeof buildFolderIndex>,
+  category: FolderFilterCategory,
+): readonly FolderArtifactEntry[] {
+  return buildFolderFilterSections(index).find((s) => s.category === category)?.artifacts ?? [];
+}
+
+describe("buildFolderFilterSections — membership", () => {
+  const index = buildFolderIndex(sampleEntries(), OPTS);
+  const sections = buildFolderFilterSections(index);
+
+  it("renders exactly the five categories in a stable order", () => {
+    expect(sections.map((s) => s.category)).toEqual([
+      "all",
+      "regression",
+      "changed",
+      "unknown",
+      "clean",
+    ]);
+  });
+
+  it("derives counts that match the folder-summary filter counts", () => {
+    const counts = toFolderFilterCounts(index);
+    expect(counts).toEqual({ all: 6, regression: 1, changed: 2, unknown: 3, clean: 1 });
+    for (const s of sections) {
+      expect(s.artifacts.length).toBe(counts[s.category]);
+    }
+  });
+
+  it("regression group holds ONLY artifacts whose own hasRegression flag is true", () => {
+    const reg = sectionFor(index, "regression");
+    expect(reg.map((a) => a.name)).toEqual(["a-bundle-diff.json"]);
+    expect(reg.every((a) => a.verdict.hasRegression === "yes")).toBe(true);
+  });
+
+  it("changed group holds change artifacts without falsely requiring a regression", () => {
+    const changed = sectionFor(index, "changed");
+    expect(changed.map((a) => a.name)).toEqual(["a-bundle-diff.json", "m-manifest-diff.json"]);
+    // m-manifest-diff is a change with NO regression concept — it still qualifies.
+    const manifest = changed.find((a) => a.name === "m-manifest-diff.json");
+    expect(manifest?.verdict.hasChange).toBe("yes");
+    expect(manifest?.verdict.hasRegression).toBe("not-applicable");
+  });
+
+  it("unknown/malformed group includes unknown schema, absent schema, AND malformed JSON", () => {
+    const unknown = sectionFor(index, "unknown");
+    expect(unknown.map((a) => a.name)).toEqual([
+      "broken.json", // malformed JSON
+      "n-no-schema.json", // absent schema
+      "u-unknown.json", // unrecognized schema
+    ]);
+    // None of them is ever a "yes" verdict, even u-unknown.json which literally
+    // carries hasRegression:true in its JSON.
+    expect(unknown.every((a) => a.verdict.hasRegression !== "yes" && a.verdict.hasChange !== "yes")).toBe(true);
+  });
+
+  it("clean group excludes every regression/change/unknown/malformed artifact", () => {
+    const clean = sectionFor(index, "clean");
+    expect(clean.map((a) => a.name)).toEqual(["z-report.json"]);
+    const report = clean[0];
+    expect(report?.status).toBe("valid");
+    expect(report?.schemaStatus).toBe("stable");
+    expect(report?.verdict.hasRegression).toBe("not-applicable");
+    expect(report?.verdict.hasChange).toBe("not-applicable");
+  });
+
+  it("partitions every artifact: all = (regression ∪ changed) ∪ unknown ∪ clean, with unknown/clean disjoint", () => {
+    const names = (cat: FolderFilterCategory) => new Set(sectionFor(index, cat).map((a) => a.name));
+    const all = names("all");
+    const reg = names("regression");
+    const changed = names("changed");
+    const unknown = names("unknown");
+    const clean = names("clean");
+    // Every artifact lands in at least one filtered group.
+    for (const name of all) {
+      const inFiltered =
+        reg.has(name) || changed.has(name) || unknown.has(name) || clean.has(name);
+      expect(inFiltered, `${name} should appear in a filtered group`).toBe(true);
+    }
+    // unknown and clean never overlap, and neither overlaps regression/changed.
+    for (const name of unknown) {
+      expect(clean.has(name)).toBe(false);
+      expect(reg.has(name)).toBe(false);
+      expect(changed.has(name)).toBe(false);
+    }
+    for (const name of clean) {
+      expect(reg.has(name)).toBe(false);
+      expect(changed.has(name)).toBe(false);
+    }
+  });
+
+  it("preserves the index's by-name order inside every group", () => {
+    for (const s of sections) {
+      const names = s.artifacts.map((a) => a.name);
+      expect([...names].sort()).toEqual(names);
+    }
+  });
+
+  it("is order-independent: the same folder yields the same grouping regardless of input order", () => {
+    const a = JSON.stringify(toFolderFilterCounts(buildFolderIndex(sampleEntries(), OPTS)));
+    const b = JSON.stringify(toFolderFilterCounts(buildFolderIndex([...sampleEntries()].reverse(), OPTS)));
+    expect(a).toBe(b);
+  });
+});
+
+describe("buildFolderFilterSections — conservative edges", () => {
+  it("does NOT treat an unknown schema's boolean-looking fields as regression or change", () => {
+    const index = buildFolderIndex(
+      [json("sneaky.json", { schemaVersion: "made.up.v1", hasRegression: true, hasChange: true })],
+      OPTS,
+    );
+    const entry = index.artifacts[0];
+    expect(entry).toBeDefined();
+    if (entry) {
+      expect(isRegressionArtifact(entry)).toBe(false);
+      expect(isChangedArtifact(entry)).toBe(false);
+      expect(isUnknownOrMalformedArtifact(entry)).toBe(true);
+      expect(isCleanArtifact(entry)).toBe(false);
+    }
+  });
+
+  it("treats a recognized diff with a MISSING verdict as clean (no flag), never as a regression", () => {
+    // A recognized diff schema that omits its own flags → verdict missing/missing.
+    // 'missing' is never 'yes', so it is not a regression or change; it is a
+    // recognized schema, so it is not unknown/malformed → it falls into clean,
+    // and the row still shows an honest 'missing' badge (never a fake 'no').
+    const index = buildFolderIndex(
+      [json("partial-diff.json", { schemaVersion: "backtest.research.bundle.diff.v1" })],
+      OPTS,
+    );
+    const entry = index.artifacts[0];
+    expect(entry).toBeDefined();
+    if (entry) {
+      expect(entry.verdict.hasRegression).toBe("missing");
+      expect(entry.verdict.hasChange).toBe("missing");
+      expect(isRegressionArtifact(entry)).toBe(false);
+      expect(isChangedArtifact(entry)).toBe(false);
+      expect(isUnknownOrMalformedArtifact(entry)).toBe(false);
+      expect(isCleanArtifact(entry)).toBe(true);
+    }
+  });
+
+  it("returns five empty-but-present groups for an empty folder", () => {
+    const counts = toFolderFilterCounts(buildFolderIndex([], OPTS));
+    expect(counts).toEqual({ all: 0, regression: 0, changed: 0, unknown: 0, clean: 0 });
+  });
+});
+
+describe("renderFolderIndex — static filter sections", () => {
+  const index = buildFolderIndex(sampleEntries(), OPTS);
+  const out = renderLoaded(index, "folder-sample");
+
+  const EXPECTED: readonly (readonly [FolderFilterCategory, string])[] = [
+    ["all", "sm-folder-artifacts"],
+    ["regression", "sm-filter-regression"],
+    ["changed", "sm-filter-changed"],
+    ["unknown", "sm-filter-unknown"],
+    ["clean", "sm-filter-clean"],
+  ];
+
+  it("renders all five filter sections and summary cards with deterministic anchors", () => {
+    for (const [category, anchor] of EXPECTED) {
+      expect(out, `missing ${category} section`).toContain(
+        `sm-filtersection--${category}" id="${anchor}"`,
+      );
+      expect(out, `missing ${category} card`).toContain(`sm-filtercard--${category}`);
+      expect(out, `missing link to ${category}`).toContain(`href="#${anchor}"`);
+    }
+  });
+
+  it("gives each filter section a heading count that equals its rendered rows", () => {
+    for (const section of buildFolderFilterSections(index)) {
+      const start = out.indexOf(`sm-filtersection--${section.category}" id="${section.anchor}"`);
+      expect(start, `${section.category} section present`).toBeGreaterThanOrEqual(0);
+      const chunk = out.slice(start, out.indexOf("</section>", start));
+      const countMatch = chunk.match(/sm-filtersection__count">(\d+)</);
+      const headingCount = countMatch ? Number(countMatch[1]) : -1;
+      const rowCount = (chunk.match(/href="#sm-artifact-/g) ?? []).length;
+      expect(headingCount, `${section.category} heading`).toBe(section.artifacts.length);
+      expect(rowCount, `${section.category} rows`).toBe(section.artifacts.length);
+    }
+  });
+
+  it("keeps the per-artifact 'back to list' anchor target on the page", () => {
+    // The all group keeps id="sm-folder-artifacts" so back-links resolve.
+    expect(out).toContain('id="sm-folder-artifacts"');
+    expect(out).toContain('href="#sm-folder-artifacts"');
+  });
+
+  it("introduces no JavaScript or event handlers in the filter sections", () => {
+    for (const re of [
+      /<script/i,
+      /\son(?:click|load|error|mouseover|focus|submit|change|input)\s*=/i,
+      /\bfetch\s*\(/,
+      /\$\{/,
+    ] as const) {
+      expect(out, `should not match ${re}`).not.toMatch(re);
+    }
   });
 });

@@ -264,6 +264,14 @@ describe("web:inspect --dir — folder index", () => {
       expect(summary.counts.unknownSchemas).toBe(1);
       expect(summary.counts.withRegression).toBe(1);
       expect(summary.counts.withChange).toBe(3);
+      // Static filter-section counts ride along in the machine-readable summary.
+      expect(summary.filters).toEqual({
+        all: 7,
+        regression: 1,
+        changed: 3,
+        unknown: 3,
+        clean: 1,
+      });
       expect(existsSync(out)).toBe(false);
     },
     TIMEOUT,
