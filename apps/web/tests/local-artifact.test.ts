@@ -63,6 +63,22 @@ describe("normalizeArtifact — schema recognition", () => {
     expect(view.schemaStatus).toBe("absent");
     expect(view.notes.join(" ")).toContain("schemaVersion");
   });
+
+  it("caps a hostile, oversized schemaVersion (so a badge/group key can't be bloated)", () => {
+    const huge = `x`.repeat(5000);
+    const view = normalizeArtifact({ schemaVersion: huge });
+    expect(view.schemaVersion).not.toBeNull();
+    expect((view.schemaVersion ?? "").length).toBeLessThan(200);
+    expect(view.schemaStatus).toBe("unknown");
+    expect(view.notes.join(" ")).toContain("truncated");
+  });
+
+  it("never clips a real (short) known schema id", () => {
+    // The cap is comfortably above the longest catalogued id, so recognition holds.
+    const view = normalizeArtifact({ schemaVersion: "backtest.sensitivity.matrix.diff.v1" });
+    expect(view.schemaVersion).toBe("backtest.sensitivity.matrix.diff.v1");
+    expect(view.schemaStatus).toBe("stable");
+  });
 });
 
 describe("normalizeArtifact — field extraction", () => {
