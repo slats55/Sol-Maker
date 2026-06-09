@@ -64,6 +64,7 @@ import {
   paperSniperSafetyGatesReport,
   paperPhase6PrereqsReport,
   paperPhase6IntentPlanReport,
+  paperPhase6DiffIntentReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -7796,6 +7797,74 @@ describe("paperPhase6IntentPlanReport (Sprint 41)", () => {
       const r = paperPhase6IntentPlanReport({ cwd, env: {} }, { decisionsPath: wrong });
       expect(r.exitCode).toBe(1);
       expect(r.text).toMatch(/decision report is invalid/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperPhase6DiffIntentReport (Sprint 42)", () => {
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const WSOL = "So11111111111111111111111111111111111111112";
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+  const cleanInspection = (mint: string) => ({ mint, decimals: 6, supplyRaw: "1", uiSupply: 1, mintAuthorityPresent: false, freezeAuthorityPresent: false, isInitialized: true, programLabel: "spl-token" });
+  const riskPass = (mint: string) => ({ mint, score: 10, decision: "PASS_FOR_PAPER_EVALUATION", flags: [], summary: [] });
+
+  /** Build an intent plan file from a candidate set that all paper-enter; returns its path. */
+  function intentPlanFile(cwd: string, name: string, ids: { id: string; mint: string }[]): string {
+    const cands = writeJson(cwd, `${name}.cands.json`, { candidates: ids.map((x) => ({ candidateId: x.id, mint: x.mint, observedLiquidityUsd: 50000 })) });
+    const inspections: string[] = [];
+    const risks: string[] = [];
+    for (const x of ids) {
+      writeJson(cwd, `${name}.${x.id}.insp.json`, cleanInspection(x.mint));
+      writeJson(cwd, `${name}.${x.id}.risk.json`, riskPass(x.mint));
+      inspections.push(`${x.id}=${name}.${x.id}.insp.json`);
+      risks.push(`${x.id}=${name}.${x.id}.risk.json`);
+    }
+    paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, inspections, risks, outPath: `${name}.pf.json` });
+    paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: `${name}.pf.json`, outPath: `${name}.dec.json` });
+    const plan = paperPhase6IntentPlanReport({ cwd, env: {} }, { decisionsPath: `${name}.dec.json`, json: true });
+    writeFileSync(join(cwd, `${name}.plan.json`), plan.text);
+    return `${name}.plan.json`;
+  }
+
+  it("refuses when --base or --next is missing", () => {
+    expect(paperPhase6DiffIntentReport({}, {}).text).toMatch(/^Refusing: --base/);
+    expect(paperPhase6DiffIntentReport({}, { basePath: "a.json" }).text).toMatch(/^Refusing: --next/);
+  });
+
+  it("diffs two inert plans (a newly-added hypothetical entry) and stays NOT-EXECUTABLE", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = intentPlanFile(cwd, "base", [{ id: "a", mint: USDC }]);
+      const next = intentPlanFile(cwd, "next", [{ id: "a", mint: USDC }, { id: "b", mint: WSOL }]);
+      const r = paperPhase6DiffIntentReport({ cwd, env: {} }, { basePath: base, nextPath: next, json: true });
+      const obj = JSON.parse(r.text) as { schemaVersion: string; executable: boolean; entriesAdded: string[]; hasNewEntry: boolean };
+      expect(obj.schemaVersion).toBe("simulation.intent.plan.diff.v1");
+      expect(obj.executable).toBe(false);
+      expect(obj.entriesAdded).toEqual(["b"]);
+      expect(obj.hasNewEntry).toBe(true);
+      expect(r.exitCode).toBe(0);
+      // deterministic + fail flags
+      expect(paperPhase6DiffIntentReport({ cwd, env: {} }, { basePath: base, nextPath: next, json: true }).text).toBe(r.text);
+      expect(paperPhase6DiffIntentReport({ cwd, env: {} }, { basePath: base, nextPath: next, failOnNewEntry: true }).exitCode).toBe(1);
+      expect(paperPhase6DiffIntentReport({ cwd, env: {} }, { basePath: base, nextPath: base, failOnChange: true }).exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed / wrong-schema plan on either side", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = intentPlanFile(cwd, "base", [{ id: "a", mint: USDC }]);
+      const wrong = writeJson(cwd, "wrong.json", { schemaVersion: "sniper.run.report.v1" });
+      const r = paperPhase6DiffIntentReport({ cwd, env: {} }, { basePath: base, nextPath: wrong });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toMatch(/next intent plan is invalid/);
     } finally {
       cleanup();
     }

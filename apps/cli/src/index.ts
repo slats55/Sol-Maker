@@ -53,6 +53,7 @@ import {
   paperSniperSafetyGatesReport,
   paperPhase6PrereqsReport,
   paperPhase6IntentPlanReport,
+  paperPhase6DiffIntentReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1527,6 +1528,33 @@ program
           json: Boolean(opts.json),
           outPath: opts.out,
           force: Boolean(opts.force),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:phase6:diff:intent")
+  .description(
+    "Deterministically diff TWO existing INERT simulation intent plan JSON files (`simulation.intent.plan.diff.v1`). Reads ONLY the two named files (BOM-tolerant; malformed/wrong-schema refused), runs no plan, and writes nothing. Pairs hypothetical entries by id (added / removed / common) and reports per-entry amount label/unit changes. Comparing two NOT-EXECUTABLE plans executes NOTHING; the diff's executable flag is always false. No network, no wallet",
+  )
+  .option("--base <path>", "base intent plan JSON (simulation.intent.plan.v1)")
+  .option("--next <path>", "next intent plan JSON (simulation.intent.plan.v1)")
+  .option("--json", "emit the intent plan diff as stable JSON")
+  .option("--fail-on-change", "exit non-zero on any difference")
+  .option("--fail-on-new-entry", "exit non-zero when any hypothetical entry was added")
+  .action(
+    (opts: { base?: string; next?: string; json?: boolean; failOnChange?: boolean; failOnNewEntry?: boolean }) => {
+      const { text, exitCode } = paperPhase6DiffIntentReport(
+        {},
+        {
+          basePath: opts.base,
+          nextPath: opts.next,
+          json: Boolean(opts.json),
+          failOnChange: Boolean(opts.failOnChange),
+          failOnNewEntry: Boolean(opts.failOnNewEntry),
         },
       );
       console.log(text);

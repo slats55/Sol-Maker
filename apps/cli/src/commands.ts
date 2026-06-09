@@ -77,6 +77,8 @@ import {
   formatPhase6PrerequisiteReport,
   buildSimulationIntentPlan,
   formatSimulationIntentPlan,
+  diffSimulationIntentPlans,
+  formatSimulationIntentPlanDiff,
   SNIPER_CANDIDATE_LIST_SCHEMA_VERSION,
   SNIPER_POLICY_CONFIG_SCHEMA_VERSION,
   type SniperCandidateList,
@@ -94,6 +96,7 @@ import {
   type SniperSafetyGatesReport,
   type Phase6PrerequisiteReport,
   type SimulationIntentPlan,
+  type SimulationIntentPlanDiff,
 } from "@soulmaker/sniper";
 import {
   runPaperSession,
@@ -5185,6 +5188,69 @@ export function paperPhase6IntentPlanReport(
     return { text: JSON.stringify(redactValue(plan), null, 2), exitCode: 0 };
   }
   return { text: formatSimulationIntentPlan(plan, { label: opts.decisionsPath }), exitCode: 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 42 — paper:phase6:diff:intent
+//   Deterministically diff TWO existing INERT simulation intent plans
+//   (`simulation.intent.plan.diff.v1`). Reads ONLY the two named files; runs no
+//   plan, writes nothing. Comparing two non-executable DATA objects executes
+//   NOTHING. `executable` is always false. No network, no wallet.
+// ---------------------------------------------------------------------------
+
+export interface PaperPhase6DiffIntentCommandOptions {
+  /** Base intent plan JSON path. Required. */
+  basePath?: string;
+  /** Next intent plan JSON path. Required. */
+  nextPath?: string;
+  json?: boolean;
+  failOnChange?: boolean;
+  failOnNewEntry?: boolean;
+}
+
+/**
+ * `soulmaker paper:phase6:diff:intent` — deterministically diff TWO existing INERT simulation intent plan
+ * JSON files (`simulation.intent.plan.diff.v1`). Reads ONLY the two named files (BOM-tolerant;
+ * malformed/wrong-schema refused), runs no plan, and writes nothing. It pairs hypothetical entries by id
+ * (added / removed / common) and reports per-entry amount label/unit changes. Comparing two
+ * NOT-EXECUTABLE plans executes NOTHING; the diff's `executable` flag is always false. `--json` emits the
+ * stable, redacted diff; `--fail-on-change` / `--fail-on-new-entry` set the exit code. No network, no
+ * wallet.
+ */
+export function paperPhase6DiffIntentReport(
+  ctx: CommandContext = {},
+  opts: PaperPhase6DiffIntentCommandOptions = {},
+): CliReport {
+  if (!opts.basePath) return { text: "Refusing: --base <path> is required.", exitCode: 1 };
+  if (!opts.nextPath) return { text: "Refusing: --next <path> is required.", exitCode: 1 };
+
+  let baseValue: unknown;
+  let nextValue: unknown;
+  try {
+    baseValue = readJsonValue(ctx, opts.basePath, "base intent plan");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  try {
+    nextValue = readJsonValue(ctx, opts.nextPath, "next intent plan");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let diff: SimulationIntentPlanDiff;
+  try {
+    diff = diffSimulationIntentPlans(baseValue, nextValue);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const exitCode =
+    (opts.failOnChange && diff.hasChange) || (opts.failOnNewEntry && diff.hasNewEntry) ? 1 : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(diff), null, 2), exitCode };
+  }
+  return { text: formatSimulationIntentPlanDiff(diff, { label: `${opts.basePath} → ${opts.nextPath}` }), exitCode };
 }
 
 function yesNo(value: boolean): string {

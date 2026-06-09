@@ -384,7 +384,9 @@ soulmaker/
                 #            Sprint 40 adds the Phase 6 prereq tracker (phase6.prerequisite.report.v1):
                 #            machine-readable boundary-spec checklist, NEVER authorizes Phase 6;
                 #            Sprint 41 adds the INERT simulation intent plan (simulation.intent.plan.v1):
-                #            type-contract DATA only, executable always false, builds/signs/sends NOTHING
+                #            type-contract DATA only, executable always false, builds/signs/sends NOTHING;
+                #            Sprint 42 adds the inert intent plan diff (simulation.intent.plan.diff.v1):
+                #            compares two inert plans (still not executable)
                 #            (paper-only) — NO chain capability, NO wallet, NO network
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/

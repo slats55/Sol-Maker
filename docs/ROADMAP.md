@@ -693,6 +693,14 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   the source never sets `executable: true` or a satisfied approval). Pure (no fs/net, no
   `Date.now`/`Math.random`). Phase 6/7 remain not started — this is data shapes for review, not a step
   toward sending.
+- ✅ **(Sprint 42) Inert simulation intent plan diff** — compares two inert simulation intent plans.
+  `@soulmaker/sniper` exports `diffSimulationIntentPlans`, `validateSimulationIntentPlanDiff`,
+  `formatSimulationIntentPlanDiff` (schema `simulation.intent.plan.diff.v1`); the CLI adds
+  `paper:phase6:diff:intent --base <a> --next <b> [--json] [--fail-on-change] [--fail-on-new-entry]`. Both
+  inputs are strictly validated as inert intent plans; hypothetical entries are paired by id (added /
+  removed / common) with per-entry amount label/unit changes. Comparing two NOT-EXECUTABLE plans executes
+  NOTHING — the diff's `executable` flag is always false (validator-enforced). Pure (no fs/net, no
+  `Date.now`/`Math.random`); reads the two files only and writes nothing. Still no live execution.
 - ✅ **(Sprint 43) Security review doc + test backstops** — a focused `docs/SNIPER_SECURITY_REVIEW.md`
   documenting the PAPER-only boundary + the ten invariants that hold it, plus two consolidated backstop
   tests: `packages/sniper/src/security-boundary.test.ts` (package-wide source scan over **every**

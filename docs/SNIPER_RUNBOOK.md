@@ -57,6 +57,7 @@ invariants.
 | `paper:sniper:safety:gates` | `--session` | `--out` only | `sniper.safety.gates.report.v1` |
 | `paper:phase6:prereqs` | `--session` | `--out` only | `phase6.prerequisite.report.v1` |
 | `paper:phase6:intent:plan` | `--decisions` | `--out` only | `simulation.intent.plan.v1` (INERT, not executable) |
+| `paper:phase6:diff:intent` | `--base`, `--next` | never | `simulation.intent.plan.diff.v1` (INERT) |
 
 Common flags: `--json` (stable JSON), `--out <path>` + `--force` (write the artifact; refuse overwrite
 without `--force`), and command-specific `--fail-on-*` CI gates (see [CI gates](#ci-gates)).
@@ -271,6 +272,15 @@ unsatisfied**) / future simulation checks a Phase 6 simulator would need. It hol
 signer, no key, no executable field**; `executable` is always false. It builds, signs, simulates, and
 sends **nothing**. It reads the decision report only and **writes nothing** unless `--out`. Phase 6 and
 Phase 7 remain not started — beginning Phase 6 requires an explicit human decision.
+
+Compare two inert plans (still not executable):
+
+```bash
+pnpm soulmaker paper:phase6:diff:intent --base plan-a.json --next plan-b.json --fail-on-new-entry
+```
+
+It pairs the hypothetical entries by id (added / removed / common) and reports amount label/unit changes.
+The diff's `executable` flag is always false — comparing two non-executable plans executes nothing.
 
 ## How to inspect risk reasons
 

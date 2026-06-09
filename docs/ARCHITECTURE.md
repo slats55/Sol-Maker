@@ -29,7 +29,7 @@ packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [s
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
 packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup + research portfolio diff + research artifact pack + research artifact pack diff (Sprint 8–24)  [strategy, paper, security]
-packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (S25) + token preflight (S26) + paper decisions (S27) + operator workflow helper (S28) + run report (S30) + run report diff (S31) + policy config (S32) + audit log (S33) + session pack (S34) + safety gates (S39) + Phase 6 prereq tracker (S40) + inert simulation intent types (S41); NO chain capability  [risk, security]
+packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (S25) + token preflight (S26) + paper decisions (S27) + operator workflow helper (S28) + run report (S30) + run report diff (S31) + policy config (S32) + audit log (S33) + session pack (S34) + safety gates (S39) + Phase 6 prereq tracker (S40) + inert simulation intent types + diff (S41-42); NO chain capability  [risk, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -461,6 +461,13 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   builds, signs, simulates, and sends NOTHING and imports no chain capability — a dedicated safety test
   additionally proves the source never sets `executable: true` or a satisfied approval. This is exactly
   the boundary spec's "type contracts only" first step; Phase 6/7 remain not started.
+- **(Sprint 42)** `@soulmaker/sniper` adds the **inert intent plan diff**: `simulation-intent-diff.ts`
+  (`diffSimulationIntentPlans`, `validate…`, `format…`; schema `simulation.intent.plan.diff.v1`), exposed
+  by the CLI as `paper:phase6:diff:intent --base <a> --next <b> [--json] [--fail-on-change]
+  [--fail-on-new-entry]`. It strictly validates two inert intent plans and pairs hypothetical entries by
+  id (added / removed / common) with per-entry amount label/unit changes. Comparing two NOT-EXECUTABLE
+  plans executes NOTHING; the diff's `executable` flag is always `false` (validator-enforced). Pure; reads
+  the two files only and writes nothing.
 
 ## The live boundary
 

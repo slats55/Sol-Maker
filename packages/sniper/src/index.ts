@@ -256,3 +256,20 @@ export type {
   BuildSimulationIntentPlanInput,
   FormatSimulationIntentPlanOptions,
 } from "./simulation-intent.js";
+
+export {
+  diffSimulationIntentPlans,
+  validateSimulationIntentPlanDiff,
+  formatSimulationIntentPlanDiff,
+  SimulationIntentPlanDiffError,
+  SIMULATION_INTENT_PLAN_DIFF_SCHEMA_VERSION,
+  SIMULATION_INTENT_PLAN_DIFF_BANNER,
+  SIMULATION_INTENT_PLAN_DIFF_DISCLAIMERS,
+} from "./simulation-intent-diff.js";
+
+export type {
+  SimulationIntentAmountChange,
+  SimulationIntentPlanDiffSide,
+  SimulationIntentPlanDiff,
+  FormatSimulationIntentPlanDiffOptions,
+} from "./simulation-intent-diff.js";

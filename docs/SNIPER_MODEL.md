@@ -505,6 +505,11 @@ pnpm soulmaker paper:phase6:intent:plan --decisions decision.json --amount-label
 
 It reads the decision report only and **writes nothing** unless `--out`.
 
+Two inert plans can be compared with `diffSimulationIntentPlans` (schema `simulation.intent.plan.diff.v1`,
+Sprint 42) and the CLI `paper:phase6:diff:intent --base <a> --next <b>` — hypothetical entries paired by id
+(added / removed / common) with amount label/unit changes. The diff's `executable` flag is always false;
+comparing two non-executable plans executes nothing.
+
 ## Security boundary
 
 The pipeline's PAPER-only security boundary — the ten invariants and the automated backstop tests that
