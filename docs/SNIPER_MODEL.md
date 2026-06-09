@@ -24,8 +24,8 @@ do I/O, network, or RPC themselves.
 ## The product path
 
 1. **Candidate intake** (Sprint 25 — implemented) — a validated local list of candidate mints.
-2. **Token preflight** (Sprint 26 — planned) — a read-only safety/research summary per candidate,
-   reusing existing read-only Solana inspection + advisory risk code; never a trade signal.
+2. **Token preflight** (Sprint 26 — implemented) — a read-only safety/research summary per candidate,
+   reusing existing read-only Solana inspection + advisory risk output; never a trade signal.
 3. **Paper-only decisions** (Sprint 27 — planned) — candidate list + preflight/risk + strategy rules →
    a simulated `skip` / `watch` / `paper-enter` / `paper-reject` decision per candidate, with reasons.
 4. **Operator workflow** (Sprint 28 — planned) — fixtures + a runbook tying the path together.
@@ -90,9 +90,69 @@ malformed JSON / wrong schema / unsafe key-like input (or on any warning with `-
 **writes nothing**, makes no network / RPC call, and touches no wallet. A worked example lives in
 [`examples/sniper/`](../examples/sniper/README.md).
 
+## Token preflight (Sprint 26)
+
+The preflight is the next safety gate after intake: for each candidate it combines the mint's
+public-key validity, an **already-loaded** read-only on-chain inspection, and an **already-loaded**
+advisory risk report into a single status — `pass` / `warn` / `fail` / `unknown` — with explicit
+warnings and disqualifying reasons. It is a safety/research summary, **not a trade signal**.
+
+### Keeping I/O and chain capability out of the pure layer
+
+`buildSniperTokenPreflightReport` is **pure**: it does NO on-chain reads itself. The inspection and
+risk inputs are values the CLI loaded from **local files** — typically the JSON output of the existing
+read-only `token:inspect` (mint/freeze authorities, decimals, supply, program) and `token:risk`
+(advisory decision + flags + score) commands. The builder validates/projects those defensively (a
+malformed value is treated as absent for that field; a mint mismatch is surfaced as a warning) and
+never fetches anything. `@soulmaker/sniper` still imports **no chain capability** — only the pure
+`@soulmaker/risk` decision/severity type unions and `@soulmaker/security` for redaction.
+
+### Schema — `sniper.token.preflight.report.v1`
+
+Carries the PAPER-ONLY banner + disclaimers, the `sourceLabel`, a per-candidate `candidates` array,
+the `pass` / `warn` / `fail` / `unknown` tally (+ `missingDataCount`), conservative `hasFail` /
+`hasWarn` / `hasUnknown` flags, and a CI section (`wouldFailOnFail` / `wouldFailOnWarning` +
+`ciFailReasons`). Each **entry** has `candidateId`, `mint`, `mintValid`, a projected `inspection`
+summary (or null), a projected `risk` summary (or null), `warnings`, `disqualifiers`, and `status`.
+
+### Conservative status logic (deterministic, honest)
+
+- **fail** — a disqualifier fired: the mint is invalid, the advisory risk decision is `REJECT`, or
+  there is ≥1 `critical` risk flag.
+- **warn** — a softer concern: risk decision `CAUTION`, a `high`-severity flag, a **freeze authority**
+  (the token can be frozen — you may not be able to sell), a **mint authority** (dilution/rug risk),
+  an uninitialized mint, or a supplied inspection/risk whose mint doesn't match the candidate.
+- **unknown** — no inspection AND no risk data was supplied for that candidate (it can't be assessed).
+- **pass** — data was supplied and no concern was found. A `pass` is **not** a "safe to trade"
+  judgment and **not** a buy/sell signal.
+
+### CLI — `paper:sniper:preflight`
+
+```bash
+# Produce the read-only inputs with the EXISTING read-only commands (operator-run), keeping each as JSON:
+#   pnpm soulmaker token:inspect <mint> --json > c1.inspect.json     # read-only mint facts
+#   pnpm soulmaker token:risk    <mint> --json > c1.risk.json        # advisory risk report
+# Then preflight the candidate list against those local files:
+pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> \
+  --inspection c1=c1.inspect.json --risk c1=c1.risk.json
+pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> --risk c1=c1.risk.json --json
+pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> --risk c1=c1.risk.json --out preflight.json
+pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> --risk c1=c1.risk.json --fail-on-fail
+```
+
+`--inspection` / `--risk` are repeatable `candidateId=path` specs. The command is **LOCAL-ONLY**: it
+performs no RPC, makes no network call, and touches no wallet — it only reads the named local files.
+It writes nothing unless `--out` is given (then only the report JSON, refusing to overwrite without
+`--force`, creating no directories). `--fail-on-fail` / `--fail-on-warning` set the exit code. A
+candidate with no `--inspection` and no `--risk` is reported as `unknown`.
+
+> **Live read-only RPC mode is deferred, not faked.** A future `--read-only-rpc` mode could fetch the
+> inspection live via the existing read-only `@soulmaker/solana` client (never accepting a key,
+> never signing/sending/building a transaction), but CI cannot depend on the network, so it is **not**
+> implemented yet. Today, produce the inspection/risk inputs with the existing read-only commands and
+> feed them in as local files.
+
 ## What is intentionally NOT here yet
 
-- **No on-chain verification** of a candidate's liquidity / market cap / volume / authorities — that is
-  the read-only preflight (Sprint 26).
 - **No scoring or decision** — that is the paper decision pipeline (Sprint 27).
 - **No transaction planning / signing / sending / wallet / burner** — Phases 6 and 7, not started.

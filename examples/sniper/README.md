@@ -39,3 +39,33 @@ verified on-chain by this step — a later read-only preflight does that.
 
 Only `candidateId` and `mint` are required per candidate. A `schemaVersion`, if present, must be
 `sniper.candidate.list.v1`.
+
+## Token preflight (Sprint 26)
+
+The preflight combines each candidate's mint validity with **already-loaded** read-only inspection and
+advisory risk data into a `pass` / `warn` / `fail` / `unknown` status. It performs **no on-chain reads
+itself** — you produce the inputs with the existing read-only commands and feed them in as local files
+(this repo ships no fabricated on-chain facts about real mints):
+
+```bash
+# 1) Produce the read-only inputs per candidate (operator-run; token:inspect uses read-only RPC):
+pnpm soulmaker token:inspect <mint> --json > example-usdc.inspect.json
+pnpm soulmaker token:risk <mint> --json > example-usdc.risk.json
+
+# 2) Preflight the candidate list against those local files (--inspection/--risk are candidateId=path):
+pnpm soulmaker paper:sniper:preflight \
+  --candidates candidates.example.json \
+  --inspection example-usdc=example-usdc.inspect.json \
+  --risk example-usdc=example-usdc.risk.json
+
+# JSON / write / CI gates:
+pnpm soulmaker paper:sniper:preflight --candidates candidates.example.json --risk example-usdc=example-usdc.risk.json --json
+pnpm soulmaker paper:sniper:preflight --candidates candidates.example.json --risk example-usdc=example-usdc.risk.json --out preflight.json
+pnpm soulmaker paper:sniper:preflight --candidates candidates.example.json --risk example-usdc=example-usdc.risk.json --fail-on-fail
+```
+
+A candidate with no `--inspection` and no `--risk` is reported as `unknown` (it could not be assessed).
+A risk `REJECT` or a critical flag is a `fail`; a `CAUTION`, a freeze/mint authority, or a high-severity
+flag is a `warn`. The preflight reads the named files only and **writes nothing** unless `--out` is
+given. A `pass` means "no preflight concern was found in the supplied data" — it is **not** a "safe to
+trade" judgment and **not** a trade signal.

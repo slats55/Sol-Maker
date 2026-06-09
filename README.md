@@ -185,8 +185,17 @@ surfaced as warnings. The package carries **no chain capability** (no `@solana/w
 `@soulmaker/solana`): mint validation uses a pure base58 decoder, and the operator-supplied
 liquidity / market / social context is intake metadata that is **not** verified on-chain by this step
 (a later read-only preflight does that). It reads the named file only and writes nothing. This is
-intake validation — **not** a trade signal, **not** a verified on-chain fact, and **not** advice. See
-[`docs/SNIPER_MODEL.md`](docs/SNIPER_MODEL.md).
+intake validation — **not** a trade signal, **not** a verified on-chain fact, and **not** advice.
+
+Sprint 26 adds the **token preflight**: `paper:sniper:preflight --candidates <path>` builds a
+read-only safety/research summary per candidate (`sniper.token.preflight.report.v1`) — `pass` / `warn`
+/ `fail` / `unknown` — by combining each mint's validity with **already-loaded** read-only inspection
+(the existing `token:inspect` output) and advisory risk (the existing `token:risk` output), supplied
+as local files via `--inspection candidateId=path` / `--risk candidateId=path`. A risk `REJECT` or a
+critical flag fails; `CAUTION`, a freeze/mint authority, or a high flag warns; no data is `unknown`.
+The pure builder does **no on-chain reads itself** — it is LOCAL-ONLY (no RPC, no network, no wallet),
+and the package still carries no chain capability. It writes nothing unless `--out` is given. A `pass`
+is **not** a "safe to trade" judgment. See [`docs/SNIPER_MODEL.md`](docs/SNIPER_MODEL.md).
 
 ## Non-negotiable security rules (summary)
 
@@ -265,7 +274,10 @@ soulmaker/
     sniper/     # @soulmaker/sniper    — Phase 5+ PAPER-only, offline sniper decision support;
                 #            Sprint 25 adds candidate intake (sniper.candidate.list.v1): pure mint
                 #            validation (32-byte pubkey; secret-length input refused), unique ids,
-                #            duplicate-mint warnings — NO chain capability, NO wallet, NO network
+                #            duplicate-mint warnings;
+                #            Sprint 26 adds token preflight (sniper.token.preflight.report.v1):
+                #            pass/warn/fail/unknown per candidate from already-loaded read-only
+                #            inspection + advisory risk — NO chain capability, NO wallet, NO network
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
     backtest/   # injected, copyable example scenarios + fixtures (NOT historical market data)
@@ -501,6 +513,16 @@ pnpm soulmaker paper:backtest:diff:research:pack --base <pack-before.json> --nex
 pnpm soulmaker paper:sniper:candidates:validate --input examples/sniper/candidates.example.json
 pnpm soulmaker paper:sniper:candidates:validate --input examples/sniper/candidates.example.json --json
 pnpm soulmaker paper:sniper:candidates:validate --input examples/sniper/candidates.example.json --fail-on-warning
+
+# Sprint 26 — SNIPER TOKEN PREFLIGHT: a read-only safety/research summary per candidate (pass / warn /
+# fail / unknown), combining mint validity + ALREADY-LOADED read-only inspection (token:inspect output)
+# + advisory risk (token:risk output). LOCAL-ONLY: no RPC, no network, no wallet. Risk REJECT or a
+# critical flag = fail; CAUTION / freeze or mint authority / high flag = warn; no data = unknown.
+# A safety/research preflight, NOT a trade signal. Reads the named files only, writes nothing unless --out:
+pnpm soulmaker token:inspect <mint> --json > c1.inspect.json   # existing read-only command (operator-run)
+pnpm soulmaker token:risk <mint> --json > c1.risk.json         # existing advisory risk command
+pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> --inspection c1=c1.inspect.json --risk c1=c1.risk.json
+pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> --risk c1=c1.risk.json --fail-on-fail
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

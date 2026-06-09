@@ -29,7 +29,7 @@ packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [s
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
 packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup + research portfolio diff + research artifact pack + research artifact pack diff (Sprint 8–24)  [strategy, paper, security]
-packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (Sprint 25); NO chain capability  [security]
+packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (Sprint 25) + token preflight (Sprint 26); NO chain capability  [risk, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -71,12 +71,14 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   contract — the backtest is the orchestrator that drives a session. It is pure
   (no `core`, `solana`, `@solana/web3.js`, RPC, filesystem, network, `Date.now`,
   or `Math.random`).
-- `@soulmaker/sniper` (Sprint 25) is a **pure, offline** package depending only on
-  `@soulmaker/security` (redaction). It deliberately carries **no chain capability**
-  — it does NOT depend on `@soulmaker/solana` or `@solana/web3.js` (a forbidden-import
-  test enforces this), validating mints with a pure base58 decoder instead. The CLI
-  composes it with the read-only client / risk engine in later sniper sprints by
-  passing already-loaded data into its pure builders; the package itself never does
+- `@soulmaker/sniper` (Sprint 25+) is a **pure, offline** package depending only on
+  `@soulmaker/security` (redaction) and the pure `@soulmaker/risk` (advisory
+  decision/severity **type unions** only — Sprint 26). It deliberately carries **no
+  chain capability** — it does NOT depend on `@soulmaker/solana` or `@solana/web3.js`
+  (a forbidden-import test enforces this), validating mints with a pure base58 decoder
+  instead. The CLI composes it with the read-only client / risk engine by passing
+  already-loaded data into its pure builders (e.g. the Sprint 26 preflight consumes
+  `token:inspect` / `token:risk` JSON the CLI loaded); the package itself never does
   I/O, RPC, or network.
 - **(Sprint 10)** `@soulmaker/backtest` also exports pure, offline helpers that sit
   *beside* the replay engine rather than driving it: `validateBacktestReport` +
@@ -326,6 +328,19 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   metadata (NOT verified on-chain here), uses no wall-clock time, and never mutates inputs. The CLI
   reads the named file only and **writes nothing**. Intake validation — not a trade signal, not a
   verified on-chain fact, not advice. See `docs/SNIPER_MODEL.md`.
+- **(Sprint 26)** `@soulmaker/sniper` adds the **token preflight**: `token-preflight.ts`
+  (`buildSniperTokenPreflightReport`, `validate…`, `format…`; schema
+  `sniper.token.preflight.report.v1`), exposed by the CLI as `paper:sniper:preflight --candidates
+  <path> [--inspection candidateId=path] [--risk candidateId=path]`. The pure builder combines each
+  candidate's mint validity with an ALREADY-LOADED read-only inspection (the existing `token:inspect`
+  output) and advisory risk report (the existing `token:risk` output) into a conservative `pass` /
+  `warn` / `fail` / `unknown` status with warnings + disqualifiers (risk `REJECT` or a critical flag =
+  fail; `CAUTION`, a freeze/mint authority, or a high flag = warn; no data = unknown). It does **no
+  on-chain reads itself** — the CLI is LOCAL-ONLY (no RPC, no network, no wallet) and loads the
+  inspection/risk JSON from local files; the package still imports no chain capability (only the pure
+  `@soulmaker/risk` type unions + `@soulmaker/security`). A live `--read-only-rpc` mode is deferred,
+  not faked. The CLI writes nothing unless `--out` is given. A safety/research preflight — a `pass` is
+  not a "safe to trade" judgment and not a trade signal.
 
 ## The live boundary
 

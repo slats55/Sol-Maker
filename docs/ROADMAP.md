@@ -556,8 +556,18 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   liquidity / market / social / observed context is intake metadata that is **NOT verified on-chain**
   here. Deterministic, no wall-clock time, no mutation; the CLI reads the named file only and writes
   nothing. Intake validation — not a trade signal, not a verified on-chain fact, not advice.
-- ⬜ **(Sprint 26 — planned) Sniper token preflight** — a read-only safety/research summary per
-  candidate, reusing existing read-only Solana inspection + advisory risk code; never a trade signal.
+- ✅ **(Sprint 26) Sniper token preflight** — a read-only safety/research summary per candidate.
+  `@soulmaker/sniper` exports `buildSniperTokenPreflightReport`, `validateSniperTokenPreflightReport`,
+  `formatSniperTokenPreflightReport` (schema `sniper.token.preflight.report.v1`); the CLI adds
+  `paper:sniper:preflight --candidates <path> [--inspection candidateId=path] [--risk candidateId=path]
+  [--json] [--out <path>] [--force] [--fail-on-fail] [--fail-on-warning]`. The pure builder combines
+  each mint's validity with an ALREADY-LOADED read-only inspection (existing `token:inspect` output)
+  and advisory risk report (existing `token:risk` output) into a conservative `pass` / `warn` / `fail`
+  / `unknown` status (risk `REJECT` or a critical flag = fail; `CAUTION` / freeze-or-mint authority /
+  high flag = warn; no data = unknown). LOCAL-ONLY — no RPC, no network, no wallet; the package still
+  carries no chain capability. A live `--read-only-rpc` mode is deferred (CI can't depend on the
+  network), not faked. Writes nothing unless `--out`. A `pass` is NOT a "safe to trade" judgment and
+  NOT a trade signal.
 - ⬜ **(Sprint 27 — planned) Paper-only sniper decisions** — candidate list + preflight/risk + strategy
   rules → a simulated `skip` / `watch` / `paper-enter` / `paper-reject` decision per candidate.
 - ⬜ **(Sprint 28 — planned) Sniper operator workflow** — fixtures + runbook tying the path together.
