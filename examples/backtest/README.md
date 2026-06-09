@@ -838,3 +838,37 @@ pnpm soulmaker paper:backtest:research:pack --artifact portfolio=portfolio.json 
 > a profitability claim; the digests behind the artifacts are non-cryptographic content fingerprints,
 > not an anti-tamper guarantee. Nothing here touches a wallet, key, signing, sending, or the network;
 > Phases 6 and 7 remain **not started**.
+
+## Diffing two research packs (Sprint 24)
+
+Keep two artifact-pack JSON files (e.g. last CI run's pack vs this run's pack) and point
+`paper:backtest:diff:research:pack` at them to see what drifted across the whole research run at once.
+
+```bash
+# 1) Produce a pack per run and keep each --json output as a file:
+pnpm soulmaker paper:backtest:research:pack --artifact history=campaign-history.json --artifact portfolio=portfolio.json --json > pack-before.json
+# ...later, after a new research run...
+pnpm soulmaker paper:backtest:research:pack --artifact history=campaign-history.json --artifact portfolio=portfolio.json --json > pack-now.json
+
+# 2) DIFF — compare the two packs (human-readable). Artifacts are paired by label:
+pnpm soulmaker paper:backtest:diff:research:pack --base pack-before.json --next pack-now.json
+# --json for the machine-readable diff (schema backtest.research.artifact.pack.diff.v1).
+
+# 3) STRICT behaviour for CI — each flag sets a non-zero exit:
+#    --fail-on-change         any artifact added/removed or a common artifact changed
+#    --fail-on-regression     a COMMON artifact newly carries a conservative regression
+#    --fail-on-attention      current attention newly appeared on a common artifact
+#    --fail-on-new-attention  new-attention newly appeared on a common artifact
+#    --fail-on-unsupported    an unsupported artifact is newly present (common lost recognition, or added)
+pnpm soulmaker paper:backtest:diff:research:pack --base pack-before.json --next pack-now.json --fail-on-regression --fail-on-unsupported
+```
+
+> **Conservative, honest transitions.** Artifacts are paired by their stable `label`. The
+> artifact-set axis reports added / removed / common; per-artifact transitions (newly changed /
+> regressed / recovered / newly need attention / newly unsupported) are computed over the **common**
+> set only — an appearance is never relabelled a transition. A disappearing artifact is a scope change,
+> **not** a regression; an added artifact that arrives already regressed sets `hasChange` (gated by
+> `--fail-on-change`), not `hasRegression`. A newly unsupported artifact (a common artifact that lost
+> recognition, or an added unsupported artifact) sets `hasUnsupported`. The diff reads the two named
+> files only, makes no network call, and writes nothing. Local bookkeeping over two local summaries —
+> **not** a live result, **not** advice, **not** a profitability claim.

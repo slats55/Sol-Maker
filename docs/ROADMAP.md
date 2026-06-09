@@ -520,6 +520,23 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   follows nested paths or makes a network call; the package stays pure (no fs/net in the module, no
   `Date.now`/`Math.random`; the formatter redacts internally). Local bookkeeping over a set of local
   artifacts — not a live result, not advice, not a profitability claim.
+- ✅ **(Sprint 24) Research artifact pack diff** — the comparison layer that closes the pack
+  symmetry. `@soulmaker/backtest` exports the pure `diffBacktestResearchArtifactPacks`,
+  `validateBacktestResearchArtifactPackDiff`, `formatBacktestResearchArtifactPackDiff` (schema
+  `backtest.research.artifact.pack.diff.v1`); the CLI adds
+  `paper:backtest:diff:research:pack --base <path> --next <path> [--json] [--fail-on-change] [--fail-on-regression] [--fail-on-attention] [--fail-on-new-attention] [--fail-on-unsupported]`.
+  Both inputs are strictly validated as Sprint 23 packs (a non-pack / wrong-schema / duplicate-label
+  input is refused), then artifacts are paired by their stable `label` across two axes: artifact-set
+  membership (added / removed / common) and per-artifact transitions over the common set only (newly
+  changed / regressed / recovered / newly need attention / newly unsupported, plus kind / source /
+  status changes). `hasRegression` is conservative — true only for a COMMON artifact that transitions
+  into a regression; a disappearing artifact is a scope change and an added artifact arriving regressed
+  sets `hasChange`, not `hasRegression`. A newly unsupported artifact (a common artifact that lost
+  recognition, or an added unsupported artifact) sets `hasUnsupported` and is gated by
+  `--fail-on-unsupported`. It reports aggregate count deltas and chain-coverage changes and emits a CI
+  decision; it reads the two named files only and **writes nothing**; the package stays pure (no
+  fs/net, no `Date.now`/`Math.random`; the formatter redacts internally). Local bookkeeping over two
+  local summaries — not a live result, not advice, not a profitability claim.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

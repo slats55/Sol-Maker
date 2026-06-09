@@ -28,7 +28,7 @@ packages/solana   @soulmaker/solana    read-only chain access (Phase 2)  [web3.j
 packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [security]
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
-packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup + research portfolio diff + research artifact pack (Sprint 8–23)  [strategy, paper, security]
+packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup + research portfolio diff + research artifact pack + research artifact pack diff (Sprint 8–24)  [strategy, paper, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -286,6 +286,25 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   the pack JSON, refusing to overwrite an existing file without `--force`, and creating no
   directories). A pack is bookkeeping over a set of local artifacts — not a live result, advice, or a
   profitability claim.
+- **(Sprint 24)** `@soulmaker/backtest` adds the **research artifact pack diff** — the comparison
+  layer that closes the pack symmetry: `research-artifact-pack-diff.ts`
+  (`diffBacktestResearchArtifactPacks`, `validate…`, `format…`; schema
+  `backtest.research.artifact.pack.diff.v1`), exposed by the CLI as `paper:backtest:diff:research:pack
+  --base <path> --next <path>`. Both inputs are strictly validated as Sprint 23 packs (a non-pack /
+  wrong-schema / duplicate-label input is refused), then artifacts are paired by their stable `label`
+  across two axes: artifact-set membership (added / removed / common) and per-artifact transitions
+  over the common set only (newly changed / regressed / recovered / newly need attention / newly
+  unsupported, plus kind / source / status changes). Flags are tri-state-aware (a transition "into" a
+  state needs the next value to be a literal `true`), and the two pack new-attention flags are folded
+  into one derived signal exactly as the pack itself aggregates them. `hasRegression` is conservative
+  and honest — true only for a COMMON artifact that transitions into a regression; a disappearing
+  artifact is a scope change, and an added artifact arriving already regressed sets `hasChange` (gated
+  by `--fail-on-change`), not `hasRegression`. A newly unsupported artifact (a common artifact that
+  lost recognition, or an added unsupported artifact) sets `hasUnsupported` and is gated by
+  `--fail-on-unsupported`. It reports aggregate count deltas and chain-coverage changes, emits a CI
+  decision, imports only `@soulmaker/security` plus its Sprint 23 sibling (no fs/net, no
+  `Date.now`/`Math.random`), and the CLI reads the two named files only and **writes nothing**. A pack
+  diff is bookkeeping over two local summaries — not a live result, prediction, or advice.
 
 ## The live boundary
 

@@ -1,4 +1,4 @@
-# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow; Sprint 14 paper research lab — rankings, variant-plan explain, sensitivity diff, config perturbations, suite coverage; Sprint 15 cross-scenario sensitivity matrix + matrix diff; Sprint 16 research run manifest — index/verify/diff a run's local artifacts; Sprint 17 research run bundle + integrity/status — package a run into one self-describing bundle with a deterministic run digest, plus a complete/recognized/stable/in-sync directory status; Sprint 18 research campaign index — index many runs under a campaign directory into one comparable summary with a deterministic campaign digest; Sprint 19 research bundle diff + campaign index diff — compare two bundles or two campaign indexes with a conservative regression flag; Sprint 20 research campaign history report — fold an ordered set of campaign index snapshots into one deterministic trend report with per-run valid/attention streaks and a conservative regression signal; Sprint 21 research portfolio rollup — roll up many per-campaign history reports into one integrity-triage portfolio view with clean/stable lists, top concerns, and CI flags; Sprint 22 research portfolio diff — compare two portfolio reports for campaign-set changes and common-campaign status transitions with conservative, non-overclaimed change/regression/attention flags; Sprint 23 research artifact pack — collect many local research artifacts into one navigable integrity + navigation summary with per-artifact flags, chain coverage, and a CI decision)
+# Soulmaker Paper Trading Model (Phase 4 / Sprint 4; Sprint 8 journal-continuing runs + backtest; Sprint 9 scenario linting + report stability; Sprint 10 report diffing + scenario helpers; Sprint 11 backtest suites + suite diffing; Sprint 12 scenario variant generation; Sprint 13 variant-sensitivity workflow; Sprint 14 paper research lab — rankings, variant-plan explain, sensitivity diff, config perturbations, suite coverage; Sprint 15 cross-scenario sensitivity matrix + matrix diff; Sprint 16 research run manifest — index/verify/diff a run's local artifacts; Sprint 17 research run bundle + integrity/status — package a run into one self-describing bundle with a deterministic run digest, plus a complete/recognized/stable/in-sync directory status; Sprint 18 research campaign index — index many runs under a campaign directory into one comparable summary with a deterministic campaign digest; Sprint 19 research bundle diff + campaign index diff — compare two bundles or two campaign indexes with a conservative regression flag; Sprint 20 research campaign history report — fold an ordered set of campaign index snapshots into one deterministic trend report with per-run valid/attention streaks and a conservative regression signal; Sprint 21 research portfolio rollup — roll up many per-campaign history reports into one integrity-triage portfolio view with clean/stable lists, top concerns, and CI flags; Sprint 22 research portfolio diff — compare two portfolio reports for campaign-set changes and common-campaign status transitions with conservative, non-overclaimed change/regression/attention flags; Sprint 23 research artifact pack — collect many local research artifacts into one navigable integrity + navigation summary with per-artifact flags, chain coverage, and a CI decision; Sprint 24 research artifact pack diff — compare two artifact packs for artifact-set changes and common-artifact transitions (newly changed / regressed / recovered / newly attention / newly unsupported) with conservative, non-overclaimed flags)
 
 The paper engine (`@soulmaker/paper` + the `paper:*` CLI commands) is a
 **deterministic, offline, simulated-only** trading sandbox. It exists to prove
@@ -820,6 +820,44 @@ lists. The digests behind these artifacts are non-cryptographic content fingerpr
 anti-tamper guarantee. Local bookkeeping over a set of local artifacts — not a live result, not
 advice, not a profitability claim.
 
+## Research artifact pack diff (Sprint 24)
+
+Sprint 24 closes the pack symmetry: the **pack diff** compares two artifact packs (e.g. last CI run's
+pack vs this run's pack) and answers *"what drifted across the whole research run, and did the drift
+break integrity?"* without re-reading any underlying artifact.
+
+`@soulmaker/backtest` exports the pure `diffBacktestResearchArtifactPacks`,
+`validateBacktestResearchArtifactPackDiff`, `formatBacktestResearchArtifactPackDiff` (schema
+`backtest.research.artifact.pack.diff.v1`). The CLI adds
+`paper:backtest:diff:research:pack --base <path> --next <path>` with
+`[--json] [--fail-on-change] [--fail-on-regression] [--fail-on-attention] [--fail-on-new-attention] [--fail-on-unsupported]`.
+
+Both inputs are **strictly validated** as Sprint 23 packs — a non-pack / wrong-schema / duplicate-label
+file refuses with exit 1. Artifacts are then paired by their stable `label` across two clearly-separated
+axes:
+
+- **Artifact-set membership** — artifacts added (in next, not base), removed (in base, not next), and
+  common (in both). Added/removed entries carry their kind / recognized / status / flags so no
+  information is lost.
+- **Per-artifact transitions over the COMMON set only** — newly changed / regressed / recovered /
+  newly-or-no-longer needing attention / newly-or-no-longer needing new-attention / newly-or-no-longer
+  unsupported, plus kind / source / status changes. An appearance is never relabelled a transition.
+
+Flags are tri-state-aware: a per-artifact flag is `true` / `false` / `null`, and a transition "into" a
+state requires the **next** value to be a literal `true` (mirroring how the pack itself counts a flag),
+so a `null → null` move is never an appearance. The pack's two new-attention flags are folded into one
+derived signal exactly as the pack aggregates them. `hasRegression` is conservative and honest — true
+only for a COMMON artifact that transitions into a regression; a disappearing artifact is a scope
+change, and an added artifact arriving already regressed sets `hasChange` (gated by `--fail-on-change`),
+not `hasRegression`. A newly unsupported artifact (a common artifact that lost recognition, or an added
+unsupported artifact) sets `hasUnsupported` and is gated by `--fail-on-unsupported`; a *removed*
+unsupported artifact is a scope change, not newly unsupported. The diff also reports the aggregate count
+deltas and the chain-coverage changes (kinds added/removed, recommended layers newly present/missing,
+coverage-tier transitions), and a CI section whose `wouldFailOn*` gates mirror the conservative flags.
+The command reads **only** the two named files (BOM-tolerant), makes no network call, and **writes
+nothing**. The formatter redacts internally and caps long lists. Local bookkeeping over two local
+summaries — not a live result, not advice, not a profitability claim.
+
 ## PnL reporting
 
 `PaperRunSummary`: realized PnL, unrealized PnL, total PnL, open position count,
@@ -861,6 +899,7 @@ simulated, or sent" disclaimer.
 | `paper:backtest:research:portfolio` | roll up **many** per-campaign history report JSON files into one integrity-triage view (Sprint 21): each `--history campaignId=path` names one campaign; carries each campaign's change/attention/regression/streak/count signals **verbatim**, derives a per-campaign status (regression > attention > changed > clean), lists clean (no concern) + stable (no change) campaigns, the top concerns, and run totals **summed** across campaigns (run ids are campaign-scoped, never de-duplicated) (`backtest.research.portfolio.report.v1`); integrity-triage ordering (NOT a trading ranking); `--fail-on-change` / `--fail-on-regression` / `--fail-on-attention` / `--fail-on-new-attention`; refuses a bad spec / duplicate id / non-history file; reads the named files only, writes nothing |
 | `paper:backtest:diff:research:portfolio` | diff **two** portfolio report JSON files (Sprint 22): pairs campaigns by campaignId → added/removed campaigns + per-campaign status/flag/count changes over the **common** set; conservative newly-regressed / recovered / newly-or-no-longer attention (current + since-baseline) / newly-clean / newly-stable transitions + aggregate count deltas (`backtest.research.portfolio.diff.v1`); a disappearing campaign is a change, **not** a regression, and an added-already-regressed campaign sets `hasChange` not `hasRegression`; `--fail-on-change` / `--fail-on-regression` / `--fail-on-attention` / `--fail-on-new-attention`; refuses a non-portfolio / wrong-schema / duplicate-id file; reads two files, writes nothing |
 | `paper:backtest:research:pack` | collect **many** local research artifact JSON files into one navigation + integrity summary (Sprint 23): each `--artifact label=path` is classified by `schemaVersion` against the ten real research schemas; a known artifact is strictly validated (a corrupt one refuses), an unknown schema is reported as `unsupported`; per-artifact kind/recognized/status/flags read **verbatim**, aggregate counts, chain coverage (present/missing recommended layers; minimal / campaign-level / portfolio-level / diff-ready — presence only, NOT a completeness claim), and a CI decision (`backtest.research.artifact.pack.v1`); `--fail-on-change` / `--fail-on-regression` / `--fail-on-attention` / `--fail-on-new-attention` / `--fail-on-unsupported` / `--fail-on-missing-recommended-layer`; refuses a bad spec / duplicate label / missing-or-malformed / corrupt-known-artifact; reads the named files only, writes nothing unless `--out <path>` (then only the pack JSON, refusing overwrite without `--force`) |
+| `paper:backtest:diff:research:pack` | diff **two** artifact pack JSON files (Sprint 24): pairs artifacts by label → added/removed artifacts + per-artifact kind/source/status/flag changes over the **common** set; conservative newly-changed / regressed / recovered / newly-or-no-longer attention / newly-or-no-longer new-attention / newly-or-no-longer unsupported transitions + aggregate count deltas + chain-coverage changes (`backtest.research.artifact.pack.diff.v1`); a disappearing artifact is a change, **not** a regression, an added-already-regressed artifact sets `hasChange` not `hasRegression`, and a newly-unsupported artifact (common lost recognition or added unsupported) sets `hasUnsupported`; `--fail-on-change` / `--fail-on-regression` / `--fail-on-attention` / `--fail-on-new-attention` / `--fail-on-unsupported`; refuses a non-pack / wrong-schema / duplicate-label file; reads two files, writes nothing |
 
 `paper:run` options: `--candidates <path>` `--prices <path>` `--journal <path>`
 `--max-trade-size-usd` `--max-daily-loss-usd` `--max-open-positions`

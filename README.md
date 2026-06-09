@@ -163,9 +163,18 @@ regression / attention flags read **verbatim**, the aggregate counts, which chai
 or missing, and a CI decision (incl. `--fail-on-unsupported`). A known artifact is strictly
 validated; an unknown schema is reported as `unsupported`, never silently trusted. It reads the named
 files only and writes nothing unless `--out <path>` is given (then only the pack JSON, refusing
-overwrite without `--force`). None of this fetches live data or begins transaction planning (roadmap
-Phase 6 remains not started; Phase 7 burner live remains not started). The default mode is `PAPER`.
-See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+overwrite without `--force`). Sprint 24 closes the pack symmetry with a **pack diff**:
+`paper:backtest:diff:research:pack --base <path> --next <path>` compares two artifact packs
+(`backtest.research.artifact.pack.diff.v1`) — which artifacts appeared/disappeared (paired by label),
+and, over the artifacts present in **both**, which newly changed / regressed / recovered / newly need
+attention / became newly unsupported — plus the aggregate count deltas, the chain-coverage changes,
+and conservative flags with a CI decision (incl. `--fail-on-unsupported`). A newly unsupported
+artifact (a common artifact that lost recognition, or an added unsupported artifact) sets
+`hasUnsupported`; an added artifact that already carries a regression sets `hasChange` (gated by
+`--fail-on-change`), not `hasRegression`. It reads only the two named files and writes nothing. None
+of this fetches live data or begins transaction planning (roadmap Phase 6 remains not started;
+Phase 7 burner live remains not started). The default mode is `PAPER`. See
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Non-negotiable security rules (summary)
 
@@ -209,7 +218,7 @@ soulmaker/
                 #                    paper:backtest:research:portfolio,
                 #                    paper:backtest:diff:research:bundle, paper:backtest:diff:research:index,
                 #                    paper:backtest:diff:research:portfolio,
-                #                    paper:backtest:research:pack)
+                #                    paper:backtest:research:pack, paper:backtest:diff:research:pack)
     web/        # Phase 8 dashboard (placeholder)
   packages/
     core/       # @soulmaker/core      — config schema, modes, risk caps, LIVE GATE
@@ -238,7 +247,8 @@ soulmaker/
                 #            Sprint 20 adds the research campaign history/trend report;
                 #            Sprint 21 adds the research portfolio rollup across campaigns;
                 #            Sprint 22 adds the research portfolio diff (two portfolio reports);
-                #            Sprint 23 adds the research artifact pack (summarizes many artifacts)
+                #            Sprint 23 adds the research artifact pack (summarizes many artifacts);
+                #            Sprint 24 adds the research artifact pack diff (two packs)
                 #            (still pure: the package never scans dirs or reads/writes files)
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
@@ -458,6 +468,14 @@ pnpm soulmaker paper:backtest:diff:research:portfolio --base <portfolio-before.j
 # files only; writes nothing unless --out is given (then only the pack JSON, --force to overwrite):
 pnpm soulmaker paper:backtest:research:pack --artifact campaigns=campaign-history.json --artifact portfolio=portfolio.json --artifact diff=portfolio-diff.json
 pnpm soulmaker paper:backtest:research:pack --artifact portfolio=portfolio.json --artifact diff=portfolio-diff.json --fail-on-regression --fail-on-unsupported --out research-pack.json
+
+# Sprint 24 — PACK DIFF: compare two artifact packs (pack-before.json vs pack-now.json), paired by
+# label — which artifacts appeared/disappeared, and over the common set which newly changed /
+# regressed / recovered / newly need attention / became newly unsupported, plus the aggregate count
+# deltas, chain-coverage changes, and a conservative CI decision. Reads the two named files only,
+# writes nothing:
+pnpm soulmaker paper:backtest:diff:research:pack --base <pack-before.json> --next <pack-now.json>
+pnpm soulmaker paper:backtest:diff:research:pack --base <pack-before.json> --next <pack-now.json> --fail-on-regression --fail-on-unsupported
 ```
 
 Configuration comes from `soulmaker.config.json` (copy
