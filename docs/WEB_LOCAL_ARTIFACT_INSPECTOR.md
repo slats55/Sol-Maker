@@ -41,8 +41,9 @@ fine).
 
 | Flag             | Meaning                                                                 |
 | ---------------- | ----------------------------------------------------------------------- |
-| `--input <file>` | **Required.** Path to one local `.json` report artifact.                |
-| `--out <file>`   | Output HTML path. Default: `apps/web/public/research-artifact.html`.     |
+| `--input <file>` | Path to ONE local `.json` report artifact (single-artifact mode).       |
+| `--dir <folder>` | Path to a local folder of report JSON (folder-index mode, no recursion). Exactly one of `--input` / `--dir` is required. |
+| `--out <file>`   | Output HTML path. Default: `apps/web/public/research-artifact.html` for `--input`, `apps/web/public/research-folder.html` for `--dir`. |
 | `--force`        | Overwrite `--out` if it already exists.                                  |
 | `--json`         | Print a machine-readable summary to stdout; write no HTML file.          |
 | `-h`, `--help`   | Show usage.                                                              |
@@ -174,6 +175,115 @@ pnpm web:inspect --input apps/web/fixtures/sample-research-verify.json \
 
 The committed empty-state inspector page also lists which schemas have typed
 views; run `pnpm web:build` to restore it.
+
+## Local artifact folder index (`--dir`)
+
+Reviewing one artifact at a time is fine for a single file, but a research run or
+a campaign produces a *folder* of them. The `--dir` mode scans **one local folder**
+of report JSON (no recursion) and renders a static **index** with a safe
+**diff-verdict overview**, so you can see across many artifacts at once.
+
+> **Same local-only contract as the single-artifact inspector.** It reads local
+> files and writes one local HTML file — **no upload, no server, no network, no
+> wallet, no keys, no trading.** It is **not** the Chrome extension and **not** a
+> live view of anything.
+
+### Usage
+
+```bash
+# Scan a local folder of report JSON into the folder index page (overwrites the
+# committed empty-state page, so --force is required):
+pnpm web:inspect --dir <folder> --out apps/web/public/research-folder.html --force
+
+# Print a machine-readable folder summary to stdout and write NO file:
+pnpm web:inspect --dir <folder> --json
+
+# Restore the committed empty-state folder index page:
+pnpm web:build
+```
+
+There is a committed sample folder you can try directly:
+
+```bash
+pnpm web:inspect --dir apps/web/fixtures/folder-sample \
+  --out apps/web/public/research-folder.html --force
+```
+
+### What the index shows
+
+For the folder it summarizes:
+
+- **Which artifacts were found**, each with its filename, declared `schemaVersion`,
+  the registered schema kind (if known), and a stable / unknown / absent status.
+- **Whether a typed view is available** for each artifact.
+- **Diff verdicts** — whether each artifact indicates `hasRegression` and/or
+  `hasChange` (see below).
+- **Top-level counts** — total files scanned, valid JSON artifacts, malformed JSON
+  files, skipped non-JSON files, unknown schemas, artifacts with regression,
+  artifacts with change, and counts by schema.
+- **Per-artifact sections** — every recognized artifact links to a section on the
+  same page rendered with the typed inspector view; malformed files are clearly
+  labelled and never parsed into a fake view.
+
+### Fail-soft scanning
+
+The folder scan is conservative but does not abort on bad input:
+
+- Reads only `.json` files in the folder. **No recursion**, no globs.
+- Non-`.json` files and subdirectories are **skipped with an honest count** and a
+  reason — never silently dropped.
+- **Malformed JSON is listed** (with the parser's message) instead of crashing the
+  scan; nothing is interpreted from it.
+- Unknown or absent `schemaVersion` values are **labelled honestly**, never faked.
+- Output is **deterministic**: entries are sorted by name first, so the same folder
+  always produces byte-identical HTML.
+
+### Diff verdict fields — and why `missing` is not `false`
+
+Each artifact gets a verdict with two fields, each one of
+`yes` / `no` / `missing` / `not-applicable`:
+
+| Verdict          | Meaning                                                                  |
+| ---------------- | ------------------------------------------------------------------------ |
+| `yes`            | The artifact's own flag (`hasRegression` / `hasChange`) is `true`.       |
+| `no`             | The artifact's own flag is `false`.                                      |
+| `missing`        | The schema carries this field, but it was absent or not a boolean.       |
+| `not-applicable` | The schema has no such field (a non-diff artifact, or an unknown schema). |
+
+The verdict layer is **schema-aware**. Only the recognized **diff** schemas carry
+these fields, and each carries a specific subset (mirroring the backend diff types
+on `master`):
+
+| Schema                                 | `hasRegression` | `hasChange` |
+| -------------------------------------- | :-------------: | :---------: |
+| `backtest.suite.diff.v1`               | ✅              | —           |
+| `backtest.sensitivity.diff.v1`         | ✅              | —           |
+| `backtest.sensitivity.matrix.diff.v1`  | ✅              | —           |
+| `backtest.research.manifest.diff.v1`   | —               | ✅          |
+| `backtest.research.bundle.diff.v1`     | ✅              | ✅          |
+| `backtest.research.campaign.diff.v1`   | ✅              | ✅          |
+
+Two rules keep the overview honest:
+
+- **`missing` is never collapsed into `no`.** If a recognized diff schema *should*
+  carry a verdict field but it is absent or the wrong type, the index says
+  `missing` — it does **not** pretend the field was `false`. A missing verdict is
+  an unknown, not a clean result.
+- **Unknown schemas never produce a verdict.** Verdict fields are read only from a
+  recognized diff schema. An unrecognized artifact is `not-applicable` even if it
+  literally contains `hasRegression` / `hasChange` booleans — the index does not
+  infer regression from text, filenames, or invented fields, so it cannot show a
+  fake verdict. (The committed `fixtures/folder-sample/unknown-schema.json` proves
+  this: it carries both booleans set to `true`, yet renders as `not-applicable`.)
+
+### Sample folder fixture
+
+`apps/web/fixtures/folder-sample/` is a small, clearly-labelled mixed folder used
+by the folder-index tests. It contains a stable non-diff report, a bundle diff with
+`hasRegression: true`, a bundle diff with `hasChange: true` but no regression, a
+manifest diff (change-only), an unknown-schema artifact, an absent-schema artifact,
+a malformed `.json` file, and a non-JSON `.txt` file — exercising every branch of
+the scan and verdict logic.
 
 ## What this is not
 
