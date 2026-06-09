@@ -79,3 +79,23 @@ export type {
   SniperPaperDecisionReport,
   FormatPaperSniperDecisionReportOptions,
 } from "./paper-decision.js";
+
+export {
+  buildSniperWorkflowPlan,
+  validateSniperWorkflowPlan,
+  formatSniperWorkflowPlan,
+  SniperWorkflowPlanError,
+  SNIPER_WORKFLOW_PLAN_SCHEMA_VERSION,
+  SNIPER_WORKFLOW_PLAN_BANNER,
+  SNIPER_WORKFLOW_PLAN_DISCLAIMERS,
+} from "./workflow.js";
+
+export type {
+  SniperWorkflowStageName,
+  SniperWorkflowStageState,
+  BuildSniperWorkflowPlanInput,
+  SniperWorkflowStageStatus,
+  SniperWorkflowStage,
+  SniperWorkflowPlan,
+  FormatSniperWorkflowPlanOptions,
+} from "./workflow.js";
