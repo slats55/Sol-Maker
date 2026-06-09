@@ -399,17 +399,19 @@ export function buildSniperRunReport(input: BuildSniperRunReportInput): SniperRu
     failReasons.push(`missing recommended artifact(s): ${missing.join(", ")}`);
   }
 
-  // Navigation: only non-empty groups, in a stable, operator-meaningful order.
+  // Navigation: only non-empty groups, in a stable, operator-meaningful order. Each group carries an
+  // INDEPENDENT copy of the ids (never a shared reference to the top-level id lists) so the report
+  // serializes + redacts cleanly (a shared array reference would be collapsed to "[Circular]").
   const navCandidates: SniperRunNavigationEntry[] = [
-    { label: "paper-enter (SIMULATED)", candidateIds: paperEnterIds },
-    { label: "paper-reject", candidateIds: paperRejectIds },
-    { label: "risk-blocked", candidateIds: riskBlockedIds },
-    { label: "preflight-failed", candidateIds: preflightFailedIds },
-    { label: "skip", candidateIds: skipIds },
-    { label: "watch", candidateIds: watchIds },
-    { label: "watched-missing-info", candidateIds: watchedMissingInfoIds },
+    { label: "paper-enter (SIMULATED)", candidateIds: [...paperEnterIds] },
+    { label: "paper-reject", candidateIds: [...paperRejectIds] },
+    { label: "risk-blocked", candidateIds: [...riskBlockedIds] },
+    { label: "preflight-failed", candidateIds: [...preflightFailedIds] },
+    { label: "skip", candidateIds: [...skipIds] },
+    { label: "watch", candidateIds: [...watchIds] },
+    { label: "watched-missing-info", candidateIds: [...watchedMissingInfoIds] },
     { label: "unknown", candidateIds: [...new Set([...decisionUnknownIds, ...preflightUnknownIds])] },
-    { label: "invalid-mint", candidateIds: invalidCandidateIds },
+    { label: "invalid-mint", candidateIds: [...invalidCandidateIds] },
   ];
   const navigation = navCandidates.filter((g) => g.candidateIds.length > 0);
 

@@ -29,7 +29,7 @@ packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [s
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
 packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup + research portfolio diff + research artifact pack + research artifact pack diff (Sprint 8–24)  [strategy, paper, security]
-packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (S25) + token preflight (S26) + paper decisions (S27) + operator workflow helper (S28) + run report (S30); NO chain capability  [risk, security]
+packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (S25) + token preflight (S26) + paper decisions (S27) + operator workflow helper (S28) + run report (S30) + run report diff (S31); NO chain capability  [risk, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -377,6 +377,17 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   unless `--out`; the CLI does all file IO. Local bookkeeping over local artifacts — not a live result,
   not advice, not a profitability claim. A carried-through `paper-enter` is a SIMULATED classification,
   never an order.
+- **(Sprint 31)** `@soulmaker/sniper` adds the **run report diff**: `run-report-diff.ts`
+  (`diffSniperRunReports`, `validate…`, `format…`; schema `sniper.run.report.diff.v1`), exposed by the
+  CLI as `paper:sniper:diff:report --base <a> --next <b> [--json] [--fail-on-change]
+  [--fail-on-new-invalid] [--fail-on-new-preflight-fail] [--fail-on-new-risk] [--fail-on-new-paper-enter]
+  [--fail-on-new-unknown]`. The pure builder strictly validates both run reports and pairs candidates by
+  id: membership (added / removed / common), per-candidate decision + preflight-status transitions, and
+  conservative directional flags (`hasNewInvalid` / `hasNewPreflightFailure` / `hasNewRiskBlock` /
+  `hasNewPaperEnter` / `hasNewUnknown` / `hasRecovery`, where recovery fires only when a candidate that
+  had a concern in base has none in next). Every transition is computed VERBATIM (re-derives nothing). It
+  reads the two named files only and writes nothing; the package stays pure. A `paper-enter` transition
+  is between two SIMULATED classifications, never an order.
 
 ## The live boundary
 

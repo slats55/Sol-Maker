@@ -274,6 +274,38 @@ without `--force`, creating no directories). The `--fail-on-*` flags
 `--fail-on-unknown` / `--fail-on-missing-recommended`) set the exit code. No network, no wallet, no
 transaction build/sign/send.
 
+## Sniper run report diff (Sprint 31)
+
+The run report diff is the **comparison** layer over the run report. The pure `diffSniperRunReports(base,
+next)` (schema `sniper.run.report.diff.v1`) strictly validates two `sniper.run.report.v1` artifacts and
+pairs candidates by `candidateId`. It separates two axes:
+
+- **Membership** — `candidatesAdded` (in next, not base), `candidatesRemoved` (in base, not next), and the
+  common set (`commonCount`).
+- **Per-candidate transitions over the common set** — `decisionChanges` and `preflightStatusChanges`
+  (each `{candidateId, from, to}`), plus the directional id lists: `newlyInvalidIds`,
+  `newlyPreflightFailedIds`, `newlyRiskBlockedIds`, `newlyPaperEnterIds`, `noLongerPaperEnterIds`,
+  `newlyUnknownIds`, `noLongerUnknownIds`, and `recoveryIds`.
+
+It also carries aggregate `deltas` (next − base over the derived group sizes) and the conservative CI
+flags: `hasChange` (any difference), `hasNewInvalid` / `hasNewPreflightFailure` / `hasNewRiskBlock` /
+`hasNewPaperEnter` / `hasNewUnknown`, and `hasRecovery`. **Recovery** is honest and conservative: it
+fires only when a candidate that had a *concern* (invalid OR preflight-fail OR risk-blocked OR unknown) in
+the base has **none** of those in the next. Every transition is computed **VERBATIM** from the two
+reports — the diff re-derives nothing.
+
+### CLI — `paper:sniper:diff:report`
+
+```bash
+pnpm soulmaker paper:sniper:diff:report --base <run-a.json> --next <run-b.json>
+pnpm soulmaker paper:sniper:diff:report --base <run-a.json> --next <run-b.json> --json --fail-on-new-risk
+```
+
+It reads only the two named files and **writes nothing**. The `--fail-on-*` flags (`--fail-on-change`,
+`--fail-on-new-invalid`, `--fail-on-new-preflight-fail`, `--fail-on-new-risk`, `--fail-on-new-paper-enter`,
+`--fail-on-new-unknown`) set the exit code. A `paper-enter` transition is a change between two
+**simulated** classifications, never an order.
+
 ## What is intentionally NOT here yet
 
 - **No transaction planning / signing / sending / wallet / burner** — Phases 6 and 7, not started. The

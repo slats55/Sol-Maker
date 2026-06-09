@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { REDACTED } from "@soulmaker/security";
+import { REDACTED, redactValue } from "@soulmaker/security";
 import {
   buildSniperRunReport,
   validateSniperRunReport,
@@ -206,6 +206,20 @@ describe("buildSniperRunReport — determinism + rejection", () => {
     const before = JSON.stringify({ list, pf, dec });
     buildSniperRunReport({ candidateList: list, preflight: pf, decision: dec });
     expect(JSON.stringify({ list, pf, dec })).toBe(before);
+  });
+
+  it("survives redactValue round-trip (navigation ids are independent copies, never [Circular])", () => {
+    // The navigation groups must NOT share array references with the top-level id lists, or
+    // redactValue's circular-reference guard collapses the second occurrence to "[Circular]".
+    const list = listOf(cand({ candidateId: "good", mint: USDC }), cand({ candidateId: "bad", mint: WSOL }));
+    const pf = preflightFor(list, [
+      { candidateId: "good", inspection: cleanInspection(USDC), risk: riskPass(USDC) },
+      { candidateId: "bad", risk: riskReject(WSOL) },
+    ]);
+    const report = buildSniperRunReport({ candidateList: list, preflight: pf, decision: decisionFor(list, pf) });
+    const redacted = redactValue(report);
+    expect(() => validateSniperRunReport(redacted)).not.toThrow();
+    expect(JSON.stringify(redacted)).not.toContain("[Circular]");
   });
 
   it("refuses a non-candidate-list input", () => {

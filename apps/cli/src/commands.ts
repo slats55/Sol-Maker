@@ -61,6 +61,8 @@ import {
   formatSniperWorkflowPlan,
   buildSniperRunReport,
   formatSniperRunReport,
+  diffSniperRunReports,
+  formatSniperRunReportDiff,
   SNIPER_CANDIDATE_LIST_SCHEMA_VERSION,
   type SniperCandidateList,
   type SniperTokenPreflightReport,
@@ -69,6 +71,7 @@ import {
   type SniperDecisionRules,
   type SniperWorkflowStageState,
   type SniperRunReport,
+  type SniperRunReportDiff,
 } from "@soulmaker/sniper";
 import {
   runPaperSession,
@@ -4573,6 +4576,83 @@ export function paperSniperReportReport(
     return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
   }
   return { text: formatSniperRunReport(report, { label: opts.candidatesPath }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 31 — paper:sniper:diff:report
+//   Deterministically diff TWO existing sniper run report JSON files
+//   (`sniper.run.report.diff.v1`). Reads ONLY the two named files (BOM-tolerant,
+//   malformed/wrong-schema refused); runs no report, writes nothing. Pairs
+//   candidates by id: membership (added/removed/common) + per-candidate decision
+//   and preflight-status transitions + conservative got-worse/recovered signals.
+//   A paper-enter transition is between two SIMULATED classifications — NOT a
+//   buy/sell order. No network, no wallet.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperDiffReportCommandOptions {
+  /** Base run report JSON path. Required. */
+  basePath?: string;
+  /** Next run report JSON path. Required. */
+  nextPath?: string;
+  json?: boolean;
+  failOnChange?: boolean;
+  failOnNewInvalid?: boolean;
+  failOnNewPreflightFail?: boolean;
+  failOnNewRisk?: boolean;
+  failOnNewPaperEnter?: boolean;
+  failOnNewUnknown?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:diff:report` — deterministically diff TWO existing sniper run report JSON
+ * files. Reads ONLY the two named files (BOM-tolerant; malformed/wrong-schema refused), runs no report,
+ * and writes nothing. Pairs candidates by id and reports membership changes (added / removed / common),
+ * per-candidate decision + preflight-status transitions, and conservative directional flags. `--json`
+ * emits the stable, redacted diff; the `--fail-on-*` flags set the exit code. A `paper-enter` transition
+ * is a change between two SIMULATED, paper-only classifications — never a buy/sell order. No network,
+ * no wallet.
+ */
+export function paperSniperDiffReportReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperDiffReportCommandOptions = {},
+): CliReport {
+  if (!opts.basePath) return { text: "Refusing: --base <path> is required.", exitCode: 1 };
+  if (!opts.nextPath) return { text: "Refusing: --next <path> is required.", exitCode: 1 };
+
+  let baseValue: unknown;
+  let nextValue: unknown;
+  try {
+    baseValue = readJsonValue(ctx, opts.basePath, "base run report");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  try {
+    nextValue = readJsonValue(ctx, opts.nextPath, "next run report");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let diff: SniperRunReportDiff;
+  try {
+    diff = diffSniperRunReports(baseValue, nextValue);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const exitCode =
+    (opts.failOnChange && diff.hasChange) ||
+    (opts.failOnNewInvalid && diff.hasNewInvalid) ||
+    (opts.failOnNewPreflightFail && diff.hasNewPreflightFailure) ||
+    (opts.failOnNewRisk && diff.hasNewRiskBlock) ||
+    (opts.failOnNewPaperEnter && diff.hasNewPaperEnter) ||
+    (opts.failOnNewUnknown && diff.hasNewUnknown)
+      ? 1
+      : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(diff), null, 2), exitCode };
+  }
+  return { text: formatSniperRunReportDiff(diff, { label: `${opts.basePath} → ${opts.nextPath}` }), exitCode };
 }
 
 function yesNo(value: boolean): string {

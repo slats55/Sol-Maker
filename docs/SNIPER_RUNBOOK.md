@@ -19,6 +19,7 @@ practical "how do I run this" companion to [`SNIPER_MODEL.md`](SNIPER_MODEL.md) 
 | 3. Token preflight | `paper:sniper:preflight` | `sniper.token.preflight.report.v1` | Combines mint validity + inspection + risk into `pass` / `warn` / `fail` / `unknown` per candidate. |
 | 4. Paper decisions | `paper:sniper:decide` | `sniper.paper.decision.report.v1` | Folds the candidate list + preflight + rules into `skip` / `watch` / `paper-enter` / `paper-reject` / `unknown`. |
 | 5. Run report | `paper:sniper:report` | `sniper.run.report.v1` | Joins candidate list + preflight + decision + workflow into one navigable per-candidate view (reason trail, grouped ids, navigation, CI section). |
+| 6. Run report diff | `paper:sniper:diff:report` | `sniper.run.report.diff.v1` | Compares two run reports: added/removed candidates, decision + preflight-status transitions, conservative got-worse/recovered flags. |
 
 All of stages 1, 3, and 4 live in the pure `@soulmaker/sniper` package, which carries **no chain
 capability** (no `@solana/web3.js`, no `@soulmaker/solana`; a forbidden-import test enforces this). The
@@ -116,6 +117,24 @@ status/decision is carried **verbatim** — the report re-derives nothing. It wr
 `--fail-on-paper-enter`, `--fail-on-unknown`, `--fail-on-missing-recommended`. A `paper-enter` carried
 through is a **simulated** classification, never an order.
 
+### 6. Run report diff (run-vs-run)
+
+Compare two run reports (e.g. yesterday vs today) to see exactly what moved:
+
+```bash
+pnpm soulmaker paper:sniper:diff:report --base run-yesterday.json --next run-today.json
+pnpm soulmaker paper:sniper:diff:report --base run-yesterday.json --next run-today.json --json --fail-on-new-risk
+```
+
+It pairs candidates by id and reports membership changes (added / removed / common), per-candidate
+**decision** and **preflight-status** transitions, the directional id lists (`newlyInvalidIds`,
+`newlyPreflightFailedIds`, `newlyRiskBlockedIds`, `newlyPaperEnterIds`, `noLongerPaperEnterIds`,
+`newlyUnknownIds`, `noLongerUnknownIds`, `recoveryIds`), and the aggregate deltas. The `recovery` signal
+fires only when a candidate that had a concern (invalid / preflight-fail / risk-blocked / unknown) in the
+base has **none** in the next. It reads the two files only and **writes nothing**. CI gates:
+`--fail-on-change`, `--fail-on-new-invalid`, `--fail-on-new-preflight-fail`, `--fail-on-new-risk`,
+`--fail-on-new-paper-enter`, `--fail-on-new-unknown`.
+
 ## How to inspect risk reasons
 
 - The **preflight** entry for a candidate lists its `warnings`, `disqualifiers`, and a capped
@@ -131,6 +150,8 @@ through is a **simulated** classification, never an order.
 - `paper:sniper:decide --fail-on-paper-enter` (ensure nothing auto-enters) / `--fail-on-risk`.
 - `paper:sniper:report --fail-on-invalid` / `--fail-on-preflight-fail` / `--fail-on-risk` /
   `--fail-on-paper-enter` / `--fail-on-unknown` / `--fail-on-missing-recommended` — gate the bundled run.
+- `paper:sniper:diff:report --fail-on-change` / `--fail-on-new-invalid` / `--fail-on-new-preflight-fail` /
+  `--fail-on-new-risk` / `--fail-on-new-paper-enter` / `--fail-on-new-unknown` — gate a run-vs-run diff.
 
 ## What is intentionally NOT implemented
 

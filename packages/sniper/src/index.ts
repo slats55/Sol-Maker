@@ -121,3 +121,22 @@ export type {
   SniperRunReport,
   FormatSniperRunReportOptions,
 } from "./run-report.js";
+
+export {
+  diffSniperRunReports,
+  validateSniperRunReportDiff,
+  formatSniperRunReportDiff,
+  SniperRunReportDiffError,
+  SNIPER_RUN_REPORT_DIFF_SCHEMA_VERSION,
+  SNIPER_RUN_REPORT_DIFF_BANNER,
+  SNIPER_RUN_REPORT_DIFF_DISCLAIMERS,
+} from "./run-report-diff.js";
+
+export type {
+  SniperRunDecisionChange,
+  SniperRunPreflightStatusChange,
+  SniperRunReportDiffDeltas,
+  SniperRunReportDiffSide,
+  SniperRunReportDiff,
+  FormatSniperRunReportDiffOptions,
+} from "./run-report-diff.js";

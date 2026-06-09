@@ -601,6 +601,18 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   candidate id not in the list is refused. Writes nothing unless `--out`; the package stays pure (no
   fs/net, no `Date.now`/`Math.random`; the formatter redacts internally). A carried-through `paper-enter`
   is a SIMULATED classification — NOT a buy/sell order, NOT a transaction, NOT live readiness.
+- ✅ **(Sprint 31) Sniper run report diff** — compare two run reports so CI/operator can see how a
+  watchlist moved between runs. `@soulmaker/sniper` exports `diffSniperRunReports`,
+  `validateSniperRunReportDiff`, `formatSniperRunReportDiff` (schema `sniper.run.report.diff.v1`); the CLI
+  adds `paper:sniper:diff:report --base <a> --next <b> [--json] [--fail-on-change] [--fail-on-new-invalid]
+  [--fail-on-new-preflight-fail] [--fail-on-new-risk] [--fail-on-new-paper-enter] [--fail-on-new-unknown]`.
+  Both inputs are strictly validated; candidates are paired by id into membership changes (added /
+  removed / common) and per-candidate decision + preflight-status transitions, with conservative
+  directional flags (new invalid / preflight-fail / risk-block / paper-enter / unknown, plus a `recovery`
+  signal that fires only when a candidate that had a concern in base has none in next). Every transition
+  is computed VERBATIM (re-derives nothing); it reads the two files only and writes nothing; the package
+  stays pure (no fs/net, no `Date.now`/`Math.random`; the formatter redacts internally). A `paper-enter`
+  transition is between two SIMULATED classifications — never an order.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

@@ -224,6 +224,14 @@ a navigation index, and a CI section (`--fail-on-invalid` / `--fail-on-preflight
 decision is carried **verbatim** — the report re-derives nothing. It writes nothing unless `--out`; a
 `paper-enter` carried through is a **simulated** classification, never an order.
 
+Sprint 31 compares two run reports: `paper:sniper:diff:report --base <a> --next <b>` produces a
+`sniper.run.report.diff.v1` — candidates added / removed / present in both, per-candidate decision and
+preflight-status transitions, conservative directional flags (`--fail-on-new-invalid` /
+`--fail-on-new-preflight-fail` / `--fail-on-new-risk` / `--fail-on-new-paper-enter` /
+`--fail-on-new-unknown`, plus `--fail-on-change` and a `hasRecovery` signal), and aggregate deltas. It
+reads only the two files and **writes nothing**; every transition is computed verbatim from the two
+reports.
+
 ## Non-negotiable security rules (summary)
 
 The full, authoritative list is in [`SECURITY.md`](SECURITY.md). The short form:
@@ -311,7 +319,9 @@ soulmaker/
                 #            describes the intake->preflight->decide sequence, executes nothing;
                 #            Sprint 30 adds the run report (sniper.run.report.v1): joins candidate
                 #            list + preflight + decision + workflow into one navigable per-candidate
-                #            view (paper-only) — NO chain capability, NO wallet, NO network
+                #            view; Sprint 31 adds the run report diff (sniper.run.report.diff.v1):
+                #            compares two run reports (added/removed/transitions/recovery)
+                #            (paper-only) — NO chain capability, NO wallet, NO network
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
     backtest/   # injected, copyable example scenarios + fixtures (NOT historical market data)

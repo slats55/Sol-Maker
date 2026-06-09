@@ -57,6 +57,7 @@ import {
   paperSniperDecideReport,
   paperSniperWorkflowReport,
   paperSniperReportReport,
+  paperSniperDiffReportReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -7165,6 +7166,86 @@ describe("paperSniperReportReport (Sprint 30)", () => {
       const r = paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, decisionsPath: "ghost-dec.json" });
       expect(r.exitCode).toBe(1);
       expect(r.text).toMatch(/unknown candidateId/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperSniperDiffReportReport (Sprint 31)", () => {
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+  const cleanInspection = (mint: string) => ({ mint, decimals: 6, supplyRaw: "1", uiSupply: 1, mintAuthorityPresent: false, freezeAuthorityPresent: false, isInitialized: true, programLabel: "spl-token" });
+  const riskPass = (mint: string) => ({ mint, score: 10, decision: "PASS_FOR_PAPER_EVALUATION", flags: [], summary: [] });
+  const riskReject = (mint: string) => ({ mint, score: 95, decision: "REJECT", flags: [{ id: "rug", severity: "critical", title: "Rug" }], summary: [] });
+
+  /** Build a run report file from candidate + per-candidate risk; returns the run report path. */
+  function runReportFile(cwd: string, name: string, risk: "pass" | "reject"): string {
+    const cands = writeJson(cwd, `${name}.cands.json`, { candidates: [{ candidateId: "c1", mint: USDC }] });
+    writeJson(cwd, `${name}.insp.json`, cleanInspection(USDC));
+    writeJson(cwd, `${name}.risk.json`, risk === "pass" ? riskPass(USDC) : riskReject(USDC));
+    const inspections = risk === "pass" ? [`c1=${name}.insp.json`] : [];
+    expect(paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, inspections, risks: [`c1=${name}.risk.json`], outPath: `${name}.pf.json` }).exitCode).toBe(0);
+    expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: `${name}.pf.json`, outPath: `${name}.dec.json` }).exitCode).toBe(0);
+    const r = paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: `${name}.pf.json`, decisionsPath: `${name}.dec.json`, json: true });
+    writeFileSync(join(cwd, `${name}.run.json`), r.text);
+    return `${name}.run.json`;
+  }
+
+  it("refuses when --base or --next is missing", () => {
+    expect(paperSniperDiffReportReport({}, {}).text).toMatch(/^Refusing: --base/);
+    expect(paperSniperDiffReportReport({}, { basePath: "a.json" }).text).toMatch(/^Refusing: --next/);
+  });
+
+  it("renders a PAPER-ONLY human diff (pass → reject is a new risk block)", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = runReportFile(cwd, "base", "pass");
+      const next = runReportFile(cwd, "next", "reject");
+      const r = paperSniperDiffReportReport({ cwd, env: {} }, { basePath: base, nextPath: next });
+      expect(r.exitCode).toBe(0);
+      expect(r.text).toContain("SIMULATED PAPER-ONLY SNIPER RUN REPORT DIFF");
+      expect(r.text).toContain("Any new risk block:      YES");
+      expect(r.text.toLowerCase()).toContain("not a trade signal");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--json emits a valid, stable diff; the fail flags set the exit code", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = runReportFile(cwd, "base", "pass");
+      const next = runReportFile(cwd, "next", "reject");
+      const r = paperSniperDiffReportReport({ cwd, env: {} }, { basePath: base, nextPath: next, json: true });
+      const obj = JSON.parse(r.text) as { schemaVersion: string; hasChange: boolean; newlyRiskBlockedIds: string[]; noLongerPaperEnterIds: string[] };
+      expect(obj.schemaVersion).toBe("sniper.run.report.diff.v1");
+      expect(obj.hasChange).toBe(true);
+      expect(obj.newlyRiskBlockedIds).toEqual(["c1"]);
+      expect(obj.noLongerPaperEnterIds).toEqual(["c1"]);
+      expect(paperSniperDiffReportReport({ cwd, env: {} }, { basePath: base, nextPath: next, json: true }).text).toBe(r.text); // deterministic
+      expect(paperSniperDiffReportReport({ cwd, env: {} }, { basePath: base, nextPath: next, failOnChange: true }).exitCode).toBe(1);
+      expect(paperSniperDiffReportReport({ cwd, env: {} }, { basePath: base, nextPath: next, failOnNewRisk: true }).exitCode).toBe(1);
+      // a base→base diff has no change → no gate trips
+      expect(paperSniperDiffReportReport({ cwd, env: {} }, { basePath: base, nextPath: base, failOnChange: true }).exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a malformed/wrong-schema file on either side", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = runReportFile(cwd, "base", "pass");
+      writeFileSync(join(cwd, "malformed.json"), "{ not json");
+      expect(paperSniperDiffReportReport({ cwd, env: {} }, { basePath: "malformed.json", nextPath: base }).exitCode).toBe(1);
+      const wrong = writeJson(cwd, "wrong.json", { schemaVersion: "sniper.candidate.list.v1" });
+      const r = paperSniperDiffReportReport({ cwd, env: {} }, { basePath: base, nextPath: wrong });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toMatch(/next run report is invalid/);
     } finally {
       cleanup();
     }
