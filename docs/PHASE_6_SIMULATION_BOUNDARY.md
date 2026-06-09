@@ -86,8 +86,14 @@ Phase 6 work MUST NOT start until every one of these is true and verified:
     isolated from any main wallet: separate process/credential boundary, refusal of main-wallet-shaped
     config, and a fresh-burner requirement.
 
+These prerequisites are now tracked by a machine-readable checklist: `paper:phase6:prereqs --session
+<pack.json>` (schema `phase6.prerequisite.report.v1`, Sprint 40) derives the artifact prerequisites from a
+session pack and reports the design prerequisites as `documented`. That tracker **never authorizes Phase
+6** — `phase6ImplementationStarted` is always false and `requiresExplicitHumanApproval` always true; an
+all-prerequisites-addressed report is **not** a go signal.
+
 When all of the above are checked off, Phase 6 may begin as a **planner that emits inert plan data**,
-plus boundary tests — still with **no signer, no sending**.
+plus boundary tests — still with **no signer, no sending** — and only after an explicit human decision.
 
 ## How Phase 6 will be introduced safely (when the time comes)
 

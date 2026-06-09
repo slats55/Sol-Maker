@@ -55,6 +55,7 @@ invariants.
 | `paper:sniper:audit` | `--report` | `--out` only | `sniper.audit.log.v1` |
 | `paper:sniper:session:pack` | `--artifact` (≥1) | `--out` only | `sniper.session.pack.v1` |
 | `paper:sniper:safety:gates` | `--session` | `--out` only | `sniper.safety.gates.report.v1` |
+| `paper:phase6:prereqs` | `--session` | `--out` only | `phase6.prerequisite.report.v1` |
 
 Common flags: `--json` (stable JSON), `--out <path>` + `--force` (write the artifact; refuse overwrite
 without `--force`), and command-specific `--fail-on-*` CI gates (see [CI gates](#ci-gates)).
@@ -234,6 +235,24 @@ not ready**. A `PHASE6_NOT_STARTED` gate is always present and the recommendatio
 6 — **passing is local/paper readiness only, never Phase 6 authorization.** It reads the session pack only
 and **writes nothing** unless `--out`. CI: the non-zero exit IS the gate; add `--fail-on-warning` to also
 fail on allowed-but-warned conditions.
+
+### 10. Phase 6 prerequisite tracker (machine-readable checklist)
+
+Track the boundary-spec prerequisites against a session pack:
+
+```bash
+pnpm soulmaker paper:phase6:prereqs --session session.json
+pnpm soulmaker paper:phase6:prereqs --session session.json --json --fail-on-unmet
+```
+
+It reports the five **artifact** prerequisites (candidate intake / preflight / paper decisions / operator
+config / audit logging) as `met` / `not-met` from the session pack, and the six **design** prerequisites
+(operator workflow / risk limits / test coverage / kill-switch / secrets policy / burner isolation) as
+`documented` (their design exists in the spec — **not** that Phase 6 implemented them). It implements **no
+transaction planning** and can **never authorize Phase 6**: `phase6ImplementationStarted` is always false
+and `requiresExplicitHumanApproval` always true. Even an all-prerequisites-addressed report is **not** a
+go signal — beginning Phase 6 is an explicit human decision. `--fail-on-unmet` exits 1 when an artifact
+prerequisite is missing.
 
 ## How to inspect risk reasons
 

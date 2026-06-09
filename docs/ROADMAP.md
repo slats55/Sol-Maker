@@ -668,6 +668,17 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   ready** (fail-closed). A `PHASE6_NOT_STARTED` gate is always `skip` and the recommendation never
   authorizes Phase 6 — passing is LOCAL/PAPER readiness only, never Phase 6 authorization. Pure (no fs/net,
   no `Date.now`/`Math.random`); reads the session pack only and writes nothing unless `--out`.
+- ✅ **(Sprint 40) Phase 6 prerequisite tracker** — turns the `PHASE_6_SIMULATION_BOUNDARY.md`
+  prerequisites into a machine-readable checklist. `@soulmaker/sniper` exports
+  `buildPhase6PrerequisiteReport`, `validatePhase6PrerequisiteReport`, `formatPhase6PrerequisiteReport`
+  (schema `phase6.prerequisite.report.v1`); the CLI adds `paper:phase6:prereqs --session <path>
+  [--operator <label>] [--json] [--out <path>] [--force] [--fail-on-unmet]`. The five ARTIFACT
+  prerequisites are derived from a session pack; the six DESIGN prerequisites are reported as `documented`
+  (the design exists in the spec, NOT that Phase 6 implemented it). It implements **no transaction
+  planning**, carries no chain capability, and can **never authorize Phase 6** —
+  `phase6ImplementationStarted` is always false and `requiresExplicitHumanApproval` always true (the
+  validator enforces both as HARD invariants), so even an all-prerequisites-addressed report is not a go
+  signal; beginning Phase 6 is an explicit human decision. Pure (no fs/net, no `Date.now`/`Math.random`).
 - ✅ **(Sprint 36) Sniper CLI cohesion** — a cross-command cohesion test
   (`apps/cli/src/sniper-cohesion.test.ts`) that locks the `paper:sniper:*` surface's safety/consistency
   contract: every command with a required argument refuses (exit 1, `Refusing:` message) when it is

@@ -73,6 +73,8 @@ import {
   formatSniperSessionPack,
   buildSniperSafetyGatesReport,
   formatSniperSafetyGatesReport,
+  buildPhase6PrerequisiteReport,
+  formatPhase6PrerequisiteReport,
   SNIPER_CANDIDATE_LIST_SCHEMA_VERSION,
   SNIPER_POLICY_CONFIG_SCHEMA_VERSION,
   type SniperCandidateList,
@@ -88,6 +90,7 @@ import {
   type SniperSessionPack,
   type SniperSessionPackArtifactInput,
   type SniperSafetyGatesReport,
+  type Phase6PrerequisiteReport,
 } from "@soulmaker/sniper";
 import {
   runPaperSession,
@@ -5023,6 +5026,82 @@ export function paperSniperSafetyGatesReport(
     return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
   }
   return { text: formatSniperSafetyGatesReport(report, { label: opts.sessionPath }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 40 — paper:phase6:prereqs
+//   Turn the docs/PHASE_6_SIMULATION_BOUNDARY.md prerequisites into a
+//   machine-readable checklist (`phase6.prerequisite.report.v1`) from a LOCAL
+//   session pack: the artifact prereqs (intake/preflight/decisions/config/audit)
+//   are derived from the pack; the design prereqs are reported as documented.
+//   It NEVER authorizes Phase 6 (phase6ImplementationStarted always false,
+//   requiresExplicitHumanApproval always true) and implements NO transaction
+//   planning. Reads the named file only; writes nothing unless --out.
+// ---------------------------------------------------------------------------
+
+export interface PaperPhase6PrereqsCommandOptions {
+  /** Session pack JSON path (sniper.session.pack.v1). Required. */
+  sessionPath?: string;
+  /** Optional operator label echoed into the report. */
+  operatorLabel?: string;
+  json?: boolean;
+  /** Optional path to write the prerequisite report JSON (writes nothing if omitted). */
+  outPath?: string;
+  /** Overwrite an existing --out file (refused by default). */
+  force?: boolean;
+  /** Exit non-zero when any artifact prerequisite is not met. */
+  failOnUnmet?: boolean;
+}
+
+/**
+ * `soulmaker paper:phase6:prereqs` — turn the `docs/PHASE_6_SIMULATION_BOUNDARY.md` prerequisites into a
+ * machine-readable checklist (`phase6.prerequisite.report.v1`) from a LOCAL session pack. Reads ONLY the
+ * named file (BOM-tolerant). The five artifact prerequisites (candidate intake / preflight / paper
+ * decisions / operator config / audit logging) are derived from the session pack; the six design
+ * prerequisites are reported as `documented` (their design exists in the boundary spec). It implements NO
+ * transaction planning, carries no chain capability, and can NEVER authorize Phase 6
+ * (`phase6ImplementationStarted` is always false; `requiresExplicitHumanApproval` always true). `--json`
+ * emits the report; `--out` writes ONLY the report JSON (refusing overwrite without `--force`);
+ * `--fail-on-unmet` exits 1 when any artifact prerequisite is not met. No network, no wallet.
+ */
+export function paperPhase6PrereqsReport(
+  ctx: CommandContext = {},
+  opts: PaperPhase6PrereqsCommandOptions = {},
+): CliReport {
+  if (!opts.sessionPath) return { text: "Refusing: --session <path> is required.", exitCode: 1 };
+
+  let value: unknown;
+  try {
+    value = readJsonValue(ctx, opts.sessionPath, "session pack");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let report: Phase6PrerequisiteReport;
+  try {
+    report = buildPhase6PrerequisiteReport({ sessionPack: value, operatorLabel: opts.operatorLabel ?? null });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(report), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write phase 6 prerequisite report at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  const exitCode = opts.failOnUnmet && !report.artifactPrerequisitesMet ? 1 : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
+  }
+  return { text: formatPhase6PrerequisiteReport(report, { label: opts.sessionPath }), exitCode };
 }
 
 function yesNo(value: boolean): string {

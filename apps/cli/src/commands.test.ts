@@ -62,6 +62,7 @@ import {
   paperSniperAuditReport,
   paperSniperSessionPackReport,
   paperSniperSafetyGatesReport,
+  paperPhase6PrereqsReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -7631,6 +7632,88 @@ describe("paperSniperSafetyGatesReport (Sprint 39)", () => {
       const rw = paperSniperSafetyGatesReport({ cwd, env: {} }, { sessionPath: wrong });
       expect(rw.exitCode).toBe(1);
       expect(rw.text).toMatch(/session pack is invalid/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperPhase6PrereqsReport (Sprint 40)", () => {
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+  const cleanInspection = (mint: string) => ({ mint, decimals: 6, supplyRaw: "1", uiSupply: 1, mintAuthorityPresent: false, freezeAuthorityPresent: false, isInitialized: true, programLabel: "spl-token" });
+  const riskPass = (mint: string) => ({ mint, score: 10, decision: "PASS_FOR_PAPER_EVALUATION", flags: [], summary: [] });
+
+  /** Build a full session pack file (with a policy) via the real commands; returns its path. */
+  function fullSessionPackFile(cwd: string): string {
+    const raw = writeJson(cwd, "cands.raw.json", { candidates: [{ candidateId: "c1", mint: USDC, observedLiquidityUsd: 50000 }] });
+    const canon = paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: raw, json: true });
+    writeFileSync(join(cwd, "cands.json"), canon.text);
+    writeJson(cwd, "c1.insp.json", cleanInspection(USDC));
+    writeJson(cwd, "c1.risk.json", riskPass(USDC));
+    paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: "cands.json", inspections: ["c1=c1.insp.json"], risks: ["c1=c1.risk.json"], outPath: "pf.json" });
+    paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: "cands.json", preflightPath: "pf.json", outPath: "dec.json" });
+    const run = paperSniperReportReport({ cwd, env: {} }, { candidatesPath: "cands.json", preflightPath: "pf.json", decisionsPath: "dec.json", json: true });
+    writeFileSync(join(cwd, "run.json"), run.text);
+    const audit = paperSniperAuditReport({ cwd, env: {} }, { reportPath: "run.json", label: "r", json: true });
+    writeFileSync(join(cwd, "audit.json"), audit.text);
+    const policy = paperSniperPolicyValidateReport({ cwd, env: {} }, { inputPath: writeJson(cwd, "policy.raw.json", { policyLabel: "p" }), json: true });
+    writeFileSync(join(cwd, "policy.json"), policy.text);
+    const pack = paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: ["cands=cands.json", "pf=pf.json", "dec=dec.json", "audit=audit.json", "policy=policy.json"], json: true });
+    writeFileSync(join(cwd, "pack.json"), pack.text);
+    return "pack.json";
+  }
+
+  it("refuses when --session is missing", () => {
+    expect(paperPhase6PrereqsReport({}, {}).text).toMatch(/^Refusing: --session/);
+    expect(paperPhase6PrereqsReport({}, {}).exitCode).toBe(1);
+  });
+
+  it("reports all artifact prereqs met for a full session and NEVER authorizes Phase 6", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const pack = fullSessionPackFile(cwd);
+      const r = paperPhase6PrereqsReport({ cwd, env: {} }, { sessionPath: pack, json: true });
+      const obj = JSON.parse(r.text) as { schemaVersion: string; artifactMetCount: number; artifactPrerequisitesMet: boolean; phase6ImplementationStarted: boolean; requiresExplicitHumanApproval: boolean };
+      expect(obj.schemaVersion).toBe("phase6.prerequisite.report.v1");
+      expect(obj.artifactMetCount).toBe(5);
+      expect(obj.artifactPrerequisitesMet).toBe(true);
+      expect(obj.phase6ImplementationStarted).toBe(false);
+      expect(obj.requiresExplicitHumanApproval).toBe(true);
+      expect(r.exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--fail-on-unmet exits 1 when a required artifact prereq is missing", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      // a candidates-only session: most prereqs unmet
+      const raw = writeJson(cwd, "cands.raw.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      const canon = paperSniperCandidatesValidateReport({ cwd, env: {} }, { inputPath: raw, json: true });
+      writeFileSync(join(cwd, "cands.json"), canon.text);
+      const pack = paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: ["cands=cands.json"], json: true });
+      writeFileSync(join(cwd, "pack.json"), pack.text);
+      const human = paperPhase6PrereqsReport({ cwd, env: {} }, { sessionPath: "pack.json" });
+      expect(human.text).toContain("NOT AUTHORIZATION");
+      expect(human.exitCode).toBe(0); // default: informational
+      expect(paperPhase6PrereqsReport({ cwd, env: {} }, { sessionPath: "pack.json", failOnUnmet: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a wrong-schema input", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const wrong = writeJson(cwd, "wrong.json", { schemaVersion: "sniper.run.report.v1" });
+      const r = paperPhase6PrereqsReport({ cwd, env: {} }, { sessionPath: wrong });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toMatch(/session pack is invalid/);
     } finally {
       cleanup();
     }

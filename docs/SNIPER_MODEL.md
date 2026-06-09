@@ -446,6 +446,33 @@ pnpm soulmaker paper:sniper:safety:gates --session session.json --allow-risk-blo
 It reads the session pack only and **writes nothing** unless `--out`. The non-zero exit when not ready IS
 the gate; `--fail-on-warning` also fails on allowed-but-warned conditions.
 
+## Phase 6 prerequisite tracker (Sprint 40)
+
+The tracker turns the `docs/PHASE_6_SIMULATION_BOUNDARY.md` prerequisites into a deterministic,
+machine-readable checklist. The pure `buildPhase6PrerequisiteReport` (schema
+`phase6.prerequisite.report.v1`) reads a session pack and reports each prerequisite's status.
+
+> It implements **no transaction planning**, carries no chain capability, and can **never authorize Phase
+> 6**: `phase6ImplementationStarted` is always `false` and `requiresExplicitHumanApproval` always `true`
+> (the validator enforces both as HARD invariants). Even an all-prerequisites-addressed report is **not** a
+> go signal — beginning Phase 6 is an explicit human decision.
+
+The five **artifact** prerequisites (candidate intake / preflight / paper decisions / operator config /
+audit logging) are derived from the session pack's presence flags as `met` / `not-met`. The six **design**
+prerequisites (operator workflow, risk limits, test coverage, kill-switch, secrets policy, burner
+isolation) are reported as `documented` — their design exists in the spec/repo, which is **not** the same
+as Phase 6 having implemented them.
+
+### CLI — `paper:phase6:prereqs`
+
+```bash
+pnpm soulmaker paper:phase6:prereqs --session session.json
+pnpm soulmaker paper:phase6:prereqs --session session.json --json --fail-on-unmet
+```
+
+It reads the session pack only and **writes nothing** unless `--out`. `--fail-on-unmet` exits 1 when any
+artifact prerequisite is not met.
+
 ## What is intentionally NOT here yet
 
 - **No transaction planning / signing / sending / wallet / burner** — Phases 6 and 7, not started. The

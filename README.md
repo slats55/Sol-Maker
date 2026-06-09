@@ -265,6 +265,15 @@ fail-closed (a concern fails its gate unless explicitly allowed) and **exits 1 w
 every gate is **local/paper readiness only — never Phase 6 authorization**; Phase 6 and Phase 7 remain
 not started.
 
+Sprint 40 turns the Phase 6 boundary prerequisites into a machine-readable checklist:
+`paper:phase6:prereqs --session <pack.json>` reads a session pack and reports a
+`phase6.prerequisite.report.v1` — the five artifact prerequisites (intake / preflight / decisions /
+config / audit) derived from the pack, plus the six design prerequisites (workflow / risk limits / test
+coverage / kill-switch / secrets policy / burner isolation) reported as documented. It implements **no
+transaction planning** and can **never authorize Phase 6**: `phase6ImplementationStarted` is always
+false and `requiresExplicitHumanApproval` always true — beginning Phase 6 is an explicit human decision,
+never a machine verdict.
+
 ## Non-negotiable security rules (summary)
 
 The full, authoritative list is in [`SECURITY.md`](SECURITY.md). The short form:
@@ -361,7 +370,9 @@ soulmaker/
                 #            Sprint 34 adds the session pack (sniper.session.pack.v1): bundles all
                 #            sniper artifacts, classifies each, surfaces unsupported schemas honestly;
                 #            Sprint 39 adds the safety gates (sniper.safety.gates.report.v1): fail-closed
-                #            pre-simulation readiness check (local/paper only, NOT Phase 6 authorization)
+                #            pre-simulation readiness check (local/paper only, NOT Phase 6 authorization);
+                #            Sprint 40 adds the Phase 6 prereq tracker (phase6.prerequisite.report.v1):
+                #            machine-readable boundary-spec checklist, NEVER authorizes Phase 6
                 #            (paper-only) — NO chain capability, NO wallet, NO network
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/

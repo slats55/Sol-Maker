@@ -29,7 +29,7 @@ packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [s
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
 packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup + research portfolio diff + research artifact pack + research artifact pack diff (Sprint 8–24)  [strategy, paper, security]
-packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (S25) + token preflight (S26) + paper decisions (S27) + operator workflow helper (S28) + run report (S30) + run report diff (S31) + policy config (S32) + audit log (S33) + session pack (S34) + safety gates (S39); NO chain capability  [risk, security]
+packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (S25) + token preflight (S26) + paper decisions (S27) + operator workflow helper (S28) + run report (S30) + run report diff (S31) + policy config (S32) + audit log (S33) + session pack (S34) + safety gates (S39) + Phase 6 prereq tracker (S40); NO chain capability  [risk, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -437,6 +437,18 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   when not ready (fail-closed). A `PHASE6_NOT_STARTED` gate is always `skip` and the recommendation never
   authorizes Phase 6 — passing is LOCAL/PAPER readiness only. Pure; reads the session pack only and writes
   nothing unless `--out`.
+- **(Sprint 40)** `@soulmaker/sniper` adds the **Phase 6 prerequisite tracker**: `phase6-prereqs.ts`
+  (`buildPhase6PrerequisiteReport`, `validate…`, `format…`; schema `phase6.prerequisite.report.v1`),
+  exposed by the CLI as `paper:phase6:prereqs --session <path> [--operator <label>] [--json] [--out <path>]
+  [--force] [--fail-on-unmet]`. It turns the `docs/PHASE_6_SIMULATION_BOUNDARY.md` prerequisites into a
+  machine-readable checklist: the five ARTIFACT prerequisites (candidate intake / preflight / paper
+  decisions / operator config / audit logging) are derived from a session pack; the six DESIGN
+  prerequisites (operator workflow, risk limits, test coverage, kill-switch, secrets policy, burner
+  isolation) are reported as `documented` (their design exists in the spec — NOT that Phase 6 implemented
+  them). It implements **no transaction planning** and can **never authorize Phase 6**:
+  `phase6ImplementationStarted` is always `false` and `requiresExplicitHumanApproval` always `true` (the
+  validator enforces both as HARD invariants). Pure; reads the session pack only and writes nothing unless
+  `--out`.
 
 ## The live boundary
 

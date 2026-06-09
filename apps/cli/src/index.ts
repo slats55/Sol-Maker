@@ -51,6 +51,7 @@ import {
   paperSniperAuditReport,
   paperSniperSessionPackReport,
   paperSniperSafetyGatesReport,
+  paperPhase6PrereqsReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1465,6 +1466,35 @@ program
           outPath: opts.out,
           force: Boolean(opts.force),
           failOnWarning: Boolean(opts.failOnWarning),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:phase6:prereqs")
+  .description(
+    "Turn the docs/PHASE_6_SIMULATION_BOUNDARY.md prerequisites into a machine-readable checklist (`phase6.prerequisite.report.v1`) from a LOCAL session pack. The five artifact prerequisites (candidate intake / preflight / paper decisions / operator config / audit logging) are derived from the session pack; the six design prerequisites are reported as documented. It implements NO transaction planning, carries no chain capability, and can NEVER authorize Phase 6 (phase6ImplementationStarted always false; requiresExplicitHumanApproval always true). Reads the named file only, writes nothing unless --out. No network, no wallet",
+  )
+  .option("--session <path>", "session pack JSON (sniper.session.pack.v1)")
+  .option("--operator <label>", "operator label echoed into the report")
+  .option("--json", "emit the prerequisite report as stable JSON")
+  .option("--out <path>", "write ONLY the prerequisite report JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-unmet", "exit non-zero when any artifact prerequisite is not met")
+  .action(
+    (opts: { session?: string; operator?: string; json?: boolean; out?: string; force?: boolean; failOnUnmet?: boolean }) => {
+      const { text, exitCode } = paperPhase6PrereqsReport(
+        {},
+        {
+          sessionPath: opts.session,
+          operatorLabel: opts.operator,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnUnmet: Boolean(opts.failOnUnmet),
         },
       );
       console.log(text);

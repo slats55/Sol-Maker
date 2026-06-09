@@ -218,3 +218,22 @@ export type {
   SniperSafetyGatesReport,
   FormatSniperSafetyGatesReportOptions,
 } from "./safety-gates.js";
+
+export {
+  buildPhase6PrerequisiteReport,
+  validatePhase6PrerequisiteReport,
+  formatPhase6PrerequisiteReport,
+  Phase6PrerequisiteReportError,
+  PHASE6_PREREQUISITE_REPORT_SCHEMA_VERSION,
+  PHASE6_PREREQUISITE_REPORT_BANNER,
+  PHASE6_PREREQUISITE_REPORT_DISCLAIMERS,
+} from "./phase6-prereqs.js";
+
+export type {
+  Phase6PrereqKind,
+  Phase6PrereqStatus,
+  Phase6Prerequisite,
+  BuildPhase6PrerequisiteReportInput,
+  Phase6PrerequisiteReport,
+  FormatPhase6PrerequisiteReportOptions,
+} from "./phase6-prereqs.js";
