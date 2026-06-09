@@ -134,6 +134,32 @@ The page (`pages/folder.ts`) renders verdict badges (`.sm-verdict--regression` /
 artifact list that links to per-artifact sections, a skipped-files table, and a
 verdict legend — all escaped and capped like the rest of the inspector.
 
+### Static filter sections (no JavaScript)
+
+`buildFolderFilterSections(index)` groups the already-sorted artifacts into five
+deterministic sections — `all` / `regression` / `changed` / `unknown` / `clean` —
+via four pure predicates (`isRegressionArtifact`, `isChangedArtifact`,
+`isUnknownOrMalformedArtifact`, `isCleanArtifact`). Membership is a total function
+of each artifact's status / schema / verdict, so the page needs **no JavaScript and
+no query params**; `pages/folder.ts` renders summary cards (`.sm-filtercard`) plus
+the grouped subsections (`.sm-filtersection--*`), and `toFolderFilterCounts` adds
+the same counts to the `--json` summary under `filters`. The `all` group keeps the
+existing `sm-folder-artifacts` anchor so per-artifact "back to list" links still
+resolve. The grouping inherits the verdict layer's conservatism: unknown / absent /
+malformed artifacts are never `regression`/`changed`/`clean` (they go to `unknown`),
+a `missing` verdict is never a regression or a change, and skipped non-JSON files
+are not artifacts (they stay in the skipped-files table). Each section's heading
+count equals its rendered rows by construction (both read the same array).
+
+### Hardening for untrusted input
+
+The folder index treats every filename and field as untrusted: anchor slugs are
+length-capped (uniqueness comes from the artifact index, not the name), and
+`normalizeArtifact` caps an oversized `schemaVersion` (`ARTIFACT_LIMITS.maxSchemaValue`,
+comfortably above the longest catalogued id) so a hostile artifact cannot bloat a
+badge or a by-schema key. Long display names are elided at render time. None of
+this changes recognition — a real, short schema id is never clipped.
+
 ## Schema-aware typed views (`src/components/artifact-views.ts`)
 
 The inspector renders two layers for a loaded artifact:
