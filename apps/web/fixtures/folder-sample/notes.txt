@@ -1,0 +1,4 @@
+This is a sample non-JSON file in the folder-sample fixture set.
+
+The folder inspector must SKIP it (with an honest "not a .json file" reason)
+and never attempt to parse it. Not live data; not a real artifact.

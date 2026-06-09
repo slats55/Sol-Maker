@@ -116,6 +116,16 @@ export const NAV: readonly NavItem[] = [
     description: "Inspect one locally-generated PAPER report JSON as a static page (no upload, no network).",
   },
   {
+    id: "folder",
+    label: "Local artifact index",
+    route: "/research/folder",
+    file: "research-folder.html",
+    group: "Research",
+    icon: "gauge",
+    description:
+      "Index a local folder of PAPER report JSON artifacts and summarize diff verdicts (local-only, no upload, no network).",
+  },
+  {
     id: "commands",
     label: "Command reference",
     route: "/commands",

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "backtest.research.bundle.diff.v1",
+  "paperOnly": true,
+  "simulated": true,
+  "baseRunName": "sample-run-a",
+  "nextRunName": "sample-run-b",
+  "bundleSchemaMatch": true,
+  "baseRunDigest": "sample-run-a-digest-000000000000",
+  "nextRunDigest": "sample-run-b-digest-111111111111",
+  "runDigestChanged": true,
+  "manifestDigestChanged": true,
+  "artifactCount": { "base": 5, "next": 4, "delta": -1 },
+  "totalSizeBytes": { "base": 10240, "next": 9216, "delta": -1024 },
+  "unknownArtifactCount": { "base": 0, "next": 0, "delta": 0 },
+  "malformedArtifactCount": { "base": 0, "next": 1, "delta": 1 },
+  "warningCount": { "base": 0, "next": 1, "delta": 1 },
+  "added": [],
+  "removed": [
+    { "path": "reports/old.report.json", "digest": "sample-removed-222222222222" }
+  ],
+  "changed": [],
+  "kindCountChanges": [],
+  "schemaCountChanges": [],
+  "recognizedSchemasAdded": [],
+  "recognizedSchemasRemoved": [],
+  "hasChange": true,
+  "changeReasons": ["1 artifact(s) removed", "malformed artifact count 0 → 1"],
+  "hasRegression": true,
+  "regressionReasons": ["1 artifact(s) removed", "malformed artifact count increased by 1"],
+  "disclaimers": [
+    "SIMULATED PAPER-ONLY sample bundle diff — not a live result, not advice, not a profitability claim."
+  ]
+}

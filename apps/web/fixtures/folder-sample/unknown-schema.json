@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "experimental.sample.thing.v1",
+  "paperOnly": true,
+  "note": "Sample artifact with an UNRECOGNIZED schema. The folder index must label it unknown and report no verdict — even though this object literally contains hasRegression/hasChange booleans, they must NOT be trusted.",
+  "hasRegression": true,
+  "hasChange": true
+}
