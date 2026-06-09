@@ -657,6 +657,13 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   `examples/sniper/*.json` is validated against a production validator; every generated artifact is
   validated + coherence-checked + determinism-checked. Generated artifacts live in a temp dir (never
   committed) so they cannot drift. The `examples/sniper/README.md` has the full end-to-end walkthrough.
+- ✅ **(Sprint 36) Sniper CLI cohesion** — a cross-command cohesion test
+  (`apps/cli/src/sniper-cohesion.test.ts`) that locks the `paper:sniper:*` surface's safety/consistency
+  contract: every command with a required argument refuses (exit 1, `Refusing:` message) when it is
+  missing; **no command writes a file by default** (a command with `--out` writes nothing without it, and
+  still succeeds); every command's `--json` is parseable, carries a `schemaVersion`, is deterministic, and
+  leaks no secret-length base58 blob. The `docs/SNIPER_RUNBOOK.md` gains a single "Command reference (at a
+  glance)" table covering all nine commands (required args / writes? / schema).
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 

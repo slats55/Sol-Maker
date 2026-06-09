@@ -35,6 +35,29 @@ Everything. The sniper path stops at a **simulated decision**. There is no execu
 local files (and, only for the existing `token:inspect` / `token:risk`, read-only RPC) and write
 nothing unless you pass `--out`.
 
+## Command reference (at a glance)
+
+Every `paper:sniper:*` command is consistent: it reads only the named local files, **writes nothing
+unless `--out`** (where supported), refuses a missing required argument with a `Refusing:` message (exit
+1), and emits stable, redacted JSON with `--json`. A cross-command cohesion test
+([`apps/cli/src/sniper-cohesion.test.ts`](../apps/cli/src/sniper-cohesion.test.ts)) locks these
+invariants.
+
+| Command | Required | Writes? | Schema |
+| --- | --- | --- | --- |
+| `paper:sniper:candidates:validate` | `--input` | never | `sniper.candidate.list.v1` |
+| `paper:sniper:preflight` | `--candidates` | `--out` only | `sniper.token.preflight.report.v1` |
+| `paper:sniper:decide` | `--candidates` | `--out` only | `sniper.paper.decision.report.v1` |
+| `paper:sniper:policy:validate` | `--input` | never | `sniper.policy.config.v1` |
+| `paper:sniper:workflow` | (none) | never | `sniper.workflow.plan.v1` |
+| `paper:sniper:report` | `--candidates` | `--out` only | `sniper.run.report.v1` |
+| `paper:sniper:diff:report` | `--base`, `--next` | never | `sniper.run.report.diff.v1` |
+| `paper:sniper:audit` | `--report` | `--out` only | `sniper.audit.log.v1` |
+| `paper:sniper:session:pack` | `--artifact` (≥1) | `--out` only | `sniper.session.pack.v1` |
+
+Common flags: `--json` (stable JSON), `--out <path>` + `--force` (write the artifact; refuse overwrite
+without `--force`), and command-specific `--fail-on-*` CI gates (see [CI gates](#ci-gates)).
+
 ## The workflow, step by step
 
 Use `paper:sniper:workflow` at any time to see where you are and what to run next:
