@@ -69,3 +69,28 @@ A risk `REJECT` or a critical flag is a `fail`; a `CAUTION`, a freeze/mint autho
 flag is a `warn`. The preflight reads the named files only and **writes nothing** unless `--out` is
 given. A `pass` means "no preflight concern was found in the supplied data" — it is **not** a "safe to
 trade" judgment and **not** a trade signal.
+
+## Paper-only decisions (Sprint 27)
+
+The decision pipeline folds the candidate list + the preflight + optional operator rules into a
+per-candidate **simulated** decision. A `paper-enter` is a **paper-only** decision — **not** a buy/sell
+order, **not** a transaction, and **not** live readiness.
+
+```bash
+# 1) Write the preflight to a file (see above), e.g.:
+pnpm soulmaker paper:sniper:preflight --candidates candidates.example.json \
+  --inspection example-usdc=example-usdc.inspect.json --risk example-usdc=example-usdc.risk.json \
+  --out preflight.json
+
+# 2) Optional rules file (all fields optional):
+#    { "requirePreflightPass": true, "maxRiskScore": 60, "minObservedLiquidityUsd": 1000, "denyMints": [] }
+
+# 3) Decide:
+pnpm soulmaker paper:sniper:decide --candidates candidates.example.json --preflight preflight.json
+pnpm soulmaker paper:sniper:decide --candidates candidates.example.json --preflight preflight.json --rules rules.json --json
+pnpm soulmaker paper:sniper:decide --candidates candidates.example.json --preflight preflight.json --out decision.json
+pnpm soulmaker paper:sniper:decide --candidates candidates.example.json --preflight preflight.json --fail-on-paper-enter
+```
+
+Without `--preflight`, every candidate is conservatively `watch`ed. The command reads the named files
+only and **writes nothing** unless `--out` is given.

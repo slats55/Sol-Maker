@@ -26,8 +26,8 @@ do I/O, network, or RPC themselves.
 1. **Candidate intake** (Sprint 25 — implemented) — a validated local list of candidate mints.
 2. **Token preflight** (Sprint 26 — implemented) — a read-only safety/research summary per candidate,
    reusing existing read-only Solana inspection + advisory risk output; never a trade signal.
-3. **Paper-only decisions** (Sprint 27 — planned) — candidate list + preflight/risk + strategy rules →
-   a simulated `skip` / `watch` / `paper-enter` / `paper-reject` decision per candidate, with reasons.
+3. **Paper-only decisions** (Sprint 27 — implemented) — candidate list + preflight + operator rules →
+   a simulated `skip` / `watch` / `paper-enter` / `paper-reject` / `unknown` decision per candidate.
 4. **Operator workflow** (Sprint 28 — planned) — fixtures + a runbook tying the path together.
 5. **Phase 6 simulation boundary** (Sprint 29 — spec only, no implementation).
 6. **Simulation engine**, then **burner/live** — only after heavy, explicit safety work.
@@ -152,7 +152,62 @@ candidate with no `--inspection` and no `--risk` is reported as `unknown`.
 > implemented yet. Today, produce the inspection/risk inputs with the existing read-only commands and
 > feed them in as local files.
 
+## Paper-only decisions (Sprint 27)
+
+The decision pipeline is the first real sniper-bot-shaped step: it folds a validated candidate list, an
+(optional) preflight report, and a small set of deterministic operator **rules** into a per-candidate
+**simulated** decision. It is **pure** — it consumes the already-built preflight, re-derives no risk,
+reads no chain, and the package still carries no chain capability.
+
+> A `paper-enter` is a **SIMULATED, paper-only** decision — it is **not** a buy/sell order, **not** a
+> transaction, and **not** live-trading readiness. Nothing here holds a key or builds/signs/sends a
+> transaction.
+
+### Schema — `sniper.paper.decision.report.v1`
+
+Carries the PAPER-ONLY banner + disclaimers, the `sourceLabel`, `hasPreflight`, the **resolved rules**
+actually applied (assumptions made explicit), a per-candidate `decisions` array, the
+`skip` / `watch` / `paper-enter` / `paper-reject` / `unknown` tally, conservative `hasPaperEnter` /
+`hasPaperReject` / `hasRiskReject` flags, and a CI section (`wouldFailOnPaperEnter` / `wouldFailOnRisk`
++ `ciFailReasons`). Each **entry** has `candidateId`, `mint`, `decision`, the `preflightStatus` it was
+based on, `reasons`, `blockingRiskFlags`, `appliedRules`, and `assumptions`.
+
+### The five decisions (conservative — `paper-enter` only when EVERY criterion passes)
+
+- **skip** — structurally excluded before evaluation: the mint is on the operator denylist, or it
+  failed validation.
+- **paper-reject** — evaluated and hard-rejected: the preflight **failed**, or a risk score exceeds the
+  rule cap. (A reject is an integrity/risk decision, never a sell order.)
+- **watch** — a soft hold: the preflight **warned**, the preflight could not assess it (`unknown`), no
+  preflight was supplied, or observed liquidity is below the rule floor. Watch = "gather more / keep
+  observing before any paper entry".
+- **paper-enter** — the preflight **passed** and every entry rule is satisfied. Simulated only.
+- **unknown** — a defensive fallback for an unrecognized preflight status.
+
+### Operator rules (`SniperDecisionRules`, all optional; resolved defaults echoed)
+
+- `requirePreflightPass` (default `true`).
+- `maxRiskScore` (default none) — reject when a supplied risk score exceeds it.
+- `minObservedLiquidityUsd` (default none) — watch when observed liquidity is null or below it.
+- `denyMints` (default `[]`) — skip these mints outright.
+
+### CLI — `paper:sniper:decide`
+
+```bash
+pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight <preflight.json>
+pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight <preflight.json> --rules <rules.json> --json
+pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight <preflight.json> --out decision.json
+pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight <preflight.json> --fail-on-paper-enter
+pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight <preflight.json> --fail-on-risk
+```
+
+`--preflight` and `--rules` are optional (without a preflight, every candidate is conservatively
+`watch`ed). The command reads only the named files and **writes nothing** unless `--out` is given (then
+only the report JSON, refusing overwrite without `--force`). `--fail-on-paper-enter` is a useful CI
+gate to ensure no candidate auto-enters; `--fail-on-risk` trips when any candidate was rejected on
+risk. No network, no wallet, no transaction build/sign/send.
+
 ## What is intentionally NOT here yet
 
-- **No scoring or decision** — that is the paper decision pipeline (Sprint 27).
+- **No operator runbook / end-to-end workflow helper** yet — that is Sprint 28.
 - **No transaction planning / signing / sending / wallet / burner** — Phases 6 and 7, not started.

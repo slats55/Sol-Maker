@@ -195,7 +195,17 @@ as local files via `--inspection candidateId=path` / `--risk candidateId=path`. 
 critical flag fails; `CAUTION`, a freeze/mint authority, or a high flag warns; no data is `unknown`.
 The pure builder does **no on-chain reads itself** — it is LOCAL-ONLY (no RPC, no network, no wallet),
 and the package still carries no chain capability. It writes nothing unless `--out` is given. A `pass`
-is **not** a "safe to trade" judgment. See [`docs/SNIPER_MODEL.md`](docs/SNIPER_MODEL.md).
+is **not** a "safe to trade" judgment.
+
+Sprint 27 adds the **paper decision pipeline** — the first real sniper-bot-shaped step:
+`paper:sniper:decide --candidates <path> [--preflight <path>] [--rules <path>]` folds the candidate
+list, the preflight, and deterministic operator rules into a per-candidate **simulated** decision
+(`sniper.paper.decision.report.v1`) — `skip` / `watch` / `paper-enter` / `paper-reject` / `unknown` —
+with reasons, blocking risk flags, applied rules, and assumptions. A candidate reaches `paper-enter`
+only when the preflight passed and every rule is satisfied. A `paper-enter` is a **paper-only**
+decision — **not** a buy/sell order, **not** a transaction, **not** live readiness. `--fail-on-paper-enter`
+and `--fail-on-risk` are CI gates; it writes nothing unless `--out`. No network, no wallet, no
+transaction build/sign/send. See [`docs/SNIPER_MODEL.md`](docs/SNIPER_MODEL.md).
 
 ## Non-negotiable security rules (summary)
 
@@ -277,7 +287,10 @@ soulmaker/
                 #            duplicate-mint warnings;
                 #            Sprint 26 adds token preflight (sniper.token.preflight.report.v1):
                 #            pass/warn/fail/unknown per candidate from already-loaded read-only
-                #            inspection + advisory risk — NO chain capability, NO wallet, NO network
+                #            inspection + advisory risk;
+                #            Sprint 27 adds paper decisions (sniper.paper.decision.report.v1):
+                #            skip/watch/paper-enter/paper-reject/unknown from preflight + rules
+                #            (paper-only decisions) — NO chain capability, NO wallet, NO network
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/
     backtest/   # injected, copyable example scenarios + fixtures (NOT historical market data)
@@ -523,6 +536,14 @@ pnpm soulmaker token:inspect <mint> --json > c1.inspect.json   # existing read-o
 pnpm soulmaker token:risk <mint> --json > c1.risk.json         # existing advisory risk command
 pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> --inspection c1=c1.inspect.json --risk c1=c1.risk.json
 pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> --risk c1=c1.risk.json --fail-on-fail
+
+# Sprint 27 — PAPER SNIPER DECISIONS: fold the candidate list + preflight + optional operator rules
+# into a per-candidate SIMULATED decision — skip / watch / paper-enter / paper-reject / unknown — with
+# reasons. A paper-enter is a PAPER-ONLY decision, NOT a buy/sell order, NOT a transaction, NOT live
+# readiness. Reads the named files only, writes nothing unless --out. No network, no wallet:
+pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight preflight.json
+pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight preflight.json --rules rules.json --json
+pnpm soulmaker paper:sniper:decide --candidates <candidates.json> --preflight preflight.json --fail-on-paper-enter
 ```
 
 Configuration comes from `soulmaker.config.json` (copy

@@ -29,7 +29,7 @@ packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [s
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
 packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup + research portfolio diff + research artifact pack + research artifact pack diff (Sprint 8–24)  [strategy, paper, security]
-packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (Sprint 25) + token preflight (Sprint 26); NO chain capability  [risk, security]
+packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (Sprint 25) + token preflight (Sprint 26) + paper decisions (Sprint 27); NO chain capability  [risk, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -341,6 +341,19 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   `@soulmaker/risk` type unions + `@soulmaker/security`). A live `--read-only-rpc` mode is deferred,
   not faked. The CLI writes nothing unless `--out` is given. A safety/research preflight — a `pass` is
   not a "safe to trade" judgment and not a trade signal.
+- **(Sprint 27)** `@soulmaker/sniper` adds the **paper decision pipeline** — the first real
+  sniper-bot-shaped step: `paper-decision.ts` (`buildPaperSniperDecisionReport`, `validate…`,
+  `format…`; schema `sniper.paper.decision.report.v1`), exposed by the CLI as `paper:sniper:decide
+  --candidates <path> [--preflight <path>] [--rules <path>]`. The pure builder folds a validated
+  candidate list, an optional already-built preflight, and a small set of deterministic operator rules
+  (`requirePreflightPass` / `maxRiskScore` / `minObservedLiquidityUsd` / `denyMints`) into one of five
+  conservative SIMULATED decisions per candidate — `skip` (denylist / invalid mint), `paper-reject`
+  (preflight fail or risk-score-over-cap), `watch` (preflight warn / unknown / no preflight / low
+  liquidity), `paper-enter` (preflight pass + all rules), or `unknown` — each with reasons, blocking
+  risk flags, applied rules, and assumptions. It re-derives no risk and reads no chain (it consumes the
+  preflight). A `paper-enter` is a paper-only decision — NOT a buy/sell order, a transaction, or live
+  readiness. `--fail-on-paper-enter` / `--fail-on-risk` are CI gates; the CLI writes nothing unless
+  `--out`. Phase 6/7 remain untouched.
 
 ## The live boundary
 

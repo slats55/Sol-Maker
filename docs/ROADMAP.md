@@ -568,8 +568,18 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   carries no chain capability. A live `--read-only-rpc` mode is deferred (CI can't depend on the
   network), not faked. Writes nothing unless `--out`. A `pass` is NOT a "safe to trade" judgment and
   NOT a trade signal.
-- ⬜ **(Sprint 27 — planned) Paper-only sniper decisions** — candidate list + preflight/risk + strategy
-  rules → a simulated `skip` / `watch` / `paper-enter` / `paper-reject` decision per candidate.
+- ✅ **(Sprint 27) Paper-only sniper decisions** — the first real sniper-bot-shaped step.
+  `@soulmaker/sniper` exports `buildPaperSniperDecisionReport`, `validatePaperSniperDecisionReport`,
+  `formatPaperSniperDecisionReport` (schema `sniper.paper.decision.report.v1`); the CLI adds
+  `paper:sniper:decide --candidates <path> [--preflight <path>] [--rules <path>] [--json] [--out <path>]
+  [--force] [--fail-on-paper-enter] [--fail-on-risk]`. The pure builder folds a validated candidate
+  list + an optional preflight + deterministic operator rules (`requirePreflightPass` / `maxRiskScore`
+  / `minObservedLiquidityUsd` / `denyMints`) into a per-candidate SIMULATED `skip` / `watch` /
+  `paper-enter` / `paper-reject` / `unknown` decision with reasons, blocking risk flags, applied rules,
+  and assumptions. A candidate reaches `paper-enter` only when the preflight passed and every rule is
+  satisfied. It re-derives no risk and reads no chain (it consumes the preflight). A `paper-enter` is a
+  paper-only decision — NOT a buy/sell order, NOT a transaction, NOT live readiness. Writes nothing
+  unless `--out`.
 - ⬜ **(Sprint 28 — planned) Sniper operator workflow** — fixtures + runbook tying the path together.
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
