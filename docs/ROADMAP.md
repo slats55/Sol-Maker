@@ -679,6 +679,20 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   `phase6ImplementationStarted` is always false and `requiresExplicitHumanApproval` always true (the
   validator enforces both as HARD invariants), so even an all-prerequisites-addressed report is not a go
   signal; beginning Phase 6 is an explicit human decision. Pure (no fs/net, no `Date.now`/`Math.random`).
+- ✅ **(Sprint 41) Inert simulation intent plan (Phase 6 boundary — DATA ONLY)** — the boundary spec's
+  first, deliberately inert step: *type contracts only*. `@soulmaker/sniper` exports
+  `buildSimulationIntentPlan`, `validateSimulationIntentPlan`, `formatSimulationIntentPlan` (schema
+  `simulation.intent.plan.v1`); the CLI adds `paper:phase6:intent:plan --decisions <path> [--plan-label
+  <s>] [--amount-label <s>] [--amount-units <n>] [--json] [--out <path>] [--force]`. From a paper decision
+  report it produces one INERT, NOT-EXECUTABLE entry per SIMULATED `paper-enter`: a hypothetical side, an
+  amount LABEL (never currency), reason codes, and the risk constraints / required operator approvals (ALL
+  `satisfied: false`) / future simulation checks a Phase 6 simulator would need. It holds NO destination,
+  signer, key, or executable field — `executable` is always false, `requiresExplicitHumanApproval` and
+  `allApprovalsUnsatisfied` always true (the validator enforces all three as HARD invariants); it builds,
+  signs, simulates, and sends NOTHING and imports no chain capability (a dedicated safety test also proves
+  the source never sets `executable: true` or a satisfied approval). Pure (no fs/net, no
+  `Date.now`/`Math.random`). Phase 6/7 remain not started — this is data shapes for review, not a step
+  toward sending.
 - ✅ **(Sprint 36) Sniper CLI cohesion** — a cross-command cohesion test
   (`apps/cli/src/sniper-cohesion.test.ts`) that locks the `paper:sniper:*` surface's safety/consistency
   contract: every command with a required argument refuses (exit 1, `Refusing:` message) when it is

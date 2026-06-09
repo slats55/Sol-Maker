@@ -274,6 +274,16 @@ transaction planning** and can **never authorize Phase 6**: `phase6Implementatio
 false and `requiresExplicitHumanApproval` always true — beginning Phase 6 is an explicit human decision,
 never a machine verdict.
 
+Sprint 41 adds the Phase 6 boundary's first, deliberately **inert** step — *type-contract data only*:
+`paper:phase6:intent:plan --decisions <decision.json>` builds a `simulation.intent.plan.v1`, one **inert,
+not-executable** entry per simulated paper-enter. Each entry is plain DATA describing the *hypothetical
+intent* a future planner would consider (a hypothetical side, an amount **label** — never currency —
+reason codes, the risk constraints / required operator approvals / future simulation checks). It holds
+**no destination, no signer, no key, no executable field**; `executable` is always false and every
+required approval is unsatisfied. It builds, signs, simulates, and sends **nothing** and imports no chain
+capability. Phase 6 and Phase 7 remain not started — this is data shapes for review, not a step toward
+sending.
+
 ## Non-negotiable security rules (summary)
 
 The full, authoritative list is in [`SECURITY.md`](SECURITY.md). The short form:
@@ -372,7 +382,9 @@ soulmaker/
                 #            Sprint 39 adds the safety gates (sniper.safety.gates.report.v1): fail-closed
                 #            pre-simulation readiness check (local/paper only, NOT Phase 6 authorization);
                 #            Sprint 40 adds the Phase 6 prereq tracker (phase6.prerequisite.report.v1):
-                #            machine-readable boundary-spec checklist, NEVER authorizes Phase 6
+                #            machine-readable boundary-spec checklist, NEVER authorizes Phase 6;
+                #            Sprint 41 adds the INERT simulation intent plan (simulation.intent.plan.v1):
+                #            type-contract DATA only, executable always false, builds/signs/sends NOTHING
                 #            (paper-only) — NO chain capability, NO wallet, NO network
     adapters/   # Phase 6+ — audited external integrations (placeholder)
   examples/

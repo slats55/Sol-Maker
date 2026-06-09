@@ -473,6 +473,38 @@ pnpm soulmaker paper:phase6:prereqs --session session.json --json --fail-on-unme
 It reads the session pack only and **writes nothing** unless `--out`. `--fail-on-unmet` exits 1 when any
 artifact prerequisite is not met.
 
+## Inert simulation intent plan (Sprint 41 — Phase 6 boundary, DATA ONLY)
+
+This is the very first, deliberately **inert** step toward Phase 6, exactly as scoped in
+[`PHASE_6_SIMULATION_BOUNDARY.md`](PHASE_6_SIMULATION_BOUNDARY.md): **type contracts only**. The pure
+`buildSimulationIntentPlan` (schema `simulation.intent.plan.v1`) takes a paper decision report and
+produces one inert DATA entry per simulated `paper-enter`.
+
+> **NOT EXECUTABLE.** A simulation intent plan holds no destination, no signer, no key, no
+> amount-of-real-funds, and no executable field. `executable` is always `false`,
+> `requiresExplicitHumanApproval` and `allApprovalsUnsatisfied` are always `true`, and every required
+> operator approval is `satisfied: false` — the validator enforces all of these as HARD invariants. It
+> builds, signs, simulates, and sends **nothing**, and imports no chain capability. A dedicated safety
+> test additionally proves the source never sets `executable: true` or a satisfied approval.
+
+Each entry describes the *hypothetical intent* a future Phase 6 planner would consider: a hypothetical
+side (`hypothetical-entry`), an amount **label** (e.g. `small-test` — never a currency amount) + an
+optional simulated unit count, reason codes, the **risk constraints** a future simulator must enforce,
+the **required operator approvals** (all unsatisfied: operator review, kill-switch armed, burner isolation
+confirmed, dry-run simulation passed, caps verified, planner⟂signer separation verified), and the
+**future simulation checks** a Phase 6 simulator must run. This module exists so the boundary's data
+shapes can be reviewed and tested **before** any planner that produces real transaction data is even
+contemplated — and that planner still requires an explicit human decision and the full prerequisite set.
+
+### CLI — `paper:phase6:intent:plan`
+
+```bash
+pnpm soulmaker paper:phase6:intent:plan --decisions decision.json
+pnpm soulmaker paper:phase6:intent:plan --decisions decision.json --amount-label small-test --amount-units 50 --out plan.json
+```
+
+It reads the decision report only and **writes nothing** unless `--out`.
+
 ## What is intentionally NOT here yet
 
 - **No transaction planning / signing / sending / wallet / burner** — Phases 6 and 7, not started. The

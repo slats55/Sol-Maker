@@ -75,6 +75,8 @@ import {
   formatSniperSafetyGatesReport,
   buildPhase6PrerequisiteReport,
   formatPhase6PrerequisiteReport,
+  buildSimulationIntentPlan,
+  formatSimulationIntentPlan,
   SNIPER_CANDIDATE_LIST_SCHEMA_VERSION,
   SNIPER_POLICY_CONFIG_SCHEMA_VERSION,
   type SniperCandidateList,
@@ -91,6 +93,7 @@ import {
   type SniperSessionPackArtifactInput,
   type SniperSafetyGatesReport,
   type Phase6PrerequisiteReport,
+  type SimulationIntentPlan,
 } from "@soulmaker/sniper";
 import {
   runPaperSession,
@@ -5102,6 +5105,86 @@ export function paperPhase6PrereqsReport(
     return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
   }
   return { text: formatPhase6PrerequisiteReport(report, { label: opts.sessionPath }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 41 — paper:phase6:intent:plan
+//   Build an INERT, NOT-EXECUTABLE simulation intent plan (`simulation.intent.plan.v1`)
+//   from a LOCAL paper decision report: one inert entry per SIMULATED paper-enter,
+//   each with a hypothetical side, an amount LABEL (never currency), reason codes,
+//   the constraints/approvals/checks a FUTURE Phase 6 simulator would need (all
+//   approvals UNSATISFIED). `executable` is always false. It builds/signs/simulates/
+//   sends NOTHING and carries no chain capability. Reads the named file only; writes
+//   nothing unless --out.
+// ---------------------------------------------------------------------------
+
+export interface PaperPhase6IntentPlanCommandOptions {
+  /** Decision report JSON path (sniper.paper.decision.report.v1). Required. */
+  decisionsPath?: string;
+  /** Optional plan label echoed into the plan. */
+  planLabel?: string;
+  /** Optional amount LABEL applied to every entry (never currency). */
+  amountLabel?: string;
+  /** Optional SIMULATED unit count applied to every entry (not currency). */
+  amountUnits?: number;
+  json?: boolean;
+  /** Optional path to write the inert plan JSON (writes nothing if omitted). */
+  outPath?: string;
+  /** Overwrite an existing --out file (refused by default). */
+  force?: boolean;
+}
+
+/**
+ * `soulmaker paper:phase6:intent:plan` — build an INERT, NOT-EXECUTABLE simulation intent plan
+ * (`simulation.intent.plan.v1`) from a LOCAL paper decision report. Reads ONLY the named file
+ * (BOM-tolerant). It produces one inert DATA entry per SIMULATED `paper-enter`, each carrying a
+ * hypothetical side, an amount LABEL (never a currency amount), reason codes, the risk constraints / the
+ * required operator approvals (ALL unsatisfied) / the future simulation checks a Phase 6 simulator would
+ * need. The plan's `executable` flag is always false; it builds, signs, simulates, and sends NOTHING and
+ * carries no chain capability. `--json` emits the plan; `--out` writes ONLY the plan JSON (refusing
+ * overwrite without `--force`). No network, no wallet, no transaction build/sign/send.
+ */
+export function paperPhase6IntentPlanReport(
+  ctx: CommandContext = {},
+  opts: PaperPhase6IntentPlanCommandOptions = {},
+): CliReport {
+  if (!opts.decisionsPath) return { text: "Refusing: --decisions <path> is required.", exitCode: 1 };
+
+  let value: unknown;
+  try {
+    value = readJsonValue(ctx, opts.decisionsPath, "decision report");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let plan: SimulationIntentPlan;
+  try {
+    plan = buildSimulationIntentPlan({
+      decisionReport: value,
+      planLabel: opts.planLabel ?? null,
+      amountLabel: opts.amountLabel ?? null,
+      amountUnits: typeof opts.amountUnits === "number" ? opts.amountUnits : null,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(plan), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write simulation intent plan at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(plan), null, 2), exitCode: 0 };
+  }
+  return { text: formatSimulationIntentPlan(plan, { label: opts.decisionsPath }), exitCode: 0 };
 }
 
 function yesNo(value: boolean): string {

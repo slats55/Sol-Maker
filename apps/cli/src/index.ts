@@ -52,6 +52,7 @@ import {
   paperSniperSessionPackReport,
   paperSniperSafetyGatesReport,
   paperPhase6PrereqsReport,
+  paperPhase6IntentPlanReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1495,6 +1496,37 @@ program
           outPath: opts.out,
           force: Boolean(opts.force),
           failOnUnmet: Boolean(opts.failOnUnmet),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:phase6:intent:plan")
+  .description(
+    "Build an INERT, NOT-EXECUTABLE simulation intent plan (`simulation.intent.plan.v1`) from a LOCAL paper decision report. One inert DATA entry per SIMULATED paper-enter, each with a hypothetical side, an amount LABEL (never currency), reason codes, and the risk constraints / required operator approvals (ALL unsatisfied) / future simulation checks a Phase 6 simulator would need. `executable` is always false; it builds/signs/simulates/sends NOTHING and carries no chain capability. Reads the named file only, writes nothing unless --out. This is type-contract DATA only — Phase 6/7 remain not started. No network, no wallet",
+  )
+  .option("--decisions <path>", "decision report JSON (sniper.paper.decision.report.v1)")
+  .option("--plan-label <string>", "plan label echoed into the plan")
+  .option("--amount-label <string>", "amount LABEL applied to every entry (never currency)")
+  .option("--amount-units <number>", "SIMULATED unit count applied to every entry (not currency)")
+  .option("--json", "emit the inert simulation intent plan as stable JSON")
+  .option("--out <path>", "write ONLY the inert plan JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .action(
+    (opts: { decisions?: string; planLabel?: string; amountLabel?: string; amountUnits?: string; json?: boolean; out?: string; force?: boolean }) => {
+      const { text, exitCode } = paperPhase6IntentPlanReport(
+        {},
+        {
+          decisionsPath: opts.decisions,
+          planLabel: opts.planLabel,
+          amountLabel: opts.amountLabel,
+          amountUnits: num(opts.amountUnits),
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
         },
       );
       console.log(text);

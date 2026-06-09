@@ -29,7 +29,7 @@ packages/risk     @soulmaker/risk      token risk flags + scoring (Phase 3)   [s
 packages/paper    @soulmaker/paper     simulated paper trading (Phase 4)      [risk, security]
 packages/strategy @soulmaker/strategy  paper-only strategy rules (Phase 5)    [risk, paper, security]
 packages/backtest @soulmaker/backtest  deterministic simulated replay + scenario lint + report diff + scenario builders + suite runs/diffing + variant generation/explain + variant-sensitivity workflow/rankings/diff + suite coverage + cross-scenario sensitivity matrix/diff + research artifact manifest/verify/diff + research run bundle/status + research campaign index + research bundle/campaign diff + research campaign history report + research portfolio rollup + research portfolio diff + research artifact pack + research artifact pack diff (Sprint 8–24)  [strategy, paper, security]
-packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (S25) + token preflight (S26) + paper decisions (S27) + operator workflow helper (S28) + run report (S30) + run report diff (S31) + policy config (S32) + audit log (S33) + session pack (S34) + safety gates (S39) + Phase 6 prereq tracker (S40); NO chain capability  [risk, security]
+packages/sniper   @soulmaker/sniper    PAPER-only, offline sniper decision support — candidate intake (S25) + token preflight (S26) + paper decisions (S27) + operator workflow helper (S28) + run report (S30) + run report diff (S31) + policy config (S32) + audit log (S33) + session pack (S34) + safety gates (S39) + Phase 6 prereq tracker (S40) + inert simulation intent types (S41); NO chain capability  [risk, security]
 packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
 ```
 
@@ -449,6 +449,18 @@ packages/adapters @soulmaker/adapters  audited external integrations (Phase 6+)
   `phase6ImplementationStarted` is always `false` and `requiresExplicitHumanApproval` always `true` (the
   validator enforces both as HARD invariants). Pure; reads the session pack only and writes nothing unless
   `--out`.
+- **(Sprint 41)** `@soulmaker/sniper` adds the Phase 6 boundary's first, deliberately **inert** step —
+  type-contract DATA only: `simulation-intent.ts` (`buildSimulationIntentPlan`, `validate…`, `format…`;
+  schema `simulation.intent.plan.v1`), exposed by the CLI as `paper:phase6:intent:plan --decisions <path>
+  [--plan-label <s>] [--amount-label <s>] [--amount-units <n>] [--json] [--out <path>] [--force]`. From a
+  paper decision report it produces one INERT entry per SIMULATED `paper-enter`: a hypothetical side, an
+  amount LABEL (never currency), reason codes, the risk constraints / required operator approvals (ALL
+  `satisfied: false`) / future simulation checks a Phase 6 simulator would need. It holds NO destination,
+  signer, key, or executable field; `executable` is always `false`, `requiresExplicitHumanApproval` and
+  `allApprovalsUnsatisfied` always `true` (the validator enforces all three as HARD invariants). It
+  builds, signs, simulates, and sends NOTHING and imports no chain capability — a dedicated safety test
+  additionally proves the source never sets `executable: true` or a satisfied approval. This is exactly
+  the boundary spec's "type contracts only" first step; Phase 6/7 remain not started.
 
 ## The live boundary
 

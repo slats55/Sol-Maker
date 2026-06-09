@@ -63,6 +63,7 @@ import {
   paperSniperSessionPackReport,
   paperSniperSafetyGatesReport,
   paperPhase6PrereqsReport,
+  paperPhase6IntentPlanReport,
   stripJsonBom,
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
@@ -7714,6 +7715,87 @@ describe("paperPhase6PrereqsReport (Sprint 40)", () => {
       const r = paperPhase6PrereqsReport({ cwd, env: {} }, { sessionPath: wrong });
       expect(r.exitCode).toBe(1);
       expect(r.text).toMatch(/session pack is invalid/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperPhase6IntentPlanReport (Sprint 41)", () => {
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const WSOL = "So11111111111111111111111111111111111111112";
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+  const cleanInspection = (mint: string) => ({ mint, decimals: 6, supplyRaw: "1", uiSupply: 1, mintAuthorityPresent: false, freezeAuthorityPresent: false, isInitialized: true, programLabel: "spl-token" });
+  const riskPass = (mint: string) => ({ mint, score: 10, decision: "PASS_FOR_PAPER_EVALUATION", flags: [], summary: [] });
+  const riskReject = (mint: string) => ({ mint, score: 95, decision: "REJECT", flags: [{ id: "rug", severity: "critical", title: "Rug" }], summary: [] });
+
+  /** Build a decision report file with one paper-enter (good) + one paper-reject (bad). */
+  function decisionFile(cwd: string): string {
+    const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "good", mint: USDC, observedLiquidityUsd: 50000 }, { candidateId: "bad", mint: WSOL }] });
+    writeJson(cwd, "good.insp.json", cleanInspection(USDC));
+    writeJson(cwd, "good.risk.json", riskPass(USDC));
+    writeJson(cwd, "bad.risk.json", riskReject(WSOL));
+    paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, inspections: ["good=good.insp.json"], risks: ["good=good.risk.json", "bad=bad.risk.json"], outPath: "pf.json" });
+    paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: "pf.json", outPath: "dec.json" });
+    return "dec.json";
+  }
+
+  it("refuses when --decisions is missing", () => {
+    expect(paperPhase6IntentPlanReport({}, {}).text).toMatch(/^Refusing: --decisions/);
+    expect(paperPhase6IntentPlanReport({}, {}).exitCode).toBe(1);
+  });
+
+  it("builds an INERT, NOT-EXECUTABLE plan with one entry per paper-enter", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dec = decisionFile(cwd);
+      const r = paperPhase6IntentPlanReport({ cwd, env: {} }, { decisionsPath: dec, planLabel: "p1", amountLabel: "small-test", amountUnits: 50, json: true });
+      const obj = JSON.parse(r.text) as { schemaVersion: string; executable: boolean; requiresExplicitHumanApproval: boolean; allApprovalsUnsatisfied: boolean; entryCount: number; entries: { candidateId: string; side: string; amountLabel: string; requiredApprovals: { satisfied: boolean }[] }[] };
+      expect(obj.schemaVersion).toBe("simulation.intent.plan.v1");
+      expect(obj.executable).toBe(false);
+      expect(obj.requiresExplicitHumanApproval).toBe(true);
+      expect(obj.allApprovalsUnsatisfied).toBe(true);
+      expect(obj.entryCount).toBe(1);
+      expect(obj.entries[0]!.candidateId).toBe("good");
+      expect(obj.entries[0]!.side).toBe("hypothetical-entry");
+      expect(obj.entries[0]!.amountLabel).toBe("small-test");
+      expect(obj.entries[0]!.requiredApprovals.every((a) => a.satisfied === false)).toBe(true);
+      expect(r.exitCode).toBe(0);
+      // deterministic
+      expect(paperPhase6IntentPlanReport({ cwd, env: {} }, { decisionsPath: dec, planLabel: "p1", amountLabel: "small-test", amountUnits: 50, json: true }).text).toBe(r.text);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("renders a NOT-EXECUTABLE human plan and --out writes ONLY the plan JSON", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const dec = decisionFile(cwd);
+      const human = paperPhase6IntentPlanReport({ cwd, env: {} }, { decisionsPath: dec });
+      expect(human.text).toContain("NOT EXECUTABLE");
+      expect(human.text).toContain("executable:                    NO");
+      const r1 = paperPhase6IntentPlanReport({ cwd, env: {} }, { decisionsPath: dec, outPath: "plan.json" });
+      expect(r1.exitCode).toBe(0);
+      const written = JSON.parse(readFileSync(join(cwd, "plan.json"), "utf8")) as { schemaVersion: string; executable: boolean };
+      expect(written.schemaVersion).toBe("simulation.intent.plan.v1");
+      expect(written.executable).toBe(false);
+      expect(paperPhase6IntentPlanReport({ cwd, env: {} }, { decisionsPath: dec, outPath: "plan.json" }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a wrong-schema decision report", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const wrong = writeJson(cwd, "wrong.json", { schemaVersion: "sniper.run.report.v1" });
+      const r = paperPhase6IntentPlanReport({ cwd, env: {} }, { decisionsPath: wrong });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toMatch(/decision report is invalid/);
     } finally {
       cleanup();
     }

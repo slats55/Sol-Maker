@@ -56,6 +56,7 @@ invariants.
 | `paper:sniper:session:pack` | `--artifact` (≥1) | `--out` only | `sniper.session.pack.v1` |
 | `paper:sniper:safety:gates` | `--session` | `--out` only | `sniper.safety.gates.report.v1` |
 | `paper:phase6:prereqs` | `--session` | `--out` only | `phase6.prerequisite.report.v1` |
+| `paper:phase6:intent:plan` | `--decisions` | `--out` only | `simulation.intent.plan.v1` (INERT, not executable) |
 
 Common flags: `--json` (stable JSON), `--out <path>` + `--force` (write the artifact; refuse overwrite
 without `--force`), and command-specific `--fail-on-*` CI gates (see [CI gates](#ci-gates)).
@@ -253,6 +254,23 @@ transaction planning** and can **never authorize Phase 6**: `phase6Implementatio
 and `requiresExplicitHumanApproval` always true. Even an all-prerequisites-addressed report is **not** a
 go signal — beginning Phase 6 is an explicit human decision. `--fail-on-unmet` exits 1 when an artifact
 prerequisite is missing.
+
+### 11. Inert simulation intent plan (Phase 6 boundary — DATA ONLY)
+
+The boundary spec's first, deliberately **inert** step — *type-contract data only*. It is **not
+executable** and does nothing toward Phase 6 beyond letting the data shapes be reviewed:
+
+```bash
+pnpm soulmaker paper:phase6:intent:plan --decisions decision.json
+pnpm soulmaker paper:phase6:intent:plan --decisions decision.json --amount-label small-test --amount-units 50 --out plan.json
+```
+
+It produces one **inert** entry per simulated `paper-enter`: a hypothetical side, an amount **label**
+(never currency), reason codes, and the risk constraints / required operator approvals (**all
+unsatisfied**) / future simulation checks a Phase 6 simulator would need. It holds **no destination, no
+signer, no key, no executable field**; `executable` is always false. It builds, signs, simulates, and
+sends **nothing**. It reads the decision report only and **writes nothing** unless `--out`. Phase 6 and
+Phase 7 remain not started — beginning Phase 6 requires an explicit human decision.
 
 ## How to inspect risk reasons
 

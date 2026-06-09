@@ -237,3 +237,22 @@ export type {
   Phase6PrerequisiteReport,
   FormatPhase6PrerequisiteReportOptions,
 } from "./phase6-prereqs.js";
+
+export {
+  buildSimulationIntentPlan,
+  validateSimulationIntentPlan,
+  formatSimulationIntentPlan,
+  SimulationIntentPlanError,
+  SIMULATION_INTENT_PLAN_SCHEMA_VERSION,
+  SIMULATION_INTENT_PLAN_BANNER,
+  SIMULATION_INTENT_PLAN_DISCLAIMERS,
+} from "./simulation-intent.js";
+
+export type {
+  SimulationIntentSide,
+  SimulationApproval,
+  SimulationIntentEntry,
+  SimulationIntentPlan,
+  BuildSimulationIntentPlanInput,
+  FormatSimulationIntentPlanOptions,
+} from "./simulation-intent.js";
