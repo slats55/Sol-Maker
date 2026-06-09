@@ -51,8 +51,12 @@ import {
 import {
   normalizeSniperCandidateList,
   formatSniperCandidateList,
+  buildSniperTokenPreflightReport,
+  formatSniperTokenPreflightReport,
   SNIPER_CANDIDATE_LIST_SCHEMA_VERSION,
   type SniperCandidateList,
+  type SniperTokenPreflightReport,
+  type SniperPreflightCandidateData,
 } from "@soulmaker/sniper";
 import {
   runPaperSession,
@@ -4093,6 +4097,132 @@ export function paperSniperCandidatesValidateReport(
     return { text: JSON.stringify(redactValue(list), null, 2), exitCode };
   }
   return { text: formatSniperCandidateList(list, { label: opts.inputPath }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 26 — paper:sniper:preflight
+//   Build a PAPER-only token preflight summary over a LOCAL candidate list plus
+//   already-loaded read-only inspection (token:inspect output) + advisory risk
+//   (token:risk output) JSON files. Per candidate: pass / warn / fail / unknown,
+//   with warnings + disqualifying reasons. LOCAL-ONLY: no RPC, no network, no
+//   wallet. Reads the named files only; writes nothing unless --out. This is a
+//   safety/research preflight — NOT a trade signal.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperPreflightCommandOptions {
+  /** Candidate list JSON path. Required. */
+  candidatesPath?: string;
+  /** Repeatable "candidateId=path" read-only inspection JSON files (token:inspect output). */
+  inspections?: string[];
+  /** Repeatable "candidateId=path" advisory risk JSON files (token:risk output). */
+  risks?: string[];
+  json?: boolean;
+  /** Optional path to write the preflight report JSON (writes nothing if omitted). */
+  outPath?: string;
+  /** Overwrite an existing --out file (refused by default). */
+  force?: boolean;
+  /** Exit non-zero when any candidate failed preflight. */
+  failOnFail?: boolean;
+  /** Exit non-zero when any candidate has a preflight warning. */
+  failOnWarning?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:preflight` — build a PAPER-only token preflight summary over a LOCAL
+ * candidate list plus already-loaded read-only inspection + advisory risk JSON files. Reads ONLY the
+ * named local files (BOM-tolerant). `--candidates` is the candidate list (raw operator input or a
+ * canonical `sniper.candidate.list.v1`); each `--inspection candidateId=path` / `--risk
+ * candidateId=path` supplies that candidate's already-loaded read-only inspection (token:inspect
+ * output) / advisory risk (token:risk output). It performs NO on-chain reads itself — there is no RPC,
+ * no network, no wallet. Each candidate gets a `pass` / `warn` / `fail` / `unknown` status with
+ * warnings + disqualifiers. `--json` emits the report; `--out` writes ONLY the report JSON (refusing
+ * overwrite without `--force`, creating no directories); `--fail-on-fail` / `--fail-on-warning` set the
+ * exit code. This is a safety/research preflight — NOT a trade signal, not a verified-safe guarantee.
+ */
+export function paperSniperPreflightReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperPreflightCommandOptions = {},
+): CliReport {
+  if (!opts.candidatesPath) return { text: "Refusing: --candidates <path> is required.", exitCode: 1 };
+
+  // 1) Read + normalize the candidate list (same wrong-schema guard as the validate command).
+  let raw: unknown;
+  try {
+    raw = readJsonValue(ctx, opts.candidatesPath, "sniper candidate list");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  if (!isPlainObject(raw)) {
+    return { text: "Refusing: candidate list must be a JSON object with a candidates array.", exitCode: 1 };
+  }
+  if (raw.schemaVersion !== undefined && raw.schemaVersion !== SNIPER_CANDIDATE_LIST_SCHEMA_VERSION) {
+    return {
+      text: redactString(`Refusing: candidate list schemaVersion must be "${SNIPER_CANDIDATE_LIST_SCHEMA_VERSION}".`),
+      exitCode: 1,
+    };
+  }
+  let list: SniperCandidateList;
+  try {
+    list = normalizeSniperCandidateList({
+      sourceLabel: typeof raw.sourceLabel === "string" ? raw.sourceLabel : opts.candidatesPath,
+      candidates: (raw.candidates ?? []) as never,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // 2) Load the optional inspection + risk files, keyed by candidateId.
+  const dataById = new Map<string, SniperPreflightCandidateData>();
+  const loadInto = (specs: string[] | undefined, kind: "inspection" | "risk"): string | null => {
+    for (const spec of specs ?? []) {
+      const parsed = parsePackArtifactArg(spec);
+      if (!parsed) return `--${kind} must be "candidateId=path" (got "${spec}").`;
+      let value: unknown;
+      try {
+        value = readJsonValue(ctx, parsed.path, `${kind} (${parsed.label})`);
+      } catch (err) {
+        return (err as Error).message;
+      }
+      const entry = dataById.get(parsed.label) ?? { candidateId: parsed.label };
+      if (kind === "inspection") entry.inspection = value;
+      else entry.risk = value;
+      dataById.set(parsed.label, entry);
+    }
+    return null;
+  };
+  const inspErr = loadInto(opts.inspections, "inspection");
+  if (inspErr) return { text: redactString(`Refusing: ${inspErr}`), exitCode: 1 };
+  const riskErr = loadInto(opts.risks, "risk");
+  if (riskErr) return { text: redactString(`Refusing: ${riskErr}`), exitCode: 1 };
+
+  // 3) Build the preflight report.
+  let report: SniperTokenPreflightReport;
+  try {
+    report = buildSniperTokenPreflightReport({ candidateList: list, candidateData: [...dataById.values()] });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // 4) Optional write: ONLY the report JSON, refuse overwrite without --force, create no directories.
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(report), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write preflight report at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  const exitCode =
+    (opts.failOnFail && report.hasFail) || (opts.failOnWarning && report.hasWarn) ? 1 : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
+  }
+  return { text: formatSniperTokenPreflightReport(report, { label: opts.candidatesPath }), exitCode };
 }
 
 function yesNo(value: boolean): string {

@@ -42,6 +42,7 @@ import {
   paperBacktestResearchPackReport,
   paperBacktestDiffResearchPackReport,
   paperSniperCandidatesValidateReport,
+  paperSniperPreflightReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1071,6 +1072,58 @@ program
         {
           inputPath: opts.input,
           json: Boolean(opts.json),
+          failOnWarning: Boolean(opts.failOnWarning),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:preflight")
+  .description(
+    "Build a PAPER-only token preflight summary over a LOCAL candidate list + already-loaded read-only inspection (token:inspect output) and advisory risk (token:risk output) JSON files (`sniper.token.preflight.report.v1`). Per candidate: pass / warn / fail / unknown with warnings + disqualifiers (risk REJECT or a critical flag = fail; CAUTION / freeze or mint authority / high flag = warn; no data = unknown). LOCAL-ONLY: NO RPC, NO network, NO wallet. Reads the named files only, writes nothing unless --out. A safety/research preflight — NOT a trade signal",
+  )
+  .option("--candidates <path>", "candidate list JSON")
+  .option(
+    "--inspection <candidateId=path>",
+    "read-only mint inspection JSON for a candidate (token:inspect output; repeatable)",
+    (value: string, previous: string[]) => previous.concat(value),
+    [] as string[],
+  )
+  .option(
+    "--risk <candidateId=path>",
+    "advisory risk report JSON for a candidate (token:risk output; repeatable)",
+    (value: string, previous: string[]) => previous.concat(value),
+    [] as string[],
+  )
+  .option("--json", "emit the preflight report as stable JSON")
+  .option("--out <path>", "write ONLY the preflight report JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-fail", "exit non-zero when any candidate failed preflight")
+  .option("--fail-on-warning", "exit non-zero when any candidate has a preflight warning")
+  .action(
+    (opts: {
+      candidates?: string;
+      inspection?: string[];
+      risk?: string[];
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnFail?: boolean;
+      failOnWarning?: boolean;
+    }) => {
+      const { text, exitCode } = paperSniperPreflightReport(
+        {},
+        {
+          candidatesPath: opts.candidates,
+          inspections: opts.inspection ?? [],
+          risks: opts.risk ?? [],
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnFail: Boolean(opts.failOnFail),
           failOnWarning: Boolean(opts.failOnWarning),
         },
       );
