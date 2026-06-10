@@ -467,6 +467,35 @@ The diff's `executable` flag is always false — comparing two non-executable pl
   `appliedRules`, and `assumptions`.
 - The underlying `token:risk` report has the complete advisory flag list with `detail` and `evidence`.
 
+## Operator dress rehearsal (S86 prep) — exactly what real input is needed
+
+The full chain is exercised end-to-end by FICTIONAL fixtures in CI. A real dress rehearsal —
+driving the same chain over REAL candidate intake, still PAPER-only — needs exactly three
+operator-supplied things; nothing else, and none of them is ever invented by the pipeline:
+
+1. **A real candidate list file** (the only genuinely new input): a local JSON file for
+   `paper:sniper:candidates:validate` with real `candidateId` / `mint` pairs the operator chose
+   (e.g. recently observed launches). The pipeline never discovers candidates by itself.
+2. **A read-only RPC endpoint** for `token:inspect` / `token:risk` over those mints (any public
+   mainnet RPC works; the solana client is structurally read-only — no send/sign/airdrop method
+   exists). If the endpoint needs an API key, pass it per the existing config docs; it is redacted
+   from every output.
+3. **An operator label** for the session, so every artifact in the run carries who drove it.
+
+With those in hand the rehearsal is the documented workflow above, verbatim: intake → preflight
+input bundle → preflight → decide (v2) → report (v2) → gates (v2) → prereqs (v2) → adopted specs →
+`paper:simulation:intent:plan` → `paper:simulation:result` → `paper:simulation:audit` →
+`paper:simulation:readiness` → `paper:simulation:handoff`. Record the produced session pack and
+handoff pack as the rehearsal evidence. Expectations to hold the run to, honestly:
+
+- Real candidates will mostly land `watch` / `paper-reject` / `unknown` — that is the system
+  working, not failing. A `paper-enter` demands the operator review acknowledgment, exactly as in
+  the fixtures.
+- Destination/fee previews stay UNRESOLVED and the dry-run stays UNAVAILABLE (no route-resolution
+  capability exists — see `simulation.route.resolution.v1`, which records that state per entry).
+- Nothing in the rehearsal signs, sends, or touches a wallet; a tripped stop switch must block the
+  whole simulation chain (worth rehearsing once on purpose).
+
 ## CI gates
 
 - `paper:sniper:candidates:validate --fail-on-warning` — fail on a duplicate mint, etc.
