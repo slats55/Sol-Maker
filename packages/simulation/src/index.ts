@@ -43,6 +43,38 @@ export {
 } from "./intent-plan.js";
 
 export {
+  UNAVAILABLE_DRY_RUN_ADAPTER,
+  SIMULATION_DRY_RUN_OUTCOME_KINDS,
+  validateSimulationDryRunAdapter,
+  normalizeSimulationDryRunOutcome,
+  type SimulationDryRunRequest,
+  type SimulationDryRunOutcome,
+  type SimulationDryRunAdapter,
+} from "./adapter.js";
+
+export {
+  SIMULATION_RESULT_V1_SCHEMA_VERSION,
+  SIMULATION_RESULT_V1_BANNER,
+  SIMULATION_RESULT_V1_GENERATED_BY,
+  SIMULATION_RESULT_V1_MODE,
+  SIMULATION_RESULT_V1_DISCLAIMERS,
+  SIMULATION_RESULT_ENTRY_STATUSES,
+  SIMULATION_RESULT_STATUSES,
+  SimulationResultV1Error,
+  buildSimulationResultV1,
+  validateSimulationResultV1,
+  formatSimulationResultV1,
+  type SimulationResultEntryStatus,
+  type SimulationResultStatus,
+  type SimulationResultEntryV1,
+  type SimulationResultPlanRef,
+  type SimulationResultAdapterSummary,
+  type SimulationResultV1,
+  type BuildSimulationResultV1Input,
+  type FormatSimulationResultV1Options,
+} from "./result.js";
+
+export {
   SIMULATION_REASON_CATEGORIES,
   SIMULATION_REASON_SEVERITIES,
   SIMULATION_REASON_CODES,
