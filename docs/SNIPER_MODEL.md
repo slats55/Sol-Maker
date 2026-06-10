@@ -391,6 +391,31 @@ always `blocked`. It **describes** the sequence only — it executes no stage, r
 no network call, and touches no wallet. The full operator walkthrough is in
 [`SNIPER_RUNBOOK.md`](SNIPER_RUNBOOK.md).
 
+## Phase-6 prerequisite tracker v2 — `phase6.prerequisite.report.v2` (Sprint 52)
+
+V2 makes readiness concrete WITHOUT implementing any of Phase 6: it consumes the actual v2
+artifacts (policy v1/v2, safety gates v2, decision v2, run report v2, audit log, session pack) and
+groups every prerequisite into explicit **readiness buckets**: `artifact`, `policy`, `safety`,
+`audit`, `operator`, `kill-switch`, `secrets-policy`, `burner-isolation`, `test`.
+
+- The kill-switch / secrets-policy / burner-isolation buckets are **deliberately not-met** until
+  their machine-readable spec artifacts exist (Sprints 53–56) — readiness is fail-closed, never
+  invented. Until then `phase6ImplementationReady` cannot become true.
+- `phase6ImplementationReady` may become true ONLY in the sense "every prerequisite for beginning a
+  **pure simulation** implementation is addressed". It is still not authorization.
+- HARD invariants, validated and source-locked: `phase6ImplementationStarted: false`,
+  `requiresExplicitHumanApproval: true`, `phase7LiveTradingReady: false`,
+  `neverAuthorizesLiveTrading: true` — the validator refuses any tampered value, and a source-scan
+  test refuses any non-literal assignment.
+
+```bash
+pnpm soulmaker paper:phase6:prereqs --schema-version v2 \
+  --session pack.json --policy policy-v2.json --gates gates-v2.json \
+  --decisions decision-v2.json --run-report run-v2.json --audit audit.json --operator you
+```
+
+`--fail-on-unmet` exits 1 while `phase6ImplementationReady` is false. The v1 tracker is unchanged.
+
 ## Safety gates v2 — `sniper.safety.gates.report.v2` (Sprint 51)
 
 The v1 gates check a session pack's coverage flags; v2 checks the **artifacts themselves** — each

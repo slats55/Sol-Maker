@@ -7965,6 +7965,41 @@ describe("paperPhase6PrereqsReport (Sprint 40)", () => {
     writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
     return name;
   }
+
+  it("--schema-version v2 (Sprint 52): bucketed tracker; spec buckets keep readiness false; never authorizes", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cands = writeJson(cwd, "cands.json", { candidates: [{ candidateId: "c1", mint: USDC }] });
+      const policy = writeJson(cwd, "policy-v2.json", JSON.parse(paperSniperPolicyValidateReport({ cwd, env: {} }, { inputPath: writeJson(cwd, "rawpol.json", { policyMode: "research-only" }), schemaVersion: "v2", json: true }).text));
+      expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, policyPath: policy, schemaVersion: "v2", outPath: "dec-v2.json" }).exitCode).toBe(0);
+      // per-artifact flags refused on the v1 path
+      expect(paperPhase6PrereqsReport({ cwd, env: {} }, { policyPath: policy }).exitCode).toBe(1);
+      const r = paperPhase6PrereqsReport(
+        { cwd, env: {} },
+        { schemaVersion: "v2", policyPath: policy, decisionsPath: "dec-v2.json", operatorLabel: "op", json: true },
+      );
+      expect(r.exitCode).toBe(0);
+      const obj = JSON.parse(r.text) as {
+        schemaVersion: string;
+        phase6ImplementationReady: boolean;
+        phase6ImplementationStarted: boolean;
+        phase7LiveTradingReady: boolean;
+        requiresExplicitHumanApproval: boolean;
+        buckets: { bucket: string; ready: boolean }[];
+      };
+      expect(obj.schemaVersion).toBe("phase6.prerequisite.report.v2");
+      expect(obj.phase6ImplementationReady).toBe(false);
+      expect(obj.phase6ImplementationStarted).toBe(false);
+      expect(obj.phase7LiveTradingReady).toBe(false);
+      expect(obj.requiresExplicitHumanApproval).toBe(true);
+      expect(obj.buckets.find((b) => b.bucket === "kill-switch")!.ready).toBe(false);
+      expect(obj.buckets.find((b) => b.bucket === "policy")!.ready).toBe(true);
+      // --fail-on-unmet exits 1 while not ready
+      expect(paperPhase6PrereqsReport({ cwd, env: {} }, { schemaVersion: "v2", policyPath: policy, failOnUnmet: true }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
   const cleanInspection = (mint: string) => ({ mint, decimals: 6, supplyRaw: "1", uiSupply: 1, mintAuthorityPresent: false, freezeAuthorityPresent: false, isInitialized: true, programLabel: "spl-token" });
   const riskPass = (mint: string) => ({ mint, score: 10, decision: "PASS_FOR_PAPER_EVALUATION", flags: [], summary: [] });
 

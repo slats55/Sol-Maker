@@ -1562,17 +1562,42 @@ program
   )
   .option("--session <path>", "session pack JSON (sniper.session.pack.v1)")
   .option("--operator <label>", "operator label echoed into the report")
+  .option("--schema-version <version>", "tracker schema: v1 (default; session-pack based) or v2 (explicit readiness buckets over the v2 artifacts; never authorizes)")
+  .option("--policy <path>", "v2 only: policy config JSON (sniper.policy.config.v1|v2)")
+  .option("--gates <path>", "v2 only: safety gates v2 report JSON")
+  .option("--decisions <path>", "v2 only: decision report JSON (sniper.paper.decision.report.v2)")
+  .option("--run-report <path>", "v2 only: run report JSON (sniper.run.report.v2)")
+  .option("--audit <path>", "v2 only: audit log JSON (sniper.audit.log.v1)")
   .option("--json", "emit the prerequisite report as stable JSON")
   .option("--out <path>", "write ONLY the prerequisite report JSON to this path (writes nothing if omitted)")
   .option("--force", "overwrite an existing --out file (refused by default)")
-  .option("--fail-on-unmet", "exit non-zero when any artifact prerequisite is not met")
+  .option("--fail-on-unmet", "exit non-zero when readiness is not met (v1: artifact prereqs; v2: phase6ImplementationReady)")
   .action(
-    (opts: { session?: string; operator?: string; json?: boolean; out?: string; force?: boolean; failOnUnmet?: boolean }) => {
+    (opts: {
+      session?: string;
+      operator?: string;
+      schemaVersion?: string;
+      policy?: string;
+      gates?: string;
+      decisions?: string;
+      runReport?: string;
+      audit?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnUnmet?: boolean;
+    }) => {
       const { text, exitCode } = paperPhase6PrereqsReport(
         {},
         {
           sessionPath: opts.session,
           operatorLabel: opts.operator,
+          schemaVersion: opts.schemaVersion,
+          policyPath: opts.policy,
+          gatesPath: opts.gates,
+          decisionsPath: opts.decisions,
+          runReportPath: opts.runReport,
+          auditPath: opts.audit,
           json: Boolean(opts.json),
           outPath: opts.out,
           force: Boolean(opts.force),

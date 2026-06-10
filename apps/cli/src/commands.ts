@@ -88,6 +88,8 @@ import {
   formatSniperSafetyGatesReportV2,
   buildPhase6PrerequisiteReport,
   formatPhase6PrerequisiteReport,
+  buildPhase6PrerequisiteReportV2,
+  formatPhase6PrerequisiteReportV2,
   buildSimulationIntentPlan,
   formatSimulationIntentPlan,
   diffSimulationIntentPlans,
@@ -113,6 +115,7 @@ import {
   type SniperSafetyGatesReport,
   type SniperSafetyGatesReportV2,
   type Phase6PrerequisiteReport,
+  type Phase6PrerequisiteReportV2,
   type SimulationIntentPlan,
   type SimulationIntentPlanDiff,
 } from "@soulmaker/sniper";
@@ -5456,7 +5459,7 @@ export function paperSniperSafetyGatesReport(
 // ---------------------------------------------------------------------------
 
 export interface PaperPhase6PrereqsCommandOptions {
-  /** Session pack JSON path (sniper.session.pack.v1). Required. */
+  /** Session pack JSON path (sniper.session.pack.v1). Required on the v1 path; optional artifact on v2. */
   sessionPath?: string;
   /** Optional operator label echoed into the report. */
   operatorLabel?: string;
@@ -5465,8 +5468,20 @@ export interface PaperPhase6PrereqsCommandOptions {
   outPath?: string;
   /** Overwrite an existing --out file (refused by default). */
   force?: boolean;
-  /** Exit non-zero when any artifact prerequisite is not met. */
+  /** Exit non-zero when readiness is not met (v1: artifact prereqs; v2: phase6ImplementationReady). */
   failOnUnmet?: boolean;
+  /** Tracker schema to produce: "v1" (default; session-pack based) or "v2" (bucketed, artifact-direct). */
+  schemaVersion?: string;
+  /** v2 only: policy config JSON path (sniper.policy.config.v1|v2). */
+  policyPath?: string;
+  /** v2 only: safety gates v2 report JSON path. */
+  gatesPath?: string;
+  /** v2 only: decision report JSON path (sniper.paper.decision.report.v2). */
+  decisionsPath?: string;
+  /** v2 only: run report JSON path (sniper.run.report.v2). */
+  runReportPath?: string;
+  /** v2 only: audit log JSON path (sniper.audit.log.v1). */
+  auditPath?: string;
 }
 
 /**
@@ -5484,6 +5499,68 @@ export function paperPhase6PrereqsReport(
   ctx: CommandContext = {},
   opts: PaperPhase6PrereqsCommandOptions = {},
 ): CliReport {
+  const schemaVersion = opts.schemaVersion ?? "v1";
+  if (schemaVersion !== "v1" && schemaVersion !== "v2") {
+    return { text: 'Refusing: --schema-version must be "v1" or "v2".', exitCode: 1 };
+  }
+
+  // --- v2: bucketed, artifact-direct tracker (never authorizes; phase7 never ready) ---
+  if (schemaVersion === "v2") {
+    const readOptional = (path: string | undefined, label: string): { ok: true; value: unknown } | { ok: false; text: string } => {
+      if (!path) return { ok: true, value: undefined };
+      try {
+        return { ok: true, value: readJsonValue(ctx, path, label) };
+      } catch (err) {
+        return { ok: false, text: redactString(`Refusing: ${(err as Error).message}`) };
+      }
+    };
+    const reads = {
+      sessionPack: readOptional(opts.sessionPath, "session pack"),
+      policy: readOptional(opts.policyPath, "policy config"),
+      safetyGates: readOptional(opts.gatesPath, "safety gates report"),
+      decision: readOptional(opts.decisionsPath, "decision report"),
+      runReport: readOptional(opts.runReportPath, "run report"),
+      auditLog: readOptional(opts.auditPath, "audit log"),
+    };
+    for (const r of Object.values(reads)) {
+      if (!r.ok) return { text: r.text, exitCode: 1 };
+    }
+    const v = <K extends keyof typeof reads>(k: K): unknown => (reads[k] as { ok: true; value: unknown }).value;
+    let reportV2: Phase6PrerequisiteReportV2;
+    try {
+      reportV2 = buildPhase6PrerequisiteReportV2({
+        sessionPack: v("sessionPack"),
+        policy: v("policy"),
+        safetyGates: v("safetyGates"),
+        decision: v("decision"),
+        runReport: v("runReport"),
+        auditLog: v("auditLog"),
+        operatorLabel: opts.operatorLabel ?? null,
+      });
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (opts.outPath) {
+      const resolved = resolvePath(ctx, opts.outPath);
+      if (!opts.force && existsSync(resolved)) {
+        return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+      }
+      try {
+        writeFileSync(resolved, JSON.stringify(redactValue(reportV2), null, 2) + "\n");
+      } catch {
+        return { text: redactString(`Refusing: cannot write prerequisite report at ${resolved}`), exitCode: 1 };
+      }
+    }
+    const exitCode = opts.failOnUnmet && !reportV2.phase6ImplementationReady ? 1 : 0;
+    if (opts.json) {
+      return { text: JSON.stringify(redactValue(reportV2), null, 2), exitCode };
+    }
+    return { text: formatPhase6PrerequisiteReportV2(reportV2, { label: opts.operatorLabel ?? undefined }), exitCode };
+  }
+
+  if (opts.policyPath || opts.gatesPath || opts.decisionsPath || opts.runReportPath || opts.auditPath) {
+    return { text: "Refusing: the per-artifact flags require --schema-version v2.", exitCode: 1 };
+  }
   if (!opts.sessionPath) return { text: "Refusing: --session <path> is required.", exitCode: 1 };
 
   let value: unknown;

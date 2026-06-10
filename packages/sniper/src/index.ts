@@ -355,6 +355,26 @@ export type {
 } from "./phase6-prereqs.js";
 
 export {
+  buildPhase6PrerequisiteReportV2,
+  validatePhase6PrerequisiteReportV2,
+  formatPhase6PrerequisiteReportV2,
+  Phase6PrerequisiteReportV2Error,
+  PHASE6_PREREQUISITE_REPORT_V2_SCHEMA_VERSION,
+  PHASE6_PREREQUISITE_REPORT_V2_BANNER,
+  PHASE6_PREREQUISITE_REPORT_V2_DISCLAIMERS,
+  PHASE6_READINESS_BUCKETS,
+} from "./phase6-prereqs-v2.js";
+
+export type {
+  Phase6ReadinessBucket,
+  Phase6PrerequisiteV2,
+  Phase6BucketSummary,
+  BuildPhase6PrerequisiteReportV2Input,
+  Phase6PrerequisiteReportV2,
+  FormatPhase6PrerequisiteReportV2Options,
+} from "./phase6-prereqs-v2.js";
+
+export {
   buildSimulationIntentPlan,
   validateSimulationIntentPlan,
   formatSimulationIntentPlan,
