@@ -49,6 +49,18 @@ import {
   type TokenRiskInput,
 } from "@soulmaker/risk";
 import {
+  buildSimulationIntentPlanV2,
+  validateSimulationIntentPlanV2,
+  formatSimulationIntentPlanV2,
+  buildSimulationResultV1,
+  validateSimulationResultV1,
+  formatSimulationResultV1,
+  SIMULATION_INTENT_PLAN_V2_SCHEMA_VERSION,
+  SIMULATION_RESULT_V1_SCHEMA_VERSION,
+  type SimulationIntentPlanV2,
+  type SimulationResultV1,
+} from "@soulmaker/simulation";
+import {
   normalizeSniperCandidateList,
   formatSniperCandidateList,
   buildSniperTokenPreflightReport,
@@ -6074,4 +6086,241 @@ export function paperPhase6DiffIntentReport(
 
 function yesNo(value: boolean): string {
   return value ? "yes" : "no";
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 66 — paper:simulation:intent:plan / paper:simulation:result /
+//             paper:simulation:validate
+//   The Phase 6 CLI surface over @soulmaker/simulation. Read-only over the
+//   named artifact files; writes nothing unless --out; never signs, never
+//   sends, never authorizes live trading (literal locks validated).
+// ---------------------------------------------------------------------------
+
+export interface PaperSimulationIntentPlanCommandOptions {
+  /** Path to the v2 decision report (omitting it produces an honestly BLOCKED plan). */
+  decisionsPath?: string;
+  /** Path to the v2 safety gates report. */
+  gatesPath?: string;
+  /** Path to the v2 phase6 prerequisite report. */
+  prereqsPath?: string;
+  /** Path to the kill-switch spec. */
+  killSwitchPath?: string;
+  /** Path to the secrets policy. */
+  secretsPolicyPath?: string;
+  /** Path to the burner isolation spec. */
+  burnerIsolationPath?: string;
+  /** Operator-declared stop-simulation kill-switch state (true BLOCKS the plan). */
+  stopSimulationTripped?: boolean;
+  /** EXPLICIT operator acknowledgment that the paper-enters were reviewed (narrow; surfaced). */
+  acknowledgePaperEnterReview?: boolean;
+  operatorLabel?: string;
+  planLabel?: string;
+  /** Paper-unit amount LABEL applied to every entry (never currency). */
+  amountLabel?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit non-zero when the plan is BLOCKED. */
+  failOnBlocking?: boolean;
+  /** Exit non-zero when any entry carries unresolved fields. */
+  failOnUnresolved?: boolean;
+}
+
+/**
+ * `soulmaker paper:simulation:intent:plan` — build a `simulation.intent.plan.v2` from the named
+ * v2-chain artifact files. Fail-closed: a missing/invalid/v1 artifact, not-ready gates, unmet
+ * prereqs, a non-adopted spec, or a declared stop-simulation switch produces a BLOCKED plan with
+ * stable reason codes (the command still exits 0 unless a --fail-on-* flag asks otherwise — the
+ * blocked plan IS the honest artifact). A named-but-unreadable file refuses outright. Previews
+ * never invent a destination/amount/fee. Reads only the named files; writes nothing unless
+ * `--out` (refusing overwrite without `--force`). No network, no wallet.
+ */
+export function paperSimulationIntentPlanReport(
+  ctx: CommandContext = {},
+  opts: PaperSimulationIntentPlanCommandOptions = {},
+): CliReport {
+  const read = (path: string | undefined, label: string): { value: unknown; error?: string } => {
+    if (!path) return { value: undefined };
+    try {
+      return { value: readJsonValue(ctx, path, label) };
+    } catch (err) {
+      return { value: undefined, error: (err as Error).message };
+    }
+  };
+  const sources = [
+    ["decisions", read(opts.decisionsPath, "decision report")],
+    ["gates", read(opts.gatesPath, "safety gates report")],
+    ["prereqs", read(opts.prereqsPath, "phase6 prerequisite report")],
+    ["kill-switch", read(opts.killSwitchPath, "kill-switch spec")],
+    ["secrets-policy", read(opts.secretsPolicyPath, "secrets policy")],
+    ["burner-isolation", read(opts.burnerIsolationPath, "burner isolation spec")],
+  ] as const;
+  for (const [label, r] of sources) {
+    if (r.error) return { text: redactString(`Refusing: ${label}: ${r.error}`), exitCode: 1 };
+  }
+
+  let plan: SimulationIntentPlanV2;
+  try {
+    plan = buildSimulationIntentPlanV2({
+      decision: sources[0][1].value,
+      safetyGates: sources[1][1].value,
+      prereqs: sources[2][1].value,
+      killSwitchSpec: sources[3][1].value,
+      secretsPolicy: sources[4][1].value,
+      burnerIsolationSpec: sources[5][1].value,
+      stopSimulationTripped: Boolean(opts.stopSimulationTripped),
+      operatorAcknowledgedPaperEnterReview: Boolean(opts.acknowledgePaperEnterReview),
+      operatorLabel: opts.operatorLabel ?? null,
+      planLabel: opts.planLabel ?? null,
+      paperAmountLabel: opts.amountLabel ?? null,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(plan), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write simulation intent plan at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  let exitCode = 0;
+  if (opts.failOnBlocking && plan.blocked) exitCode = 1;
+  if (opts.failOnUnresolved && plan.unresolvedEntryCount > 0) exitCode = 1;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(plan), null, 2), exitCode };
+  }
+  return { text: formatSimulationIntentPlanV2(plan, { label: opts.planLabel ?? undefined }), exitCode };
+}
+
+export interface PaperSimulationResultCommandOptions {
+  /** Path to the `simulation.intent.plan.v2` artifact (required). */
+  planPath?: string;
+  /** Operator-declared stop-simulation kill-switch state AT RESULT TIME (true BLOCKS). */
+  stopSimulationTripped?: boolean;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit non-zero when the result is BLOCKED. */
+  failOnBlocked?: boolean;
+  /** Exit non-zero when any entry was skipped over unresolved previews. */
+  failOnUnresolved?: boolean;
+  /** Exit non-zero when the dry-run was unavailable. */
+  failOnDryRunUnavailable?: boolean;
+}
+
+/**
+ * `soulmaker paper:simulation:result` — build a `simulation.result.v1` from a named intent-plan
+ * file using the package's honest UNAVAILABLE dry-run adapter (the ONLY adapter that exists: a
+ * real dry-run needs transaction material the simulation boundary forbids building, so resolved
+ * entries report unavailable — never faked). The plan is strictly revalidated (an invalid plan
+ * refuses); unresolved previews are SKIPPED; a blocked plan or a declared stop-simulation switch
+ * produces a BLOCKED result. Reads only the named file; writes nothing unless `--out` (refusing
+ * overwrite without `--force`). Never signs, never sends. No network, no wallet.
+ */
+export function paperSimulationResultReport(
+  ctx: CommandContext = {},
+  opts: PaperSimulationResultCommandOptions = {},
+): CliReport {
+  if (!opts.planPath) {
+    return { text: "Refusing: --plan <path> is required (a simulation.intent.plan.v2 artifact).", exitCode: 1 };
+  }
+  let raw: unknown;
+  try {
+    raw = readJsonValue(ctx, opts.planPath, "simulation intent plan");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let result: SimulationResultV1;
+  try {
+    result = buildSimulationResultV1({ plan: raw, stopSimulationTripped: Boolean(opts.stopSimulationTripped) });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(result), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write simulation result at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  let exitCode = 0;
+  if (opts.failOnBlocked && result.resultStatus === "blocked") exitCode = 1;
+  if (opts.failOnUnresolved && result.skippedCount > 0) exitCode = 1;
+  if (opts.failOnDryRunUnavailable && result.resultStatus === "dry_run_unavailable") exitCode = 1;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(result), null, 2), exitCode };
+  }
+  return { text: formatSimulationResultV1(result, { label: opts.planPath }), exitCode };
+}
+
+export interface PaperSimulationValidateCommandOptions {
+  /** Path to a `simulation.intent.plan.v2` artifact to validate. */
+  planPath?: string;
+  /** Path to a `simulation.result.v1` artifact to validate. */
+  resultPath?: string;
+  json?: boolean;
+}
+
+interface SimulationValidationOutcome {
+  path: string;
+  expectedSchemaVersion: string;
+  valid: boolean;
+  error: string | null;
+}
+
+/**
+ * `soulmaker paper:simulation:validate` — strictly validate named simulation artifacts with the
+ * PRODUCTION validators (`simulation.intent.plan.v2` via `--plan`, `simulation.result.v1` via
+ * `--result`; at least one is required). Validation includes the literal safety locks — a flipped
+ * `neverSigns`/`neverSends`/`dryRunOnly`/`neverAuthorizesLiveTrading` is INVALID. Exits 1 when any
+ * named artifact is unreadable or invalid. Reads only the named files; writes nothing. No
+ * network, no wallet.
+ */
+export function paperSimulationValidateReport(
+  ctx: CommandContext = {},
+  opts: PaperSimulationValidateCommandOptions = {},
+): CliReport {
+  if (!opts.planPath && !opts.resultPath) {
+    return { text: "Refusing: pass --plan <path> and/or --result <path> to validate.", exitCode: 1 };
+  }
+  const outcomes: SimulationValidationOutcome[] = [];
+  const check = (path: string | undefined, label: string, expected: string, validate: (v: unknown) => unknown): void => {
+    if (!path) return;
+    try {
+      const value = readJsonValue(ctx, path, label);
+      validate(value);
+      outcomes.push({ path, expectedSchemaVersion: expected, valid: true, error: null });
+    } catch (err) {
+      outcomes.push({ path, expectedSchemaVersion: expected, valid: false, error: redactString((err as Error).message) });
+    }
+  };
+  check(opts.planPath, "simulation intent plan", SIMULATION_INTENT_PLAN_V2_SCHEMA_VERSION, validateSimulationIntentPlanV2);
+  check(opts.resultPath, "simulation result", SIMULATION_RESULT_V1_SCHEMA_VERSION, validateSimulationResultV1);
+
+  const allValid = outcomes.every((o) => o.valid);
+  const exitCode = allValid ? 0 : 1;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue({ allValid, outcomes }), null, 2), exitCode };
+  }
+  const lines = ["SIMULATION ARTIFACT VALIDATION (production validators; literal safety locks enforced)"];
+  for (const o of outcomes) {
+    lines.push(`${o.valid ? "✓ VALID  " : "✗ INVALID"} ${o.expectedSchemaVersion}  ${o.path}`);
+    if (o.error) lines.push(`    ${o.error}`);
+  }
+  lines.push(allValid ? "All named artifacts are strictly valid." : "Validation FAILED — fix or rebuild the artifact(s) above.");
+  return { text: redactString(lines.join("\n")), exitCode };
 }

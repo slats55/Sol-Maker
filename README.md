@@ -295,6 +295,21 @@ constants, secret-shaped input refused and never echoed), and `paper:sniper:burn
 An ADOPTED spec is a Phase-6 prerequisite signal consumed by `paper:phase6:prereqs --schema-version v2`
 — never authorization.
 
+Sprints 61–66 begin the **authorized Phase 6 simulation slice** in a separate package,
+`@soulmaker/simulation` — read-only, dry-run-only, structurally incapable of signing or sending
+(import-allowlist + forbidden-token source scans enforce it). `paper:simulation:intent:plan` builds a
+`simulation.intent.plan.v2`: a **fail-closed preview** over the strictly-validated v2 chain (decision
+v2 + READY safety gates v2 + phase6 prereqs v2 + the three ADOPTED specs). Anything missing, invalid,
+v1, not ready, or not adopted — or a declared stop-simulation kill switch — produces a **BLOCKED**
+plan with stable reason codes and zero entries. Previews never invent a destination/amount/fee
+(unsupplied values stay UNRESOLVED; amounts are paper-unit LABELS only).
+`paper:simulation:result` builds a `simulation.result.v1` from a plan: unresolved entries are
+SKIPPED, and the only dry-run adapter honestly reports **UNAVAILABLE** (a real dry-run needs
+transaction material the boundary forbids building — nothing is faked). `paper:simulation:validate`
+strictly validates both artifacts, including their literal safety locks (`neverSigns`, `neverSends`,
+`dryRunOnly`, `neverAuthorizesLiveTrading`). A simulation result is never an execution and never
+live readiness — Phase 7 remains not started and unauthorized.
+
 ## Non-negotiable security rules (summary)
 
 The full, authoritative list is in [`SECURITY.md`](SECURITY.md). The short form:

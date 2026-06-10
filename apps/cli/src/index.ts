@@ -58,6 +58,9 @@ import {
   paperPhase6PrereqsReport,
   paperPhase6IntentPlanReport,
   paperPhase6DiffIntentReport,
+  paperSimulationIntentPlanReport,
+  paperSimulationResultReport,
+  paperSimulationValidateReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1771,5 +1774,112 @@ program
       if (exitCode !== 0) process.exitCode = exitCode;
     },
   );
+
+program
+  .command("paper:simulation:intent:plan")
+  .description(
+    "Build a `simulation.intent.plan.v2` — the first REAL Phase 6 artifact: a fail-closed SIMULATION PREVIEW over the strictly-validated v2 chain (decision v2 + READY safety gates v2 + phase6 prereqs v2) and the three ADOPTED governance specs. A missing/invalid/v1 artifact, not-ready gates, unmet prereqs, a non-adopted spec, or a declared stop-simulation kill switch produces a BLOCKED plan with stable reason codes (the blocked plan IS the honest artifact). Previews NEVER invent a destination/amount/fee — unsupplied values stay UNRESOLVED; amounts resolve only as the operator's paper-unit LABEL. The plan can never authorize live trading, never signs, never sends (literal locks, validated). Reads only the named files, writes nothing unless --out. No network, no wallet",
+  )
+  .option("--decisions <path>", "v2 decision report JSON (sniper.paper.decision.report.v2)")
+  .option("--gates <path>", "v2 safety gates report JSON (sniper.safety.gates.report.v2)")
+  .option("--prereqs <path>", "v2 phase6 prerequisite report JSON (phase6.prerequisite.report.v2)")
+  .option("--kill-switch <path>", "kill-switch spec JSON (sniper.kill_switch.spec.v1; must be adopted)")
+  .option("--secrets-policy <path>", "secrets policy JSON (sniper.secrets.policy.v1; must be adopted)")
+  .option("--burner-isolation <path>", "burner isolation spec JSON (sniper.burner.isolation.spec.v1; must be adopted)")
+  .option("--stop-simulation-tripped", "declare the stop-simulation kill switch TRIPPED (blocks the plan)")
+  .option("--acknowledge-paper-enter-review", "EXPLICIT operator acknowledgment that the paper-enters were reviewed (covers ONLY the NO_OPERATOR_BLOCKING prereq item; loudly surfaced)")
+  .option("--operator <label>", "operator label echoed into the plan")
+  .option("--plan-label <label>", "plan label echoed into the plan")
+  .option("--amount-label <label>", "paper-unit amount LABEL applied to every entry (never currency)")
+  .option("--json", "emit the plan as stable JSON")
+  .option("--out <path>", "write ONLY the plan JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-blocking", "exit non-zero when the plan is BLOCKED")
+  .option("--fail-on-unresolved", "exit non-zero when any entry carries unresolved fields")
+  .action(
+    (opts: {
+      decisions?: string; gates?: string; prereqs?: string; killSwitch?: string; secretsPolicy?: string;
+      burnerIsolation?: string; stopSimulationTripped?: boolean; acknowledgePaperEnterReview?: boolean;
+      operator?: string; planLabel?: string; amountLabel?: string; json?: boolean; out?: string; force?: boolean;
+      failOnBlocking?: boolean; failOnUnresolved?: boolean;
+    }) => {
+      const { text, exitCode } = paperSimulationIntentPlanReport(
+        {},
+        {
+          decisionsPath: opts.decisions,
+          gatesPath: opts.gates,
+          prereqsPath: opts.prereqs,
+          killSwitchPath: opts.killSwitch,
+          secretsPolicyPath: opts.secretsPolicy,
+          burnerIsolationPath: opts.burnerIsolation,
+          stopSimulationTripped: Boolean(opts.stopSimulationTripped),
+          acknowledgePaperEnterReview: Boolean(opts.acknowledgePaperEnterReview),
+          operatorLabel: opts.operator,
+          planLabel: opts.planLabel,
+          amountLabel: opts.amountLabel,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnBlocking: Boolean(opts.failOnBlocking),
+          failOnUnresolved: Boolean(opts.failOnUnresolved),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:simulation:result")
+  .description(
+    "Build a `simulation.result.v1` from a named `simulation.intent.plan.v2` file using the package's honest UNAVAILABLE dry-run adapter — the ONLY adapter that exists: a real dry-run needs transaction material the simulation boundary forbids building, so it is reported UNAVAILABLE, never faked. The plan is strictly revalidated (an invalid plan refuses); unresolved previews are SKIPPED (nothing is simulated from invented values); a blocked plan or --stop-simulation-tripped produces a BLOCKED result. The result never claims chain inclusion, execution, trade success, or profit/loss, and can never authorize live trading (literal locks, validated). Reads only the named file, writes nothing unless --out. No network, no wallet",
+  )
+  .option("--plan <path>", "simulation intent plan JSON (simulation.intent.plan.v2; required)")
+  .option("--stop-simulation-tripped", "declare the stop-simulation kill switch TRIPPED at result time (blocks the result)")
+  .option("--json", "emit the result as stable JSON")
+  .option("--out <path>", "write ONLY the result JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-blocked", "exit non-zero when the result is BLOCKED")
+  .option("--fail-on-unresolved", "exit non-zero when any entry was skipped over unresolved previews")
+  .option("--fail-on-dry-run-unavailable", "exit non-zero when the dry-run was unavailable")
+  .action(
+    (opts: {
+      plan?: string; stopSimulationTripped?: boolean; json?: boolean; out?: string; force?: boolean;
+      failOnBlocked?: boolean; failOnUnresolved?: boolean; failOnDryRunUnavailable?: boolean;
+    }) => {
+      const { text, exitCode } = paperSimulationResultReport(
+        {},
+        {
+          planPath: opts.plan,
+          stopSimulationTripped: Boolean(opts.stopSimulationTripped),
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnBlocked: Boolean(opts.failOnBlocked),
+          failOnUnresolved: Boolean(opts.failOnUnresolved),
+          failOnDryRunUnavailable: Boolean(opts.failOnDryRunUnavailable),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:simulation:validate")
+  .description(
+    "Strictly validate named simulation artifacts with the PRODUCTION validators: `simulation.intent.plan.v2` via --plan and/or `simulation.result.v1` via --result (at least one required). Validation enforces the literal safety locks — a flipped neverSigns/neverSends/dryRunOnly/neverAuthorizesLiveTrading is INVALID. Exits 1 when any named artifact is unreadable or invalid. Reads only the named files, writes nothing. No network, no wallet",
+  )
+  .option("--plan <path>", "simulation intent plan JSON to validate (simulation.intent.plan.v2)")
+  .option("--result <path>", "simulation result JSON to validate (simulation.result.v1)")
+  .option("--json", "emit the validation outcomes as stable JSON")
+  .action((opts: { plan?: string; result?: string; json?: boolean }) => {
+    const { text, exitCode } = paperSimulationValidateReport(
+      {},
+      { planPath: opts.plan, resultPath: opts.result, json: Boolean(opts.json) },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
 
 program.parseAsync(process.argv);

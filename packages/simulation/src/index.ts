@@ -43,6 +43,16 @@ export {
 } from "./intent-plan.js";
 
 export {
+  // FICTIONAL deterministic chain fixtures (built via PRODUCTION sniper builders; test/e2e only —
+  // nothing here is live data, a trade signal, or a recommendation).
+  FICTIONAL_MINT_A,
+  FICTIONAL_MINT_B,
+  buildFictionalReadyChain,
+  buildFictionalWatchOnlyChain,
+  type FictionalSimulationChain,
+} from "./fixtures.js";
+
+export {
   UNAVAILABLE_DRY_RUN_ADAPTER,
   SIMULATION_DRY_RUN_OUTCOME_KINDS,
   validateSimulationDryRunAdapter,

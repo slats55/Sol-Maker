@@ -47,6 +47,9 @@ importers:
       '@soulmaker/security':
         specifier: workspace:*
         version: link:../../packages/security
+      '@soulmaker/simulation':
+        specifier: workspace:*
+        version: link:../../packages/simulation
       '@soulmaker/sniper':
         specifier: workspace:*
         version: link:../../packages/sniper

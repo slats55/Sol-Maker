@@ -63,9 +63,49 @@ invariants.
 | `paper:phase6:prereqs` | `--session` | `--out` only | `phase6.prerequisite.report.v1` (or `.v2` via `--schema-version v2` — bucketed, consumes the spec artifacts) |
 | `paper:phase6:intent:plan` | `--decisions` | `--out` only | `simulation.intent.plan.v1` (INERT, not executable) |
 | `paper:phase6:diff:intent` | `--base`, `--next` | never | `simulation.intent.plan.diff.v1` (INERT) |
+| `paper:simulation:intent:plan` | (none — missing inputs BLOCK honestly) | `--out` only | `simulation.intent.plan.v2` (the first REAL Phase 6 artifact; fail-closed preview) |
+| `paper:simulation:result` | `--plan` | `--out` only | `simulation.result.v1` (dry-run-only; unavailable dry-run reported honestly) |
+| `paper:simulation:validate` | `--plan` and/or `--result` | never | validates `simulation.intent.plan.v2` / `simulation.result.v1` (literal locks enforced) |
 
 Common flags: `--json` (stable JSON), `--out <path>` + `--force` (write the artifact; refuse overwrite
 without `--force`), and command-specific `--fail-on-*` CI gates (see [CI gates](#ci-gates)).
+
+## Phase 6 simulation (the authorized, safe slice)
+
+Phase 6 work begins with `@soulmaker/simulation` — read-only, dry-run-only, structurally incapable
+of signing or sending. The chain is fail-closed end to end:
+
+```bash
+# 1) Build the v2 chain as usual (decide/report/gates/prereqs + the three adopted specs), then:
+pnpm soulmaker paper:simulation:intent:plan \
+  --decisions dec2.json --gates gates2.json --prereqs prereqs2.json \
+  --kill-switch ks.json --secrets-policy sp.json --burner-isolation bi.json \
+  --operator you --plan-label session-01 --out plan.json
+
+# 2) Build the result from the plan (the dry-run adapter honestly reports UNAVAILABLE —
+#    a real dry-run needs transaction material the boundary forbids building):
+pnpm soulmaker paper:simulation:result --plan plan.json --out result.json
+
+# 3) Validate any simulation artifact strictly (literal safety locks enforced):
+pnpm soulmaker paper:simulation:validate --plan plan.json --result result.json
+```
+
+What to expect, honestly:
+
+- A missing/invalid/v1 input, NOT-ready gates, unmet prereqs, a non-adopted spec, or
+  `--stop-simulation-tripped` produces a **BLOCKED plan** (exit 0 — the blocked plan is the honest
+  artifact; add `--fail-on-blocking` for CI). A blocked plan carries **zero** entries.
+- Preview entries never invent a destination, amount, fee, pool, or route — those fields stay
+  **UNRESOLVED** (`--amount-label` resolves the amount as a paper-unit LABEL only, never currency).
+- The result SKIPS unresolved entries (`skipped_unresolved`) and reports the dry-run UNAVAILABLE
+  for anything resolved — there is no fake simulation. `--fail-on-blocked`, `--fail-on-unresolved`,
+  and `--fail-on-dry-run-unavailable` are the CI gates.
+- The run-report-v2 marks every paper-enter "needs operator review", which keeps the prereq
+  tracker's `NO_OPERATOR_BLOCKING` item unmet. After actually reviewing the paper-enters, pass
+  `--acknowledge-paper-enter-review` — it stands in for THAT ONE item only (refused when anything
+  else is unmet) and is loudly surfaced in the plan as a warning code.
+- A simulation result is **never** an execution, a trade, chain inclusion, or live readiness.
+  Phase 7 (live/burner trading) remains not started and unauthorized.
 
 ## The workflow, step by step
 

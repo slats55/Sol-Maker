@@ -40,6 +40,9 @@ const EXPECTED_COMMANDS: readonly string[] = [
   "paper:phase6:prereqs",
   "paper:phase6:intent:plan",
   "paper:phase6:diff:intent",
+  "paper:simulation:intent:plan",
+  "paper:simulation:result",
+  "paper:simulation:validate",
 ];
 
 /** Docs that must cover every registered command. */
@@ -48,13 +51,15 @@ const REQUIRED_DOCS = ["docs/SNIPER_RUNBOOK.md", "README.md"] as const;
 /** Docs whose command mentions must all be registered (superset of REQUIRED_DOCS). */
 const SCANNED_DOCS = [...REQUIRED_DOCS, "docs/SNIPER_MODEL.md", "examples/sniper/README.md"] as const;
 
-/** A command-shaped token: paper:sniper:… / paper:phase6:… (colon/hyphen segments). */
-const COMMAND_TOKEN = /paper:(?:sniper|phase6):[a-z0-9-]+(?::[a-z0-9-]+)*/g;
+/** A command-shaped token: paper:sniper:… / paper:phase6:… / paper:simulation:… (colon/hyphen segments). */
+const COMMAND_TOKEN = /paper:(?:sniper|phase6|simulation):[a-z0-9-]+(?::[a-z0-9-]+)*/g;
 
 function registeredCommands(): string[] {
   const source = readFileSync(CLI_INDEX, "utf8");
   const names = [...source.matchAll(/\.command\("([^"]+)"\)/g)].map((m) => m[1] as string);
-  return names.filter((n) => n.startsWith("paper:sniper:") || n.startsWith("paper:phase6:")).sort();
+  return names
+    .filter((n) => n.startsWith("paper:sniper:") || n.startsWith("paper:phase6:") || n.startsWith("paper:simulation:"))
+    .sort();
 }
 
 function mentionedCommands(docPath: string): Set<string> {
