@@ -51,6 +51,7 @@ export const SIMULATION_REASON_CODES = [
   // --- readiness (validated inputs that say "not ready") ---
   "simulation-blocked-gates-not-ready",
   "simulation-blocked-prereqs-not-ready",
+  "simulation-operator-acknowledged-paper-enter-review",
   // --- spec (governance specs: present? valid? adopted?) ---
   "simulation-blocked-missing-kill-switch-spec",
   "simulation-blocked-invalid-kill-switch-spec",
@@ -129,7 +130,9 @@ export const SIMULATION_REASON_CODE_DEFINITIONS: Readonly<
   "simulation-blocked-gates-not-ready": def("simulation-blocked-gates-not-ready", "readiness", "blocking",
     "The v2 safety gates report is valid but NOT ready (a required gate failed) — resolve the failures before simulating."),
   "simulation-blocked-prereqs-not-ready": def("simulation-blocked-prereqs-not-ready", "readiness", "blocking",
-    "The v2 Phase-6 prerequisite report is valid but not every readiness bucket is met — resolve the not-met items before simulating."),
+    "The v2 Phase-6 prerequisite report is valid but not every readiness bucket is met — resolve the not-met items before simulating. (When the ONLY unmet item is NO_OPERATOR_BLOCKING caused by paper-enters awaiting review, an explicit operator acknowledgment may stand in for that one review item.)"),
+  "simulation-operator-acknowledged-paper-enter-review": def("simulation-operator-acknowledged-paper-enter-review", "readiness", "warning",
+    "The operator EXPLICITLY acknowledged reviewing the paper-enters that kept NO_OPERATOR_BLOCKING unmet — this narrow, surfaced override covers ONLY that single review item and never any other readiness gap."),
   "simulation-blocked-missing-kill-switch-spec": def("simulation-blocked-missing-kill-switch-spec", "spec", "blocking",
     "No kill-switch spec was supplied — simulation requires the adopted spec. Build one with paper:sniper:kill-switch:spec."),
   "simulation-blocked-invalid-kill-switch-spec": def("simulation-blocked-invalid-kill-switch-spec", "spec", "blocking",

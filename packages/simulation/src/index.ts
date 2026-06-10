@@ -20,6 +20,29 @@ export {
 } from "./safety.js";
 
 export {
+  SIMULATION_INTENT_PLAN_V2_SCHEMA_VERSION,
+  SIMULATION_INTENT_PLAN_V2_BANNER,
+  SIMULATION_INTENT_PLAN_V2_GENERATED_BY,
+  SIMULATION_INTENT_PLAN_V2_DISCLAIMERS,
+  SIMULATION_PLAN_SOURCE_ROLES,
+  SimulationIntentPlanV2Error,
+  buildSimulationIntentPlanV2,
+  validateSimulationIntentPlanV2,
+  formatSimulationIntentPlanV2,
+  type SimulationPlanSourceRole,
+  type SimulationSourceArtifactRef,
+  type SimulationPreviewFieldStatus,
+  type SimulationPreviewField,
+  type SimulationIntentPlanEntryV2,
+  type SimulationPlanDecisionSummary,
+  type SimulationPlanReadinessSummary,
+  type SimulationPlanSpecAdoptionSummary,
+  type SimulationIntentPlanV2,
+  type BuildSimulationIntentPlanV2Input,
+  type FormatSimulationIntentPlanV2Options,
+} from "./intent-plan.js";
+
+export {
   SIMULATION_REASON_CATEGORIES,
   SIMULATION_REASON_SEVERITIES,
   SIMULATION_REASON_CODES,
