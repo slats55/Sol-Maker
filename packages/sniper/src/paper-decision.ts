@@ -528,6 +528,34 @@ export function validatePaperSniperDecisionReport(value: unknown): SniperPaperDe
     throw new PaperSniperDecisionReportError("decision report.decisions length must equal candidateCount");
   }
   (value.decisions as unknown[]).forEach((e, i) => validateEntry(e, `decision report.decisions[${i}]`));
+
+  // Sprint 77: the per-decision tallies and verdict booleans are DERIVED — recompute them from the
+  // verbatim entries and refuse any mismatch (a corrupted paperEnterCount must never slip through;
+  // every production builder/enforcer derives these the same way, so a mismatch is tampering).
+  const entries = value.decisions as SniperDecisionEntry[];
+  const tally = (d: string): number => entries.filter((e) => e.decision === d).length;
+  const expectedTallies: ReadonlyArray<readonly [string, number]> = [
+    ["skipCount", tally("skip")],
+    ["watchCount", tally("watch")],
+    ["paperEnterCount", tally("paper-enter")],
+    ["paperRejectCount", tally("paper-reject")],
+    ["unknownCount", tally("unknown")],
+  ];
+  for (const [field, expected] of expectedTallies) {
+    if (value[field] !== expected) {
+      throw new PaperSniperDecisionReportError(`decision report.${field} must equal the recomputed tally (${expected})`);
+    }
+  }
+  if (value.hasPaperEnter !== tally("paper-enter") > 0) {
+    throw new PaperSniperDecisionReportError("decision report.hasPaperEnter must mirror the recomputed paper-enter tally");
+  }
+  if (value.hasPaperReject !== tally("paper-reject") > 0) {
+    throw new PaperSniperDecisionReportError("decision report.hasPaperReject must mirror the recomputed paper-reject tally");
+  }
+  const expectedRiskReject = entries.some((e) => e.decision === "paper-reject" && e.blockingRiskFlags.length > 0);
+  if (value.hasRiskReject !== expectedRiskReject) {
+    throw new PaperSniperDecisionReportError("decision report.hasRiskReject must mirror the recomputed risk-reject verdict");
+  }
   return value as unknown as SniperPaperDecisionReport;
 }
 

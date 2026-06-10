@@ -105,6 +105,37 @@ describe("phase6 chain audit — complete chains", () => {
   });
 });
 
+describe("phase6 chain audit — Sprint 77 tally-corruption detection", () => {
+  it("a decision with a corrupted paperEnterCount FAILS the audit as invalid (hardened validator)", () => {
+    const input = auditInput(readyFull());
+    const tampered = JSON.parse(JSON.stringify(input.decision)) as Record<string, unknown>;
+    tampered.paperEnterCount = 0; // hide the paper-enters from the chain
+    input.decision = tampered;
+    const report = buildPhase6AuditReportV1(input);
+    expect(report.auditPassed).toBe(false);
+    expect(report.findings.map((f) => f.code)).toContain("audit-artifact-invalid");
+    const state = report.artifacts.find((a) => a.role === "decision")!;
+    expect(state.valid).toBe(false);
+    expect(state.error).toMatch(/paperEnterCount must equal the recomputed tally/);
+  });
+
+  it("the intent plan builder BLOCKS over the same corruption (invalid decision v2)", () => {
+    const full = readyFull();
+    const tampered = JSON.parse(JSON.stringify(full.chain.decision)) as Record<string, unknown>;
+    tampered.paperEnterCount = 0;
+    const plan = buildSimulationIntentPlanV2({
+      decision: tampered,
+      safetyGates: full.chain.gates,
+      prereqs: full.chain.prereqs,
+      killSwitchSpec: full.chain.killSwitchSpec,
+      secretsPolicy: full.chain.secretsPolicy,
+      burnerIsolationSpec: full.chain.burnerIsolationSpec,
+    });
+    expect(plan.blocked).toBe(true);
+    expect(plan.blockingReasonCodes).toContain("simulation-blocked-invalid-decision-v2");
+  });
+});
+
 describe("phase6 chain audit — findings", () => {
   it("a missing artifact is a WARNING (incomplete chain, audit still passes)", () => {
     const input = auditInput(watchOnlyFull());

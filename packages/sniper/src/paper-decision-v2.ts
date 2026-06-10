@@ -570,6 +570,35 @@ export function validatePaperSniperDecisionReportV2(value: unknown): SniperPaper
   }
   (value.decisions as unknown[]).forEach((e, i) => validateEntryV2(e, `decision v2 report.decisions[${i}]`));
 
+  // Sprint 77: the per-decision tallies and verdict booleans are DERIVED — recompute them from the
+  // verbatim entries and refuse any mismatch (closes the known gap where a corrupted
+  // paperEnterCount passed shape checks; every production builder/enforcer/upgrader derives these
+  // the same way, so a mismatch is tampering, and the whole Phase 6 chain keys off these counts).
+  const entriesV2 = value.decisions as SniperDecisionEntryV2[];
+  const tally = (d: string): number => entriesV2.filter((e) => e.decision === d).length;
+  const expectedTallies: ReadonlyArray<readonly [string, number]> = [
+    ["skipCount", tally("skip")],
+    ["watchCount", tally("watch")],
+    ["paperEnterCount", tally("paper-enter")],
+    ["paperRejectCount", tally("paper-reject")],
+    ["unknownCount", tally("unknown")],
+  ];
+  for (const [field, expected] of expectedTallies) {
+    if (value[field] !== expected) {
+      throw new PaperSniperDecisionReportV2Error(`decision v2 report.${field} must equal the recomputed tally (${expected})`);
+    }
+  }
+  if (value.hasPaperEnter !== tally("paper-enter") > 0) {
+    throw new PaperSniperDecisionReportV2Error("decision v2 report.hasPaperEnter must mirror the recomputed paper-enter tally");
+  }
+  if (value.hasPaperReject !== tally("paper-reject") > 0) {
+    throw new PaperSniperDecisionReportV2Error("decision v2 report.hasPaperReject must mirror the recomputed paper-reject tally");
+  }
+  const expectedRiskReject = entriesV2.some((e) => e.decision === "paper-reject" && e.blockingRiskFlags.length > 0);
+  if (value.hasRiskReject !== expectedRiskReject) {
+    throw new PaperSniperDecisionReportV2Error("decision v2 report.hasRiskReject must mirror the recomputed risk-reject verdict");
+  }
+
   const reportCodes = requireCodeArray(value.reportReasonCodes, "decision v2 report.reportReasonCodes");
   for (const code of reportCodes) {
     if (SNIPER_DECISION_REASON_CODE_DEFINITIONS[code].scope !== "report") {
