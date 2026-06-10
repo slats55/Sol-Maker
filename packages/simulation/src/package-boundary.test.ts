@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -53,6 +53,26 @@ describe("@soulmaker/simulation — package manifest boundary", () => {
     expect(manifest.devDependencies).toBeUndefined();
     expect(manifest.peerDependencies).toBeUndefined();
     expect(manifest.optionalDependencies).toBeUndefined();
+  });
+
+  it("S81: the production module list is PINNED (a new capability module forces a conscious update)", () => {
+    const modules = readdirSync(join(PKG_DIR, "src"))
+      .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
+      .sort();
+    expect(modules).toEqual([
+      "adapter.ts",
+      "chain-audit.ts",
+      "fixtures.ts",
+      "handoff-pack.ts",
+      "index.ts",
+      "intent-plan-diff.ts",
+      "intent-plan.ts",
+      "readiness.ts",
+      "reason-codes.ts",
+      "result-diff.ts",
+      "result.ts",
+      "safety.ts",
+    ]);
   });
 });
 

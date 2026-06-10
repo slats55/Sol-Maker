@@ -17,8 +17,13 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildFictionalReadyChain } from "@soulmaker/simulation";
-import { paperSimulationIntentPlanReport, paperSimulationResultReport } from "./commands.js";
+import { buildFictionalReadyChain, buildSimulationIntentPlanV2 } from "@soulmaker/simulation";
+import {
+  paperSimulationIntentPlanReport,
+  paperSimulationResultReport,
+  paperSimulationDiffPlanReport,
+  paperSimulationHandoffReport,
+} from "./commands.js";
 
 const CLI_INDEX = join(dirname(fileURLToPath(import.meta.url)), "index.ts");
 
@@ -74,6 +79,39 @@ describe("simulation CLI — no secret echo", () => {
       expect(r.text).not.toContain("fictional-secret-value");
     });
   });
+
+  it("S81: the diff command's refusal over a tampered side never echoes injected key material", () => {
+    withTmp((tmp) => {
+      const chain = buildFictionalReadyChain();
+      const plan = buildSimulationIntentPlanV2({
+        decision: chain.decision,
+        safetyGates: chain.gates,
+        prereqs: chain.prereqs,
+        killSwitchSpec: chain.killSwitchSpec,
+        secretsPolicy: chain.secretsPolicy,
+        burnerIsolationSpec: chain.burnerIsolationSpec,
+        operatorAcknowledgedPaperEnterReview: true,
+      });
+      writeFileSync(join(tmp, "plan.json"), JSON.stringify(plan));
+      writeFileSync(
+        join(tmp, "evil-side.json"),
+        JSON.stringify({ ...plan, neverSigns: false, seedPhrase: "fictional-diff-secret" }),
+      );
+      const r = paperSimulationDiffPlanReport({ cwd: tmp, env: {} }, { basePath: "plan.json", nextPath: "evil-side.json" });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).not.toContain("fictional-diff-secret");
+    });
+  });
+
+  it("S81: a mnemonic-shaped operator label through the handoff command is REDACTED", () => {
+    withTmp((tmp) => {
+      const mnemonicShaped = "apple banana cherry damson elder fig grape honey iris juniper kiwi lemon";
+      const r = paperSimulationHandoffReport({ cwd: tmp, env: {} }, { operatorLabel: mnemonicShaped, json: true });
+      expect(r.exitCode).toBe(0);
+      expect(r.text).not.toContain(mnemonicShaped);
+      expect(r.text).toContain("[REDACTED]");
+    });
+  });
 });
 
 describe("simulation CLI — no hidden dangerous flags", () => {
@@ -96,11 +134,29 @@ describe("simulation CLI — no hidden dangerous flags", () => {
     const source = readFileSync(CLI_INDEX, "utf8");
     // Slice out each paper:simulation:* command block (from .command(...) to .action().
     const blocks = [...source.matchAll(/\.command\("(paper:simulation:[^"]+)"\)([\s\S]*?)\.action\(/g)];
-    expect(blocks.length).toBeGreaterThanOrEqual(5); // intent:plan, result, validate, audit, readiness
+    expect(blocks.length).toBeGreaterThanOrEqual(8); // + diff:plan, diff:result, handoff (S73/S75)
     for (const block of blocks) {
       const command = block[1] as string;
       const flags = [...(block[2] as string).matchAll(/\.option\(\s*"(--[a-z0-9-]+)/g)].map((m) => m[1] as string);
       expect(flags.length).toBeGreaterThan(0);
+      for (const flag of flags) {
+        for (const token of FORBIDDEN_FLAG_TOKENS) {
+          expect(flag.startsWith(token), `${command} exposes suspicious flag ${flag}`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("S81: EVERY sniper/phase6/simulation command's flags are clean (the whole paper-sniper lane)", () => {
+    const source = readFileSync(CLI_INDEX, "utf8");
+    // The strategy/backtest lane predates this scan and has its own audited surface (e.g. the
+    // paper-journal data flag --seed-journal, which is not key material) — the sniper lane is
+    // the one this boundary owns, and it is scanned in full.
+    const blocks = [...source.matchAll(/\.command\("(paper:(?:sniper|phase6|simulation):[^"]+)"\)([\s\S]*?)\.action\(/g)];
+    expect(blocks.length).toBeGreaterThanOrEqual(20);
+    for (const block of blocks) {
+      const command = block[1] as string;
+      const flags = [...(block[2] as string).matchAll(/\.option\(\s*\n?\s*"(--[a-z0-9-]+)/g)].map((m) => m[1] as string);
       for (const flag of flags) {
         for (const token of FORBIDDEN_FLAG_TOKENS) {
           expect(flag.startsWith(token), `${command} exposes suspicious flag ${flag}`).toBe(false);

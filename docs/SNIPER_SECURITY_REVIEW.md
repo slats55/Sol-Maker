@@ -108,6 +108,20 @@ to contain them; (b) `fixtures.ts` exports clearly-labeled FICTIONAL chains for 
 via production builders, no invented market claims, no secret-shaped values (invariant 38 scans
 them on every run).
 
+## The Phase 6 diff/handoff wave (Sprints 73–81) — additions to the same boundary
+
+| # | Invariant | Enforced by |
+| --- | --- | --- |
+| 39 | The simulation diff chain (`simulation.intent.plan.diff.v2`, `simulation.result.diff.v1`) compares STRUCTURED FIELDS ONLY and refuses an invalid, tampered, or wrong-schema side outright — a flipped literal lock on either side refuses the whole diff; findings are stable `simulation-diff-*` codes whose exact emission sequence the validator recomputes. | `intent-plan-diff.test.ts`, `result-diff.test.ts` |
+| 40 | The sniper run-report-v2 diff reuses the UNCHANGED v1 differ for its core (v1 semantics cannot drift), validates both sides as strict v2 (v1 artifacts refuse), and compares the v2 layers structurally — operator-blocking reasons move as VERBATIM opaque strings, never parsed. | `run-report-v2-diff.test.ts` |
+| 41 | The handoff pack classifies a missing artifact as MISSING and an invalid one with its redacted error — state is never invented; the readiness verdict is carried verbatim and NULLED when the readiness artifact is invalid (a lock-flipped readiness input is never trusted); `phase7LiveTradingReady` is a validated literal false on the pack itself. | `handoff-pack.test.ts`, `simulation-e2e.test.ts` (S78) |
+| 42 | Both decision-report validators (v1 + v2) RECOMPUTE the five per-decision tallies and the three verdict booleans from the verbatim entries — a corrupted `paperEnterCount` (or a hidden `hasPaperEnter`) refuses, and the corruption also fails the phase6 audit and blocks the intent plan downstream. | `decision-tally-hardening.test.ts`, `chain-audit.test.ts` (S77) |
+| 43 | Every simulation formatter prints the shared operator safety line (`simulation only — does not sign; does not send; does not authorize live trading; Phase 7 … unauthorized`) from ONE constant, and a dedicated quality suite holds all seven formatters (good AND degraded states) to required/forbidden-language and no-secret-echo bars. | `operator-output-quality.test.ts` (S76) |
+| 44 | The readiness bar is ten evidence areas (S80); an artifact built against the older five-area bar re-validates as INVALID and must be rebuilt — fail-closed, never silently trusted. | `readiness.test.ts` (S80 suite) |
+| 45 | The dry-run boundary remains DESIGN ONLY: `docs/PHASE6_DRY_RUN_BOUNDARY.md` authorizes nothing, and a pinning test ties its claims to the code (the package default adapter stays the honest UNAVAILABLE one). | `dry-run-boundary-doc.test.ts` (S79) |
+| 46 | The simulation package's production module list is PINNED — a new capability module appearing in `packages/simulation/src` fails the boundary test until consciously reviewed; the dependency allowlist stays exactly `@soulmaker/sniper` + `@soulmaker/security`. | `package-boundary.test.ts` (S81) |
+| 47 | The dangerous-flag scan covers EVERY registered `paper:sniper:*` / `paper:phase6:*` / `paper:simulation:*` command (the whole paper-sniper lane), not just the simulation surface; the new diff/handoff commands carry secret-echo refusal tests of their own. (The strategy/backtest lane predates this scan and keeps its own audited surface — e.g. the paper-journal data flag `--seed-journal`, which is not key material.) | `simulation-security.test.ts` (S81) |
+
 ## What this review does NOT cover (out of scope by design)
 
 - **No live trading, no order placement, no transaction build/sign/send** — none exists; Phase 6/7 are not
