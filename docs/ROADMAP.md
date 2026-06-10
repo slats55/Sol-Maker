@@ -766,22 +766,62 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 
-## Phase 6 — Transaction planning & simulation ⬜ (NOT started)
+## Phase 6 — Transaction planning & simulation 🟡 (safe simulation foundation SHIPPED; real dry-run honestly unavailable)
 
 > Note: "Sprint 6" in this repo delivered the **strategy → paper plan pipeline**
-> (an extension of Phase 5, above), **not** this roadmap phase. Transaction
-> planning/simulation remains entirely unstarted — by design.
+> (an extension of Phase 5, above), **not** this roadmap phase.
 >
-> The boundary contract + the exact prerequisites that must be satisfied before any
-> Phase 6 implementation begins are specified in
-> [`PHASE_6_SIMULATION_BOUNDARY.md`](PHASE_6_SIMULATION_BOUNDARY.md) (Sprint 29 — SPEC
-> ONLY, no code). Key invariants: planner ⟂ signer separated forever, dry-run by default,
-> no keys/signing/sending, operator approval + audit logs + kill switch required.
+> The boundary contract is specified in
+> [`PHASE_6_SIMULATION_BOUNDARY.md`](PHASE_6_SIMULATION_BOUNDARY.md). Key invariants:
+> planner ⟂ signer separated forever, dry-run by default, no keys/signing/sending,
+> operator approval + audit logs + kill switch required. **The 2026-06-10 overnight run
+> (Sprints 61–70) built the authorized SIMULATION slice under exactly that contract.**
 
-- ⬜ Transaction **plan** object (explicit destinations, amounts, fees).
-- ⬜ Human-readable preview (no blind signing).
-- ⬜ Simulation interface (`simulateTransaction`).
-- ⬜ **Still no sending.** Tests prove unsafe plans are rejected.
+### The Phase 6 simulation wave (Sprints 61–70) ✅ — `@soulmaker/simulation`
+
+A separate, boundary-locked package (imports allowlisted to `sniper` + `security` only;
+forbidden-token + determinism scans; dependency manifest pinned). Every artifact carries four
+validated literal locks: `neverAuthorizesLiveTrading` / `neverSigns` / `neverSends` / `dryRunOnly`.
+
+- ✅ **(S61) Package boundary** — `packages/simulation`, shared frozen literal locks,
+  `SimulationSafetyError`, import-ALLOWLIST + forbidden-token + determinism scans, manifest pin.
+- ✅ **(S62) Reason codes** — closed, append-only vocabulary (now 43 codes across 8 categories)
+  with severity (blocking/warning/info) and per-code operator messages.
+- ✅ **(S63/64) `simulation.intent.plan.v2`** — fail-closed preview builder over the validated v2
+  chain (decision v2 + READY gates v2 + prereqs v2 + three ADOPTED specs). Blocked plans carry
+  ZERO entries; previews never invent destination/amount/fee (amounts resolve only as paper-unit
+  LABELS); the one narrow operator acknowledgment (the `NO_OPERATOR_BLOCKING` paper-enter review)
+  is structured-id-gated, loudly surfaced, and refused when anything else is unmet. Named v2
+  because `simulation.intent.plan.v1` is the S41 INERT artifact — schema ids are never reused.
+- ✅ **(S65) `simulation.result.v1` + adapter contract** — a closed 3-outcome set with NO
+  sent/signed/live outcome; malicious/throwing adapters normalized to safe redacted failures;
+  unresolved previews SKIPPED (never simulated); the canonical adapter reports a real dry-run
+  honestly UNAVAILABLE (it needs transaction material the boundary forbids building).
+- ✅ **(S66) CLI surface** — `paper:simulation:intent:plan` / `paper:simulation:result` /
+  `paper:simulation:validate`, all no-write-without-`--out`, reference-validator + runbook/README
+  coverage enforced.
+- ✅ **(S67) `phase6.audit.report.v1`** + `paper:simulation:audit` — the chain audit over all NINE
+  artifacts: strict in-place validation, STRUCTURED cross-reference checks, v1 stand-ins and
+  mismatches FAIL it, the chain's own conditions surfaced verbatim. Closes the "no audit over the
+  v2 chain" gap.
+- ✅ **(S68) End-to-end fixture chain** — the whole surface through the real CLI in a temp dir:
+  byte determinism, no-write-by-default, secret hygiene, fail-closed negatives (kill-switch stop,
+  v1 stand-in, draft spec, flipped literal lock).
+- ✅ **(S69) `phase6.simulation.readiness.report.v1`** + `paper:simulation:readiness` —
+  machine-verified artifact checks + declared evidence refs; `phase7LiveTradingReady` is a
+  LITERAL false the validator refuses to see flipped.
+- ✅ **(S70) Security hardening** — CLI secret-echo backstops, hidden-dangerous-flag registration
+  scan, security review invariants 20–38.
+
+**Still honestly missing from Phase 6 (future, in order):**
+
+- ⬜ A real `simulateTransaction` dry-run — requires a separately-reviewed transaction-construction
+  boundary that does not exist and was not authorized; until then the adapter reports UNAVAILABLE.
+- ⬜ A v2 diff chain for the simulation artifacts (plan-diff / result-diff) and a sniper
+  run-report-v2 diff.
+- ⬜ A simulation-aware session pack (v3) for operator handoff bundles.
+- ⬜ A CLI flag-level drift validator (commands are pinned and flags are scanned for dangerous
+  names, but flags are not yet doc-pinned).
 
 ## Phase 7 — Burner-wallet live mode ⬜ (NOT started)
 
