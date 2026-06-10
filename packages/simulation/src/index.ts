@@ -18,3 +18,18 @@ export {
   assertSimulationSafetyLiterals,
   type SimulationSafetyLiterals,
 } from "./safety.js";
+
+export {
+  SIMULATION_REASON_CATEGORIES,
+  SIMULATION_REASON_SEVERITIES,
+  SIMULATION_REASON_CODES,
+  SIMULATION_REASON_CODE_DEFINITIONS,
+  isSimulationReasonCode,
+  simulationReasonCodeDefinition,
+  isBlockingSimulationReasonCode,
+  dedupeSimulationReasonCodes,
+  type SimulationReasonCategory,
+  type SimulationReasonSeverity,
+  type SimulationReasonCode,
+  type SimulationReasonCodeDefinition,
+} from "./reason-codes.js";
