@@ -400,6 +400,25 @@ export type {
 } from "./kill-switch-spec.js";
 
 export {
+  buildSniperSecretsPolicy,
+  validateSniperSecretsPolicy,
+  formatSniperSecretsPolicy,
+  SniperSecretsPolicyError,
+  SNIPER_SECRETS_POLICY_SCHEMA_VERSION,
+  SNIPER_SECRETS_POLICY_BANNER,
+  SNIPER_SECRETS_POLICY_DISCLAIMERS,
+  SECRETS_POLICY_BASELINE_RULES,
+  SECRETS_POLICY_CORE_RULES,
+} from "./secrets-policy.js";
+
+export type {
+  SniperSecretsPolicyReadiness,
+  BuildSniperSecretsPolicyInput,
+  SniperSecretsPolicy,
+  FormatSniperSecretsPolicyOptions,
+} from "./secrets-policy.js";
+
+export {
   buildSimulationIntentPlan,
   validateSimulationIntentPlan,
   formatSimulationIntentPlan,

@@ -64,6 +64,7 @@ import {
   paperSniperSessionPackReport,
   paperSniperSafetyGatesReport,
   paperSniperKillSwitchSpecReport,
+  paperSniperSecretsPolicyReport,
   paperPhase6PrereqsReport,
   paperPhase6IntentPlanReport,
   paperPhase6DiffIntentReport,
@@ -7998,6 +7999,53 @@ describe("paperSniperKillSwitchSpecReport (Sprint 53)", () => {
       expect(paperSniperKillSwitchSpecReport({ cwd, env: {} }, { failOnNotAdopted: true }).exitCode).toBe(1);
       const unsafe = writeJson(cwd, "unsafe.json", { requiredOperatorConfirmations: [] });
       expect(paperSniperKillSwitchSpecReport({ cwd, env: {} }, { inputPath: unsafe }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperSniperSecretsPolicyReport (Sprint 54)", () => {
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+
+  it("builds a safe policy, writes nothing by default, honors --out/--force and --fail-on-not-adopted", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const before = readdirSync(cwd).sort();
+      const r = paperSniperSecretsPolicyReport({ cwd, env: {} }, { operatorLabel: "op", json: true });
+      expect(r.exitCode).toBe(0);
+      const obj = JSON.parse(r.text) as { schemaVersion: string; storesNoSecretMaterial: boolean; forbidMainWalletUse: boolean; adopted: boolean };
+      expect(obj.schemaVersion).toBe("sniper.secrets.policy.v1");
+      // the field names are deliberately redactor-safe, so they survive the CLI's redactValue intact
+      expect(obj.storesNoSecretMaterial).toBe(true);
+      expect(obj.forbidMainWalletUse).toBe(true);
+      expect(readdirSync(cwd).sort()).toEqual(before);
+      expect(paperSniperSecretsPolicyReport({ cwd, env: {} }, { failOnNotAdopted: true }).exitCode).toBe(1);
+      const adopted = writeJson(cwd, "sp.json", { readinessStatus: "adopted" });
+      expect(paperSniperSecretsPolicyReport({ cwd, env: {} }, { inputPath: adopted, failOnNotAdopted: true }).exitCode).toBe(0);
+      expect(paperSniperSecretsPolicyReport({ cwd, env: {} }, { outPath: "out.json" }).exitCode).toBe(0);
+      expect(paperSniperSecretsPolicyReport({ cwd, env: {} }, { outPath: "out.json" }).exitCode).toBe(1);
+      expect(paperSniperSecretsPolicyReport({ cwd, env: {} }, { outPath: "out.json", force: true }).exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("REFUSES a config carrying secret-shaped content — and never echoes it", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const fake = "3".repeat(88); // FAKE key-shaped value (not a real secret)
+      const bad = writeJson(cwd, "bad.json", { additionalRules: [fake] });
+      const r = paperSniperSecretsPolicyReport({ cwd, env: {} }, { inputPath: bad });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).not.toContain(fake);
+      const badKey = writeJson(cwd, "badkey.json", { mnemonicBackup: "x" });
+      const r2 = paperSniperSecretsPolicyReport({ cwd, env: {} }, { inputPath: badKey });
+      expect(r2.exitCode).toBe(1);
+      expect(r2.text).toMatch(/secret-bearing/);
     } finally {
       cleanup();
     }

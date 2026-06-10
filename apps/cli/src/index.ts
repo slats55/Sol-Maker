@@ -53,6 +53,7 @@ import {
   paperSniperSessionPackReport,
   paperSniperSafetyGatesReport,
   paperSniperKillSwitchSpecReport,
+  paperSniperSecretsPolicyReport,
   paperPhase6PrereqsReport,
   paperPhase6IntentPlanReport,
   paperPhase6DiffIntentReport,
@@ -1570,6 +1571,35 @@ program
   .action(
     (opts: { input?: string; operator?: string; json?: boolean; out?: string; force?: boolean; failOnNotAdopted?: boolean }) => {
       const { text, exitCode } = paperSniperKillSwitchSpecReport(
+        {},
+        {
+          inputPath: opts.input,
+          operatorLabel: opts.operator,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnNotAdopted: Boolean(opts.failOnNotAdopted),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:secrets:policy")
+  .description(
+    "Build a machine-readable LOCAL secrets policy (`sniper.secrets.policy.v1`). It stores NO secret: a secret-bearing key or a key-shaped value (long base58/hex, 12/24-word phrase) anywhere in the input is REFUSED without being echoed. The six core rules are CONSTANTS that cannot be configured off: forbid main wallet use, forbid seed phrase storage, forbid private key logging, require burner isolation for any FUTURE live work, require redaction, require an explicit dangerous opt-in for any FUTURE live capability. An ADOPTED policy is a Phase-6 PREREQUISITE signal, never authorization. Reads the optional --input config only, writes nothing unless --out. No network, no wallet",
+  )
+  .option("--input <path>", "policy config JSON (operator-friendly raw input; optional)")
+  .option("--operator <label>", "operator label (overrides the config's)")
+  .option("--json", "emit the policy as stable JSON")
+  .option("--out <path>", "write ONLY the policy JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-not-adopted", "exit non-zero while the policy is not ADOPTED")
+  .action(
+    (opts: { input?: string; operator?: string; json?: boolean; out?: string; force?: boolean; failOnNotAdopted?: boolean }) => {
+      const { text, exitCode } = paperSniperSecretsPolicyReport(
         {},
         {
           inputPath: opts.input,

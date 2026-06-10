@@ -93,6 +93,9 @@ import {
   buildSniperKillSwitchSpec,
   formatSniperKillSwitchSpec,
   SNIPER_KILL_SWITCH_SPEC_SCHEMA_VERSION,
+  buildSniperSecretsPolicy,
+  formatSniperSecretsPolicy,
+  SNIPER_SECRETS_POLICY_SCHEMA_VERSION,
   buildSimulationIntentPlan,
   formatSimulationIntentPlan,
   diffSimulationIntentPlans,
@@ -120,6 +123,7 @@ import {
   type Phase6PrerequisiteReport,
   type Phase6PrerequisiteReportV2,
   type SniperKillSwitchSpec,
+  type SniperSecretsPolicy,
   type SimulationIntentPlan,
   type SimulationIntentPlanDiff,
 } from "@soulmaker/sniper";
@@ -5536,6 +5540,91 @@ export function paperSniperKillSwitchSpecReport(
     return { text: JSON.stringify(redactValue(spec), null, 2), exitCode };
   }
   return { text: formatSniperKillSwitchSpec(spec, { label: opts.inputPath }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 54 — paper:sniper:secrets:policy
+//   Build a machine-readable LOCAL secrets policy (`sniper.secrets.policy.v1`).
+//   Stores NO secret: secret-bearing keys and key-shaped values in the input
+//   are REFUSED without being echoed. The six core rules are constants. Reads
+//   the optional --input config only; writes nothing unless --out.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperSecretsPolicyCommandOptions {
+  /** Optional policy config JSON path (operator-friendly raw input). */
+  inputPath?: string;
+  /** Optional operator label (overrides the config's). */
+  operatorLabel?: string;
+  json?: boolean;
+  /** Optional path to write the policy JSON (writes nothing if omitted). */
+  outPath?: string;
+  /** Overwrite an existing --out file (refused by default). */
+  force?: boolean;
+  /** Exit non-zero when the policy is not ADOPTED. */
+  failOnNotAdopted?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:secrets:policy` — build a machine-readable LOCAL secrets policy
+ * (`sniper.secrets.policy.v1`). It stores NO secret: a secret-bearing key or a key-shaped value in
+ * the input is REFUSED without ever being echoed. The six core rules (forbid main wallet / forbid
+ * seed phrase storage / forbid private key logging / require burner isolation for live / require
+ * redaction / require explicit dangerous opt-in for live) are constants that cannot be configured
+ * off. `--json` emits the policy; `--out` writes ONLY the policy JSON (refusing overwrite without
+ * `--force`); `--fail-on-not-adopted` exits 1 while not adopted. No network, no wallet.
+ */
+export function paperSniperSecretsPolicyReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperSecretsPolicyCommandOptions = {},
+): CliReport {
+  let config: Record<string, unknown> = {};
+  if (opts.inputPath) {
+    let raw: unknown;
+    try {
+      raw = readJsonValue(ctx, opts.inputPath, "secrets policy config");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (!isPlainObject(raw)) {
+      return { text: "Refusing: secrets policy config must be a JSON object.", exitCode: 1 };
+    }
+    if (raw.schemaVersion !== undefined && raw.schemaVersion !== SNIPER_SECRETS_POLICY_SCHEMA_VERSION) {
+      return { text: redactString(`Refusing: secrets policy schemaVersion must be "${SNIPER_SECRETS_POLICY_SCHEMA_VERSION}".`), exitCode: 1 };
+    }
+    config = raw;
+  }
+
+  let policy: SniperSecretsPolicy;
+  try {
+    // The WHOLE config is passed through (minus schemaVersion) so the builder's secret-shaped-input
+    // scan sees every key the operator wrote — an unknown secret-bearing key must be refused, not
+    // silently dropped by CLI cherry-picking.
+    const { schemaVersion: _schemaVersion, ...rest } = config;
+    policy = buildSniperSecretsPolicy({
+      ...rest,
+      operatorLabel: opts.operatorLabel ?? (typeof config.operatorLabel === "string" ? config.operatorLabel : null),
+    } as never);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(policy), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write secrets policy at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  const exitCode = opts.failOnNotAdopted && !policy.adopted ? 1 : 0;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(policy), null, 2), exitCode };
+  }
+  return { text: formatSniperSecretsPolicy(policy, { label: opts.inputPath }), exitCode };
 }
 
 // ---------------------------------------------------------------------------
