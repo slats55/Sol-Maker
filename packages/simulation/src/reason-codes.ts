@@ -28,6 +28,7 @@ export const SIMULATION_REASON_CATEGORIES = [
   "outcome",
   "preview",
   "readiness",
+  "route-resolution",
   "spec",
 ] as const;
 
@@ -113,6 +114,18 @@ export const SIMULATION_REASON_CODES = [
   "simulation-diff-result-plan-ref-changed",
   "simulation-diff-result-entries-changed",
   "simulation-diff-result-identical",
+  // --- route-resolution (Sprint 85: the route-resolution provenance artifact; append-only) ---
+  "simulation-route-resolution-missing-plan",
+  "simulation-route-resolution-invalid-plan",
+  "simulation-route-resolution-blocked-plan",
+  "simulation-route-resolution-unavailable-no-resolver",
+  "simulation-route-resolution-unresolved-route",
+  "simulation-route-resolution-unresolved-destination",
+  "simulation-route-resolution-unresolved-fee",
+  "simulation-route-resolution-live-state-caveat",
+  "simulation-route-resolution-entry-resolved",
+  "simulation-route-resolution-no-entries",
+  "simulation-route-resolution-validated",
 ] as const;
 
 /** One of the stable simulation reason codes. */
@@ -271,6 +284,28 @@ export const SIMULATION_REASON_CODE_DEFINITIONS: Readonly<
     "The result entries differ between base and next (membership, per-entry status, reason codes, or unresolved fields) — inspect the per-entry changes."),
   "simulation-diff-result-identical": def("simulation-diff-result-identical", "diff", "info",
     "The two simulation results are identical across every compared structured field — no change to review (side labels are metadata and are not compared)."),
+  "simulation-route-resolution-missing-plan": def("simulation-route-resolution-missing-plan", "route-resolution", "blocking",
+    "No valid v2 simulation intent plan was supplied — route resolution has nothing to describe. Build one with paper:simulation:intent:plan."),
+  "simulation-route-resolution-invalid-plan": def("simulation-route-resolution-invalid-plan", "route-resolution", "blocking",
+    "The supplied intent plan failed strict validation — fix or rebuild it first; nothing is resolved over an invalid plan."),
+  "simulation-route-resolution-blocked-plan": def("simulation-route-resolution-blocked-plan", "route-resolution", "blocking",
+    "The source intent plan is BLOCKED — resolve the plan's blocking reasons first; route resolution never proceeds over a blocked chain."),
+  "simulation-route-resolution-unavailable-no-resolver": def("simulation-route-resolution-unavailable-no-resolver", "route-resolution", "warning",
+    "No validated route-resolution capability exists inside this boundary — route, destination, and fee stay UNRESOLVED, honestly recorded, never invented."),
+  "simulation-route-resolution-unresolved-route": def("simulation-route-resolution-unresolved-route", "route-resolution", "warning",
+    "This entry's route is UNRESOLVED — no validated route data exists and the pipeline never invents one."),
+  "simulation-route-resolution-unresolved-destination": def("simulation-route-resolution-unresolved-destination", "route-resolution", "warning",
+    "This entry's destination is UNRESOLVED — no validated destination data exists and the pipeline never invents one."),
+  "simulation-route-resolution-unresolved-fee": def("simulation-route-resolution-unresolved-fee", "route-resolution", "warning",
+    "This entry's fee preview is UNRESOLVED — no validated fee data exists and the pipeline never invents one."),
+  "simulation-route-resolution-live-state-caveat": def("simulation-route-resolution-live-state-caveat", "route-resolution", "warning",
+    "At least one entry carries a label-resolved route fact, which can only come from LIVE chain state — never mistake this artifact for a deterministic fixture; re-resolution may differ across runs."),
+  "simulation-route-resolution-entry-resolved": def("simulation-route-resolution-entry-resolved", "route-resolution", "info",
+    "Every required route/destination/fee fact for this entry is label-resolved with provenance — still SIMULATION ONLY; never an execution, a trade, or a live action."),
+  "simulation-route-resolution-no-entries": def("simulation-route-resolution-no-entries", "route-resolution", "info",
+    "The source plan carries zero preview entries — there is nothing to resolve; an empty route-resolution record is the honest artifact."),
+  "simulation-route-resolution-validated": def("simulation-route-resolution-validated", "route-resolution", "info",
+    "The route-resolution artifact passed strict validation, including its literal safety locks and recomputed status, tallies, and reason-code trails."),
 };
 
 const CODE_SET: ReadonlySet<string> = new Set(SIMULATION_REASON_CODES);

@@ -1,7 +1,41 @@
-# Phase 6 Continuation Pack (continuation run 2026-06-10 #2, Sprints 73–82)
+# Phase 6 Continuation Pack (continuation run 2026-06-10 #2, Sprints 73–82; addendum: S85)
 
 The precise hand-off for the next session. Everything below is verifiable from the repo —
 no claim here rests on memory.
+
+## Addendum — Sprint 85 (route-resolution artifact; 2026-06-10)
+
+S84 (handoff-pack blocking-lower-bound hardening) and S85 landed after this pack was written.
+S85 shipped `simulation.route.resolution.v1` (`packages/simulation/src/route-resolution.ts` +
+`route-resolution.test.ts`) — the provenance layer the dry-run boundary doc names as its FIRST
+prerequisite, as schema/validator/formatter ONLY (no resolver capability, no CLI command, no
+adapter change, deliberately):
+
+- Canonical builder: consumes a strictly-validated `simulation.intent.plan.v2`; records one entry
+  per plan preview entry, every fact honestly UNAVAILABLE under the fixed
+  `unavailable-no-route-resolver` id (no route-resolution capability exists inside the boundary).
+  Missing/invalid/blocked plan or a tripped stop switch BLOCKS (zero entries, stable codes).
+- Validator recomputes EVERY mirror (blocking trail, status precedence, tallies, per-entry code
+  trails, live-state caveat, next safe action); `resolved` is refused while any route/destination/
+  fee fact is missing; the v1 schema is CLOSED (unknown/sensitive-named/execution-shaped fields
+  refused); a future real resolver's artifacts must carry `liveStateCaveat: true` or be refused.
+- 11 new `simulation-route-resolution-*` reason codes in a new append-only `route-resolution`
+  category; the S81 pinned module list was consciously extended; the operator-output-quality sweep
+  now covers the new formatter. The 10-area readiness evidence bar was NOT extended (a candidate
+  11th area, route-resolution tests, is a sanctioned future bump).
+
+New decision a successor must not undo:
+
+12. **Route resolution is an artifact contract, not a capability.** `@soulmaker/simulation` can
+    DESCRIBE route-resolution state but never perform it; the canonical builder can only ever emit
+    UNAVAILABLE. A real resolver lives with the future `@soulmaker/txpreview` work and must emit
+    artifacts that pass THIS validator — including the mandatory live-state caveat on any
+    label-resolved fact. Never let the builder invent a fact to make a status greener.
+
+Updated next slices: (1) operator dress rehearsal (see below); (2) extend the readiness evidence
+bar with a `route-resolution-tests` area (conscious fail-closed re-validation bump); (3) a
+`paper:simulation:route` CLI command if operators need to generate the artifact outside tests;
+(4) handoff-pack diff; (5) Phase 7 boundary spec doc (docs ONLY, fresh authorization required).
 
 ## Where master is
 

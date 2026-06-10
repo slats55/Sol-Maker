@@ -79,8 +79,9 @@ Hard requirements, none of which may be weakened during implementation:
 
 - **Input artifacts:** a strictly-validated `simulation.intent.plan.v2` whose entry is FULLY
   resolved (the existing result builder already skips unresolved entries; that behavior stands),
-  plus a strictly-validated route-resolution artifact (schema to be designed; it must carry its
-  own provenance and validation, never operator-typed addresses accepted silently).
+  plus a strictly-validated route-resolution artifact (designed and shipped as
+  `simulation.route.resolution.v1` in Sprint 85 — see the section below; it carries its own
+  provenance and validation, never operator-typed addresses accepted silently).
 - **What must NEVER enter the boundary:** `Keypair`/signer types, secret keys, seed phrases,
   mnemonics, wallet import/export, `signTransaction`/`signAllTransactions`/`partialSign`,
   `sendTransaction`/`sendRawTransaction`, any RPC write method, env-var key material, main-wallet
@@ -103,6 +104,37 @@ Hard requirements, none of which may be weakened during implementation:
   `liveStateCaveat` marker (schema addition, validated) so no downstream consumer mistakes a
   live-state simulation for a deterministic fixture. The deterministic test path stays the
   default everywhere.
+
+## The route-resolution artifact (Sprint 85) — the provenance layer, now designed and shipped
+
+The first prerequisite above — "a separately-designed, validated route-resolution layer" — now
+has its ARTIFACT layer: `simulation.route.resolution.v1`
+(`packages/simulation/src/route-resolution.ts`). It is the schema/validator/formatter slice ONLY;
+no resolver capability was built, on purpose:
+
+- **What it records:** per intent-plan entry, whether a route / destination / fee fact exists
+  (`resolved-as-label`) or is honestly `unresolved` — the exact facts the boundary diagram's
+  "resolved plan entry" input needs to honestly exist before anything can be simulated.
+- **What the canonical builder emits today:** every entry UNAVAILABLE under the fixed
+  `unavailable-no-route-resolver` id, because no route-resolution capability exists inside the
+  simulation boundary (and the import allowlist keeps it that way). Nothing is invented.
+- **How a future resolver plugs in:** a separately-reviewed, separately-authorized resolution
+  layer (it belongs with the `@soulmaker/txpreview` work, NOT in `@soulmaker/simulation`) would
+  emit artifacts that pass the SAME strict validator with label-resolved facts. The validator then
+  REQUIRES the explicit `liveStateCaveat` (plus its surfaced warning code), because real route
+  facts can only come from live chain state — the determinism caveat above is now a validated
+  schema fact, not just a design note.
+- **Fail-closed invariants (all recomputed, never trusted):** `resolved` is refused while any
+  required fact is missing; zero blocking codes over a blocking source state (missing / invalid /
+  blocked plan, tripped stop switch) are refused; the v1 schema is CLOSED — unknown,
+  sensitive-named, or execution-shaped fields are refused outright; the no-resolver id can never
+  claim an attempt; an unattempted resolution can never carry resolved facts; and the artifact
+  carries the four literal locks plus an always-false `phase7LiveTradingReady`.
+
+What this changes about the boundary: nothing in capability, everything in honesty. The dry-run
+boundary can now CONSUME a validated statement of what route state exists instead of guessing —
+and today that statement is honestly "unavailable, everywhere". Implementing an actual resolver
+remains unauthorized by this document.
 
 ## Required tests BEFORE any implementation lands
 

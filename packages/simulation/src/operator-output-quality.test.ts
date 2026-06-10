@@ -31,6 +31,8 @@ import {
   formatSimulationResultDiffV1,
   buildPhase6SimulationHandoffPackV1,
   formatPhase6SimulationHandoffPackV1,
+  buildSimulationRouteResolutionV1,
+  formatSimulationRouteResolutionV1,
   SIMULATION_OPERATOR_SAFETY_LINE,
   type SimulationIntentPlanV2,
 } from "./index.js";
@@ -120,6 +122,8 @@ function allOutputs(): Record<string, string> {
     "result diff (changed)": formatSimulationResultDiffV1(diffSimulationResultsV1(result, blockedResult)),
     "handoff (complete)": formatPhase6SimulationHandoffPackV1(handoff),
     "handoff (empty)": formatPhase6SimulationHandoffPackV1(emptyHandoff),
+    "route resolution (unavailable)": formatSimulationRouteResolutionV1(buildSimulationRouteResolutionV1({ intentPlan: plan })),
+    "route resolution (blocked)": formatSimulationRouteResolutionV1(buildSimulationRouteResolutionV1({})),
   };
 }
 

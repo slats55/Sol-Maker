@@ -71,6 +71,7 @@ describe("@soulmaker/simulation — package manifest boundary", () => {
       "reason-codes.ts",
       "result-diff.ts",
       "result.ts",
+      "route-resolution.ts",
       "safety.ts",
     ]);
   });

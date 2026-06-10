@@ -859,13 +859,27 @@ remaining safe Phase 6 gaps:
   lane touched).
 - ✅ **(S82) This ledger + the refreshed continuation pack.**
 
+- ✅ **(S84) Handoff-pack blocking lower bound** — the handoff validator refuses a pack claiming
+  zero chain blocking codes while an embedded valid artifact summary carries blocking state
+  (recomputable lower bound; mirrors are never trusted).
+- ✅ **(S85) `simulation.route.resolution.v1`** — the route-resolution PROVENANCE artifact the
+  dry-run boundary names as its first prerequisite (schema/validator/formatter only; NO resolver
+  capability, NO CLI, deliberately). The canonical builder records every plan entry honestly
+  UNAVAILABLE under the fixed `unavailable-no-route-resolver` id; the strict validator recomputes
+  every mirror, refuses `resolved` over missing route/destination/fee facts, refuses unknown/
+  sensitive-named/execution-shaped fields (CLOSED v1 schema), and REQUIRES the explicit
+  `liveStateCaveat` on any label-resolved fact a future authorized resolver might emit. 11 new
+  append-only `simulation-route-resolution-*` reason codes.
+
 **Still honestly missing from Phase 6 (future, in order):**
 
 - ⬜ A real `simulateTransaction` dry-run — the boundary is now DESIGNED
-  ([`PHASE6_DRY_RUN_BOUNDARY.md`](PHASE6_DRY_RUN_BOUNDARY.md)) but implementation remains
-  unauthorized and requires: a validated route-resolution artifact (schema not yet designed), a
-  new separately-reviewed transaction-construction package behind the existing adapter contract,
-  and a fresh explicit authorization. Until then the adapter reports UNAVAILABLE, honestly.
+  ([`PHASE6_DRY_RUN_BOUNDARY.md`](PHASE6_DRY_RUN_BOUNDARY.md)) and its route-resolution input
+  artifact now EXISTS (S85, `simulation.route.resolution.v1` — today honestly all-UNAVAILABLE),
+  but implementation remains unauthorized and still requires: an actual route-resolution
+  capability plus a new separately-reviewed transaction-construction package behind the existing
+  adapter contract, and a fresh explicit authorization. Until then the adapter reports
+  UNAVAILABLE, honestly.
 - ⬜ Real (non-fixture) operator dress rehearsals: the chain is exercised end-to-end by fixtures;
   an operator-driven session over real candidate intake (still paper-only, still read-only RPC for
   inspection) would evidence the workflow beyond CI.
