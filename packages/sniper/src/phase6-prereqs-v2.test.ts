@@ -23,6 +23,9 @@ import { buildSniperSessionPack } from "./session-pack.js";
 import { buildSniperAuditLog } from "./audit-log.js";
 import { normalizeSniperPolicyConfig } from "./policy-config.js";
 import { normalizeSniperPolicyConfigV2 } from "./policy-config-v2.js";
+import { buildSniperKillSwitchSpec } from "./kill-switch-spec.js";
+import { buildSniperSecretsPolicy } from "./secrets-policy.js";
+import { buildSniperBurnerIsolationSpec } from "./burner-isolation-spec.js";
 import { normalizeSniperCandidateList, type SniperCandidateInput } from "./candidate-list.js";
 import { buildSniperTokenPreflightReport, type SniperPreflightCandidateData } from "./token-preflight.js";
 
@@ -101,8 +104,8 @@ describe("buildPhase6PrerequisiteReportV2 — incomplete inputs (fail-closed)", 
   });
 });
 
-describe("buildPhase6PrerequisiteReportV2 — complete-for-pure-simulation (everything available today)", () => {
-  it("with every available artifact ready, ONLY the three spec buckets remain not-met", () => {
+describe("buildPhase6PrerequisiteReportV2 — complete-for-pure-simulation (Sprint 56: spec-driven)", () => {
+  it("without the spec artifacts, ONLY the spec buckets remain not-met (fail-closed)", () => {
     const inputs = fullInputs();
     const r = buildPhase6PrerequisiteReportV2(inputs);
     expect(bucketOf(r, "artifact").ready).toBe(true);
@@ -111,18 +114,112 @@ describe("buildPhase6PrerequisiteReportV2 — complete-for-pure-simulation (ever
     expect(bucketOf(r, "audit").ready).toBe(true);
     expect(bucketOf(r, "operator").ready).toBe(true);
     expect(bucketOf(r, "test").ready).toBe(true);
-    // the spec artifacts do not exist yet — readiness stays fail-closed
     expect(bucketOf(r, "kill-switch").ready).toBe(false);
     expect(bucketOf(r, "secrets-policy").ready).toBe(false);
     expect(bucketOf(r, "burner-isolation").ready).toBe(false);
     expect(r.phase6ImplementationReady).toBe(false);
-    expect(r.notMet).toEqual(["KILL_SWITCH_SPEC_ARTIFACT", "SECRETS_POLICY_ARTIFACT", "BURNER_ISOLATION_SPEC_ARTIFACT"]);
+    expect(r.notMet).toEqual([
+      "KILL_SWITCH_SPEC_ARTIFACT",
+      "SECRETS_POLICY_ARTIFACT",
+      "BURNER_ISOLATION_SPEC_ARTIFACT",
+      "BURNER_KILL_SWITCH_PAIRED",
+    ]);
+    expect(() => validatePhase6PrerequisiteReportV2(r)).not.toThrow();
+  });
+
+  it("with ADOPTED, paired specs, every bucket is ready and phase6ImplementationReady is TRUE — and it is STILL not authorization", () => {
+    const r = buildPhase6PrerequisiteReportV2({
+      ...fullInputs(),
+      killSwitchSpec: buildSniperKillSwitchSpec({ operatorLabel: "op", readinessStatus: "adopted" }),
+      secretsPolicy: buildSniperSecretsPolicy({ operatorLabel: "op", readinessStatus: "adopted" }),
+      burnerIsolationSpec: buildSniperBurnerIsolationSpec({
+        operatorLabel: "op",
+        readinessStatus: "adopted",
+        killSwitchSpecRef: "ks-op",
+        maxLossLabel: "tiny-test-budget",
+      }),
+    });
+    expect(r.buckets.every((b) => b.ready)).toBe(true);
+    expect(r.notMet).toEqual([]);
+    expect(r.phase6ImplementationReady).toBe(true);
+    // the hard invariants hold even at full readiness — never authorization, never Phase 7
+    expect(r.phase6ImplementationStarted).toBe(false);
+    expect(r.requiresExplicitHumanApproval).toBe(true);
+    expect(r.phase7LiveTradingReady).toBe(false);
+    expect(r.neverAuthorizesLiveTrading).toBe(true);
+    expect(r.recommendation).toMatch(/NOT authorization/);
     expect(() => validatePhase6PrerequisiteReportV2(r)).not.toThrow();
   });
 
   it("is deterministic", () => {
     const inputs = fullInputs();
     expect(JSON.stringify(buildPhase6PrerequisiteReportV2(inputs))).toBe(JSON.stringify(buildPhase6PrerequisiteReportV2(inputs)));
+  });
+});
+
+describe("Sprint 56 — spec-bucket combinations (all fail-closed)", () => {
+  const adoptedSpecs = () => ({
+    killSwitchSpec: buildSniperKillSwitchSpec({ readinessStatus: "adopted" }),
+    secretsPolicy: buildSniperSecretsPolicy({ readinessStatus: "adopted" }),
+    burnerIsolationSpec: buildSniperBurnerIsolationSpec({ readinessStatus: "adopted", killSwitchSpecRef: "ks" }),
+  });
+
+  it("a DRAFT spec keeps its bucket not-met (each of the three, independently)", () => {
+    const base = adoptedSpecs();
+    const draftCases = [
+      { over: { killSwitchSpec: buildSniperKillSwitchSpec({}) }, bucket: "kill-switch" },
+      { over: { secretsPolicy: buildSniperSecretsPolicy({}) }, bucket: "secrets-policy" },
+      { over: { burnerIsolationSpec: buildSniperBurnerIsolationSpec({ killSwitchSpecRef: "ks" }) }, bucket: "burner-isolation" },
+    ] as const;
+    for (const { over, bucket } of draftCases) {
+      const r = buildPhase6PrerequisiteReportV2({ ...base, ...over });
+      expect(bucketOf(r, bucket).ready, bucket).toBe(false);
+      expect(r.phase6ImplementationReady).toBe(false);
+      const item = r.prerequisites.find((p) => p.bucket === bucket && p.status === "not-met")!;
+      expect(item.reason).toMatch(/"draft" — supply an ADOPTED/);
+    }
+  });
+
+  it("an INVALID / weakened spec keeps its bucket not-met with the validation error surfaced", () => {
+    const base = adoptedSpecs();
+    const weakKillSwitch = JSON.parse(JSON.stringify(base.killSwitchSpec));
+    weakKillSwitch.modes[2].status = "specified"; // tamper the live placeholder — the validator refuses it
+    const r = buildPhase6PrerequisiteReportV2({ ...base, killSwitchSpec: weakKillSwitch });
+    const item = r.prerequisites.find((p) => p.id === "KILL_SWITCH_SPEC_ARTIFACT")!;
+    expect(item.status).toBe("not-met");
+    expect(item.reason).toMatch(/INVALID/);
+    expect(r.phase6ImplementationReady).toBe(false);
+
+    const weakSecrets = JSON.parse(JSON.stringify(base.secretsPolicy));
+    weakSecrets.forbidMainWalletUse = false;
+    const r2 = buildPhase6PrerequisiteReportV2({ ...base, secretsPolicy: weakSecrets });
+    expect(r2.prerequisites.find((p) => p.id === "SECRETS_POLICY_ARTIFACT")!.status).toBe("not-met");
+    expect(r2.phase6ImplementationReady).toBe(false);
+
+    const weakBurner = JSON.parse(JSON.stringify(base.burnerIsolationSpec));
+    weakBurner.createsNoWallet = false;
+    const r3 = buildPhase6PrerequisiteReportV2({ ...base, burnerIsolationSpec: weakBurner });
+    expect(r3.prerequisites.find((p) => p.id === "BURNER_ISOLATION_SPEC_ARTIFACT")!.status).toBe("not-met");
+    expect(r3.phase6ImplementationReady).toBe(false);
+  });
+
+  it("an adopted burner spec WITHOUT a kill-switch pairing keeps the burner bucket not-met", () => {
+    const base = adoptedSpecs();
+    const unpaired = buildSniperBurnerIsolationSpec({ readinessStatus: "adopted" }); // no killSwitchSpecRef
+    const r = buildPhase6PrerequisiteReportV2({ ...base, burnerIsolationSpec: unpaired });
+    expect(r.prerequisites.find((p) => p.id === "BURNER_ISOLATION_SPEC_ARTIFACT")!.status).toBe("met");
+    expect(r.prerequisites.find((p) => p.id === "BURNER_KILL_SWITCH_PAIRED")!.status).toBe("not-met");
+    expect(bucketOf(r, "burner-isolation").ready).toBe(false);
+    expect(r.phase6ImplementationReady).toBe(false);
+  });
+
+  it("adopted specs alone (no session artifacts) still leave the other buckets not-ready", () => {
+    const r = buildPhase6PrerequisiteReportV2(adoptedSpecs());
+    expect(bucketOf(r, "kill-switch").ready).toBe(true);
+    expect(bucketOf(r, "secrets-policy").ready).toBe(true);
+    expect(bucketOf(r, "burner-isolation").ready).toBe(true);
+    expect(bucketOf(r, "artifact").ready).toBe(false);
+    expect(r.phase6ImplementationReady).toBe(false);
   });
 });
 

@@ -398,9 +398,12 @@ artifacts (policy v1/v2, safety gates v2, decision v2, run report v2, audit log,
 groups every prerequisite into explicit **readiness buckets**: `artifact`, `policy`, `safety`,
 `audit`, `operator`, `kill-switch`, `secrets-policy`, `burner-isolation`, `test`.
 
-- The kill-switch / secrets-policy / burner-isolation buckets are **deliberately not-met** until
-  their machine-readable spec artifacts exist (Sprints 53–56) — readiness is fail-closed, never
-  invented. Until then `phase6ImplementationReady` cannot become true.
+- The kill-switch / secrets-policy / burner-isolation buckets (Sprint 56) are driven by the actual
+  spec artifacts: `sniper.kill_switch.spec.v1`, `sniper.secrets.policy.v1`, and
+  `sniper.burner.isolation.spec.v1` (`--kill-switch` / `--secrets-policy` / `--burner-isolation`).
+  A missing, invalid, **weakened** (the spec validators refuse flipped safety literals), or
+  non-ADOPTED spec keeps its bucket not-met, and the burner spec must additionally be paired with a
+  kill-switch spec (`killSwitchSpecRef`). Readiness is fail-closed, never invented.
 - `phase6ImplementationReady` may become true ONLY in the sense "every prerequisite for beginning a
   **pure simulation** implementation is addressed". It is still not authorization.
 - HARD invariants, validated and source-locked: `phase6ImplementationStarted: false`,

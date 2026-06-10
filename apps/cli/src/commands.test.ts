@@ -8144,6 +8144,22 @@ describe("paperPhase6PrereqsReport (Sprint 40)", () => {
       expect(obj.buckets.find((b) => b.bucket === "policy")!.ready).toBe(true);
       // --fail-on-unmet exits 1 while not ready
       expect(paperPhase6PrereqsReport({ cwd, env: {} }, { schemaVersion: "v2", policyPath: policy, failOnUnmet: true }).exitCode).toBe(1);
+      // Sprint 56: ADOPTED spec artifacts meet their buckets through the CLI flags
+      expect(paperSniperKillSwitchSpecReport({ cwd, env: {} }, { inputPath: writeJson(cwd, "ks-cfg2.json", { readinessStatus: "adopted" }), outPath: "ks.json" }).exitCode).toBe(0);
+      expect(paperSniperSecretsPolicyReport({ cwd, env: {} }, { inputPath: writeJson(cwd, "sp-cfg2.json", { readinessStatus: "adopted" }), outPath: "sp.json" }).exitCode).toBe(0);
+      expect(paperSniperBurnerIsolationSpecReport({ cwd, env: {} }, { inputPath: writeJson(cwd, "bi-cfg2.json", { readinessStatus: "adopted", killSwitchSpecRef: "ks" }), outPath: "bi.json" }).exitCode).toBe(0);
+      const withSpecs = paperPhase6PrereqsReport(
+        { cwd, env: {} },
+        { schemaVersion: "v2", policyPath: policy, killSwitchPath: "ks.json", secretsPolicyPath: "sp.json", burnerIsolationPath: "bi.json", json: true },
+      );
+      const specObj = JSON.parse(withSpecs.text) as { buckets: { bucket: string; ready: boolean }[]; phase6ImplementationReady: boolean };
+      expect(specObj.buckets.find((b) => b.bucket === "kill-switch")!.ready).toBe(true);
+      expect(specObj.buckets.find((b) => b.bucket === "secrets-policy")!.ready).toBe(true);
+      expect(specObj.buckets.find((b) => b.bucket === "burner-isolation")!.ready).toBe(true);
+      // still not fully ready (artifact/safety/audit buckets missing) — and never authorization
+      expect(specObj.phase6ImplementationReady).toBe(false);
+      // spec flags refused on the v1 path
+      expect(paperPhase6PrereqsReport({ cwd, env: {} }, { killSwitchPath: "ks.json" }).exitCode).toBe(1);
     } finally {
       cleanup();
     }

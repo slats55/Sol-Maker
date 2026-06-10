@@ -1658,6 +1658,9 @@ program
   .option("--decisions <path>", "v2 only: decision report JSON (sniper.paper.decision.report.v2)")
   .option("--run-report <path>", "v2 only: run report JSON (sniper.run.report.v2)")
   .option("--audit <path>", "v2 only: audit log JSON (sniper.audit.log.v1)")
+  .option("--kill-switch <path>", "v2 only: kill-switch spec JSON (sniper.kill_switch.spec.v1; must be ADOPTED to meet its bucket)")
+  .option("--secrets-policy <path>", "v2 only: secrets policy JSON (sniper.secrets.policy.v1; must be ADOPTED to meet its bucket)")
+  .option("--burner-isolation <path>", "v2 only: burner isolation spec JSON (sniper.burner.isolation.spec.v1; must be ADOPTED and kill-switch-paired)")
   .option("--json", "emit the prerequisite report as stable JSON")
   .option("--out <path>", "write ONLY the prerequisite report JSON to this path (writes nothing if omitted)")
   .option("--force", "overwrite an existing --out file (refused by default)")
@@ -1672,6 +1675,9 @@ program
       decisions?: string;
       runReport?: string;
       audit?: string;
+      killSwitch?: string;
+      secretsPolicy?: string;
+      burnerIsolation?: string;
       json?: boolean;
       out?: string;
       force?: boolean;
@@ -1688,6 +1694,9 @@ program
           decisionsPath: opts.decisions,
           runReportPath: opts.runReport,
           auditPath: opts.audit,
+          killSwitchPath: opts.killSwitch,
+          secretsPolicyPath: opts.secretsPolicy,
+          burnerIsolationPath: opts.burnerIsolation,
           json: Boolean(opts.json),
           outPath: opts.out,
           force: Boolean(opts.force),

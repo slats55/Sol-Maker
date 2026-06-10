@@ -7,10 +7,12 @@
  * **readiness buckets**: artifact, policy, safety, audit, operator, kill-switch, secrets-policy,
  * burner-isolation, and test readiness.
  *
- * Three buckets — kill-switch, secrets-policy, and burner-isolation — are deliberately `not-met` in
- * this version: their machine-readable spec artifacts do not exist yet (Sprints 53–55 create them;
- * Sprint 56 wires them in). Until then `phase6ImplementationReady` CANNOT become true — readiness is
- * fail-closed, never invented.
+ * The kill-switch / secrets-policy / burner-isolation buckets (Sprint 56) are driven by the actual
+ * spec artifacts (`sniper.kill_switch.spec.v1` / `sniper.secrets.policy.v1` /
+ * `sniper.burner.isolation.spec.v1`): a MISSING spec keeps its bucket not-met, an INVALID or
+ * weakened spec keeps it not-met (the spec validators refuse weakened safety literals), and a spec
+ * that is not ADOPTED keeps it not-met. Readiness is fail-closed, never invented — and the burner
+ * spec must additionally be PAIRED with a kill-switch spec (`killSwitchSpecRef`).
  *
  * HARD invariants (validated, never anything else):
  *   - `phase6ImplementationStarted: false` — Phase 6 is not started.
@@ -52,6 +54,9 @@ import {
   SNIPER_SAFETY_GATES_REPORT_V2_SCHEMA_VERSION,
   type SniperSafetyGatesReportV2,
 } from "./safety-gates-v2.js";
+import { validateSniperKillSwitchSpec, type SniperKillSwitchSpec } from "./kill-switch-spec.js";
+import { validateSniperSecretsPolicy, type SniperSecretsPolicy } from "./secrets-policy.js";
+import { validateSniperBurnerIsolationSpec, type SniperBurnerIsolationSpec } from "./burner-isolation-spec.js";
 import type { Phase6PrereqStatus } from "./phase6-prereqs.js";
 
 /** Stable schema identifier for the v2 Phase 6 prerequisite report. Bump only on a breaking change. */
@@ -62,10 +67,10 @@ export const PHASE6_PREREQUISITE_REPORT_V2_BANNER = "PHASE 6 PREREQUISITE TRACKE
 
 /** Required disclaimer statements carried by every v2 report (stable order). */
 export const PHASE6_PREREQUISITE_REPORT_V2_DISCLAIMERS: readonly string[] = [
-  "PHASE 6 PREREQUISITE TRACKER V2 — explicit readiness buckets over the actual v2 artifacts (policy / safety gates v2 / decision v2 / run report v2 / audit log / session pack).",
+  "PHASE 6 PREREQUISITE TRACKER V2 — explicit readiness buckets over the actual v2 artifacts (policy / safety gates v2 / decision v2 / run report v2 / audit log / session pack / kill-switch spec / secrets policy / burner isolation spec).",
   "It is NOT authorization to start Phase 6: even when every bucket is ready, beginning Phase 6 requires an explicit human decision, never this report.",
   "phase6ImplementationReady may become true ONLY for a PURE SIMULATION implementation prerequisite check — never for live execution; phase7LiveTradingReady is ALWAYS false.",
-  "The kill-switch, secrets-policy, and burner-isolation buckets stay not-met until their machine-readable spec artifacts exist and are supplied — readiness is fail-closed, never invented.",
+  "A missing, invalid, weakened, or non-ADOPTED spec artifact keeps its readiness bucket not-met — readiness is fail-closed, never invented.",
   "Phase 6 (transaction planning/simulation) and Phase 7 (burner/live trading) are NOT started; this tracker implements NO transaction planning and carries no chain capability.",
   "Not a live result.",
   "Not a trade signal.",
@@ -138,6 +143,12 @@ export interface BuildPhase6PrerequisiteReportV2Input {
   runReport?: unknown;
   /** `sniper.audit.log.v1`. */
   auditLog?: unknown;
+  /** `sniper.kill_switch.spec.v1` (Sprint 56). */
+  killSwitchSpec?: unknown;
+  /** `sniper.secrets.policy.v1` (Sprint 56). */
+  secretsPolicy?: unknown;
+  /** `sniper.burner.isolation.spec.v1` (Sprint 56). */
+  burnerIsolationSpec?: unknown;
   /** Optional operator label echoed into the report (also drives the operator-labeled item). */
   operatorLabel?: string | null;
 }
@@ -222,8 +233,8 @@ const BUCKET_TITLES: Record<Phase6ReadinessBucket, string> = {
  * Build a deterministic {@link Phase6PrerequisiteReportV2}. Pure and non-mutating. Each supplied
  * artifact is strictly validated (an invalid or absent one keeps its items `not-met` with the error
  * surfaced — fail-closed, never a throw). The kill-switch / secrets-policy / burner-isolation
- * buckets are `not-met` by design in this version (their spec artifacts do not exist yet), so
- * `phase6ImplementationReady` cannot become true. The HARD invariants are constants:
+ * buckets are met only by ADOPTED, strictly-valid spec artifacts, and the burner spec must be
+ * paired with a kill-switch spec. The HARD invariants are constants:
  * `phase6ImplementationStarted=false`, `requiresExplicitHumanApproval=true`,
  * `phase7LiveTradingReady=false`, `neverAuthorizesLiveTrading=true`. Carries no wall-clock time.
  * Throws {@link Phase6PrerequisiteReportV2Error} only on a malformed input SHAPE.
@@ -238,6 +249,9 @@ export function buildPhase6PrerequisiteReportV2(
 
   const sessionPack = tryValidate(input.sessionPack, validateSniperSessionPack);
   const auditLog = tryValidate<SniperAuditLog>(input.auditLog, validateSniperAuditLog);
+  const killSwitchSpec = tryValidate<SniperKillSwitchSpec>(input.killSwitchSpec, validateSniperKillSwitchSpec);
+  const secretsPolicy = tryValidate<SniperSecretsPolicy>(input.secretsPolicy, validateSniperSecretsPolicy);
+  const burnerIsolationSpec = tryValidate<SniperBurnerIsolationSpec>(input.burnerIsolationSpec, validateSniperBurnerIsolationSpec);
   const decision = tryValidate<SniperPaperDecisionReportV2>(
     input.decision,
     (v) => {
@@ -320,31 +334,34 @@ export function buildPhase6PrerequisiteReportV2(
     item("NO_OPERATOR_BLOCKING", "No operator-blocking reasons", "operator", runReport.artifact !== null && runReport.artifact.operatorBlockingReasons.length === 0, SNIPER_RUN_REPORT_V2_SCHEMA_VERSION,
       "the run report lists no operator-blocking reason",
       runReport.artifact ? `${runReport.artifact.operatorBlockingReasons.length} operator-blocking reason(s) remain` : "no v2 run report to read"),
-    // --- kill-switch / secrets-policy / burner-isolation readiness (spec artifacts do not exist yet) ---
-    {
-      id: "KILL_SWITCH_SPEC_ARTIFACT",
-      title: "Machine-readable kill-switch spec",
-      bucket: "kill-switch",
-      status: "not-met",
-      source: "(not yet defined)",
-      reason: "the sniper.kill_switch.spec.v1 artifact does not exist yet — its design is documented in the boundary spec; readiness stays fail-closed until the artifact is created and supplied",
-    },
-    {
-      id: "SECRETS_POLICY_ARTIFACT",
-      title: "Machine-readable secrets policy",
-      bucket: "secrets-policy",
-      status: "not-met",
-      source: "(not yet defined)",
-      reason: "the sniper.secrets.policy.v1 artifact does not exist yet — its design is documented in the boundary spec; readiness stays fail-closed until the artifact is created and supplied",
-    },
-    {
-      id: "BURNER_ISOLATION_SPEC_ARTIFACT",
-      title: "Machine-readable burner isolation spec",
-      bucket: "burner-isolation",
-      status: "not-met",
-      source: "(not yet defined)",
-      reason: "the sniper.burner.isolation.spec.v1 artifact does not exist yet — its design is documented in the boundary spec; readiness stays fail-closed until the artifact is created and supplied",
-    },
+    // --- kill-switch / secrets-policy / burner-isolation readiness (Sprint 56: spec-artifact driven) ---
+    // Each spec item is met ONLY when the artifact is present, strictly valid (the spec validators
+    // refuse weakened safety literals), AND operator-ADOPTED. Fail-closed in every other state.
+    item("KILL_SWITCH_SPEC_ARTIFACT", "Machine-readable kill-switch spec (adopted)", "kill-switch",
+      killSwitchSpec.artifact !== null && killSwitchSpec.artifact.adopted, "sniper.kill_switch.spec.v1",
+      "an ADOPTED kill-switch spec is supplied and strictly valid",
+      killSwitchSpec.artifact !== null
+        ? `the kill-switch spec is "${killSwitchSpec.artifact.readinessStatus}" — supply an ADOPTED spec`
+        : absent("the kill-switch spec", killSwitchSpec.error, killSwitchSpec.present)),
+    item("SECRETS_POLICY_ARTIFACT", "Machine-readable secrets policy (adopted)", "secrets-policy",
+      secretsPolicy.artifact !== null && secretsPolicy.artifact.adopted, "sniper.secrets.policy.v1",
+      "an ADOPTED secrets policy is supplied and strictly valid (core rules intact)",
+      secretsPolicy.artifact !== null
+        ? `the secrets policy is "${secretsPolicy.artifact.readinessStatus}" — supply an ADOPTED policy`
+        : absent("the secrets policy", secretsPolicy.error, secretsPolicy.present)),
+    item("BURNER_ISOLATION_SPEC_ARTIFACT", "Machine-readable burner isolation spec (adopted)", "burner-isolation",
+      burnerIsolationSpec.artifact !== null && burnerIsolationSpec.artifact.adopted, "sniper.burner.isolation.spec.v1",
+      "an ADOPTED burner isolation spec is supplied and strictly valid (core principles intact)",
+      burnerIsolationSpec.artifact !== null
+        ? `the burner isolation spec is "${burnerIsolationSpec.artifact.readinessStatus}" — supply an ADOPTED spec`
+        : absent("the burner isolation spec", burnerIsolationSpec.error, burnerIsolationSpec.present)),
+    item("BURNER_KILL_SWITCH_PAIRED", "Burner spec paired with a kill-switch spec", "burner-isolation",
+      burnerIsolationSpec.artifact !== null && burnerIsolationSpec.artifact.killSwitchSpecRef !== null,
+      "sniper.burner.isolation.spec.v1#killSwitchSpecRef",
+      `the burner spec references kill-switch spec "${burnerIsolationSpec.artifact?.killSwitchSpecRef ?? ""}"`.trim(),
+      burnerIsolationSpec.artifact !== null
+        ? "the burner spec has no killSwitchSpecRef — pair it with an adopted kill-switch spec"
+        : "no valid burner isolation spec to read the pairing from"),
     // --- test readiness (design-documented: the per-module safety regression suites ship in-repo) ---
     {
       id: "SAFETY_REGRESSION_SUITE",
@@ -378,7 +395,7 @@ export function buildPhase6PrerequisiteReportV2(
   const notes = [
     `${prerequisites.length} prerequisite(s) across ${buckets.length} bucket(s); ${notMet.length} not met; phase6ImplementationReady=${phase6ImplementationReady}.`,
     "phase6ImplementationReady speaks ONLY to a pure simulation implementation prerequisite check — never live execution, and never authorization.",
-    "The kill-switch / secrets-policy / burner-isolation buckets stay not-met until their machine-readable spec artifacts exist (Sprints 53–56).",
+    "The kill-switch / secrets-policy / burner-isolation buckets are met only by ADOPTED, strictly-valid spec artifacts — a missing, invalid, weakened, or draft spec keeps them not-met.",
   ];
 
   return {

@@ -5752,6 +5752,12 @@ export interface PaperPhase6PrereqsCommandOptions {
   runReportPath?: string;
   /** v2 only: audit log JSON path (sniper.audit.log.v1). */
   auditPath?: string;
+  /** v2 only: kill-switch spec JSON path (sniper.kill_switch.spec.v1). */
+  killSwitchPath?: string;
+  /** v2 only: secrets policy JSON path (sniper.secrets.policy.v1). */
+  secretsPolicyPath?: string;
+  /** v2 only: burner isolation spec JSON path (sniper.burner.isolation.spec.v1). */
+  burnerIsolationPath?: string;
 }
 
 /**
@@ -5791,6 +5797,9 @@ export function paperPhase6PrereqsReport(
       decision: readOptional(opts.decisionsPath, "decision report"),
       runReport: readOptional(opts.runReportPath, "run report"),
       auditLog: readOptional(opts.auditPath, "audit log"),
+      killSwitchSpec: readOptional(opts.killSwitchPath, "kill-switch spec"),
+      secretsPolicy: readOptional(opts.secretsPolicyPath, "secrets policy"),
+      burnerIsolationSpec: readOptional(opts.burnerIsolationPath, "burner isolation spec"),
     };
     for (const r of Object.values(reads)) {
       if (!r.ok) return { text: r.text, exitCode: 1 };
@@ -5805,6 +5814,9 @@ export function paperPhase6PrereqsReport(
         decision: v("decision"),
         runReport: v("runReport"),
         auditLog: v("auditLog"),
+        killSwitchSpec: v("killSwitchSpec"),
+        secretsPolicy: v("secretsPolicy"),
+        burnerIsolationSpec: v("burnerIsolationSpec"),
         operatorLabel: opts.operatorLabel ?? null,
       });
     } catch (err) {
@@ -5828,7 +5840,10 @@ export function paperPhase6PrereqsReport(
     return { text: formatPhase6PrerequisiteReportV2(reportV2, { label: opts.operatorLabel ?? undefined }), exitCode };
   }
 
-  if (opts.policyPath || opts.gatesPath || opts.decisionsPath || opts.runReportPath || opts.auditPath) {
+  if (
+    opts.policyPath || opts.gatesPath || opts.decisionsPath || opts.runReportPath || opts.auditPath ||
+    opts.killSwitchPath || opts.secretsPolicyPath || opts.burnerIsolationPath
+  ) {
     return { text: "Refusing: the per-artifact flags require --schema-version v2.", exitCode: 1 };
   }
   if (!opts.sessionPath) return { text: "Refusing: --session <path> is required.", exitCode: 1 };
