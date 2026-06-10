@@ -317,6 +317,25 @@ export type {
 } from "./safety-gates.js";
 
 export {
+  buildSniperSafetyGatesReportV2,
+  validateSniperSafetyGatesReportV2,
+  formatSniperSafetyGatesReportV2,
+  SniperSafetyGatesReportV2Error,
+  SNIPER_SAFETY_GATES_REPORT_V2_SCHEMA_VERSION,
+  SNIPER_SAFETY_GATES_REPORT_V2_BANNER,
+  SNIPER_SAFETY_GATES_REPORT_V2_DISCLAIMERS,
+} from "./safety-gates-v2.js";
+
+export type {
+  SniperGateArtifactState,
+  SniperGateArtifactsChecked,
+  SniperPolicyDerivedAllowances,
+  BuildSniperSafetyGatesReportV2Input,
+  SniperSafetyGatesReportV2,
+  FormatSniperSafetyGatesReportV2Options,
+} from "./safety-gates-v2.js";
+
+export {
   buildPhase6PrerequisiteReport,
   validatePhase6PrerequisiteReport,
   formatPhase6PrerequisiteReport,

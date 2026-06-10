@@ -391,6 +391,40 @@ always `blocked`. It **describes** the sequence only — it executes no stage, r
 no network call, and touches no wallet. The full operator walkthrough is in
 [`SNIPER_RUNBOOK.md`](SNIPER_RUNBOOK.md).
 
+## Safety gates v2 — `sniper.safety.gates.report.v2` (Sprint 51)
+
+The v1 gates check a session pack's coverage flags; v2 checks the **artifacts themselves** — each
+strictly validated in place — and speaks the v2 vocabulary. Two deliberate design points:
+
+1. **The policy is the single source of allowances.** No ad-hoc `--allow-*` flags: a concern is
+   tolerated only when the governing policy artifact says so (`allowPaperEnter` ⇒ paper-enters warn
+   instead of fail; `failClosedOnUnknownPreflight=false` ⇒ unknowns warn). No policy ⇒ nothing is
+   tolerated ⇒ fail-closed.
+2. **It can never authorize Phase 6.** The report carries a literal, validated
+   `neverAuthorizesPhase6: true`, and the `PHASE6_NOT_AUTO_AUTHORIZED` gate is permanently `skip` —
+   the validator refuses a report where it was tampered to anything else.
+
+Gates: artifact validity (candidate list / preflight input / preflight / policy / **decision v2** /
+**run report v2** / session pack / audit log — a v1 decision FAILS the decision gate because the
+code-aware checks need v2), `NO_UNGOVERNED_BLOCKING_CODES` (blocking codes with no governing policy
+fail), code-aware `NO_UNKNOWNS` (a fail-closed reject *resolves* an unknown; a still-watched one does
+not), `NO_PAPER_ENTER`, `RISK_PRESENT_WHEN_REQUIRED` / `INSPECTION_PRESENT_WHEN_REQUIRED` (driven by
+policy v2 `riskLimits`), `PREFLIGHT_INPUT_VALID` (required when the policy demands the artifact), and
+the run report's operator-blocking reasons. `ready` = no required gate failed — and ready is still
+local/paper readiness only.
+
+### CLI
+
+```bash
+pnpm soulmaker paper:sniper:safety:gates --schema-version v2 \
+  --candidates c.json --preflight pf.json --preflight-input pf-input.json \
+  --policy policy-v2.json --decisions decision-v2.json --run-report run-v2.json \
+  --session pack.json --audit audit.json
+```
+
+Exits **1 when not ready** (unchanged fail-closed behavior). The `--allow-*` flags are v1-only and
+refused on the v2 path; the per-artifact flags are v2-only and refused on the v1 path.
+
 ## Run report v2 — `sniper.run.report.v2` (Sprint 50)
 
 V2 = the v1 run report plus the machine-readable layers the v2 pipeline produces. The v1 core join

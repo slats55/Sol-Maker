@@ -84,6 +84,8 @@ import {
   formatSniperSessionPack,
   buildSniperSafetyGatesReport,
   formatSniperSafetyGatesReport,
+  buildSniperSafetyGatesReportV2,
+  formatSniperSafetyGatesReportV2,
   buildPhase6PrerequisiteReport,
   formatPhase6PrerequisiteReport,
   buildSimulationIntentPlan,
@@ -109,6 +111,7 @@ import {
   type SniperSessionPack,
   type SniperSessionPackArtifactInput,
   type SniperSafetyGatesReport,
+  type SniperSafetyGatesReportV2,
   type Phase6PrerequisiteReport,
   type SimulationIntentPlan,
   type SimulationIntentPlanDiff,
@@ -5255,7 +5258,7 @@ export function paperSniperSessionPackReport(
 // ---------------------------------------------------------------------------
 
 export interface PaperSniperSafetyGatesCommandOptions {
-  /** Session pack JSON path (sniper.session.pack.v1). Required. */
+  /** Session pack JSON path (sniper.session.pack.v1). Required on the v1 path; optional artifact on v2. */
   sessionPath?: string;
   /** Optional operator label echoed into the report. */
   operatorLabel?: string;
@@ -5269,6 +5272,22 @@ export interface PaperSniperSafetyGatesCommandOptions {
   force?: boolean;
   /** Also exit non-zero when any gate warned (even when ready). */
   failOnWarning?: boolean;
+  /** Gates schema to produce: "v1" (default; session-pack based) or "v2" (artifact-direct, code-aware). */
+  schemaVersion?: string;
+  /** v2 only: candidate list JSON path. */
+  candidatesPath?: string;
+  /** v2 only: preflight input artifact JSON path (sniper.preflight.input.v1). */
+  preflightInputPath?: string;
+  /** v2 only: preflight report JSON path (sniper.token.preflight.report.v1). */
+  preflightPath?: string;
+  /** v2 only: policy config JSON path (sniper.policy.config.v1|v2). */
+  policyPath?: string;
+  /** v2 only: decision report JSON path (must be sniper.paper.decision.report.v2). */
+  decisionsPath?: string;
+  /** v2 only: run report JSON path (must be sniper.run.report.v2). */
+  runReportPath?: string;
+  /** v2 only: audit log JSON path (sniper.audit.log.v1). */
+  auditPath?: string;
 }
 
 /**
@@ -5286,7 +5305,101 @@ export function paperSniperSafetyGatesReport(
   ctx: CommandContext = {},
   opts: PaperSniperSafetyGatesCommandOptions = {},
 ): CliReport {
+  const schemaVersion = opts.schemaVersion ?? "v1";
+  if (schemaVersion !== "v1" && schemaVersion !== "v2") {
+    return { text: 'Refusing: --schema-version must be "v1" or "v2".', exitCode: 1 };
+  }
+
+  // --- v2: artifact-direct, code-aware, policy-as-the-only-allowance gates ---
+  if (schemaVersion === "v2") {
+    if (opts.allowUnknown || opts.allowRiskBlock || opts.allowPaperEnter) {
+      return {
+        text: "Refusing: the --allow-* flags are v1-only — in v2 the POLICY is the single source of allowances.",
+        exitCode: 1,
+      };
+    }
+    const readOptional = (path: string | undefined, label: string): { ok: true; value: unknown } | { ok: false; text: string } => {
+      if (!path) return { ok: true, value: undefined };
+      try {
+        return { ok: true, value: readJsonValue(ctx, path, label) };
+      } catch (err) {
+        return { ok: false, text: redactString(`Refusing: ${(err as Error).message}`) };
+      }
+    };
+    // The candidate list gets the SAME raw-input normalization every sibling command applies
+    // (a canonical list passes through unchanged; everything else stays strictly validated).
+    let candidateListValue: unknown;
+    if (opts.candidatesPath) {
+      let candsRaw: unknown;
+      try {
+        candsRaw = readJsonValue(ctx, opts.candidatesPath, "sniper candidate list");
+      } catch (err) {
+        return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+      }
+      if (isPlainObject(candsRaw) && (candsRaw.schemaVersion === undefined || candsRaw.schemaVersion === SNIPER_CANDIDATE_LIST_SCHEMA_VERSION)) {
+        try {
+          candidateListValue = normalizeSniperCandidateList({
+            sourceLabel: typeof candsRaw.sourceLabel === "string" ? candsRaw.sourceLabel : opts.candidatesPath,
+            candidates: (candsRaw.candidates ?? []) as never,
+          });
+        } catch {
+          candidateListValue = candsRaw; // let the gate report the strict-validation failure
+        }
+      } else {
+        candidateListValue = candsRaw;
+      }
+    }
+    const reads = {
+      preflightInput: readOptional(opts.preflightInputPath, "preflight input"),
+      preflight: readOptional(opts.preflightPath, "preflight report"),
+      policy: readOptional(opts.policyPath, "policy config"),
+      decision: readOptional(opts.decisionsPath, "decision report"),
+      runReport: readOptional(opts.runReportPath, "run report"),
+      sessionPack: readOptional(opts.sessionPath, "session pack"),
+      auditLog: readOptional(opts.auditPath, "audit log"),
+    };
+    for (const r of Object.values(reads)) {
+      if (!r.ok) return { text: r.text, exitCode: 1 };
+    }
+    const v = <K extends keyof typeof reads>(k: K): unknown => (reads[k] as { ok: true; value: unknown }).value;
+    let reportV2: SniperSafetyGatesReportV2;
+    try {
+      reportV2 = buildSniperSafetyGatesReportV2({
+        candidateList: candidateListValue,
+        preflightInput: v("preflightInput"),
+        preflight: v("preflight"),
+        policy: v("policy"),
+        decision: v("decision"),
+        runReport: v("runReport"),
+        sessionPack: v("sessionPack"),
+        auditLog: v("auditLog"),
+        operatorLabel: opts.operatorLabel ?? null,
+      });
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (opts.outPath) {
+      const resolved = resolvePath(ctx, opts.outPath);
+      if (!opts.force && existsSync(resolved)) {
+        return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+      }
+      try {
+        writeFileSync(resolved, JSON.stringify(redactValue(reportV2), null, 2) + "\n");
+      } catch {
+        return { text: redactString(`Refusing: cannot write safety gates report at ${resolved}`), exitCode: 1 };
+      }
+    }
+    const exitCode = !reportV2.ready || (opts.failOnWarning && reportV2.hasWarning) ? 1 : 0;
+    if (opts.json) {
+      return { text: JSON.stringify(redactValue(reportV2), null, 2), exitCode };
+    }
+    return { text: formatSniperSafetyGatesReportV2(reportV2, { label: opts.operatorLabel ?? undefined }), exitCode };
+  }
+
   if (!opts.sessionPath) return { text: "Refusing: --session <path> is required.", exitCode: 1 };
+  if (opts.candidatesPath || opts.preflightInputPath || opts.preflightPath || opts.policyPath || opts.decisionsPath || opts.runReportPath || opts.auditPath) {
+    return { text: "Refusing: the per-artifact flags require --schema-version v2.", exitCode: 1 };
+  }
 
   let value: unknown;
   try {

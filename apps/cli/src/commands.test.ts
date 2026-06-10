@@ -7862,6 +7862,49 @@ describe("paperSniperSafetyGatesReport (Sprint 39)", () => {
     return "pack.json";
   }
 
+  it("--schema-version v2 (Sprint 51): artifact-direct gates; policy is the only allowance source", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      sessionPackFile(cwd); // writes cands/pf/dec/run/audit/pack files
+      // a v2 decision + v2 run report + a governing research-only policy
+      const policy = writeJson(cwd, "policy-v2.json", JSON.parse(paperSniperPolicyValidateReport({ cwd, env: {} }, { inputPath: writeJson(cwd, "rawpol.json", { policyLabel: "gov", policyMode: "research-only" }), schemaVersion: "v2", json: true }).text));
+      expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: "cands.json", preflightPath: "pf.json", policyPath: policy, schemaVersion: "v2", outPath: "dec-v2.json" }).exitCode).toBe(0);
+      expect(paperSniperReportReport({ cwd, env: {} }, { candidatesPath: "cands.json", preflightPath: "pf.json", decisionsPath: "dec-v2.json", policyPath: policy, schemaVersion: "v2", outPath: "run-v2.json" }).exitCode).toBe(0);
+      // the --allow-* flags are v1-only on the v2 path
+      expect(paperSniperSafetyGatesReport({ cwd, env: {} }, { schemaVersion: "v2", allowPaperEnter: true }).exitCode).toBe(1);
+      // full v2 gates: READY (research-only policy governs the exclusions; no paper-enter possible)
+      const r = paperSniperSafetyGatesReport(
+        { cwd, env: {} },
+        {
+          schemaVersion: "v2",
+          candidatesPath: "cands.json",
+          preflightPath: "pf.json",
+          policyPath: policy,
+          decisionsPath: "dec-v2.json",
+          runReportPath: "run-v2.json",
+          sessionPath: "pack.json",
+          auditPath: "audit.json",
+          json: true,
+        },
+      );
+      const obj = JSON.parse(r.text) as { schemaVersion: string; ready: boolean; neverAuthorizesPhase6: boolean };
+      expect(obj.schemaVersion).toBe("sniper.safety.gates.report.v2");
+      expect(obj.neverAuthorizesPhase6).toBe(true);
+      expect(obj.ready).toBe(true);
+      expect(r.exitCode).toBe(0);
+      // a v1 decision on the v2 path: gate fails, exit 1 (fail-closed)
+      const v1 = paperSniperSafetyGatesReport({ cwd, env: {} }, { schemaVersion: "v2", candidatesPath: "cands.json", decisionsPath: "dec.json", sessionPath: "pack.json", auditPath: "audit.json", json: true });
+      expect(v1.exitCode).toBe(1);
+      const v1Obj = JSON.parse(v1.text) as { ready: boolean; gates: { id: string; status: string }[] };
+      expect(v1Obj.ready).toBe(false);
+      expect(v1Obj.gates.find((g) => g.id === "DECISION_V2_VALID")!.status).toBe("fail");
+      // per-artifact flags refused on the v1 path
+      expect(paperSniperSafetyGatesReport({ cwd, env: {} }, { sessionPath: "pack.json", candidatesPath: "cands.json" }).exitCode).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
   it("refuses when --session is missing", () => {
     expect(paperSniperSafetyGatesReport({}, {}).text).toMatch(/^Refusing: --session/);
     expect(paperSniperSafetyGatesReport({}, {}).exitCode).toBe(1);

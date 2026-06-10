@@ -1493,9 +1493,17 @@ program
   )
   .option("--session <path>", "session pack JSON (sniper.session.pack.v1)")
   .option("--operator <label>", "operator label echoed into the report")
-  .option("--allow-unknown", "allow unknown classifications (downgrades that gate's fail to a warn)")
-  .option("--allow-risk-block", "allow risk blocks (downgrades that gate's fail to a warn)")
-  .option("--allow-paper-enter", "allow SIMULATED paper-enters (downgrades that gate's fail to a warn)")
+  .option("--allow-unknown", "v1 only: allow unknown classifications (downgrades that gate's fail to a warn)")
+  .option("--allow-risk-block", "v1 only: allow risk blocks (downgrades that gate's fail to a warn)")
+  .option("--allow-paper-enter", "v1 only: allow SIMULATED paper-enters (downgrades that gate's fail to a warn)")
+  .option("--schema-version <version>", "gates schema: v1 (default; session-pack based) or v2 (artifact-direct, code-aware; the POLICY is the only allowance source)")
+  .option("--candidates <path>", "v2 only: candidate list JSON")
+  .option("--preflight-input <path>", "v2 only: preflight input artifact JSON (sniper.preflight.input.v1)")
+  .option("--preflight <path>", "v2 only: preflight report JSON (sniper.token.preflight.report.v1)")
+  .option("--policy <path>", "v2 only: policy config JSON (sniper.policy.config.v1|v2)")
+  .option("--decisions <path>", "v2 only: decision report JSON (must be sniper.paper.decision.report.v2)")
+  .option("--run-report <path>", "v2 only: run report JSON (must be sniper.run.report.v2)")
+  .option("--audit <path>", "v2 only: audit log JSON (sniper.audit.log.v1)")
   .option("--json", "emit the safety gates report as stable JSON")
   .option("--out <path>", "write ONLY the gates report JSON to this path (writes nothing if omitted)")
   .option("--force", "overwrite an existing --out file (refused by default)")
@@ -1507,6 +1515,14 @@ program
       allowUnknown?: boolean;
       allowRiskBlock?: boolean;
       allowPaperEnter?: boolean;
+      schemaVersion?: string;
+      candidates?: string;
+      preflightInput?: string;
+      preflight?: string;
+      policy?: string;
+      decisions?: string;
+      runReport?: string;
+      audit?: string;
       json?: boolean;
       out?: string;
       force?: boolean;
@@ -1520,6 +1536,14 @@ program
           allowUnknown: Boolean(opts.allowUnknown),
           allowRiskBlock: Boolean(opts.allowRiskBlock),
           allowPaperEnter: Boolean(opts.allowPaperEnter),
+          schemaVersion: opts.schemaVersion,
+          candidatesPath: opts.candidates,
+          preflightInputPath: opts.preflightInput,
+          preflightPath: opts.preflight,
+          policyPath: opts.policy,
+          decisionsPath: opts.decisions,
+          runReportPath: opts.runReport,
+          auditPath: opts.audit,
           json: Boolean(opts.json),
           outPath: opts.out,
           force: Boolean(opts.force),
