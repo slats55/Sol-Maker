@@ -813,15 +813,62 @@ validated literal locks: `neverAuthorizesLiveTrading` / `neverSigns` / `neverSen
 - ✅ **(S70) Security hardening** — CLI secret-echo backstops, hidden-dangerous-flag registration
   scan, security review invariants 20–38.
 
+### The Phase 6 diff/handoff wave (Sprints 71–82) ✅
+
+S71 shipped the S61–S70 ledger + continuation pack; S72 the CLI flag-level drift validator
+(`paper:simulation:*` flags pinned exactly). The 2026-06-10 continuation run (S73–S82) closed the
+remaining safe Phase 6 gaps:
+
+- ✅ **(S73) Simulation diff chain** — `simulation.intent.plan.diff.v2` + `simulation.result.diff.v1`:
+  structured-field-only comparisons of two strictly-validated artifacts (invalid/tampered/
+  wrong-schema sides refuse outright); 18 stable `simulation-diff-*` reason codes in a new `diff`
+  category; CLI `paper:simulation:diff:plan` / `paper:simulation:diff:result` (`--base`/`--next`,
+  `--fail-on-diff`, no-write-without-`--out`).
+- ✅ **(S74) Sniper run-report-v2 diff** — `sniper.run.report.diff.v2`: the UNCHANGED v1 differ
+  computes the core over exact v1 views; the v2 layers (policy visibility + structured mismatch,
+  preflight-input coverage, unresolved unknowns, operator-blocking reasons VERBATIM, rollup count
+  deltas, per-candidate code trails) compared structurally. `paper:sniper:diff:report` gains
+  `--schema-version v2` + `--fail-on-new-operator-blocking`.
+- ✅ **(S75) `phase6.simulation.handoff.pack.v1`** + `paper:simulation:handoff` — the
+  simulation-aware session handoff over ELEVEN artifacts (nine audited roles + audit + readiness):
+  per-artifact validation + verbatim flat summaries, missing artifacts CLASSIFIED (never
+  invented), chain blocking conditions + readiness verdict carried verbatim, one deterministic
+  next safe action, and a validated literal-false `phase7LiveTradingReady` on the pack itself.
+- ✅ **(S76) Operator output quality** — every simulation formatter prints the shared
+  `SIMULATION_OPERATOR_SAFETY_LINE` + an artifact-identity line from ONE constant; a dedicated
+  suite holds all seven formatters (good AND degraded states) to required/forbidden-language,
+  readability, never-implies-live, and no-secret-echo bars.
+- ✅ **(S77) Decision tally hardening** — BOTH decision-report validators (v1 + v2) recompute the
+  five per-decision tallies and three verdict booleans from the verbatim entries; a corrupted
+  `paperEnterCount` refuses, fails the phase6 audit, and blocks the intent plan downstream.
+- ✅ **(S78) Full-chain e2e** — the extended fixture chain runs plan → result → validate → audit →
+  readiness → self-pair diffs → handoff through the real CLI commands: byte determinism across all
+  ten files, overwrite refusal/`--force` on the new outputs, kill-switch STOP propagating into diff
+  findings and handoff blocking codes, lock-flipped readiness inputs never trusted.
+- ✅ **(S79) Dry-run boundary DESIGN** — [`PHASE6_DRY_RUN_BOUNDARY.md`](PHASE6_DRY_RUN_BOUNDARY.md):
+  design-only spec (pinned to code by a test). Honest finding: signing is NOT the technical
+  barrier (`simulateTransaction` accepts unsigned messages with `sigVerify: false`); the barriers
+  are unresolved route/amount data, the deliberate absence of transaction construction, and the
+  offline package boundary. Authorizes nothing.
+- ✅ **(S80) Readiness recalibration** — the evidence bar grew from five to TEN areas (the S73–S79
+  capabilities included); an artifact built against the old bar re-validates as INVALID
+  (fail-closed, never silently trusted).
+- ✅ **(S81) Security/scope hardening** — production module list PINNED, dangerous-flag scan over
+  the whole sniper/phase6/simulation lane, secret-echo refusals for the new commands, security
+  review invariants 39–47, full changed-file scope audit (no UI/Rust/Chrome/live-wallet/solana
+  lane touched).
+- ✅ **(S82) This ledger + the refreshed continuation pack.**
+
 **Still honestly missing from Phase 6 (future, in order):**
 
-- ⬜ A real `simulateTransaction` dry-run — requires a separately-reviewed transaction-construction
-  boundary that does not exist and was not authorized; until then the adapter reports UNAVAILABLE.
-- ⬜ A v2 diff chain for the simulation artifacts (plan-diff / result-diff) and a sniper
-  run-report-v2 diff.
-- ⬜ A simulation-aware session pack (v3) for operator handoff bundles.
-- ⬜ A CLI flag-level drift validator (commands are pinned and flags are scanned for dangerous
-  names, but flags are not yet doc-pinned).
+- ⬜ A real `simulateTransaction` dry-run — the boundary is now DESIGNED
+  ([`PHASE6_DRY_RUN_BOUNDARY.md`](PHASE6_DRY_RUN_BOUNDARY.md)) but implementation remains
+  unauthorized and requires: a validated route-resolution artifact (schema not yet designed), a
+  new separately-reviewed transaction-construction package behind the existing adapter contract,
+  and a fresh explicit authorization. Until then the adapter reports UNAVAILABLE, honestly.
+- ⬜ Real (non-fixture) operator dress rehearsals: the chain is exercised end-to-end by fixtures;
+  an operator-driven session over real candidate intake (still paper-only, still read-only RPC for
+  inspection) would evidence the workflow beyond CI.
 
 ## Phase 7 — Burner-wallet live mode ⬜ (NOT started)
 
