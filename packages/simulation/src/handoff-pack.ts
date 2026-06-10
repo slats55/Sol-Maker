@@ -463,8 +463,9 @@ function validateArtifactState(value: unknown, where: string): Phase6HandoffArti
  * Strictly validate a value as a {@link Phase6SimulationHandoffPackV1} and return it narrowed.
  * Enforces the literal safety locks (including the always-false `phase7LiveTradingReady`), the
  * full stable role list, per-artifact state consistency (summary ⇔ valid), the recomputed
- * role lists / counts / completeness, known-code blocking conditions, the verbatim-readiness
- * consistency, and the recomputed deterministic next safe action. Throws
+ * role lists / counts / completeness, known-code blocking conditions (including the recomputable
+ * lower bound: zero blocking codes are refused while an embedded valid summary carries blocking
+ * state), the verbatim-readiness consistency, and the recomputed deterministic next safe action. Throws
  * {@link Phase6SimulationHandoffPackV1Error} (or a SimulationSafetyError for a flipped lock) on
  * the first problem. Pure.
  */
@@ -533,6 +534,27 @@ export function validatePhase6SimulationHandoffPackV1(value: unknown): Phase6Sim
   }
   if (value.hasBlockingConditions !== ((value.chainBlockingCodes as unknown[]).length > 0)) {
     throw new Phase6SimulationHandoffPackV1Error("phase6 handoff pack.hasBlockingConditions must mirror chainBlockingCodes");
+  }
+  // The exact code set is not recomputable from flat summaries, but a LOWER BOUND is: every
+  // valid source artifact enforces its own blocked ⇔ codes-present consistency, so a pack whose
+  // embedded summaries carry blocking state can never honestly carry zero blocking codes.
+  const summaryOf = (role: Phase6HandoffRole): Phase6HandoffSummary | null => {
+    const s = artifacts[PHASE6_HANDOFF_ROLES.indexOf(role)]!;
+    return s.valid === true ? s.summary : null;
+  };
+  const planSummary = summaryOf("intent-plan");
+  const resultSummary = summaryOf("simulation-result");
+  const auditSummary = summaryOf("audit-report");
+  const readinessSummary = summaryOf("readiness-report");
+  const summarySignalsBlocking =
+    planSummary?.blocked === true ||
+    resultSummary?.resultStatus === "blocked" ||
+    (typeof auditSummary?.chainConditionCount === "number" && auditSummary.chainConditionCount > 0) ||
+    (typeof readinessSummary?.blockingCount === "number" && readinessSummary.blockingCount > 0);
+  if (summarySignalsBlocking && (value.chainBlockingCodes as unknown[]).length === 0) {
+    throw new Phase6SimulationHandoffPackV1Error(
+      "phase6 handoff pack.chainBlockingCodes cannot be empty while an embedded valid artifact summary carries blocking state",
+    );
   }
   if (!Array.isArray(value.operatorBlockingReasons) || (value.operatorBlockingReasons as unknown[]).some((x) => typeof x !== "string")) {
     throw new Phase6SimulationHandoffPackV1Error("phase6 handoff pack.operatorBlockingReasons must be an array of strings");

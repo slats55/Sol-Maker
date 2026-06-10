@@ -223,6 +223,17 @@ describe("validatePhase6SimulationHandoffPackV1 — backstop", () => {
     expect(() => validatePhase6SimulationHandoffPackV1(p5)).toThrow(/hasBlockingConditions/);
   });
 
+  it("refuses stripped blocking codes while an embedded valid summary still carries blocking state", () => {
+    // Tamper BOTH sides of the mirror so the hasBlockingConditions check alone cannot catch it:
+    // the pack now claims a condition-free chain, but its own audit summary (chainConditionCount)
+    // and the prereqs-driven plan codes say otherwise. The summary-derived lower bound refuses it.
+    const pack = clone(buildPhase6SimulationHandoffPackV1(fullInput()));
+    expect(pack.chainBlockingCodes.length).toBeGreaterThan(0);
+    (pack as { chainBlockingCodes: string[] }).chainBlockingCodes = [];
+    (pack as { hasBlockingConditions: boolean }).hasBlockingConditions = false;
+    expect(() => validatePhase6SimulationHandoffPackV1(pack)).toThrow(/cannot be empty while an embedded valid artifact summary/);
+  });
+
   it("refuses a summary on an invalid/missing artifact (state is never invented)", () => {
     const pack = clone(buildPhase6SimulationHandoffPackV1(fullInput()));
     const input = fullInput();
