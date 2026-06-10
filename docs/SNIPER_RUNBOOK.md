@@ -113,6 +113,16 @@ pnpm soulmaker paper:simulation:diff:plan   --base plan-old.json   --next plan.j
 pnpm soulmaker paper:simulation:diff:result --base result-old.json --next result.json --out result-diff.json
 # CI: exit non-zero on ANY structured change:
 pnpm soulmaker paper:simulation:diff:plan --base plan-old.json --next plan.json --fail-on-diff
+
+# 7) Hand the WHOLE session to the next operator/session (eleven artifacts, each strictly
+#    validated and summarized verbatim; a missing artifact is CLASSIFIED, never invented):
+pnpm soulmaker paper:simulation:handoff \
+  --decisions dec2.json --run-report run2.json --gates gates2.json --prereqs prereqs2.json \
+  --kill-switch ks.json --secrets-policy sp.json --burner-isolation bi.json \
+  --intent-plan plan.json --simulation-result result.json \
+  --audit audit.json --readiness readiness.json \
+  --operator you --pack-label session-01 --out handoff.json
+# CI gates: --fail-on-incomplete / --fail-on-blocking / --fail-on-not-ready
 ```
 
 What to expect, honestly:
@@ -135,6 +145,10 @@ What to expect, honestly:
   membership and per-field resolution changes (plan), and entry status / adapter-outcome changes
   (result). An identical pair reports `identical` and exits 0; `--fail-on-diff` is the CI gate.
   Side labels are metadata and are not compared.
+- The handoff pack summarizes every artifact from VERBATIM structured fields, classifies missing
+  artifacts as missing (state is never invented), carries the chain's blocking conditions and the
+  readiness verdict verbatim, derives one deterministic next safe action, and pins
+  `phase7LiveTradingReady` to a literal false the validator refuses to see flipped.
 - A simulation result is **never** an execution, a trade, chain inclusion, or live readiness.
   Phase 7 (live/burner trading) remains not started and unauthorized.
 

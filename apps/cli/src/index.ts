@@ -66,6 +66,7 @@ import {
   paperSimulationReadinessReport,
   paperSimulationDiffPlanReport,
   paperSimulationDiffResultReport,
+  paperSimulationHandoffReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1981,6 +1982,66 @@ program
           json: Boolean(opts.json),
           outPath: opts.out,
           force: Boolean(opts.force),
+          failOnNotReady: Boolean(opts.failOnNotReady),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:simulation:handoff")
+  .description(
+    "Build a `phase6.simulation.handoff.pack.v1` — the simulation-aware SESSION HANDOFF over eleven chain artifacts (decision v2, run report v2, safety gates v2, prereqs v2, the three governance specs, the simulation intent plan v2, the simulation result v1, the phase6 audit report, the phase6 readiness report). Each artifact is strictly validated in place and summarized from VERBATIM structured fields; a MISSING artifact is classified as missing — state is never invented. The chain's blocking conditions and the readiness verdict are carried verbatim, and phase7LiveTradingReady is a LITERAL false the validator refuses to see flipped — a handoff pack can never claim or authorize live trading. Reads only the named files, writes nothing unless --out. No network, no wallet",
+  )
+  .option("--decisions <path>", "v2 decision report JSON")
+  .option("--run-report <path>", "v2 run report JSON")
+  .option("--gates <path>", "v2 safety gates report JSON")
+  .option("--prereqs <path>", "v2 phase6 prerequisite report JSON")
+  .option("--kill-switch <path>", "kill-switch spec JSON")
+  .option("--secrets-policy <path>", "secrets policy JSON")
+  .option("--burner-isolation <path>", "burner isolation spec JSON")
+  .option("--intent-plan <path>", "simulation intent plan JSON (simulation.intent.plan.v2)")
+  .option("--simulation-result <path>", "simulation result JSON (simulation.result.v1)")
+  .option("--audit <path>", "phase6 audit report JSON (phase6.audit.report.v1)")
+  .option("--readiness <path>", "phase6 readiness report JSON (phase6.simulation.readiness.report.v1)")
+  .option("--operator <label>", "operator label echoed into the pack")
+  .option("--pack-label <label>", "pack label echoed into the pack")
+  .option("--json", "emit the handoff pack as stable JSON")
+  .option("--out <path>", "write ONLY the pack JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-incomplete", "exit non-zero when the pack is incomplete (any artifact missing or invalid)")
+  .option("--fail-on-blocking", "exit non-zero when the chain carries any blocking condition")
+  .option("--fail-on-not-ready", "exit non-zero unless the verbatim readiness verdict is true (missing counts as NOT ready)")
+  .action(
+    (opts: {
+      decisions?: string; runReport?: string; gates?: string; prereqs?: string; killSwitch?: string;
+      secretsPolicy?: string; burnerIsolation?: string; intentPlan?: string; simulationResult?: string;
+      audit?: string; readiness?: string; operator?: string; packLabel?: string; json?: boolean;
+      out?: string; force?: boolean; failOnIncomplete?: boolean; failOnBlocking?: boolean; failOnNotReady?: boolean;
+    }) => {
+      const { text, exitCode } = paperSimulationHandoffReport(
+        {},
+        {
+          decisionsPath: opts.decisions,
+          runReportPath: opts.runReport,
+          gatesPath: opts.gates,
+          prereqsPath: opts.prereqs,
+          killSwitchPath: opts.killSwitch,
+          secretsPolicyPath: opts.secretsPolicy,
+          burnerIsolationPath: opts.burnerIsolation,
+          intentPlanPath: opts.intentPlan,
+          simulationResultPath: opts.simulationResult,
+          auditPath: opts.audit,
+          readinessPath: opts.readiness,
+          operatorLabel: opts.operator,
+          packLabel: opts.packLabel,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnIncomplete: Boolean(opts.failOnIncomplete),
+          failOnBlocking: Boolean(opts.failOnBlocking),
           failOnNotReady: Boolean(opts.failOnNotReady),
         },
       );

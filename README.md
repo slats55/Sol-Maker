@@ -319,9 +319,13 @@ see flipped. Sprint 73 adds the simulation diff chain: `paper:simulation:diff:pl
 (`simulation.intent.plan.diff.v2`) and `paper:simulation:diff:result` (`simulation.result.diff.v1`)
 compare two strictly-validated artifacts from STRUCTURED FIELDS ONLY — blocked transitions, reason-code
 movements, source-ref mismatches, and per-entry changes surfaced as stable `simulation-diff-*`
-findings, with `--fail-on-diff` as the CI gate (an invalid or tampered side refuses outright). A
-simulation result is never an execution and never live readiness — Phase 7 remains not started and
-unauthorized.
+findings, with `--fail-on-diff` as the CI gate (an invalid or tampered side refuses outright).
+Sprint 75 adds the simulation-aware session handoff: `paper:simulation:handoff` builds a
+`phase6.simulation.handoff.pack.v1` over the eleven chain artifacts — each strictly validated in
+place and summarized from verbatim structured fields, missing artifacts CLASSIFIED (never
+invented), the chain's blocking conditions and the readiness verdict carried verbatim, one
+deterministic next safe action, and a literal-false `phase7LiveTradingReady`. A simulation result
+is never an execution and never live readiness — Phase 7 remains not started and unauthorized.
 
 ## Non-negotiable security rules (summary)
 

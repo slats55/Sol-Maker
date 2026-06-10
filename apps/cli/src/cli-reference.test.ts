@@ -47,6 +47,7 @@ const EXPECTED_COMMANDS: readonly string[] = [
   "paper:simulation:readiness",
   "paper:simulation:diff:plan",
   "paper:simulation:diff:result",
+  "paper:simulation:handoff",
 ];
 
 /** Docs that must cover every registered command. */
@@ -132,6 +133,12 @@ const EXPECTED_SIMULATION_FLAGS: Readonly<Record<string, readonly string[]>> = {
   ],
   "paper:simulation:diff:plan": ["--base", "--next", "--json", "--out", "--force", "--fail-on-diff"],
   "paper:simulation:diff:result": ["--base", "--next", "--json", "--out", "--force", "--fail-on-diff"],
+  "paper:simulation:handoff": [
+    "--decisions", "--run-report", "--gates", "--prereqs", "--kill-switch", "--secrets-policy",
+    "--burner-isolation", "--intent-plan", "--simulation-result", "--audit", "--readiness",
+    "--operator", "--pack-label", "--json", "--out", "--force",
+    "--fail-on-incomplete", "--fail-on-blocking", "--fail-on-not-ready",
+  ],
 };
 
 /** Parse each registered command's flag names from the CLI source. */

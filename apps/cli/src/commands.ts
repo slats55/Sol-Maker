@@ -63,6 +63,8 @@ import {
   formatPhase6AuditReportV1,
   buildPhase6SimulationReadinessReportV1,
   formatPhase6SimulationReadinessReportV1,
+  buildPhase6SimulationHandoffPackV1,
+  formatPhase6SimulationHandoffPackV1,
   PHASE6_READINESS_EVIDENCE_AREAS,
   SIMULATION_INTENT_PLAN_V2_SCHEMA_VERSION,
   SIMULATION_RESULT_V1_SCHEMA_VERSION,
@@ -73,6 +75,7 @@ import {
   type Phase6AuditReportV1,
   type Phase6ReadinessEvidenceArea,
   type Phase6SimulationReadinessReportV1,
+  type Phase6SimulationHandoffPackV1,
 } from "@soulmaker/simulation";
 import {
   normalizeSniperCandidateList,
@@ -6581,6 +6584,122 @@ export function paperSimulationReadinessReport(
     return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
   }
   return { text: formatPhase6SimulationReadinessReportV1(report, { label: opts.operatorLabel ?? undefined }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 75 — paper:simulation:handoff
+//   The simulation-aware session handoff (`phase6.simulation.handoff.pack.v1`):
+//   eleven chain artifacts strictly validated in place and summarized from
+//   structured fields; missing artifacts CLASSIFIED, never invented. Reads
+//   only the named files; writes nothing unless --out; never signs, never
+//   sends; phase7LiveTradingReady is a literal false.
+// ---------------------------------------------------------------------------
+
+export interface PaperSimulationHandoffCommandOptions {
+  decisionsPath?: string;
+  runReportPath?: string;
+  gatesPath?: string;
+  prereqsPath?: string;
+  killSwitchPath?: string;
+  secretsPolicyPath?: string;
+  burnerIsolationPath?: string;
+  intentPlanPath?: string;
+  simulationResultPath?: string;
+  auditPath?: string;
+  readinessPath?: string;
+  operatorLabel?: string;
+  packLabel?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit non-zero when the pack is incomplete (any artifact missing or invalid). */
+  failOnIncomplete?: boolean;
+  /** Exit non-zero when the chain carries any blocking condition (verbatim codes). */
+  failOnBlocking?: boolean;
+  /** Exit non-zero unless the verbatim readiness verdict is true (missing/invalid counts as NOT ready). */
+  failOnNotReady?: boolean;
+}
+
+/**
+ * `soulmaker paper:simulation:handoff` — build a `phase6.simulation.handoff.pack.v1` from the
+ * named chain artifact files (the nine audited roles plus the chain audit and the readiness
+ * report). Each artifact is strictly validated in place and summarized from VERBATIM structured
+ * fields; a missing artifact is CLASSIFIED as missing (never invented); a named-but-unreadable
+ * file refuses outright. The chain's blocking conditions and the readiness verdict are carried
+ * verbatim, and `phase7LiveTradingReady` is a literal false. Reads only the named files, writes
+ * nothing unless `--out` (refusing overwrite without `--force`). Never signs, never sends. No
+ * network, no wallet.
+ */
+export function paperSimulationHandoffReport(
+  ctx: CommandContext = {},
+  opts: PaperSimulationHandoffCommandOptions = {},
+): CliReport {
+  const read = (path: string | undefined, label: string): { value: unknown; error?: string } => {
+    if (!path) return { value: undefined };
+    try {
+      return { value: readJsonValue(ctx, path, label) };
+    } catch (err) {
+      return { value: undefined, error: (err as Error).message };
+    }
+  };
+  const sources = [
+    ["decisions", read(opts.decisionsPath, "decision report")],
+    ["run-report", read(opts.runReportPath, "run report")],
+    ["gates", read(opts.gatesPath, "safety gates report")],
+    ["prereqs", read(opts.prereqsPath, "phase6 prerequisite report")],
+    ["kill-switch", read(opts.killSwitchPath, "kill-switch spec")],
+    ["secrets-policy", read(opts.secretsPolicyPath, "secrets policy")],
+    ["burner-isolation", read(opts.burnerIsolationPath, "burner isolation spec")],
+    ["intent-plan", read(opts.intentPlanPath, "simulation intent plan")],
+    ["simulation-result", read(opts.simulationResultPath, "simulation result")],
+    ["audit", read(opts.auditPath, "phase6 audit report")],
+    ["readiness", read(opts.readinessPath, "phase6 readiness report")],
+  ] as const;
+  for (const [label, r] of sources) {
+    if (r.error) return { text: redactString(`Refusing: ${label}: ${r.error}`), exitCode: 1 };
+  }
+
+  let pack: Phase6SimulationHandoffPackV1;
+  try {
+    pack = buildPhase6SimulationHandoffPackV1({
+      decision: sources[0][1].value,
+      runReport: sources[1][1].value,
+      safetyGates: sources[2][1].value,
+      prereqs: sources[3][1].value,
+      killSwitchSpec: sources[4][1].value,
+      secretsPolicy: sources[5][1].value,
+      burnerIsolationSpec: sources[6][1].value,
+      intentPlan: sources[7][1].value,
+      simulationResult: sources[8][1].value,
+      auditReport: sources[9][1].value,
+      readinessReport: sources[10][1].value,
+      operatorLabel: opts.operatorLabel ?? null,
+      packLabel: opts.packLabel ?? null,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(pack), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write phase6 handoff pack at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  let exitCode = 0;
+  if (opts.failOnIncomplete && !pack.complete) exitCode = 1;
+  if (opts.failOnBlocking && pack.hasBlockingConditions) exitCode = 1;
+  if (opts.failOnNotReady && pack.simulationReadyPerReadiness !== true) exitCode = 1;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(pack), null, 2), exitCode };
+  }
+  return { text: formatPhase6SimulationHandoffPackV1(pack, { label: opts.packLabel ?? undefined }), exitCode };
 }
 
 // ---------------------------------------------------------------------------
