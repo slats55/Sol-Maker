@@ -103,6 +103,24 @@ export {
 } from "./chain-audit.js";
 
 export {
+  PHASE6_SIMULATION_READINESS_REPORT_V1_SCHEMA_VERSION,
+  PHASE6_SIMULATION_READINESS_REPORT_V1_BANNER,
+  PHASE6_SIMULATION_READINESS_REPORT_V1_GENERATED_BY,
+  PHASE6_SIMULATION_READINESS_REPORT_V1_DISCLAIMERS,
+  PHASE6_READINESS_EVIDENCE_AREAS,
+  Phase6SimulationReadinessReportV1Error,
+  buildPhase6SimulationReadinessReportV1,
+  validatePhase6SimulationReadinessReportV1,
+  formatPhase6SimulationReadinessReportV1,
+  type Phase6ReadinessEvidenceArea,
+  type Phase6ReadinessEvidence,
+  type Phase6ReadinessArtifactCheck,
+  type Phase6SimulationReadinessReportV1,
+  type BuildPhase6SimulationReadinessReportV1Input,
+  type FormatPhase6SimulationReadinessReportV1Options,
+} from "./readiness.js";
+
+export {
   SIMULATION_REASON_CATEGORIES,
   SIMULATION_REASON_SEVERITIES,
   SIMULATION_REASON_CODES,

@@ -24,6 +24,7 @@ import {
   paperSimulationResultReport,
   paperSimulationValidateReport,
   paperSimulationAuditReport,
+  paperSimulationReadinessReport,
 } from "./commands.js";
 
 function withChainDir<T>(fn: (tmp: string, chain: FictionalSimulationChain) => T): T {
@@ -325,6 +326,74 @@ describe("paper:simulation:audit", () => {
       expect(paperSimulationAuditReport({ cwd: tmp }, { ...AUDIT_PATHS, outPath: "audit.json" }).exitCode).toBe(0);
       expect(paperSimulationAuditReport({ cwd: tmp }, { ...AUDIT_PATHS, outPath: "audit.json" }).exitCode).toBe(1);
       expect(paperSimulationAuditReport({ cwd: tmp }, { ...AUDIT_PATHS, outPath: "audit.json", force: true }).exitCode).toBe(0);
+    });
+  });
+});
+
+describe("paper:simulation:readiness", () => {
+  const EVIDENCE_FLAGS = [
+    "package-boundary-tests=packages/simulation/src/no-forbidden-imports.test.ts",
+    "cli-commands=apps/cli/src/simulation-commands.test.ts",
+    "e2e-fixtures=apps/cli/src/simulation-e2e.test.ts",
+    "source-scans=packages/simulation/src/package-boundary.test.ts",
+    "docs=docs/SNIPER_RUNBOOK.md",
+  ];
+
+  function buildChainFiles(tmp: string, chain: FictionalSimulationChain): void {
+    writeFileSync(join(tmp, "run2.json"), JSON.stringify(chain.runReport));
+    expect(
+      paperSimulationIntentPlanReport(
+        { cwd: tmp },
+        { ...ALL_PATHS, acknowledgePaperEnterReview: true, operatorLabel: "fictional-operator", planLabel: "fictional-plan", outPath: "plan.json" },
+      ).exitCode,
+    ).toBe(0);
+    expect(paperSimulationResultReport({ cwd: tmp }, { planPath: "plan.json", outPath: "result.json" }).exitCode).toBe(0);
+    expect(
+      paperSimulationAuditReport(
+        { cwd: tmp },
+        {
+          decisionsPath: "dec2.json", runReportPath: "run2.json", gatesPath: "gates2.json", prereqsPath: "prereqs2.json",
+          killSwitchPath: "ks.json", secretsPolicyPath: "sp.json", burnerIsolationPath: "bi.json",
+          intentPlanPath: "plan.json", simulationResultPath: "result.json", outPath: "audit.json",
+        },
+      ).exitCode,
+    ).toBe(0);
+  }
+
+  it("is GREEN with the full chain + all evidence; --fail-on-not-ready gates a partial one", () => {
+    withChainDir((tmp, chain) => {
+      buildChainFiles(tmp, chain);
+      const r = paperSimulationReadinessReport(
+        { cwd: tmp },
+        { auditPath: "audit.json", planPath: "plan.json", resultPath: "result.json", evidence: EVIDENCE_FLAGS, json: true },
+      );
+      expect(r.exitCode).toBe(0);
+      const report = JSON.parse(r.text) as { phase6SimulationReady: boolean; phase7LiveTradingReady: boolean };
+      expect(report.phase6SimulationReady).toBe(true);
+      expect(report.phase7LiveTradingReady).toBe(false);
+
+      const partial = paperSimulationReadinessReport(
+        { cwd: tmp },
+        { auditPath: "audit.json", planPath: "plan.json", resultPath: "result.json", evidence: [], failOnNotReady: true },
+      );
+      expect(partial.exitCode).toBe(1);
+    });
+  });
+
+  it("refuses an unknown evidence area and a malformed evidence flag", () => {
+    withChainDir((tmp) => {
+      expect(paperSimulationReadinessReport({ cwd: tmp }, { evidence: ["made-up=x"] }).exitCode).toBe(1);
+      expect(paperSimulationReadinessReport({ cwd: tmp }, { evidence: ["no-equals"] }).exitCode).toBe(1);
+    });
+  });
+
+  it("--out / overwrite refusal / --force behave", () => {
+    withChainDir((tmp, chain) => {
+      buildChainFiles(tmp, chain);
+      const opts = { auditPath: "audit.json", planPath: "plan.json", resultPath: "result.json", evidence: EVIDENCE_FLAGS } as const;
+      expect(paperSimulationReadinessReport({ cwd: tmp }, { ...opts, outPath: "ready.json" }).exitCode).toBe(0);
+      expect(paperSimulationReadinessReport({ cwd: tmp }, { ...opts, outPath: "ready.json" }).exitCode).toBe(1);
+      expect(paperSimulationReadinessReport({ cwd: tmp }, { ...opts, outPath: "ready.json", force: true }).exitCode).toBe(0);
     });
   });
 });

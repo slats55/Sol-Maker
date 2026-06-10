@@ -1,5 +1,6 @@
 #!/usr/bin/env -S npx tsx
 import { Command } from "commander";
+import { PHASE6_READINESS_EVIDENCE_AREAS } from "@soulmaker/simulation";
 import {
   doctorReport,
   configCheckReport,
@@ -62,6 +63,7 @@ import {
   paperSimulationResultReport,
   paperSimulationValidateReport,
   paperSimulationAuditReport,
+  paperSimulationReadinessReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1930,6 +1932,48 @@ program
           failOnFindings: Boolean(opts.failOnFindings),
           failOnIncomplete: Boolean(opts.failOnIncomplete),
           failOnChainConditions: Boolean(opts.failOnChainConditions),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:simulation:readiness")
+  .description(
+    "Build a `phase6.simulation.readiness.report.v1` — the structural answer to 'is the Phase 6 simulation stack green?'. Artifact checks are machine-verified with the production validators (a PASSED, chain-COMPLETE phase6 audit + a strictly-valid intent plan + result); evidence references (--evidence area=ref, repeatable) are recorded VERBATIM as declarations — the command cannot run tests and never claims it did. Readiness is fail-closed (anything missing blocks), and phase7LiveTradingReady is a LITERAL false the validator refuses to see flipped — this command is structurally incapable of claiming live-trading readiness. Reads only the named files, writes nothing unless --out. No network, no wallet",
+  )
+  .option("--audit <path>", "phase6 audit report JSON (phase6.audit.report.v1)")
+  .option("--plan <path>", "simulation intent plan JSON (simulation.intent.plan.v2)")
+  .option("--result <path>", "simulation result JSON (simulation.result.v1)")
+  .option(
+    "--evidence <area=ref...>",
+    `declared evidence reference (repeatable; areas: ${PHASE6_READINESS_EVIDENCE_AREAS.join(", ")})`,
+    (value: string, prev: string[] = []) => [...prev, value],
+  )
+  .option("--operator <label>", "operator label echoed into the report")
+  .option("--json", "emit the readiness report as stable JSON")
+  .option("--out <path>", "write ONLY the readiness report JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-not-ready", "exit non-zero when phase6SimulationReady is false")
+  .action(
+    (opts: {
+      audit?: string; plan?: string; result?: string; evidence?: string[]; operator?: string;
+      json?: boolean; out?: string; force?: boolean; failOnNotReady?: boolean;
+    }) => {
+      const { text, exitCode } = paperSimulationReadinessReport(
+        {},
+        {
+          auditPath: opts.audit,
+          planPath: opts.plan,
+          resultPath: opts.result,
+          evidence: opts.evidence,
+          operatorLabel: opts.operator,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnNotReady: Boolean(opts.failOnNotReady),
         },
       );
       console.log(text);

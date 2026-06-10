@@ -311,8 +311,12 @@ strictly validates both artifacts, including their literal safety locks (`neverS
 `paper:simulation:audit` builds a `phase6.audit.report.v1` over the **nine** chain artifacts —
 each strictly validated in place, structured cross-references checked (labels/counts/blocked
 states, never prose), missing artifacts reported as warnings, invalid/v1/mismatched artifacts
-failing the audit, and the chain's own blocking conditions surfaced verbatim. A simulation result
-is never an execution and never live readiness — Phase 7 remains not started and unauthorized.
+failing the audit, and the chain's own blocking conditions surfaced verbatim. Sprint 69 adds the
+structural verdict: `paper:simulation:readiness` builds a `phase6.simulation.readiness.report.v1`
+whose artifact checks are machine-verified and whose evidence references are recorded verbatim as
+declarations — and whose `phase7LiveTradingReady` is a **literal false** the validator refuses to
+see flipped. A simulation result is never an execution and never live readiness — Phase 7 remains
+not started and unauthorized.
 
 ## Non-negotiable security rules (summary)
 

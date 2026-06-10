@@ -57,11 +57,16 @@ import {
   formatSimulationResultV1,
   buildPhase6AuditReportV1,
   formatPhase6AuditReportV1,
+  buildPhase6SimulationReadinessReportV1,
+  formatPhase6SimulationReadinessReportV1,
+  PHASE6_READINESS_EVIDENCE_AREAS,
   SIMULATION_INTENT_PLAN_V2_SCHEMA_VERSION,
   SIMULATION_RESULT_V1_SCHEMA_VERSION,
   type SimulationIntentPlanV2,
   type SimulationResultV1,
   type Phase6AuditReportV1,
+  type Phase6ReadinessEvidenceArea,
+  type Phase6SimulationReadinessReportV1,
 } from "@soulmaker/simulation";
 import {
   normalizeSniperCandidateList,
@@ -6433,4 +6438,104 @@ export function paperSimulationAuditReport(
     return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
   }
   return { text: formatPhase6AuditReportV1(report, { label: opts.operatorLabel ?? undefined }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 69 — paper:simulation:readiness
+//   The structural "is the Phase 6 simulation stack green?" report
+//   (`phase6.simulation.readiness.report.v1`). phase7LiveTradingReady is a
+//   literal false, always.
+// ---------------------------------------------------------------------------
+
+export interface PaperSimulationReadinessCommandOptions {
+  /** Path to the `phase6.audit.report.v1` artifact. */
+  auditPath?: string;
+  /** Path to the `simulation.intent.plan.v2` artifact. */
+  planPath?: string;
+  /** Path to the `simulation.result.v1` artifact. */
+  resultPath?: string;
+  /** Repeatable `area=ref` evidence declarations (verbatim; never verified). */
+  evidence?: string[];
+  operatorLabel?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit non-zero when phase6SimulationReady is false. */
+  failOnNotReady?: boolean;
+}
+
+/**
+ * `soulmaker paper:simulation:readiness` — build a `phase6.simulation.readiness.report.v1` from
+ * the named audit/plan/result files plus repeatable `--evidence area=ref` declarations. Artifact
+ * checks are machine-verified (strict validators); evidence references are recorded VERBATIM as
+ * declarations (the command cannot run tests and never claims it did). Readiness is fail-closed,
+ * and `phase7LiveTradingReady` is a literal false — this command is structurally incapable of
+ * claiming live-trading readiness. Reads only the named files, writes nothing unless `--out`
+ * (refusing overwrite without `--force`). No network, no wallet.
+ */
+export function paperSimulationReadinessReport(
+  ctx: CommandContext = {},
+  opts: PaperSimulationReadinessCommandOptions = {},
+): CliReport {
+  const read = (path: string | undefined, label: string): { value: unknown; error?: string } => {
+    if (!path) return { value: undefined };
+    try {
+      return { value: readJsonValue(ctx, path, label) };
+    } catch (err) {
+      return { value: undefined, error: (err as Error).message };
+    }
+  };
+  const audit = read(opts.auditPath, "phase6 audit report");
+  const plan = read(opts.planPath, "simulation intent plan");
+  const result = read(opts.resultPath, "simulation result");
+  for (const [label, r] of [["audit", audit], ["plan", plan], ["result", result]] as const) {
+    if (r.error) return { text: redactString(`Refusing: ${label}: ${r.error}`), exitCode: 1 };
+  }
+
+  const evidence: Partial<Record<Phase6ReadinessEvidenceArea, string>> = {};
+  for (const raw of opts.evidence ?? []) {
+    const eq = raw.indexOf("=");
+    if (eq <= 0 || eq === raw.length - 1) {
+      return { text: redactString(`Refusing: --evidence must be area=ref (got "${raw}").`), exitCode: 1 };
+    }
+    const area = raw.slice(0, eq);
+    if (!(PHASE6_READINESS_EVIDENCE_AREAS as readonly string[]).includes(area)) {
+      return {
+        text: redactString(`Refusing: unknown evidence area "${area}" (known: ${PHASE6_READINESS_EVIDENCE_AREAS.join(", ")}).`),
+        exitCode: 1,
+      };
+    }
+    evidence[area as Phase6ReadinessEvidenceArea] = raw.slice(eq + 1);
+  }
+
+  let report: Phase6SimulationReadinessReportV1;
+  try {
+    report = buildPhase6SimulationReadinessReportV1({
+      auditReport: audit.value,
+      intentPlan: plan.value,
+      simulationResult: result.value,
+      evidence,
+      operatorLabel: opts.operatorLabel ?? null,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(report), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write phase6 readiness report at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  const exitCode = opts.failOnNotReady && !report.phase6SimulationReady ? 1 : 0;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
+  }
+  return { text: formatPhase6SimulationReadinessReportV1(report, { label: opts.operatorLabel ?? undefined }), exitCode };
 }

@@ -84,6 +84,15 @@ export const SIMULATION_REASON_CODES = [
   "audit-v1-artifact",
   "audit-source-ref-mismatch",
   "audit-chain-complete",
+  // --- readiness report (Sprint 69: phase6 simulation readiness; append-only) ---
+  "simulation-readiness-missing-audit",
+  "simulation-readiness-audit-failed",
+  "simulation-readiness-chain-incomplete",
+  "simulation-readiness-missing-plan",
+  "simulation-readiness-missing-result",
+  "simulation-readiness-evidence-missing",
+  "simulation-readiness-chain-conditions-present",
+  "simulation-readiness-green",
 ] as const;
 
 /** One of the stable simulation reason codes. */
@@ -190,6 +199,22 @@ export const SIMULATION_REASON_CODE_DEFINITIONS: Readonly<
     "Two chain artifacts disagree on a structured source reference (label/count/blocked state) — they were not built from the same chain; the audit fails."),
   "audit-chain-complete": def("audit-chain-complete", "audit", "info",
     "Every audited chain artifact is present and strictly valid."),
+  "simulation-readiness-missing-audit": def("simulation-readiness-missing-audit", "readiness", "blocking",
+    "No valid phase6 chain audit was supplied — Phase 6 simulation readiness cannot be claimed without an audited chain. Build one with paper:simulation:audit."),
+  "simulation-readiness-audit-failed": def("simulation-readiness-audit-failed", "readiness", "blocking",
+    "The supplied chain audit FAILED (blocking findings) — fix the chain and re-audit before claiming readiness."),
+  "simulation-readiness-chain-incomplete": def("simulation-readiness-chain-incomplete", "readiness", "blocking",
+    "The audited chain is incomplete (artifacts missing or invalid) — a partial chain cannot evidence readiness."),
+  "simulation-readiness-missing-plan": def("simulation-readiness-missing-plan", "readiness", "blocking",
+    "No valid simulation intent plan was supplied — the readiness report needs the plan it claims readiness over."),
+  "simulation-readiness-missing-result": def("simulation-readiness-missing-result", "readiness", "blocking",
+    "No valid simulation result was supplied — the readiness report needs the result it claims readiness over."),
+  "simulation-readiness-evidence-missing": def("simulation-readiness-evidence-missing", "readiness", "blocking",
+    "A required evidence area has no declared reference — declare where the evidence lives (test file / doc path) or readiness cannot be claimed."),
+  "simulation-readiness-chain-conditions-present": def("simulation-readiness-chain-conditions-present", "readiness", "warning",
+    "The audited chain carries blocking conditions of its own (surfaced verbatim) — the simulation STACK works, but this session's chain is not condition-free."),
+  "simulation-readiness-green": def("simulation-readiness-green", "readiness", "info",
+    "Every artifact check passed and every required evidence area is declared — Phase 6 SIMULATION is structurally ready. This is never live-trading readiness; Phase 7 remains unauthorized."),
 };
 
 const CODE_SET: ReadonlySet<string> = new Set(SIMULATION_REASON_CODES);
