@@ -66,6 +66,48 @@ boundary above and ships its own `*-safety.test.ts`. Additional invariants worth
 | 18 | One NARROW, self-destructing exception exists in the package boundary scan: the single `SECRET_BEARING_KEY` detector line in `secrets-policy.ts` (which exists to REFUSE secrets) is excluded from the token scan; the exception throws if the declaration disappears. | `security-boundary.test.ts` |
 | 19 | The documented command surface cannot drift: the registered `paper:sniper:*` / `paper:phase6:*` commands are pinned against a curated list and the runbook/README must cover all of them (and may not name ghost commands). | `cli-reference.test.ts` |
 
+## The Phase 6 simulation surface (Sprints 61–70) — `@soulmaker/simulation`
+
+Phase 6 work was explicitly authorized as **simulation only**, and it lives in a SEPARATE package
+with a boundary deliberately narrower than the sniper package's. The dependency direction is
+one-way (`simulation → sniper`, never the reverse), which is also why the chain audit and
+readiness artifacts are named in the `phase6.*` family and live on the simulation side.
+
+**The Phase 6 ↔ Phase 7 line, exactly:** Phase 6 may *plan previews* over validated paper
+artifacts and *record* that a real dry-run is structurally impossible without transaction
+material. Phase 7 (building, signing, or sending any transaction; any wallet or key handling; any
+live or burner trading) is **not started, not authorized, and not reachable from this package** —
+there is no code path, no adapter outcome, no artifact field, and no CLI flag that could express
+it.
+
+| # | Invariant | Enforced by |
+| --- | --- | --- |
+| 20 | The simulation package's imports are an ALLOWLIST: relative siblings, `@soulmaker/sniper`, `@soulmaker/security` — nothing else (no node builtins, no network, no `@solana/*`). A new capability module is refused by default. | `packages/simulation/src/no-forbidden-imports.test.ts` |
+| 21 | No production source contains a signing/sending/key/secret token (`Keypair`, `Signer`, `secretKey`, `privateKey`, `mnemonic`, `sendTransaction`, `signTransaction`, `signAllTransactions`, `partialSign`, `sendRawTransaction`, `DANGEROUS_BURNER_LIVE`, `process.env`) — comments stripped, so the tokens exist ONLY in the refusal test. | `no-forbidden-imports.test.ts` |
+| 22 | No production source contains a nondeterminism token (`Date.now`, `new Date`, `Math.random`, `randomUUID`, `randomBytes`); the e2e suite additionally proves two full runs are byte-identical. | `no-forbidden-imports.test.ts`, `apps/cli/src/simulation-e2e.test.ts` |
+| 23 | The package manifest's dependency set is pinned to exactly `@soulmaker/sniper` + `@soulmaker/security` (`workspace:*`); any new dependency fails the boundary test. | `package-boundary.test.ts` |
+| 24 | Every simulation artifact carries the four LITERAL safety locks — `neverAuthorizesLiveTrading` / `neverSigns` / `neverSends` / `dryRunOnly`, all `true` — from one frozen shared source, and every validator refuses a flipped or missing lock. | `package-boundary.test.ts` + every artifact's validator tests |
+| 25 | The intent plan v2 is FAIL-CLOSED: a missing/invalid/v1 input, NOT-ready gates v2, unmet prereqs v2, a non-adopted spec, or a declared stop-simulation kill switch produces a BLOCKED plan with stable reason codes and ZERO entries (the validator refuses entries on a blocked plan). | `intent-plan.test.ts` |
+| 26 | Previews NEVER invent values: destination/fee are always UNRESOLVED (`label: null` enforced by the validator), and an amount resolves only as an operator paper-unit LABEL — never currency, never route data. | `intent-plan.test.ts` ("never invents" suite) |
+| 27 | The ONE narrow readiness override (`operatorAcknowledgedPaperEnterReview`) applies only when the single unmet prereq id is `NO_OPERATOR_BLOCKING` (a structured id, never prose), the decision actually has paper-enters, and zero unresolved unknowns exist — and an applied acknowledgment is loudly surfaced as a warning code the validator pairs with its field. | `intent-plan.test.ts` (refusal + coupling tests) |
+| 28 | The dry-run adapter contract has NO sent/signed/live outcome to claim: outcomes are a closed 3-kind set, and anything else an adapter returns or throws (including a malicious "sent-live" claim) is NORMALIZED to a safe, redacted failure. | `result.test.ts` (malicious/throwing adapter tests) |
+| 29 | An adapter is refused at runtime when its `neverSigns`/`neverSends` locks are missing/flipped or when ANY own property name is sensitive-shaped (key material cannot ride along on an adapter object). | `result.test.ts`, `adapter` validator tests |
+| 30 | Nothing is ever simulated from unresolved previews: a result entry with unresolved fields can only be `skipped_unresolved` (validator-enforced), and the package default adapter reports a real dry-run honestly UNAVAILABLE — never faked. | `result.test.ts` |
+| 31 | The kill switch blocks at BOTH layers: a declared stop-simulation state blocks the plan, and blocks again at result time even over a previously-clean plan. | `intent-plan.test.ts`, `result.test.ts`, e2e negatives |
+| 32 | The chain audit validates all nine artifacts in place and cross-checks STRUCTURED references only (labels/counts/blocked states — never prose); v1 stand-ins and ref mismatches FAIL it, and it surfaces the chain's own conditions VERBATIM without ever waiving them. | `chain-audit.test.ts` |
+| 33 | The readiness report's `phase7LiveTradingReady` is a LITERAL false — the validator refuses anything else, so this artifact is structurally incapable of claiming live-trading readiness; its evidence references are recorded as DECLARATIONS, never as verified claims. | `readiness.test.ts` |
+| 34 | The simulation CLI cannot grow a hidden dangerous flag: every registered `paper:simulation:*` option name is scanned against a forbidden-token list (`--live`, `--send`, `--sign`, `--private`, `--mnemonic`, `--seed`, `--wallet`, `--dangerous`, `--bypass`, `--unsafe`, `--execute`). | `apps/cli/src/simulation-security.test.ts` |
+| 35 | No simulation command echoes a secret: mnemonic-shaped and key-shaped values flowing through any command (labels, injected artifact fields, refusal messages) come out redacted or dropped. | `simulation-security.test.ts` |
+| 36 | No simulation command writes by default; only `--out` writes, only the named file, overwrite refused without `--force`. | `simulation-commands.test.ts`, `simulation-e2e.test.ts` |
+| 37 | The `paper:simulation:*` command surface is pinned against the curated reference list and must be documented in the runbook + README (no ghost commands). | `cli-reference.test.ts` |
+| 38 | The fictional fixture chains are built ONLY through production sniper builders (they cannot drift from the code) and carry no secret-shaped key or value — verified by walking every key and string of every fixture and generated artifact. | `simulation-e2e.test.ts` (secret-hygiene suite) |
+
+**Intentional exceptions, exactly two:** (a) the forbidden tokens are spelled out inside
+`no-forbidden-imports.test.ts` itself — refusal-test context, the only place in the package allowed
+to contain them; (b) `fixtures.ts` exports clearly-labeled FICTIONAL chains for tests/e2e — built
+via production builders, no invented market claims, no secret-shaped values (invariant 38 scans
+them on every run).
+
 ## What this review does NOT cover (out of scope by design)
 
 - **No live trading, no order placement, no transaction build/sign/send** — none exists; Phase 6/7 are not
