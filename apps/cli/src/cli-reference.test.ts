@@ -98,3 +98,82 @@ describe("CLI reference — no ghost commands in docs", () => {
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 72 — FLAG-level drift protection (closes the "commands pinned but not
+// flags" gap). The paper:simulation:* surface is pinned EXACTLY; key cross-
+// cutting sniper flags are asserted present; and every flag the runbook's
+// Phase 6 section mentions must really exist on a simulation command.
+// ---------------------------------------------------------------------------
+
+/** The curated, expected flag surface of every paper:simulation:* command
+ * (UPDATE THIS when a flag is added/removed — that's the point). */
+const EXPECTED_SIMULATION_FLAGS: Readonly<Record<string, readonly string[]>> = {
+  "paper:simulation:intent:plan": [
+    "--decisions", "--gates", "--prereqs", "--kill-switch", "--secrets-policy", "--burner-isolation",
+    "--stop-simulation-tripped", "--acknowledge-paper-enter-review", "--operator", "--plan-label",
+    "--amount-label", "--json", "--out", "--force", "--fail-on-blocking", "--fail-on-unresolved",
+  ],
+  "paper:simulation:result": [
+    "--plan", "--stop-simulation-tripped", "--json", "--out", "--force",
+    "--fail-on-blocked", "--fail-on-unresolved", "--fail-on-dry-run-unavailable",
+  ],
+  "paper:simulation:validate": ["--plan", "--result", "--json"],
+  "paper:simulation:audit": [
+    "--decisions", "--run-report", "--gates", "--prereqs", "--kill-switch", "--secrets-policy",
+    "--burner-isolation", "--intent-plan", "--simulation-result", "--operator", "--json", "--out",
+    "--force", "--fail-on-findings", "--fail-on-incomplete", "--fail-on-chain-conditions",
+  ],
+  "paper:simulation:readiness": [
+    "--audit", "--plan", "--result", "--evidence", "--operator", "--json", "--out", "--force",
+    "--fail-on-not-ready",
+  ],
+};
+
+/** Parse each registered command's flag names from the CLI source. */
+function registeredFlags(): Map<string, string[]> {
+  const source = readFileSync(CLI_INDEX, "utf8");
+  const out = new Map<string, string[]>();
+  for (const block of source.matchAll(/\.command\("([^"]+)"\)([\s\S]*?)\.action\(/g)) {
+    const command = block[1] as string;
+    const flags = [...(block[2] as string).matchAll(/\.option\(\s*\n?\s*"(--[a-z0-9-]+)/g)].map((m) => m[1] as string);
+    out.set(command, flags);
+  }
+  return out;
+}
+
+describe("CLI reference — flag-level drift (paper:simulation:* pinned exactly)", () => {
+  const flags = registeredFlags();
+
+  for (const [command, expected] of Object.entries(EXPECTED_SIMULATION_FLAGS)) {
+    it(`${command} exposes EXACTLY the curated flags`, () => {
+      expect(flags.get(command)?.slice().sort()).toEqual([...expected].sort());
+    });
+  }
+
+  it("the parser found a meaningful flag surface (guards against a broken regex)", () => {
+    const total = [...flags.values()].reduce((n, f) => n + f.length, 0);
+    expect(total).toBeGreaterThanOrEqual(50);
+  });
+
+  it("key cross-cutting sniper flags still exist somewhere on the sniper surface", () => {
+    for (const flag of ["--schema-version", "--out", "--force", "--fail-on-not-adopted", "--preflight-input", "--policy"]) {
+      const carried = [...flags.entries()].some(([cmd, f]) => cmd.startsWith("paper:") && f.includes(flag));
+      expect(carried, `no registered paper:* command exposes ${flag}`).toBe(true);
+    }
+  });
+
+  it("every flag the runbook's Phase 6 section mentions exists on a simulation command", () => {
+    const runbook = readFileSync(join(ROOT, "docs/SNIPER_RUNBOOK.md"), "utf8");
+    const start = runbook.indexOf("## Phase 6 simulation");
+    expect(start).toBeGreaterThan(-1);
+    const rest = runbook.slice(start + 1);
+    const end = rest.indexOf("\n## ");
+    const section = end === -1 ? rest : rest.slice(0, end);
+    const simulationFlags = new Set(Object.values(EXPECTED_SIMULATION_FLAGS).flat());
+    const mentioned = [...section.matchAll(/(--[a-z0-9][a-z0-9-]+)/g)].map((m) => m[1] as string);
+    expect(mentioned.length).toBeGreaterThan(5);
+    const ghosts = [...new Set(mentioned)].filter((f) => !simulationFlags.has(f)).sort();
+    expect(ghosts, `runbook Phase 6 section mentions unknown flag(s): ${ghosts.join(", ")}`).toEqual([]);
+  });
+});
