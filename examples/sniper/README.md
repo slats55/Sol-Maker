@@ -20,6 +20,17 @@
 | `preflight-inputs.fictional.json` | Invented `token:inspect` / `token:risk`-shaped inputs (keyed by candidateId) for the fictional candidates. |
 | `preflight-input.example.json` | A `sniper.preflight.input.v1` input bundle for the example candidates (one entry deliberately missing risk — shows the honest warning). Validate: `pnpm soulmaker paper:sniper:preflight:input:validate --input examples/sniper/preflight-input.example.json --candidates examples/sniper/candidates.example.json`. |
 | `policy.example.json` | A conservative example operator/risk policy (`sniper.policy.config.v1`). |
+| `preflight-input.v2.fictional.json` | **Fictional** `sniper.preflight.input.v1` input for the V2 end-to-end suite (same invented values as `preflight-inputs.fictional.json`; fic-freeze deliberately misses risk, fic-reject misses inspection). |
+| `policy-v2.fictional.json` | **Fictional** raw `sniper.policy.config.v2` input: research-only mode, requires the preflight input artifact. |
+| `kill-switch.config.fictional.json` | **Fictional** adopted `sniper.kill_switch.spec.v1` operator config (NOT a kill switch — controls nothing). |
+| `secrets-policy.config.fictional.json` | **Fictional** adopted `sniper.secrets.policy.v1` operator config (stores NO secret). |
+| `burner-isolation.config.fictional.json` | **Fictional** adopted `sniper.burner.isolation.spec.v1` operator config (NOT a wallet; loss bound is a LABEL). |
+
+The V2 end-to-end suite (`apps/cli/src/sniper-e2e-v2.test.ts`) runs the whole v2 pipeline over these
+fixtures — intake → preflight input → preflight → policy v2 → decision v2 → audit → run report v2 →
+the three spec artifacts → safety gates v2 → phase6 prereqs v2 → session pack v2 — generating every
+artifact into a temp dir (never committed, so artifacts can never drift), validating each with its
+production validator, and proving the sequence byte-deterministic. Everything is **fictional**.
 
 ## End-to-end walkthrough (fictional fixtures)
 

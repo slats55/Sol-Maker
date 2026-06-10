@@ -1,0 +1,10 @@
+{
+  "_comment": "FICTIONAL DETERMINISTIC FIXTURE — NOT live data, NOT trading advice. A raw sniper.policy.config.v2 operator input for the fictional V2 end-to-end suite: research-only mode (no candidate can paper-enter), a validated preflight input artifact is REQUIRED, and requireRiskPresent is explicitly false so the risk-less fic-freeze candidate stays a watch instead of failing the run. Validate with: pnpm soulmaker paper:sniper:policy:validate --input examples/sniper/policy-v2.fictional.json --schema-version v2",
+  "policyLabel": "fictional-research-v2",
+  "operatorLabels": ["fictional-op"],
+  "policyMode": "research-only",
+  "riskLimits": {
+    "requirePreflightInputArtifact": true,
+    "requireRiskPresent": false
+  }
+}

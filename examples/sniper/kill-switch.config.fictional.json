@@ -1,0 +1,6 @@
+{
+  "_comment": "FICTIONAL DETERMINISTIC FIXTURE — NOT a kill switch, controls nothing. A sniper.kill_switch.spec.v1 operator config for the fictional V2 end-to-end suite (ADOPTED so the Phase-6 kill-switch bucket can be exercised). Build with: pnpm soulmaker paper:sniper:kill-switch:spec --input examples/sniper/kill-switch.config.fictional.json",
+  "operatorLabel": "fictional-op",
+  "escalationNotes": ["fictional: alert the (invented) operator channel when the switch trips"],
+  "readinessStatus": "adopted"
+}

@@ -1,0 +1,7 @@
+{
+  "_comment": "FICTIONAL DETERMINISTIC FIXTURE — NOT a wallet, creates no wallet. A sniper.burner.isolation.spec.v1 operator config for the fictional V2 end-to-end suite (ADOPTED, paired with the fictional kill-switch spec; the loss bound is a LABEL, never an amount). Build with: pnpm soulmaker paper:sniper:burner:isolation:spec --input examples/sniper/burner-isolation.config.fictional.json",
+  "operatorLabel": "fictional-op",
+  "maxLossLabel": "fictional-tiny-test-budget",
+  "killSwitchSpecRef": "fictional-op",
+  "readinessStatus": "adopted"
+}
