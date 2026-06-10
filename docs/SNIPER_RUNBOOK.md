@@ -57,7 +57,10 @@ invariants.
 | `paper:sniper:audit` | `--report` | `--out` only | `sniper.audit.log.v1` |
 | `paper:sniper:session:pack` | `--artifact` (≥1) | `--out` only | `sniper.session.pack.v1` (or `.v2` via `--schema-version v2` — full v2 registry incl. the spec artifacts) |
 | `paper:sniper:safety:gates` | `--session` (v1) / per-artifact flags (v2) | `--out` only | `sniper.safety.gates.report.v1` (or `.v2` via `--schema-version v2`) |
-| `paper:phase6:prereqs` | `--session` | `--out` only | `phase6.prerequisite.report.v1` |
+| `paper:sniper:kill-switch:spec` | (none) | `--out` only | `sniper.kill_switch.spec.v1` (a DESIGN artifact — not a kill switch) |
+| `paper:sniper:secrets:policy` | (none) | `--out` only | `sniper.secrets.policy.v1` (stores NO secret; secret-shaped input refused) |
+| `paper:sniper:burner:isolation:spec` | (none) | `--out` only | `sniper.burner.isolation.spec.v1` (NOT a wallet; loss bounds are LABELS) |
+| `paper:phase6:prereqs` | `--session` | `--out` only | `phase6.prerequisite.report.v1` (or `.v2` via `--schema-version v2` — bucketed, consumes the spec artifacts) |
 | `paper:phase6:intent:plan` | `--decisions` | `--out` only | `simulation.intent.plan.v1` (INERT, not executable) |
 | `paper:phase6:diff:intent` | `--base`, `--next` | never | `simulation.intent.plan.diff.v1` (INERT) |
 

@@ -282,7 +282,18 @@ reason codes, the risk constraints / required operator approvals / future simula
 **no destination, no signer, no key, no executable field**; `executable` is always false and every
 required approval is unsatisfied. It builds, signs, simulates, and sends **nothing** and imports no chain
 capability. Phase 6 and Phase 7 remain not started — this is data shapes for review, not a step toward
-sending.
+sending. Sprint 42 adds `paper:phase6:diff:intent --base <plan-a.json> --next <plan-b.json>` — a
+deterministic diff between two INERT plans (`simulation.intent.plan.diff.v1`; `executable` stays false
+on both sides, always).
+
+Sprints 53–55 add the three machine-readable Phase-6 prerequisite SPEC artifacts (design documents —
+they control nothing, store no secret, and create no wallet):
+`paper:sniper:kill-switch:spec` (`sniper.kill_switch.spec.v1`; fixed modes with a permanently-disabled
+live placeholder), `paper:sniper:secrets:policy` (`sniper.secrets.policy.v1`; six core rules as
+constants, secret-shaped input refused and never echoed), and `paper:sniper:burner:isolation:spec`
+(`sniper.burner.isolation.spec.v1`; burner-only principles as constants, loss bounds as LABELS only).
+An ADOPTED spec is a Phase-6 prerequisite signal consumed by `paper:phase6:prereqs --schema-version v2`
+— never authorization.
 
 ## Non-negotiable security rules (summary)
 
