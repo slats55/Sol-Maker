@@ -49,6 +49,23 @@ Phase-6-boundary module (`simulation-intent.ts`) is **inert data only** — `exe
 - **`apps/cli/src/sniper-cohesion.test.ts`** — every command refuses a missing required arg, writes nothing
   by default, and emits parseable, deterministic, secret-free JSON.
 
+## The V2/spec surface (Sprints 46–59) — additions to the same boundary
+
+The V2 wave added a substantial machine-readable layer; **every** addition lives inside the same
+boundary above and ships its own `*-safety.test.ts`. Additional invariants worth naming:
+
+| # | Invariant | Enforced by |
+| --- | --- | --- |
+| 11 | Reason codes are emitted by the SAME branches that produce decisions — free-text `reasons` strings are NEVER parsed as logic (the v1→v2 adapters use structured fields only). | `paper-decision-v2.test.ts` (no-free-text-parsing proof), `run-report-v2.test.ts` |
+| 12 | Policy v2 is tighten-only and fail-closed: mode contradictions are refused, and a v2-shaped policy on a v1 pipeline path is refused rather than silently weakened. | `policy-config-v2*.test.ts`, `commands.test.ts` |
+| 13 | Safety gates v2 take allowances ONLY from the governing policy artifact; `neverAuthorizesPhase6` is a literal true the validator refuses to see weakened, and the boundary gate can only be `skip`. | `safety-gates-v2*.test.ts` |
+| 14 | The Phase-6 tracker v2's hard invariants (`phase6ImplementationStarted=false`, `requiresExplicitHumanApproval=true`, `phase7LiveTradingReady=false`, `neverAuthorizesLiveTrading=true`) are validated at runtime AND literal-locked at the source level. | `phase6-prereqs-v2*.test.ts` |
+| 15 | The kill-switch spec performs NO process control (its safety test additionally forbids `process.kill/exit/abort`, `child_process`, `SIG*` tokens) and its live mode is permanently `placeholder-disabled`. | `kill-switch-spec*.test.ts` |
+| 16 | The secrets policy stores NO secret: secret-bearing keys and key-shaped values (64+ base58/hex, BIP39-shaped phrases) are refused without ever being echoed — at build time AND when re-validating a stored artifact. Its six core rules are literal-true constants. | `secrets-policy*.test.ts` |
+| 17 | The burner isolation spec is NOT a wallet (its safety test additionally forbids `createWallet`/`importWallet`/`generateKey` tokens); loss bounds are LABELS — digits/currency markers are refused so no amount claim can ever be stored. | `burner-isolation-spec*.test.ts` |
+| 18 | One NARROW, self-destructing exception exists in the package boundary scan: the single `SECRET_BEARING_KEY` detector line in `secrets-policy.ts` (which exists to REFUSE secrets) is excluded from the token scan; the exception throws if the declaration disappears. | `security-boundary.test.ts` |
+| 19 | The documented command surface cannot drift: the registered `paper:sniper:*` / `paper:phase6:*` commands are pinned against a curated list and the runbook/README must cover all of them (and may not name ghost commands). | `cli-reference.test.ts` |
+
 ## What this review does NOT cover (out of scope by design)
 
 - **No live trading, no order placement, no transaction build/sign/send** — none exists; Phase 6/7 are not

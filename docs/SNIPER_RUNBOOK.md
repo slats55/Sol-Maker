@@ -190,6 +190,37 @@ pnpm soulmaker paper:sniper:policy:validate --input policy-v2.json --schema-vers
 pnpm soulmaker paper:sniper:decide --candidates candidates.json --preflight preflight.json --policy policy-v2.json --schema-version v2 --out decision-v2.json
 ```
 
+#### The full V2 sequence (Sprints 46–58, at a glance)
+
+The complete v2 operator chain — every step local, deterministic, PAPER-only (this exact sequence is
+exercised end-to-end by `apps/cli/src/sniper-e2e-v2.test.ts` over the fictional fixtures):
+
+```bash
+pnpm soulmaker paper:sniper:candidates:validate --input candidates.json --json > cands.json
+pnpm soulmaker paper:sniper:preflight:input:validate --input pf-input.json --candidates cands.json --json > pf-input.artifact.json
+pnpm soulmaker paper:sniper:preflight --candidates cands.json --preflight-input pf-input.artifact.json --out pf.json
+pnpm soulmaker paper:sniper:policy:validate --input policy-v2.json --schema-version v2 --json > policy2.json
+pnpm soulmaker paper:sniper:decide --candidates cands.json --preflight pf.json --policy policy2.json --schema-version v2 --out dec2.json
+pnpm soulmaker paper:sniper:report --candidates cands.json --preflight pf.json --preflight-input pf-input.artifact.json \
+  --decisions dec2.json --policy policy2.json --schema-version v2 --out run2.json
+pnpm soulmaker paper:sniper:kill-switch:spec --input ks-config.json --out ks.json
+pnpm soulmaker paper:sniper:secrets:policy --input sp-config.json --out sp.json
+pnpm soulmaker paper:sniper:burner:isolation:spec --input bi-config.json --out bi.json
+pnpm soulmaker paper:sniper:safety:gates --schema-version v2 --candidates cands.json --preflight pf.json \
+  --preflight-input pf-input.artifact.json --policy policy2.json --decisions dec2.json --run-report run2.json \
+  --session pack1.json --audit audit.json --out gates2.json
+pnpm soulmaker paper:phase6:prereqs --schema-version v2 --session pack1.json --policy policy2.json --gates gates2.json \
+  --decisions dec2.json --run-report run2.json --audit audit.json \
+  --kill-switch ks.json --secrets-policy sp.json --burner-isolation bi.json --out prereqs2.json
+pnpm soulmaker paper:sniper:session:pack --schema-version v2 --label my-session \
+  --artifact cands=cands.json --artifact dec2=dec2.json --artifact gates2=gates2.json ... --out pack2.json
+```
+
+> When piping `--json` to a file with pnpm, use `pnpm --silent soulmaker …` so the pnpm banner does
+> not corrupt the JSON. The audit log and the v1 session pack (`pack1.json`/`audit.json` above) still
+> come from the v1 chain (steps 5–8 of this runbook). Passing every gate remains local/paper
+> readiness only — **never** Phase 6 authorization.
+
 ### 5. Run report (bundle the run)
 
 Bundle the artifacts into one navigable report an operator (or CI) can read at a glance:

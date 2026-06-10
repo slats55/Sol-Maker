@@ -716,6 +716,53 @@ integrity-triage portfolio view with clean/stable lists, top concerns, and CI fl
   still succeeds); every command's `--json` is parseable, carries a `schemaVersion`, is deterministic, and
   leaks no secret-length base58 blob. The `docs/SNIPER_RUNBOOK.md` gains a single "Command reference (at a
   glance)" table covering all nine commands (required args / writes? / schema).
+### The V2 wave (Sprints 46–59) ✅ — machine-readable risk structure + Phase-6 prerequisite machinery
+
+- ✅ **(S46) Decision reason codes v2** — `sniper.paper.decision.report.v2`: a closed, append-only
+  vocabulary of stable reason codes emitted by the SAME branches that produce the decisions (never
+  parsed from free text), with per-candidate trails + blocking/warning/policy/risk subsets + sorted
+  summary counts, a structured-fields-only v1→v2 adapter, and `paper:sniper:decide --schema-version v2`.
+- ✅ **(S47) Preflight input validator** — `sniper.preflight.input.v1` (the deferred S38, done right):
+  a LOCAL-only validated bundle of token:inspect/token:risk-shaped inputs, projected with the SAME
+  functions the preflight uses; `paper:sniper:preflight:input:validate` + `--preflight-input` on the
+  preflight. Secret-length mints refused, never echoed. No RPC, ever.
+- ✅ **(S48) Policy config v2** — `sniper.policy.config.v2`: explicit `policyMode`
+  (conservative / balanced-paper / research-only; contradictions REFUSED) + reason-code-aware
+  `riskLimits`; tighten-only on top of the unchanged v1 enforcement; a v2-shaped policy on a v1 path
+  is refused (fail-closed), and `policy:validate --schema-version v2` upgrades a canonical v1.
+- ✅ **(S49) Decision explanation quality** — operator-grade v2 formatter: outcome-grouped decisions,
+  classified code table, per-candidate trails (codes → reasons → risk flags → assumptions), policy /
+  risk / CI sections. Formatter-only; JSON untouched.
+- ✅ **(S50) Run report v2** — `sniper.run.report.v2`: verbatim reason-code rollups (null with a v1
+  decision — never invented), policy visibility incl. supplied-vs-applied mismatch warnings,
+  preflight-input coverage, `missingRequiredPreflightInput`, unresolved unknowns, and deterministic
+  operator-blocking reasons; `--fail-on-blocking`.
+- ✅ **(S51) Safety gates v2** — `sniper.safety.gates.report.v2`: artifact-direct (each strictly
+  validated in place; a v1 decision FAILS the gate), the POLICY is the single allowance source
+  (no ad-hoc `--allow-*`), code-aware unknown/blocking checks, and a literal, validator-locked
+  `neverAuthorizesPhase6: true`.
+- ✅ **(S52) Phase-6 prereq tracker v2** — `phase6.prerequisite.report.v2`: nine explicit readiness
+  buckets over the actual artifacts; hard invariants validated AND source-locked
+  (`phase6ImplementationStarted=false`, `requiresExplicitHumanApproval=true`,
+  `phase7LiveTradingReady=false`, `neverAuthorizesLiveTrading=true`).
+- ✅ **(S53–55) The three spec artifacts** — `sniper.kill_switch.spec.v1` (fixed modes, live mode
+  permanently `placeholder-disabled`, unconfirmable switch refused), `sniper.secrets.policy.v1`
+  (six core rules as literal-true constants; secret-shaped input refused and never echoed),
+  `sniper.burner.isolation.spec.v1` (seven principles as constants; NOT a wallet; loss bounds are
+  LABELS — digits/currency markers refused).
+- ✅ **(S56) Prereqs consume the specs** — the kill-switch / secrets-policy / burner-isolation buckets
+  are met only by ADOPTED, strictly-valid, (for the burner) kill-switch-PAIRED spec artifacts;
+  `phase6ImplementationReady` can now genuinely become true for the pure-simulation check — still
+  never authorization.
+- ✅ **(S57) Session pack v2** — `sniper.session.pack.v2`: a 19-schema registry over the whole v2
+  surface with verbatim `adopted`/`ready` flags, `hasNotAdoptedSpec`, and presence-only
+  `isV2DecisionReady` / `isSpecComplete` / `isV2Audited` tiers.
+- ✅ **(S58) End-to-end V2 fixture suite** — 5 new FICTIONAL input fixtures + a 16-step pipeline test
+  through the real command functions (artifacts generated into temp, validated by production
+  validators, byte-deterministic across runs, secret-scanned).
+- ✅ **(S59) CLI reference validator** — a test that pins the registered `paper:sniper:*` /
+  `paper:phase6:*` surface (17 commands) against a curated list and refuses undocumented or ghost
+  commands across the runbook/README/model docs (it immediately caught and fixed real drift).
 - ⬜ **Live** snipe-list source (scraping / network fetch) — deferred; explicitly
   out of scope (candidates remain injected local JSON).
 
