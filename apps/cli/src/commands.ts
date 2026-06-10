@@ -55,10 +55,13 @@ import {
   buildSimulationResultV1,
   validateSimulationResultV1,
   formatSimulationResultV1,
+  buildPhase6AuditReportV1,
+  formatPhase6AuditReportV1,
   SIMULATION_INTENT_PLAN_V2_SCHEMA_VERSION,
   SIMULATION_RESULT_V1_SCHEMA_VERSION,
   type SimulationIntentPlanV2,
   type SimulationResultV1,
+  type Phase6AuditReportV1,
 } from "@soulmaker/simulation";
 import {
   normalizeSniperCandidateList,
@@ -6323,4 +6326,111 @@ export function paperSimulationValidateReport(
   }
   lines.push(allValid ? "All named artifacts are strictly valid." : "Validation FAILED — fix or rebuild the artifact(s) above.");
   return { text: redactString(lines.join("\n")), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 67 — paper:simulation:audit
+//   The Phase 6 CHAIN AUDIT (`phase6.audit.report.v1`) over the nine v2/
+//   simulation artifacts. Reports; never authorizes. Reads only the named
+//   files; writes nothing unless --out.
+// ---------------------------------------------------------------------------
+
+export interface PaperSimulationAuditCommandOptions {
+  decisionsPath?: string;
+  runReportPath?: string;
+  gatesPath?: string;
+  prereqsPath?: string;
+  killSwitchPath?: string;
+  secretsPolicyPath?: string;
+  burnerIsolationPath?: string;
+  intentPlanPath?: string;
+  simulationResultPath?: string;
+  operatorLabel?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit non-zero when the audit FAILED (any blocking finding). */
+  failOnFindings?: boolean;
+  /** Exit non-zero when the chain is incomplete (any artifact missing or invalid). */
+  failOnIncomplete?: boolean;
+  /** Exit non-zero when the chain carries any surfaced blocking condition of its own. */
+  failOnChainConditions?: boolean;
+}
+
+/**
+ * `soulmaker paper:simulation:audit` — build a `phase6.audit.report.v1` over the named chain
+ * artifact files (decision v2, run report v2, safety gates v2, prereqs v2, the three specs, the
+ * simulation intent plan v2, and the simulation result v1). Each artifact is strictly validated
+ * in place; missing artifacts are WARNINGS (an incomplete chain is reported, never assumed);
+ * invalid artifacts, v1 stand-ins, and structured cross-reference mismatches FAIL the audit; the
+ * chain's own blocking conditions are surfaced verbatim and never waived. A named-but-unreadable
+ * file refuses outright. The audit reports — it never authorizes anything. Reads only the named
+ * files, writes nothing unless `--out` (refusing overwrite without `--force`). No network, no
+ * wallet.
+ */
+export function paperSimulationAuditReport(
+  ctx: CommandContext = {},
+  opts: PaperSimulationAuditCommandOptions = {},
+): CliReport {
+  const read = (path: string | undefined, label: string): { value: unknown; error?: string } => {
+    if (!path) return { value: undefined };
+    try {
+      return { value: readJsonValue(ctx, path, label) };
+    } catch (err) {
+      return { value: undefined, error: (err as Error).message };
+    }
+  };
+  const sources = [
+    ["decisions", read(opts.decisionsPath, "decision report")],
+    ["run-report", read(opts.runReportPath, "run report")],
+    ["gates", read(opts.gatesPath, "safety gates report")],
+    ["prereqs", read(opts.prereqsPath, "phase6 prerequisite report")],
+    ["kill-switch", read(opts.killSwitchPath, "kill-switch spec")],
+    ["secrets-policy", read(opts.secretsPolicyPath, "secrets policy")],
+    ["burner-isolation", read(opts.burnerIsolationPath, "burner isolation spec")],
+    ["intent-plan", read(opts.intentPlanPath, "simulation intent plan")],
+    ["simulation-result", read(opts.simulationResultPath, "simulation result")],
+  ] as const;
+  for (const [label, r] of sources) {
+    if (r.error) return { text: redactString(`Refusing: ${label}: ${r.error}`), exitCode: 1 };
+  }
+
+  let report: Phase6AuditReportV1;
+  try {
+    report = buildPhase6AuditReportV1({
+      decision: sources[0][1].value,
+      runReport: sources[1][1].value,
+      safetyGates: sources[2][1].value,
+      prereqs: sources[3][1].value,
+      killSwitchSpec: sources[4][1].value,
+      secretsPolicy: sources[5][1].value,
+      burnerIsolationSpec: sources[6][1].value,
+      intentPlan: sources[7][1].value,
+      simulationResult: sources[8][1].value,
+      operatorLabel: opts.operatorLabel ?? null,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(report), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write phase6 audit report at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  let exitCode = 0;
+  if (opts.failOnFindings && !report.auditPassed) exitCode = 1;
+  if (opts.failOnIncomplete && !report.chainComplete) exitCode = 1;
+  if (opts.failOnChainConditions && report.chainConditionCodes.length > 0) exitCode = 1;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
+  }
+  return { text: formatPhase6AuditReportV1(report, { label: opts.operatorLabel ?? undefined }), exitCode };
 }

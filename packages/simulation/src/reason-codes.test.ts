@@ -33,9 +33,14 @@ describe("simulation reason codes — vocabulary integrity", () => {
     }
   });
 
-  it("namespaces every code under simulation- (kebab-case)", () => {
+  it("namespaces every code under simulation- (pipeline) or audit- (chain-audit findings), kebab-case", () => {
     for (const code of SIMULATION_REASON_CODES) {
-      expect(code).toMatch(/^simulation-[a-z0-9-]+$/);
+      expect(code).toMatch(/^(simulation|audit)-[a-z0-9-]+$/);
+    }
+    // The audit- prefix is reserved for the audit category and vice versa.
+    for (const code of SIMULATION_REASON_CODES) {
+      const isAuditCode = code.startsWith("audit-");
+      expect(SIMULATION_REASON_CODE_DEFINITIONS[code].category === "audit").toBe(isAuditCode);
     }
   });
 

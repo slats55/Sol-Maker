@@ -20,6 +20,7 @@
 
 /** The categories a simulation reason code can belong to (stable, sorted). */
 export const SIMULATION_REASON_CATEGORIES = [
+  "audit",
   "dry-run",
   "input-artifact",
   "kill-switch",
@@ -77,6 +78,12 @@ export const SIMULATION_REASON_CODES = [
   // --- outcome (honest artifact-level markers) ---
   "simulation-plan-ready",
   "simulation-result-validated",
+  // --- audit (Sprint 67: chain-audit findings; append-only) ---
+  "audit-artifact-missing",
+  "audit-artifact-invalid",
+  "audit-v1-artifact",
+  "audit-source-ref-mismatch",
+  "audit-chain-complete",
 ] as const;
 
 /** One of the stable simulation reason codes. */
@@ -173,6 +180,16 @@ export const SIMULATION_REASON_CODE_DEFINITIONS: Readonly<
     "The intent plan carries no blocking reason — it is ready for SIMULATION ONLY (never live work)."),
   "simulation-result-validated": def("simulation-result-validated", "outcome", "info",
     "The simulation result artifact passed strict validation, including its literal safety locks."),
+  "audit-artifact-missing": def("audit-artifact-missing", "audit", "warning",
+    "A chain artifact was not supplied to the audit — the chain is incomplete until every artifact is present and valid."),
+  "audit-artifact-invalid": def("audit-artifact-invalid", "audit", "blocking",
+    "A supplied chain artifact failed its strict production validator — fix or rebuild it; an invalid artifact fails the audit."),
+  "audit-v1-artifact": def("audit-v1-artifact", "audit", "blocking",
+    "A v1 artifact was supplied where the audited chain requires v2 — rebuild it with --schema-version v2; a v1 stand-in fails the audit."),
+  "audit-source-ref-mismatch": def("audit-source-ref-mismatch", "audit", "blocking",
+    "Two chain artifacts disagree on a structured source reference (label/count/blocked state) — they were not built from the same chain; the audit fails."),
+  "audit-chain-complete": def("audit-chain-complete", "audit", "info",
+    "Every audited chain artifact is present and strictly valid."),
 };
 
 const CODE_SET: ReadonlySet<string> = new Set(SIMULATION_REASON_CODES);

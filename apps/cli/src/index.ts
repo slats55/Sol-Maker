@@ -61,6 +61,7 @@ import {
   paperSimulationIntentPlanReport,
   paperSimulationResultReport,
   paperSimulationValidateReport,
+  paperSimulationAuditReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1881,5 +1882,59 @@ program
     console.log(text);
     if (exitCode !== 0) process.exitCode = exitCode;
   });
+
+program
+  .command("paper:simulation:audit")
+  .description(
+    "Build a `phase6.audit.report.v1` — the CHAIN AUDIT over the nine v2/simulation artifacts (decision v2, run report v2, safety gates v2, prereqs v2, the three governance specs, the simulation intent plan v2, the simulation result v1). Each artifact is strictly validated in place; MISSING artifacts are warnings (an incomplete chain is reported, never assumed); invalid artifacts, v1 stand-ins, and structured cross-reference mismatches FAIL the audit; the chain's own blocking conditions (not-ready gates/prereqs, non-adopted specs, blocked plan/result) are surfaced VERBATIM and never waived. The audit reports — it never authorizes anything; Phase 7 remains not started. Reads only the named files, writes nothing unless --out. No network, no wallet",
+  )
+  .option("--decisions <path>", "v2 decision report JSON")
+  .option("--run-report <path>", "v2 run report JSON")
+  .option("--gates <path>", "v2 safety gates report JSON")
+  .option("--prereqs <path>", "v2 phase6 prerequisite report JSON")
+  .option("--kill-switch <path>", "kill-switch spec JSON")
+  .option("--secrets-policy <path>", "secrets policy JSON")
+  .option("--burner-isolation <path>", "burner isolation spec JSON")
+  .option("--intent-plan <path>", "simulation intent plan JSON (simulation.intent.plan.v2)")
+  .option("--simulation-result <path>", "simulation result JSON (simulation.result.v1)")
+  .option("--operator <label>", "operator label echoed into the report")
+  .option("--json", "emit the audit report as stable JSON")
+  .option("--out <path>", "write ONLY the audit report JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-findings", "exit non-zero when the audit FAILED (any blocking finding)")
+  .option("--fail-on-incomplete", "exit non-zero when the chain is incomplete")
+  .option("--fail-on-chain-conditions", "exit non-zero when the chain carries any surfaced blocking condition")
+  .action(
+    (opts: {
+      decisions?: string; runReport?: string; gates?: string; prereqs?: string; killSwitch?: string;
+      secretsPolicy?: string; burnerIsolation?: string; intentPlan?: string; simulationResult?: string;
+      operator?: string; json?: boolean; out?: string; force?: boolean;
+      failOnFindings?: boolean; failOnIncomplete?: boolean; failOnChainConditions?: boolean;
+    }) => {
+      const { text, exitCode } = paperSimulationAuditReport(
+        {},
+        {
+          decisionsPath: opts.decisions,
+          runReportPath: opts.runReport,
+          gatesPath: opts.gates,
+          prereqsPath: opts.prereqs,
+          killSwitchPath: opts.killSwitch,
+          secretsPolicyPath: opts.secretsPolicy,
+          burnerIsolationPath: opts.burnerIsolation,
+          intentPlanPath: opts.intentPlan,
+          simulationResultPath: opts.simulationResult,
+          operatorLabel: opts.operator,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnFindings: Boolean(opts.failOnFindings),
+          failOnIncomplete: Boolean(opts.failOnIncomplete),
+          failOnChainConditions: Boolean(opts.failOnChainConditions),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
 
 program.parseAsync(process.argv);

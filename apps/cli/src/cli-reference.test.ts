@@ -43,6 +43,7 @@ const EXPECTED_COMMANDS: readonly string[] = [
   "paper:simulation:intent:plan",
   "paper:simulation:result",
   "paper:simulation:validate",
+  "paper:simulation:audit",
 ];
 
 /** Docs that must cover every registered command. */

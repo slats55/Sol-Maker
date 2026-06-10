@@ -23,6 +23,7 @@ import {
   paperSimulationIntentPlanReport,
   paperSimulationResultReport,
   paperSimulationValidateReport,
+  paperSimulationAuditReport,
 } from "./commands.js";
 
 function withChainDir<T>(fn: (tmp: string, chain: FictionalSimulationChain) => T): T {
@@ -258,6 +259,72 @@ describe("paper:simulation:validate", () => {
       expect(paperSimulationValidateReport({ cwd: tmp }, { planPath: "wrong.json" }).exitCode).toBe(1);
       expect(paperSimulationValidateReport({ cwd: tmp }, {}).exitCode).toBe(1);
       expect(paperSimulationValidateReport({ cwd: tmp }, { resultPath: "nope.json" }).exitCode).toBe(1);
+    });
+  });
+});
+
+describe("paper:simulation:audit", () => {
+  const AUDIT_PATHS = {
+    decisionsPath: "dec2.json",
+    gatesPath: "gates2.json",
+    prereqsPath: "prereqs2.json",
+    killSwitchPath: "ks.json",
+    secretsPolicyPath: "sp.json",
+    burnerIsolationPath: "bi.json",
+  } as const;
+
+  function writePlanAndResult(tmp: string): void {
+    expect(
+      paperSimulationIntentPlanReport(
+        { cwd: tmp },
+        { ...ALL_PATHS, acknowledgePaperEnterReview: true, operatorLabel: "fictional-operator", planLabel: "fictional-plan", outPath: "plan.json" },
+      ).exitCode,
+    ).toBe(0);
+    expect(paperSimulationResultReport({ cwd: tmp }, { planPath: "plan.json", outPath: "result.json" }).exitCode).toBe(0);
+  }
+
+  it("audits the full chain from files (exit 0); missing run-report is a warning, not a failure", () => {
+    withChainDir((tmp, chain) => {
+      writeFileSync(join(tmp, "run2.json"), JSON.stringify(chain.runReport));
+      writePlanAndResult(tmp);
+      const r = paperSimulationAuditReport(
+        { cwd: tmp },
+        { ...AUDIT_PATHS, runReportPath: "run2.json", intentPlanPath: "plan.json", simulationResultPath: "result.json", json: true },
+      );
+      expect(r.exitCode).toBe(0);
+      const report = JSON.parse(r.text) as { auditPassed: boolean; chainComplete: boolean };
+      expect(report.auditPassed).toBe(true);
+      expect(report.chainComplete).toBe(true);
+
+      const partial = paperSimulationAuditReport({ cwd: tmp }, { ...AUDIT_PATHS, intentPlanPath: "plan.json", json: true });
+      expect(partial.exitCode).toBe(0);
+      const partialReport = JSON.parse(partial.text) as { auditPassed: boolean; chainComplete: boolean };
+      expect(partialReport.auditPassed).toBe(true);
+      expect(partialReport.chainComplete).toBe(false);
+    });
+  });
+
+  it("--fail-on-incomplete and --fail-on-findings gate the exit code", () => {
+    withChainDir((tmp, chain) => {
+      writeFileSync(join(tmp, "run2.json"), JSON.stringify(chain.runReport));
+      expect(paperSimulationAuditReport({ cwd: tmp }, { ...AUDIT_PATHS, failOnIncomplete: true }).exitCode).toBe(1);
+      // A v1 decision stand-in is a blocking finding.
+      writeFileSync(join(tmp, "dec1-shaped.json"), JSON.stringify({ ...chain.decision, schemaVersion: "sniper.paper.decision.report.v1" }));
+      const failed = paperSimulationAuditReport(
+        { cwd: tmp },
+        { ...AUDIT_PATHS, decisionsPath: "dec1-shaped.json", failOnFindings: true },
+      );
+      expect(failed.exitCode).toBe(1);
+      expect(failed.text).toContain("audit-v1-artifact");
+    });
+  });
+
+  it("refuses an unreadable named file; --out / overwrite refusal / --force behave", () => {
+    withChainDir((tmp) => {
+      expect(paperSimulationAuditReport({ cwd: tmp }, { decisionsPath: "nope.json" }).exitCode).toBe(1);
+      expect(paperSimulationAuditReport({ cwd: tmp }, { ...AUDIT_PATHS, outPath: "audit.json" }).exitCode).toBe(0);
+      expect(paperSimulationAuditReport({ cwd: tmp }, { ...AUDIT_PATHS, outPath: "audit.json" }).exitCode).toBe(1);
+      expect(paperSimulationAuditReport({ cwd: tmp }, { ...AUDIT_PATHS, outPath: "audit.json", force: true }).exitCode).toBe(0);
     });
   });
 });

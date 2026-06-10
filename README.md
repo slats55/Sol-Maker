@@ -307,8 +307,12 @@ plan with stable reason codes and zero entries. Previews never invent a destinat
 SKIPPED, and the only dry-run adapter honestly reports **UNAVAILABLE** (a real dry-run needs
 transaction material the boundary forbids building — nothing is faked). `paper:simulation:validate`
 strictly validates both artifacts, including their literal safety locks (`neverSigns`, `neverSends`,
-`dryRunOnly`, `neverAuthorizesLiveTrading`). A simulation result is never an execution and never
-live readiness — Phase 7 remains not started and unauthorized.
+`dryRunOnly`, `neverAuthorizesLiveTrading`). Sprint 67 closes the v2 audit gap:
+`paper:simulation:audit` builds a `phase6.audit.report.v1` over the **nine** chain artifacts —
+each strictly validated in place, structured cross-references checked (labels/counts/blocked
+states, never prose), missing artifacts reported as warnings, invalid/v1/mismatched artifacts
+failing the audit, and the chain's own blocking conditions surfaced verbatim. A simulation result
+is never an execution and never live readiness — Phase 7 remains not started and unauthorized.
 
 ## Non-negotiable security rules (summary)
 

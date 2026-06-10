@@ -85,6 +85,24 @@ export {
 } from "./result.js";
 
 export {
+  PHASE6_AUDIT_REPORT_V1_SCHEMA_VERSION,
+  PHASE6_AUDIT_REPORT_V1_BANNER,
+  PHASE6_AUDIT_REPORT_V1_GENERATED_BY,
+  PHASE6_AUDIT_REPORT_V1_DISCLAIMERS,
+  PHASE6_AUDIT_ROLES,
+  Phase6AuditReportV1Error,
+  buildPhase6AuditReportV1,
+  validatePhase6AuditReportV1,
+  formatPhase6AuditReportV1,
+  type Phase6AuditRole,
+  type Phase6AuditedArtifact,
+  type Phase6AuditFinding,
+  type Phase6AuditReportV1,
+  type BuildPhase6AuditReportV1Input,
+  type FormatPhase6AuditReportV1Options,
+} from "./chain-audit.js";
+
+export {
   SIMULATION_REASON_CATEGORIES,
   SIMULATION_REASON_SEVERITIES,
   SIMULATION_REASON_CODES,

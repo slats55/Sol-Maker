@@ -66,6 +66,7 @@ invariants.
 | `paper:simulation:intent:plan` | (none — missing inputs BLOCK honestly) | `--out` only | `simulation.intent.plan.v2` (the first REAL Phase 6 artifact; fail-closed preview) |
 | `paper:simulation:result` | `--plan` | `--out` only | `simulation.result.v1` (dry-run-only; unavailable dry-run reported honestly) |
 | `paper:simulation:validate` | `--plan` and/or `--result` | never | validates `simulation.intent.plan.v2` / `simulation.result.v1` (literal locks enforced) |
+| `paper:simulation:audit` | (none — missing artifacts reported as warnings) | `--out` only | `phase6.audit.report.v1` (chain audit over the nine v2/simulation artifacts; reports, never authorizes) |
 
 Common flags: `--json` (stable JSON), `--out <path>` + `--force` (write the artifact; refuse overwrite
 without `--force`), and command-specific `--fail-on-*` CI gates (see [CI gates](#ci-gates)).
@@ -88,6 +89,12 @@ pnpm soulmaker paper:simulation:result --plan plan.json --out result.json
 
 # 3) Validate any simulation artifact strictly (literal safety locks enforced):
 pnpm soulmaker paper:simulation:validate --plan plan.json --result result.json
+
+# 4) Audit the WHOLE chain (each artifact strictly validated; structured cross-refs checked):
+pnpm soulmaker paper:simulation:audit \
+  --decisions dec2.json --run-report run2.json --gates gates2.json --prereqs prereqs2.json \
+  --kill-switch ks.json --secrets-policy sp.json --burner-isolation bi.json \
+  --intent-plan plan.json --simulation-result result.json --operator you --out audit.json
 ```
 
 What to expect, honestly:
