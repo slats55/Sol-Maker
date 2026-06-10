@@ -96,6 +96,8 @@ import {
   formatSniperRunReportV2,
   diffSniperRunReports,
   formatSniperRunReportDiff,
+  diffSniperRunReportsV2,
+  formatSniperRunReportDiffV2,
   normalizeSniperPolicyConfig,
   formatSniperPolicyConfig,
   deriveSniperDecisionRules,
@@ -144,6 +146,7 @@ import {
   type SniperRunReport,
   type SniperRunReportV2,
   type SniperRunReportDiff,
+  type SniperRunReportDiffV2,
   type SniperPolicyConfig,
   type SniperPolicyConfigV2,
   type SniperAuditLog,
@@ -4961,6 +4964,10 @@ export interface PaperSniperDiffReportCommandOptions {
   failOnNewRisk?: boolean;
   failOnNewPaperEnter?: boolean;
   failOnNewUnknown?: boolean;
+  /** Diff schema to produce: "v1" (default; two v1 reports) or "v2" (two v2 reports + v2 layers). */
+  schemaVersion?: string;
+  /** Exit non-zero when a NEW operator-blocking condition appeared (requires --schema-version v2). */
+  failOnNewOperatorBlocking?: boolean;
 }
 
 /**
@@ -4978,6 +4985,13 @@ export function paperSniperDiffReportReport(
 ): CliReport {
   if (!opts.basePath) return { text: "Refusing: --base <path> is required.", exitCode: 1 };
   if (!opts.nextPath) return { text: "Refusing: --next <path> is required.", exitCode: 1 };
+  const schemaVersion = opts.schemaVersion ?? "v1";
+  if (schemaVersion !== "v1" && schemaVersion !== "v2") {
+    return { text: `Refusing: --schema-version must be "v1" or "v2" (got "${schemaVersion}").`, exitCode: 1 };
+  }
+  if (opts.failOnNewOperatorBlocking && schemaVersion !== "v2") {
+    return { text: "Refusing: --fail-on-new-operator-blocking requires --schema-version v2.", exitCode: 1 };
+  }
 
   let baseValue: unknown;
   let nextValue: unknown;
@@ -4990,6 +5004,29 @@ export function paperSniperDiffReportReport(
     nextValue = readJsonValue(ctx, opts.nextPath, "next run report");
   } catch (err) {
     return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (schemaVersion === "v2") {
+    let diffV2: SniperRunReportDiffV2;
+    try {
+      diffV2 = diffSniperRunReportsV2(baseValue, nextValue);
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    const exitCode =
+      (opts.failOnChange && diffV2.hasAnyChange) ||
+      (opts.failOnNewInvalid && diffV2.hasNewInvalid) ||
+      (opts.failOnNewPreflightFail && diffV2.hasNewPreflightFailure) ||
+      (opts.failOnNewRisk && diffV2.hasNewRiskBlock) ||
+      (opts.failOnNewPaperEnter && diffV2.hasNewPaperEnter) ||
+      (opts.failOnNewUnknown && diffV2.hasNewUnknown) ||
+      (opts.failOnNewOperatorBlocking && diffV2.hasNewOperatorBlocking)
+        ? 1
+        : 0;
+    if (opts.json) {
+      return { text: JSON.stringify(redactValue(diffV2), null, 2), exitCode };
+    }
+    return { text: formatSniperRunReportDiffV2(diffV2, { label: `${opts.basePath} → ${opts.nextPath}` }), exitCode };
   }
 
   let diff: SniperRunReportDiff;

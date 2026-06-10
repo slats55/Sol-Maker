@@ -53,7 +53,7 @@ invariants.
 | `paper:sniper:policy:validate` | `--input` | never | `sniper.policy.config.v1` (or `.v2` via `--schema-version v2`) |
 | `paper:sniper:workflow` | (none) | never | `sniper.workflow.plan.v1` |
 | `paper:sniper:report` | `--candidates` | `--out` only | `sniper.run.report.v1` (or `.v2` via `--schema-version v2`) |
-| `paper:sniper:diff:report` | `--base`, `--next` | never | `sniper.run.report.diff.v1` |
+| `paper:sniper:diff:report` | `--base`, `--next` | never | `sniper.run.report.diff.v1` (or `.v2` via `--schema-version v2` — two v2 reports) |
 | `paper:sniper:audit` | `--report` | `--out` only | `sniper.audit.log.v1` |
 | `paper:sniper:session:pack` | `--artifact` (≥1) | `--out` only | `sniper.session.pack.v1` (or `.v2` via `--schema-version v2` — full v2 registry incl. the spec artifacts) |
 | `paper:sniper:safety:gates` | `--session` (v1) / per-artifact flags (v2) | `--out` only | `sniper.safety.gates.report.v1` (or `.v2` via `--schema-version v2`) |
@@ -321,6 +321,14 @@ Compare two run reports (e.g. yesterday vs today) to see exactly what moved:
 pnpm soulmaker paper:sniper:diff:report --base run-yesterday.json --next run-today.json
 pnpm soulmaker paper:sniper:diff:report --base run-yesterday.json --next run-today.json --json --fail-on-new-risk
 ```
+
+With `--schema-version v2` it compares two **v2** run reports (`sniper.run.report.diff.v2`): the v1
+core is computed by the unchanged v1 differ, then the v2 layers are compared structured-field-only —
+policy visibility (including the structured policy/decision schemaVersion mismatch), preflight-input
+coverage, unresolved unknowns, operator-blocking reasons (verbatim string movements), reason-code
+rollup deltas, and per-candidate code trails. `--fail-on-change` then gates on ANY change (v1 core or
+v2 layer), and `--fail-on-new-operator-blocking` gates on a newly-appeared operator-blocking
+condition. A v1 artifact on either side refuses (lift it with the report upgrade path first).
 
 It pairs candidates by id and reports membership changes (added / removed / common), per-candidate
 **decision** and **preflight-status** transitions, the directional id lists (`newlyInvalidIds`,

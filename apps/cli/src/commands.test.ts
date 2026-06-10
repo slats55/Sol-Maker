@@ -7505,6 +7505,75 @@ describe("paperSniperDiffReportReport (Sprint 31)", () => {
       cleanup();
     }
   });
+
+  // --- Sprint 74: --schema-version v2 (sniper.run.report.diff.v2) -------------
+
+  /** Build a V2 run report file (decision v2 → run report v2); returns the path. */
+  function runReportV2File(cwd: string, name: string, risk: "pass" | "reject"): string {
+    const cands = writeJson(cwd, `${name}.cands.json`, { candidates: [{ candidateId: "c1", mint: USDC }] });
+    writeJson(cwd, `${name}.insp.json`, cleanInspection(USDC));
+    writeJson(cwd, `${name}.risk.json`, risk === "pass" ? riskPass(USDC) : riskReject(USDC));
+    const inspections = risk === "pass" ? [`c1=${name}.insp.json`] : [];
+    expect(paperSniperPreflightReport({ cwd, env: {} }, { candidatesPath: cands, inspections, risks: [`c1=${name}.risk.json`], outPath: `${name}.pf.json` }).exitCode).toBe(0);
+    expect(paperSniperDecideReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: `${name}.pf.json`, outPath: `${name}.dec2.json`, schemaVersion: "v2" }).exitCode).toBe(0);
+    const r = paperSniperReportReport({ cwd, env: {} }, { candidatesPath: cands, preflightPath: `${name}.pf.json`, decisionsPath: `${name}.dec2.json`, json: true, schemaVersion: "v2" });
+    expect(r.exitCode).toBe(0);
+    writeFileSync(join(cwd, `${name}.run2.json`), r.text);
+    return `${name}.run2.json`;
+  }
+
+  it("--schema-version v2 diffs two v2 reports: rollup deltas + code trails + blocking reasons", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const base = runReportV2File(cwd, "b2", "pass");
+      const next = runReportV2File(cwd, "n2", "reject");
+      const r = paperSniperDiffReportReport({ cwd, env: {} }, { basePath: base, nextPath: next, schemaVersion: "v2", json: true });
+      expect(r.exitCode).toBe(0);
+      const obj = JSON.parse(r.text) as {
+        schemaVersion: string;
+        hasAnyChange: boolean;
+        candidateCodeChanges: { candidateId: string }[];
+        reasonCodeCountDeltas: Record<string, number>;
+        operatorBlockingReasonsAdded: string[];
+      };
+      expect(obj.schemaVersion).toBe("sniper.run.report.diff.v2");
+      expect(obj.hasAnyChange).toBe(true);
+      expect(obj.candidateCodeChanges.map((c) => c.candidateId)).toContain("c1");
+      expect(Object.keys(obj.reasonCodeCountDeltas).length).toBeGreaterThan(0);
+      // pass → reject: the risk-block review reason is newly operator-blocking
+      expect(obj.operatorBlockingReasonsAdded.length).toBeGreaterThan(0);
+      // determinism + fail flags
+      expect(paperSniperDiffReportReport({ cwd, env: {} }, { basePath: base, nextPath: next, schemaVersion: "v2", json: true }).text).toBe(r.text);
+      expect(paperSniperDiffReportReport({ cwd, env: {} }, { basePath: base, nextPath: next, schemaVersion: "v2", failOnChange: true }).exitCode).toBe(1);
+      expect(paperSniperDiffReportReport({ cwd, env: {} }, { basePath: base, nextPath: next, schemaVersion: "v2", failOnNewOperatorBlocking: true }).exitCode).toBe(1);
+      expect(paperSniperDiffReportReport({ cwd, env: {} }, { basePath: base, nextPath: base, schemaVersion: "v2", failOnChange: true }).exitCode).toBe(0);
+      // formatted output carries the v2 sections
+      const text = paperSniperDiffReportReport({ cwd, env: {} }, { basePath: base, nextPath: next, schemaVersion: "v2" });
+      expect(text.text).toContain("RUN REPORT DIFF V2");
+      expect(text.text).toContain("Any v2-layer change:");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("--schema-version v2 refuses v1 inputs; v1 mode refuses v2 inputs; bad flag combos refuse", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const v1 = runReportFile(cwd, "v1side", "pass");
+      const v2 = runReportV2File(cwd, "v2side", "pass");
+      const r1 = paperSniperDiffReportReport({ cwd, env: {} }, { basePath: v1, nextPath: v2, schemaVersion: "v2" });
+      expect(r1.exitCode).toBe(1);
+      expect(r1.text).toMatch(/base run report v2 is invalid/);
+      const r2 = paperSniperDiffReportReport({ cwd, env: {} }, { basePath: v2, nextPath: v2 });
+      expect(r2.exitCode).toBe(1); // v1 differ refuses v2 artifacts — behavior unchanged
+      expect(paperSniperDiffReportReport({ cwd, env: {} }, { basePath: v2, nextPath: v2, schemaVersion: "v3" }).exitCode).toBe(1);
+      const r3 = paperSniperDiffReportReport({ cwd, env: {} }, { basePath: v1, nextPath: v1, failOnNewOperatorBlocking: true });
+      expect(r3.exitCode).toBe(1);
+      expect(r3.text).toMatch(/requires --schema-version v2/);
+    } finally {
+      cleanup();
+    }
+  });
 });
 
 describe("paperSniperPolicyValidateReport + decide --policy (Sprint 32)", () => {

@@ -1340,21 +1340,24 @@ program
 program
   .command("paper:sniper:diff:report")
   .description(
-    "Deterministically diff TWO existing sniper run report JSON files (`sniper.run.report.diff.v1`). Reads ONLY the two named files (BOM-tolerant; malformed/wrong-schema refused), runs no report, and writes nothing. Pairs candidates by id and reports membership changes (added / removed / common), per-candidate decision + preflight-status transitions, conservative directional flags (new invalid / preflight-fail / risk-block / paper-enter / unknown / recovery), and aggregate deltas. A paper-enter transition is a change between two SIMULATED, paper-only classifications — never a buy/sell order. No network, no wallet",
+    "Deterministically diff TWO existing sniper run report JSON files (`sniper.run.report.diff.v1`, or `.v2` with --schema-version v2). Reads ONLY the two named files (BOM-tolerant; malformed/wrong-schema refused), runs no report, and writes nothing. Pairs candidates by id and reports membership changes (added / removed / common), per-candidate decision + preflight-status transitions, conservative directional flags (new invalid / preflight-fail / risk-block / paper-enter / unknown / recovery), and aggregate deltas. V2 compares two v2 run reports: the v1 core is computed by the unchanged v1 differ, then the v2 layers are compared structured-field-only (policy visibility + the structured policy/decision mismatch, preflight-input coverage, unresolved unknowns, operator-blocking reasons VERBATIM, reason-code rollup deltas, per-candidate code trails). A paper-enter transition is a change between two SIMULATED, paper-only classifications — never a buy/sell order. No network, no wallet",
   )
-  .option("--base <path>", "base run report JSON (sniper.run.report.v1)")
-  .option("--next <path>", "next run report JSON (sniper.run.report.v1)")
+  .option("--base <path>", "base run report JSON (sniper.run.report.v1, or .v2 with --schema-version v2)")
+  .option("--next <path>", "next run report JSON (sniper.run.report.v1, or .v2 with --schema-version v2)")
+  .option("--schema-version <version>", "diff schema to produce: v1 (default; two v1 reports) or v2 (two v2 reports + v2 layers)")
   .option("--json", "emit the run report diff as stable JSON")
-  .option("--fail-on-change", "exit non-zero on any difference")
+  .option("--fail-on-change", "exit non-zero on any difference (v2: any v1-core OR v2-layer difference)")
   .option("--fail-on-new-invalid", "exit non-zero when any candidate became invalid")
   .option("--fail-on-new-preflight-fail", "exit non-zero when any candidate newly failed preflight")
   .option("--fail-on-new-risk", "exit non-zero when any candidate became risk-blocked")
   .option("--fail-on-new-paper-enter", "exit non-zero when any candidate newly paper-enters (SIMULATED)")
   .option("--fail-on-new-unknown", "exit non-zero when any candidate became unknown")
+  .option("--fail-on-new-operator-blocking", "exit non-zero when a NEW operator-blocking condition appeared (requires --schema-version v2)")
   .action(
     (opts: {
       base?: string;
       next?: string;
+      schemaVersion?: string;
       json?: boolean;
       failOnChange?: boolean;
       failOnNewInvalid?: boolean;
@@ -1362,12 +1365,14 @@ program
       failOnNewRisk?: boolean;
       failOnNewPaperEnter?: boolean;
       failOnNewUnknown?: boolean;
+      failOnNewOperatorBlocking?: boolean;
     }) => {
       const { text, exitCode } = paperSniperDiffReportReport(
         {},
         {
           basePath: opts.base,
           nextPath: opts.next,
+          schemaVersion: opts.schemaVersion,
           json: Boolean(opts.json),
           failOnChange: Boolean(opts.failOnChange),
           failOnNewInvalid: Boolean(opts.failOnNewInvalid),
@@ -1375,6 +1380,7 @@ program
           failOnNewRisk: Boolean(opts.failOnNewRisk),
           failOnNewPaperEnter: Boolean(opts.failOnNewPaperEnter),
           failOnNewUnknown: Boolean(opts.failOnNewUnknown),
+          failOnNewOperatorBlocking: Boolean(opts.failOnNewOperatorBlocking),
         },
       );
       console.log(text);
