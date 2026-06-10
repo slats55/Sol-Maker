@@ -55,7 +55,7 @@ invariants.
 | `paper:sniper:report` | `--candidates` | `--out` only | `sniper.run.report.v1` (or `.v2` via `--schema-version v2`) |
 | `paper:sniper:diff:report` | `--base`, `--next` | never | `sniper.run.report.diff.v1` |
 | `paper:sniper:audit` | `--report` | `--out` only | `sniper.audit.log.v1` |
-| `paper:sniper:session:pack` | `--artifact` (≥1) | `--out` only | `sniper.session.pack.v1` |
+| `paper:sniper:session:pack` | `--artifact` (≥1) | `--out` only | `sniper.session.pack.v1` (or `.v2` via `--schema-version v2` — full v2 registry incl. the spec artifacts) |
 | `paper:sniper:safety:gates` | `--session` (v1) / per-artifact flags (v2) | `--out` only | `sniper.safety.gates.report.v1` (or `.v2` via `--schema-version v2`) |
 | `paper:phase6:prereqs` | `--session` | `--out` only | `phase6.prerequisite.report.v1` |
 | `paper:phase6:intent:plan` | `--decisions` | `--out` only | `simulation.intent.plan.v1` (INERT, not executable) |

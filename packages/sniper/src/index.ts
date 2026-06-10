@@ -298,6 +298,25 @@ export type {
 } from "./session-pack.js";
 
 export {
+  buildSniperSessionPackV2,
+  validateSniperSessionPackV2,
+  formatSniperSessionPackV2,
+  SniperSessionPackV2Error,
+  SNIPER_SESSION_PACK_V2_SCHEMA_VERSION,
+  SNIPER_SESSION_PACK_V2_BANNER,
+  SNIPER_SESSION_PACK_V2_DISCLAIMERS,
+} from "./session-pack-v2.js";
+
+export type {
+  SniperArtifactKindV2,
+  SniperSessionPackEntryV2,
+  SniperSessionCoverageV2,
+  SniperSessionPackV2,
+  BuildSniperSessionPackV2Input,
+  FormatSniperSessionPackV2Options,
+} from "./session-pack-v2.js";
+
+export {
   buildSniperSafetyGatesReport,
   validateSniperSafetyGatesReport,
   formatSniperSafetyGatesReport,

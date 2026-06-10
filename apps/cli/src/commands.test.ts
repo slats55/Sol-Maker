@@ -73,7 +73,7 @@ import {
 } from "./commands.js";
 import { buildTokenRiskReport } from "@soulmaker/risk";
 import { parseJournal, reduceJournal } from "@soulmaker/paper";
-import { validatePaperSniperDecisionReportV2, validateSniperPreflightInput, validateSniperTokenPreflightReport } from "@soulmaker/sniper";
+import { validatePaperSniperDecisionReportV2, validateSniperPreflightInput, validateSniperTokenPreflightReport, validateSniperSessionPackV2 } from "@soulmaker/sniper";
 import {
   runBacktest,
   buildBacktestResearchBundle,
@@ -7717,6 +7717,54 @@ describe("paperSniperAuditReport (Sprint 33)", () => {
       const r = paperSniperAuditReport({ cwd, env: {} }, { reportPath: wrong });
       expect(r.exitCode).toBe(1);
       expect(r.text).toMatch(/run report is invalid/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperSniperSessionPackReport --schema-version v2 (Sprint 57)", () => {
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+
+  it("packs spec artifacts with adoption flags; v1 keeps them unsupported; fail flag works", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      // an adopted kill-switch spec + a draft secrets policy, via the real spec commands
+      expect(paperSniperKillSwitchSpecReport({ cwd, env: {} }, { inputPath: writeJson(cwd, "ks-cfg.json", { readinessStatus: "adopted" }), outPath: "ks.json" }).exitCode).toBe(0);
+      expect(paperSniperSecretsPolicyReport({ cwd, env: {} }, { outPath: "sp.json" }).exitCode).toBe(0); // draft
+      const r = paperSniperSessionPackReport(
+        { cwd, env: {} },
+        { artifacts: ["ks=ks.json", "sp=sp.json"], schemaVersion: "v2", json: true },
+      );
+      expect(r.exitCode).toBe(0);
+      const obj = JSON.parse(r.text) as {
+        schemaVersion: string;
+        artifacts: { label: string; kind: string; adopted: boolean | null }[];
+        hasNotAdoptedSpec: boolean;
+        coverage: { hasKillSwitchSpec: boolean; isSpecComplete: boolean };
+      };
+      expect(obj.schemaVersion).toBe("sniper.session.pack.v2");
+      expect(obj.artifacts.find((a) => a.label === "ks")!.kind).toBe("kill-switch-spec");
+      expect(obj.artifacts.find((a) => a.label === "ks")!.adopted).toBe(true);
+      expect(obj.artifacts.find((a) => a.label === "sp")!.adopted).toBe(false);
+      expect(obj.hasNotAdoptedSpec).toBe(true);
+      expect(obj.coverage.hasKillSwitchSpec).toBe(true);
+      expect(obj.coverage.isSpecComplete).toBe(false);
+      // --fail-on-not-adopted-spec trips on the draft policy
+      expect(paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: ["ks=ks.json", "sp=sp.json"], schemaVersion: "v2", failOnNotAdoptedSpec: true }).exitCode).toBe(1);
+      // the flag is v2-only
+      expect(paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: ["ks=ks.json"], failOnNotAdoptedSpec: true }).exitCode).toBe(1);
+      // the v1 pack keeps spec artifacts honestly unsupported
+      const v1 = paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: ["ks=ks.json"], json: true });
+      const v1Obj = JSON.parse(v1.text) as { artifacts: { kind: string }[] };
+      expect(v1Obj.artifacts[0]!.kind).toBe("unsupported");
+      // v2 --out writes a valid pack, refuses overwrite
+      expect(paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: ["ks=ks.json"], schemaVersion: "v2", outPath: "pack2.json" }).exitCode).toBe(0);
+      expect(paperSniperSessionPackReport({ cwd, env: {} }, { artifacts: ["ks=ks.json"], schemaVersion: "v2", outPath: "pack2.json" }).exitCode).toBe(1);
+      expect(() => validateSniperSessionPackV2(JSON.parse(readFileSync(join(cwd, "pack2.json"), "utf8")))).not.toThrow();
     } finally {
       cleanup();
     }

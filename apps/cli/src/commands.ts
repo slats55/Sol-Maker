@@ -82,6 +82,8 @@ import {
   formatSniperAuditLog,
   buildSniperSessionPack,
   formatSniperSessionPack,
+  buildSniperSessionPackV2,
+  formatSniperSessionPackV2,
   buildSniperSafetyGatesReport,
   formatSniperSafetyGatesReport,
   buildSniperSafetyGatesReportV2,
@@ -120,6 +122,7 @@ import {
   type SniperPolicyConfigV2,
   type SniperAuditLog,
   type SniperSessionPack,
+  type SniperSessionPackV2,
   type SniperSessionPackArtifactInput,
   type SniperSafetyGatesReport,
   type SniperSafetyGatesReportV2,
@@ -5193,6 +5196,10 @@ export interface PaperSniperSessionPackCommandOptions {
   failOnUnknown?: boolean;
   failOnPaperEnter?: boolean;
   failOnUnsupported?: boolean;
+  /** v2 only: exit non-zero when any packed spec artifact is NOT adopted. */
+  failOnNotAdoptedSpec?: boolean;
+  /** Pack schema to produce: "v1" (default; unchanged) or "v2" (full v2 registry incl. spec artifacts). */
+  schemaVersion?: string;
 }
 
 /**
@@ -5209,6 +5216,13 @@ export function paperSniperSessionPackReport(
   ctx: CommandContext = {},
   opts: PaperSniperSessionPackCommandOptions = {},
 ): CliReport {
+  const schemaVersion = opts.schemaVersion ?? "v1";
+  if (schemaVersion !== "v1" && schemaVersion !== "v2") {
+    return { text: 'Refusing: --schema-version must be "v1" or "v2".', exitCode: 1 };
+  }
+  if (schemaVersion === "v1" && opts.failOnNotAdoptedSpec) {
+    return { text: "Refusing: --fail-on-not-adopted-spec requires --schema-version v2.", exitCode: 1 };
+  }
   const specs = opts.artifacts ?? [];
   if (specs.length === 0) {
     return { text: "Refusing: at least one --artifact <label=path> is required.", exitCode: 1 };
@@ -5227,6 +5241,39 @@ export function paperSniperSessionPackReport(
       return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
     }
     artifacts.push({ label: parsed.label, sourceLabel: parsed.path, value });
+  }
+
+  // --- v2: the full v2 registry (spec artifacts, v2 reports, gates/prereq trackers) ---
+  if (schemaVersion === "v2") {
+    let packV2: SniperSessionPackV2;
+    try {
+      packV2 = buildSniperSessionPackV2({ sessionLabel: opts.label ?? null, artifacts });
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (opts.outPath) {
+      const resolved = resolvePath(ctx, opts.outPath);
+      if (!opts.force && existsSync(resolved)) {
+        return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+      }
+      try {
+        writeFileSync(resolved, JSON.stringify(redactValue(packV2), null, 2) + "\n");
+      } catch {
+        return { text: redactString(`Refusing: cannot write session pack at ${resolved}`), exitCode: 1 };
+      }
+    }
+    const exitCode =
+      (opts.failOnRisk && packV2.hasRiskBlock) ||
+      (opts.failOnUnknown && packV2.hasUnknown) ||
+      (opts.failOnPaperEnter && packV2.hasPaperEnter) ||
+      (opts.failOnUnsupported && packV2.hasUnsupported) ||
+      (opts.failOnNotAdoptedSpec && packV2.hasNotAdoptedSpec)
+        ? 1
+        : 0;
+    if (opts.json) {
+      return { text: JSON.stringify(redactValue(packV2), null, 2), exitCode };
+    }
+    return { text: formatSniperSessionPackV2(packV2, { label: opts.label }), exitCode };
   }
 
   let pack: SniperSessionPack;

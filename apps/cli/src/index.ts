@@ -1451,6 +1451,7 @@ program
     [] as string[],
   )
   .option("--label <string>", "operator session label")
+  .option("--schema-version <version>", "pack schema: v1 (default) or v2 (full v2 registry — preflight input, policy/decision/run-report/gates/prereq v2, kill-switch/secrets/burner specs)")
   .option("--json", "emit the session pack as stable JSON")
   .option("--out <path>", "write ONLY the session pack JSON to this path (writes nothing if omitted)")
   .option("--force", "overwrite an existing --out file (refused by default)")
@@ -1458,10 +1459,12 @@ program
   .option("--fail-on-unknown", "exit non-zero when any artifact carries an unknown classification")
   .option("--fail-on-paper-enter", "exit non-zero when any artifact carries a SIMULATED paper-enter")
   .option("--fail-on-unsupported", "exit non-zero when any artifact has an unsupported schema")
+  .option("--fail-on-not-adopted-spec", "v2 only: exit non-zero when any packed spec artifact is NOT adopted")
   .action(
     (opts: {
       artifact?: string[];
       label?: string;
+      schemaVersion?: string;
       json?: boolean;
       out?: string;
       force?: boolean;
@@ -1469,12 +1472,14 @@ program
       failOnUnknown?: boolean;
       failOnPaperEnter?: boolean;
       failOnUnsupported?: boolean;
+      failOnNotAdoptedSpec?: boolean;
     }) => {
       const { text, exitCode } = paperSniperSessionPackReport(
         {},
         {
           artifacts: opts.artifact ?? [],
           label: opts.label,
+          schemaVersion: opts.schemaVersion,
           json: Boolean(opts.json),
           outPath: opts.out,
           force: Boolean(opts.force),
@@ -1482,6 +1487,7 @@ program
           failOnUnknown: Boolean(opts.failOnUnknown),
           failOnPaperEnter: Boolean(opts.failOnPaperEnter),
           failOnUnsupported: Boolean(opts.failOnUnsupported),
+          failOnNotAdoptedSpec: Boolean(opts.failOnNotAdoptedSpec),
         },
       );
       console.log(text);
