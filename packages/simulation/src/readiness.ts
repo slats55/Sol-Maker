@@ -65,13 +65,23 @@ export class Phase6SimulationReadinessReportV1Error extends Error {
 
 // --- model -------------------------------------------------------------------
 
-/** The required evidence areas (stable order). Each must carry a declared reference. */
+/** The required evidence areas (stable order; append-only). Each must carry a declared
+ * reference. Sprint 80 recalibration: the S73–S79 capabilities (diff chain, handoff pack,
+ * operator output quality, decision tally validation, dry-run boundary doc) became part of the
+ * Phase 6 bar, so readiness now requires their evidence too — fail-closed: a readiness artifact
+ * built against the older five-area bar re-validates as INVALID and must be rebuilt (it is never
+ * silently trusted against the new bar). */
 export const PHASE6_READINESS_EVIDENCE_AREAS = [
   "package-boundary-tests",
   "cli-commands",
   "e2e-fixtures",
   "source-scans",
   "docs",
+  "diff-chain-tests",
+  "handoff-pack-tests",
+  "output-quality-tests",
+  "tally-validation-tests",
+  "dry-run-boundary-doc",
 ] as const;
 
 /** One of the evidence areas. */

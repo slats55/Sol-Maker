@@ -65,6 +65,11 @@ function withHandoffDir<T>(fn: (d: HandoffDir) => T): T {
       "e2e-fixtures": "apps/cli/src/simulation-e2e.test.ts",
       "source-scans": "packages/simulation/src/package-boundary.test.ts",
       docs: "docs/SNIPER_RUNBOOK.md",
+      "diff-chain-tests": "packages/simulation/src/intent-plan-diff.test.ts",
+      "handoff-pack-tests": "packages/simulation/src/handoff-pack.test.ts",
+      "output-quality-tests": "packages/simulation/src/operator-output-quality.test.ts",
+      "tally-validation-tests": "packages/sniper/src/decision-tally-hardening.test.ts",
+      "dry-run-boundary-doc": "docs/PHASE6_DRY_RUN_BOUNDARY.md",
     },
     operatorLabel: "fictional-operator",
   });

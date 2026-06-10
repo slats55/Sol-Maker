@@ -28,6 +28,12 @@ const EVIDENCE: Record<(typeof PHASE6_READINESS_EVIDENCE_AREAS)[number], string>
   "e2e-fixtures": "apps/cli/src/simulation-e2e.test.ts",
   "source-scans": "packages/simulation/src/package-boundary.test.ts",
   docs: "docs/SNIPER_RUNBOOK.md",
+  // Sprint 80 recalibration: the S73–S79 capabilities are part of the Phase 6 bar.
+  "diff-chain-tests": "packages/simulation/src/intent-plan-diff.test.ts",
+  "handoff-pack-tests": "packages/simulation/src/handoff-pack.test.ts",
+  "output-quality-tests": "packages/simulation/src/operator-output-quality.test.ts",
+  "tally-validation-tests": "packages/sniper/src/decision-tally-hardening.test.ts",
+  "dry-run-boundary-doc": "docs/PHASE6_DRY_RUN_BOUNDARY.md",
 };
 
 function greenInput(): BuildPhase6SimulationReadinessReportV1Input {
@@ -73,6 +79,50 @@ describe("phase6 simulation readiness — green path", () => {
     const a = buildPhase6SimulationReadinessReportV1(greenInput());
     const b = buildPhase6SimulationReadinessReportV1(greenInput());
     expect(JSON.stringify(b)).toBe(JSON.stringify(a));
+  });
+});
+
+describe("phase6 simulation readiness — Sprint 80 recalibration", () => {
+  it("the bar now includes the S73–S79 areas (ten areas, stable order)", () => {
+    expect(PHASE6_READINESS_EVIDENCE_AREAS).toEqual([
+      "package-boundary-tests",
+      "cli-commands",
+      "e2e-fixtures",
+      "source-scans",
+      "docs",
+      "diff-chain-tests",
+      "handoff-pack-tests",
+      "output-quality-tests",
+      "tally-validation-tests",
+      "dry-run-boundary-doc",
+    ]);
+  });
+
+  it("readiness stays FALSE when any new area is undeclared (fail-closed)", () => {
+    for (const area of ["diff-chain-tests", "handoff-pack-tests", "output-quality-tests", "tally-validation-tests", "dry-run-boundary-doc"] as const) {
+      const input = greenInput();
+      const evidence = { ...(input.evidence as Record<string, string>) };
+      delete evidence[area];
+      input.evidence = evidence;
+      const r = buildPhase6SimulationReadinessReportV1(input);
+      expect(r.phase6SimulationReady, area).toBe(false);
+      expect(r.blockingReasonCodes).toContain("simulation-readiness-evidence-missing");
+    }
+  });
+
+  it("an artifact built against the OLD five-area bar re-validates as INVALID (never silently trusted)", () => {
+    const report = buildPhase6SimulationReadinessReportV1(greenInput());
+    const stale = JSON.parse(JSON.stringify(report)) as Phase6SimulationReadinessReportV1;
+    stale.evidence = stale.evidence.slice(0, 5);
+    expect(() => validatePhase6SimulationReadinessReportV1(stale)).toThrow(/must list all 10 areas/);
+  });
+
+  it("readiness improves to GREEN exactly when the full new bar is declared — and phase7 stays false", () => {
+    const r = buildPhase6SimulationReadinessReportV1(greenInput());
+    expect(r.phase6SimulationReady).toBe(true);
+    expect(r.evidence.length).toBe(10);
+    expect(r.evidence.every((e) => e.declared)).toBe(true);
+    expect(r.phase7LiveTradingReady).toBe(false);
   });
 });
 

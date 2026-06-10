@@ -105,6 +105,11 @@ pnpm soulmaker paper:simulation:readiness \
   --evidence e2e-fixtures=apps/cli/src/simulation-e2e.test.ts \
   --evidence source-scans=packages/simulation/src/package-boundary.test.ts \
   --evidence docs=docs/SNIPER_RUNBOOK.md \
+  --evidence diff-chain-tests=packages/simulation/src/intent-plan-diff.test.ts \
+  --evidence handoff-pack-tests=packages/simulation/src/handoff-pack.test.ts \
+  --evidence output-quality-tests=packages/simulation/src/operator-output-quality.test.ts \
+  --evidence tally-validation-tests=packages/sniper/src/decision-tally-hardening.test.ts \
+  --evidence dry-run-boundary-doc=docs/PHASE6_DRY_RUN_BOUNDARY.md \
   --operator you --fail-on-not-ready
 
 # 6) Compare two sessions' artifacts (structured fields only; both sides strictly validated —
