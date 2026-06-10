@@ -64,6 +64,8 @@ import {
   paperSimulationValidateReport,
   paperSimulationAuditReport,
   paperSimulationReadinessReport,
+  paperSimulationDiffPlanReport,
+  paperSimulationDiffResultReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1974,6 +1976,64 @@ program
           outPath: opts.out,
           force: Boolean(opts.force),
           failOnNotReady: Boolean(opts.failOnNotReady),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:simulation:diff:plan")
+  .description(
+    "Build a `simulation.intent.plan.diff.v2` — a deterministic STRUCTURED-FIELD-ONLY comparison of two simulation intent plans (--base vs --next, both required and both strictly validated; an invalid, tampered, or wrong-schema artifact refuses outright). Surfaces the blocked transition, blocking/warning code movements, source-artifact ref changes, readiness/spec-adoption changes, the operator acknowledgment, and per-entry preview changes as stable simulation-diff-plan-* findings. A diff over previews is still a preview: never signs, never sends, never authorizes live trading (literal locks, validated). Reads only the two named files, writes nothing unless --out. No network, no wallet",
+  )
+  .option("--base <path>", "BASE simulation intent plan JSON (simulation.intent.plan.v2; required)")
+  .option("--next <path>", "NEXT simulation intent plan JSON (simulation.intent.plan.v2; required)")
+  .option("--json", "emit the diff as stable JSON")
+  .option("--out <path>", "write ONLY the diff JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-diff", "exit non-zero when the diff reports ANY structured change")
+  .action(
+    (opts: { base?: string; next?: string; json?: boolean; out?: string; force?: boolean; failOnDiff?: boolean }) => {
+      const { text, exitCode } = paperSimulationDiffPlanReport(
+        {},
+        {
+          basePath: opts.base,
+          nextPath: opts.next,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnDiff: Boolean(opts.failOnDiff),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:simulation:diff:result")
+  .description(
+    "Build a `simulation.result.diff.v1` — a deterministic STRUCTURED-FIELD-ONLY comparison of two simulation results (--base vs --next, both required and both strictly validated; an invalid, tampered, or wrong-schema artifact refuses outright). Surfaces the status/blocked transitions, blocking-code movements, adapter identity changes, source-plan ref changes, and per-entry status/code/unresolved-field changes as stable simulation-diff-result-* findings. A diff over dry-run records is still a dry-run record: it never claims execution or a trade, never signs, never sends (literal locks, validated). Reads only the two named files, writes nothing unless --out. No network, no wallet",
+  )
+  .option("--base <path>", "BASE simulation result JSON (simulation.result.v1; required)")
+  .option("--next <path>", "NEXT simulation result JSON (simulation.result.v1; required)")
+  .option("--json", "emit the diff as stable JSON")
+  .option("--out <path>", "write ONLY the diff JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-diff", "exit non-zero when the diff reports ANY structured change")
+  .action(
+    (opts: { base?: string; next?: string; json?: boolean; out?: string; force?: boolean; failOnDiff?: boolean }) => {
+      const { text, exitCode } = paperSimulationDiffResultReport(
+        {},
+        {
+          basePath: opts.base,
+          nextPath: opts.next,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnDiff: Boolean(opts.failOnDiff),
         },
       );
       console.log(text);

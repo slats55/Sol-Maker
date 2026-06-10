@@ -315,8 +315,13 @@ failing the audit, and the chain's own blocking conditions surfaced verbatim. Sp
 structural verdict: `paper:simulation:readiness` builds a `phase6.simulation.readiness.report.v1`
 whose artifact checks are machine-verified and whose evidence references are recorded verbatim as
 declarations — and whose `phase7LiveTradingReady` is a **literal false** the validator refuses to
-see flipped. A simulation result is never an execution and never live readiness — Phase 7 remains
-not started and unauthorized.
+see flipped. Sprint 73 adds the simulation diff chain: `paper:simulation:diff:plan`
+(`simulation.intent.plan.diff.v2`) and `paper:simulation:diff:result` (`simulation.result.diff.v1`)
+compare two strictly-validated artifacts from STRUCTURED FIELDS ONLY — blocked transitions, reason-code
+movements, source-ref mismatches, and per-entry changes surfaced as stable `simulation-diff-*`
+findings, with `--fail-on-diff` as the CI gate (an invalid or tampered side refuses outright). A
+simulation result is never an execution and never live readiness — Phase 7 remains not started and
+unauthorized.
 
 ## Non-negotiable security rules (summary)
 

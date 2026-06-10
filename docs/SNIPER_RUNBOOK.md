@@ -106,6 +106,13 @@ pnpm soulmaker paper:simulation:readiness \
   --evidence source-scans=packages/simulation/src/package-boundary.test.ts \
   --evidence docs=docs/SNIPER_RUNBOOK.md \
   --operator you --fail-on-not-ready
+
+# 6) Compare two sessions' artifacts (structured fields only; both sides strictly validated —
+#    an invalid, tampered, or wrong-schema artifact refuses outright):
+pnpm soulmaker paper:simulation:diff:plan   --base plan-old.json   --next plan.json   --out plan-diff.json
+pnpm soulmaker paper:simulation:diff:result --base result-old.json --next result.json --out result-diff.json
+# CI: exit non-zero on ANY structured change:
+pnpm soulmaker paper:simulation:diff:plan --base plan-old.json --next plan.json --fail-on-diff
 ```
 
 What to expect, honestly:
@@ -122,6 +129,12 @@ What to expect, honestly:
   tracker's `NO_OPERATOR_BLOCKING` item unmet. After actually reviewing the paper-enters, pass
   `--acknowledge-paper-enter-review` — it stands in for THAT ONE item only (refused when anything
   else is unmet) and is loudly surfaced in the plan as a warning code.
+- The diff commands compare STRUCTURED FIELDS ONLY (never prose) and surface every movement as a
+  stable `simulation-diff-plan-*` / `simulation-diff-result-*` finding: blocked transitions,
+  blocking/warning code movements, source-ref mismatches, readiness/spec-adoption changes, entry
+  membership and per-field resolution changes (plan), and entry status / adapter-outcome changes
+  (result). An identical pair reports `identical` and exits 0; `--fail-on-diff` is the CI gate.
+  Side labels are metadata and are not compared.
 - A simulation result is **never** an execution, a trade, chain inclusion, or live readiness.
   Phase 7 (live/burner trading) remains not started and unauthorized.
 

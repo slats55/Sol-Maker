@@ -85,6 +85,43 @@ export {
 } from "./result.js";
 
 export {
+  SIMULATION_INTENT_PLAN_DIFF_V2_SCHEMA_VERSION,
+  SIMULATION_INTENT_PLAN_DIFF_V2_BANNER,
+  SIMULATION_INTENT_PLAN_DIFF_V2_GENERATED_BY,
+  SIMULATION_INTENT_PLAN_DIFF_V2_DISCLAIMERS,
+  SIMULATION_PLAN_SOURCE_REF_FIELDS,
+  SIMULATION_PLAN_ENTRY_PREVIEW_FIELDS,
+  SimulationIntentPlanDiffV2Error,
+  diffSimulationIntentPlansV2,
+  validateSimulationIntentPlanDiffV2,
+  formatSimulationIntentPlanDiffV2,
+  type SimulationPlanDiffSide,
+  type SimulationPlanSourceRefChange,
+  type SimulationPlanEntryFieldChange,
+  type SimulationPlanEntryChange,
+  type SimulationIntentPlanDiffDeltas,
+  type SimulationIntentPlanDiffV2,
+  type FormatSimulationIntentPlanDiffV2Options,
+} from "./intent-plan-diff.js";
+
+export {
+  SIMULATION_RESULT_DIFF_V1_SCHEMA_VERSION,
+  SIMULATION_RESULT_DIFF_V1_BANNER,
+  SIMULATION_RESULT_DIFF_V1_GENERATED_BY,
+  SIMULATION_RESULT_DIFF_V1_DISCLAIMERS,
+  SIMULATION_RESULT_PLAN_REF_FIELDS,
+  SimulationResultDiffV1Error,
+  diffSimulationResultsV1,
+  validateSimulationResultDiffV1,
+  formatSimulationResultDiffV1,
+  type SimulationResultDiffSide,
+  type SimulationResultEntryChange,
+  type SimulationResultDiffDeltas,
+  type SimulationResultDiffV1,
+  type FormatSimulationResultDiffV1Options,
+} from "./result-diff.js";
+
+export {
   PHASE6_AUDIT_REPORT_V1_SCHEMA_VERSION,
   PHASE6_AUDIT_REPORT_V1_BANNER,
   PHASE6_AUDIT_REPORT_V1_GENERATED_BY,

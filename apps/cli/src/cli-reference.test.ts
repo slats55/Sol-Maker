@@ -45,6 +45,8 @@ const EXPECTED_COMMANDS: readonly string[] = [
   "paper:simulation:validate",
   "paper:simulation:audit",
   "paper:simulation:readiness",
+  "paper:simulation:diff:plan",
+  "paper:simulation:diff:result",
 ];
 
 /** Docs that must cover every registered command. */
@@ -128,6 +130,8 @@ const EXPECTED_SIMULATION_FLAGS: Readonly<Record<string, readonly string[]>> = {
     "--audit", "--plan", "--result", "--evidence", "--operator", "--json", "--out", "--force",
     "--fail-on-not-ready",
   ],
+  "paper:simulation:diff:plan": ["--base", "--next", "--json", "--out", "--force", "--fail-on-diff"],
+  "paper:simulation:diff:result": ["--base", "--next", "--json", "--out", "--force", "--fail-on-diff"],
 };
 
 /** Parse each registered command's flag names from the CLI source. */

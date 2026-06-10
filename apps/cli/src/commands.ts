@@ -55,6 +55,10 @@ import {
   buildSimulationResultV1,
   validateSimulationResultV1,
   formatSimulationResultV1,
+  diffSimulationIntentPlansV2,
+  formatSimulationIntentPlanDiffV2,
+  diffSimulationResultsV1,
+  formatSimulationResultDiffV1,
   buildPhase6AuditReportV1,
   formatPhase6AuditReportV1,
   buildPhase6SimulationReadinessReportV1,
@@ -64,6 +68,8 @@ import {
   SIMULATION_RESULT_V1_SCHEMA_VERSION,
   type SimulationIntentPlanV2,
   type SimulationResultV1,
+  type SimulationIntentPlanDiffV2,
+  type SimulationResultDiffV1,
   type Phase6AuditReportV1,
   type Phase6ReadinessEvidenceArea,
   type Phase6SimulationReadinessReportV1,
@@ -6538,4 +6544,124 @@ export function paperSimulationReadinessReport(
     return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
   }
   return { text: formatPhase6SimulationReadinessReportV1(report, { label: opts.operatorLabel ?? undefined }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 73 — paper:simulation:diff:plan / paper:simulation:diff:result
+//   The Phase 6 diff chain: structured-field-only comparisons of two intent
+//   plans (`simulation.intent.plan.diff.v2`) or two simulation results
+//   (`simulation.result.diff.v1`). Reads only the two named files; writes
+//   nothing unless --out; never signs, never sends (literal locks validated).
+// ---------------------------------------------------------------------------
+
+export interface PaperSimulationDiffCommandOptions {
+  /** Path to the BASE artifact (required). */
+  basePath?: string;
+  /** Path to the NEXT artifact (required). */
+  nextPath?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit non-zero when the diff reports ANY structured change. */
+  failOnDiff?: boolean;
+}
+
+/** Shared base/next plumbing for the two simulation diff commands (read → diff → out → exit). */
+function runSimulationDiffCommand<T extends { hasChange: boolean }>(
+  ctx: CommandContext,
+  opts: PaperSimulationDiffCommandOptions,
+  expectedSchema: string,
+  diff: (base: unknown, next: unknown) => T,
+  format: (d: T) => string,
+  writeLabel: string,
+): CliReport {
+  if (!opts.basePath || !opts.nextPath) {
+    return {
+      text: `Refusing: --base <path> and --next <path> are both required (two ${expectedSchema} artifacts).`,
+      exitCode: 1,
+    };
+  }
+  let baseValue: unknown;
+  let nextValue: unknown;
+  try {
+    baseValue = readJsonValue(ctx, opts.basePath, `base ${writeLabel}`);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  try {
+    nextValue = readJsonValue(ctx, opts.nextPath, `next ${writeLabel}`);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let result: T;
+  try {
+    result = diff(baseValue, nextValue);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(result), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write ${writeLabel} diff at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  const exitCode = opts.failOnDiff && result.hasChange ? 1 : 0;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(result), null, 2), exitCode };
+  }
+  return { text: format(result), exitCode };
+}
+
+/**
+ * `soulmaker paper:simulation:diff:plan` — build a `simulation.intent.plan.diff.v2` from two
+ * named `simulation.intent.plan.v2` files (--base / --next, both required). Both artifacts are
+ * STRICTLY validated through the production plan validator — an unreadable, invalid, tampered, or
+ * wrong-schema artifact refuses outright (a flipped literal lock is invalid). The diff compares
+ * STRUCTURED FIELDS ONLY and reports stable `simulation-diff-plan-*` findings; `--fail-on-diff`
+ * gates CI on any change. Reads only the two named files; writes nothing unless `--out` (refusing
+ * overwrite without `--force`). Never signs, never sends. No network, no wallet.
+ */
+export function paperSimulationDiffPlanReport(
+  ctx: CommandContext = {},
+  opts: PaperSimulationDiffCommandOptions = {},
+): CliReport {
+  return runSimulationDiffCommand<SimulationIntentPlanDiffV2>(
+    ctx,
+    opts,
+    "simulation.intent.plan.v2",
+    diffSimulationIntentPlansV2,
+    (d) => formatSimulationIntentPlanDiffV2(d, { label: opts.basePath && opts.nextPath ? `${opts.basePath} → ${opts.nextPath}` : undefined }),
+    "simulation intent plan",
+  );
+}
+
+/**
+ * `soulmaker paper:simulation:diff:result` — build a `simulation.result.diff.v1` from two named
+ * `simulation.result.v1` files (--base / --next, both required). Both artifacts are STRICTLY
+ * validated through the production result validator — an unreadable, invalid, tampered, or
+ * wrong-schema artifact refuses outright (a flipped literal lock is invalid). The diff compares
+ * STRUCTURED FIELDS ONLY and reports stable `simulation-diff-result-*` findings; `--fail-on-diff`
+ * gates CI on any change. Reads only the two named files; writes nothing unless `--out` (refusing
+ * overwrite without `--force`). Never signs, never sends. No network, no wallet.
+ */
+export function paperSimulationDiffResultReport(
+  ctx: CommandContext = {},
+  opts: PaperSimulationDiffCommandOptions = {},
+): CliReport {
+  return runSimulationDiffCommand<SimulationResultDiffV1>(
+    ctx,
+    opts,
+    "simulation.result.v1",
+    diffSimulationResultsV1,
+    (d) => formatSimulationResultDiffV1(d, { label: opts.basePath && opts.nextPath ? `${opts.basePath} → ${opts.nextPath}` : undefined }),
+    "simulation result",
+  );
 }
