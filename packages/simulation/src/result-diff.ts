@@ -23,6 +23,7 @@
 import { redactString } from "@soulmaker/security";
 import {
   SIMULATION_PACKAGE_DISCLAIMERS,
+  SIMULATION_OPERATOR_SAFETY_LINE,
   SIMULATION_SAFETY_LITERALS,
   assertSimulationSafetyLiterals,
 } from "./safety.js";
@@ -594,6 +595,8 @@ export function formatSimulationResultDiffV1(
   const header =
     "SIMULATION RESULT DIFF — DRY-RUN RECORD COMPARISON ONLY (simulation only; not an execution; does not sign; does not send; does not authorize live trading)";
   const lines: string[] = [header, "=".repeat(header.length)];
+  lines.push(SIMULATION_OPERATOR_SAFETY_LINE);
+  lines.push(`artifact: ${diff.schemaVersion}`);
   if (opts.label) lines.push(`label: ${opts.label}`);
   const side = (s: SimulationResultDiffSide): string =>
     `${s.planRef.planLabel ?? "(unlabeled plan)"} — ${s.resultStatus.toUpperCase()}; adapter ${s.adapterId}; ${s.entryCount} entr${s.entryCount === 1 ? "y" : "ies"} (${s.skippedCount} skipped / ${s.unavailableCount} unavailable / ${s.failedCount} failed safely / ${s.completedCount} completed safely)`;

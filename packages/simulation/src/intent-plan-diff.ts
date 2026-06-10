@@ -24,6 +24,7 @@
 import { redactString } from "@soulmaker/security";
 import {
   SIMULATION_PACKAGE_DISCLAIMERS,
+  SIMULATION_OPERATOR_SAFETY_LINE,
   SIMULATION_SAFETY_LITERALS,
   assertSimulationSafetyLiterals,
 } from "./safety.js";
@@ -670,6 +671,8 @@ export function formatSimulationIntentPlanDiffV2(
   const header =
     "SIMULATION INTENT PLAN DIFF — PREVIEW COMPARISON ONLY (simulation only; does not sign; does not send; does not authorize live trading)";
   const lines: string[] = [header, "=".repeat(header.length)];
+  lines.push(SIMULATION_OPERATOR_SAFETY_LINE);
+  lines.push(`artifact: ${diff.schemaVersion}`);
   if (opts.label) lines.push(`label: ${opts.label}`);
   const side = (s: SimulationPlanDiffSide): string =>
     `${s.planLabel ?? "(unlabeled)"} — ${s.blocked ? "BLOCKED" : "unblocked"}; ${s.entryCount} entr${s.entryCount === 1 ? "y" : "ies"} (${s.unresolvedEntryCount} unresolved); ${s.blockingCodeCount} blocking / ${s.warningCodeCount} warning code(s)`;

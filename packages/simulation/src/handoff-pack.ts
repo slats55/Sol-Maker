@@ -48,6 +48,7 @@ import {
 } from "@soulmaker/sniper";
 import {
   SIMULATION_PACKAGE_DISCLAIMERS,
+  SIMULATION_OPERATOR_SAFETY_LINE,
   SIMULATION_SAFETY_LITERALS,
   assertSimulationSafetyLiterals,
 } from "./safety.js";
@@ -583,6 +584,8 @@ export function formatPhase6SimulationHandoffPackV1(
   const header =
     "PHASE 6 SIMULATION HANDOFF PACK — SESSION HANDOFF ONLY (simulation only; does not sign; does not send; does not authorize live trading)";
   const lines: string[] = [header, "=".repeat(header.length)];
+  lines.push(SIMULATION_OPERATOR_SAFETY_LINE);
+  lines.push(`artifact: ${pack.schemaVersion}`);
   if (opts.label) lines.push(`label:    ${opts.label}`);
   if (pack.operatorLabel) lines.push(`operator: ${pack.operatorLabel}`);
   lines.push(`pack:     ${pack.packLabel ?? "(unlabeled)"}`);

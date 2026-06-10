@@ -52,6 +52,11 @@ export const SIMULATION_SAFETY_LITERAL_KEYS = [
   "dryRunOnly",
 ] as const;
 
+/** The canonical one-line operator framing every simulation formatter prints directly under its
+ * title (Sprint 76 — one shared source so the required language can never drift per-formatter). */
+export const SIMULATION_OPERATOR_SAFETY_LINE =
+  "simulation only — does not sign; does not send; does not authorize live trading; Phase 7 (live/burner trading) remains unauthorized.";
+
 /** Baseline disclaimer statements shared by every simulation artifact (stable order). */
 export const SIMULATION_PACKAGE_DISCLAIMERS: readonly string[] = [
   "SIMULATION ONLY — a deterministic, read-only, dry-run-only artifact over validated PAPER inputs; nothing here is, or can become, a live action.",

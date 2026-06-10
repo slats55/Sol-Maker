@@ -14,6 +14,7 @@ export {
   SIMULATION_SAFETY_LITERALS,
   SIMULATION_SAFETY_LITERAL_KEYS,
   SIMULATION_PACKAGE_DISCLAIMERS,
+  SIMULATION_OPERATOR_SAFETY_LINE,
   SimulationSafetyError,
   assertSimulationSafetyLiterals,
   type SimulationSafetyLiterals,

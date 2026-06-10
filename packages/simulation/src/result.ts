@@ -22,6 +22,7 @@
 import { redactString } from "@soulmaker/security";
 import {
   SIMULATION_PACKAGE_DISCLAIMERS,
+  SIMULATION_OPERATOR_SAFETY_LINE,
   SIMULATION_SAFETY_LITERALS,
   assertSimulationSafetyLiterals,
 } from "./safety.js";
@@ -507,6 +508,8 @@ export interface FormatSimulationResultV1Options {
 export function formatSimulationResultV1(result: SimulationResultV1, opts: FormatSimulationResultV1Options = {}): string {
   const header = "SIMULATION RESULT — DRY-RUN-ONLY (not an execution; not a trade; never signs; never sends; never authorizes live trading)";
   const lines: string[] = [header, "=".repeat(header.length)];
+  lines.push(SIMULATION_OPERATOR_SAFETY_LINE);
+  lines.push(`artifact: ${result.schemaVersion}`);
   if (opts.label) lines.push(`label:    ${opts.label}`);
   lines.push(`plan:     ${result.sourcePlanRef.planLabel ?? "(unlabeled)"} (${result.sourcePlanRef.entryCount} plan entr${result.sourcePlanRef.entryCount === 1 ? "y" : "ies"})`);
   if (result.sourcePlanRef.operatorLabel) lines.push(`operator: ${result.sourcePlanRef.operatorLabel}`);

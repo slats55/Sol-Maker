@@ -55,6 +55,7 @@ import {
 } from "@soulmaker/sniper";
 import {
   SIMULATION_PACKAGE_DISCLAIMERS,
+  SIMULATION_OPERATOR_SAFETY_LINE,
   SIMULATION_SAFETY_LITERALS,
   assertSimulationSafetyLiterals,
 } from "./safety.js";
@@ -535,6 +536,8 @@ export interface FormatPhase6AuditReportV1Options {
 export function formatPhase6AuditReportV1(report: Phase6AuditReportV1, opts: FormatPhase6AuditReportV1Options = {}): string {
   const header = "PHASE 6 CHAIN AUDIT (reports the chain — never authorizes anything)";
   const lines: string[] = [header, "=".repeat(header.length)];
+  lines.push(SIMULATION_OPERATOR_SAFETY_LINE);
+  lines.push(`artifact: ${report.schemaVersion}`);
   if (opts.label) lines.push(`label:    ${opts.label}`);
   if (report.operatorLabel) lines.push(`operator: ${report.operatorLabel}`);
   lines.push(`audit:    ${report.auditPassed ? "PASSED (no blocking finding)" : "FAILED"}  |  chain: ${report.chainComplete ? "COMPLETE" : `incomplete (${report.validCount}/${PHASE6_AUDIT_ROLES.length} valid)`}`);

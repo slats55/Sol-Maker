@@ -24,6 +24,7 @@
 import { redactString } from "@soulmaker/security";
 import {
   SIMULATION_PACKAGE_DISCLAIMERS,
+  SIMULATION_OPERATOR_SAFETY_LINE,
   SIMULATION_SAFETY_LITERALS,
   assertSimulationSafetyLiterals,
 } from "./safety.js";
@@ -382,6 +383,8 @@ export function formatPhase6SimulationReadinessReportV1(
 ): string {
   const header = "PHASE 6 SIMULATION READINESS (simulation readiness only — never live-trading readiness)";
   const lines: string[] = [header, "=".repeat(header.length)];
+  lines.push(SIMULATION_OPERATOR_SAFETY_LINE);
+  lines.push(`artifact: ${report.schemaVersion}`);
   if (opts.label) lines.push(`label:    ${opts.label}`);
   if (report.operatorLabel) lines.push(`operator: ${report.operatorLabel}`);
   lines.push(`phase 6 simulation ready: ${report.phase6SimulationReady ? "YES (simulation stack only)" : "NO"}`);

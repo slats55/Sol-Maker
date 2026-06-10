@@ -58,6 +58,7 @@ import {
 } from "@soulmaker/sniper";
 import {
   SIMULATION_PACKAGE_DISCLAIMERS,
+  SIMULATION_OPERATOR_SAFETY_LINE,
   SIMULATION_SAFETY_LITERALS,
   assertSimulationSafetyLiterals,
 } from "./safety.js";
@@ -711,6 +712,8 @@ export function formatSimulationIntentPlanV2(
 ): string {
   const header = "SIMULATION PREVIEW ONLY — INTENT PLAN V2 (dry-run-only; never signs; never sends; never authorizes live trading)";
   const lines: string[] = [header, "=".repeat(header.length)];
+  lines.push(SIMULATION_OPERATOR_SAFETY_LINE);
+  lines.push(`artifact: ${plan.schemaVersion}`);
   if (opts.label) lines.push(`label:    ${opts.label}`);
   if (plan.operatorLabel) lines.push(`operator: ${plan.operatorLabel}`);
   lines.push(`plan:     ${plan.planLabel ?? "(unlabeled)"}`);
