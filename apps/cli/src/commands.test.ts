@@ -65,6 +65,7 @@ import {
   paperSniperSafetyGatesReport,
   paperSniperKillSwitchSpecReport,
   paperSniperSecretsPolicyReport,
+  paperSniperBurnerIsolationSpecReport,
   paperPhase6PrereqsReport,
   paperPhase6IntentPlanReport,
   paperPhase6DiffIntentReport,
@@ -8046,6 +8047,60 @@ describe("paperSniperSecretsPolicyReport (Sprint 54)", () => {
       const r2 = paperSniperSecretsPolicyReport({ cwd, env: {} }, { inputPath: badKey });
       expect(r2.exitCode).toBe(1);
       expect(r2.text).toMatch(/secret-bearing/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperSniperBurnerIsolationSpecReport (Sprint 55)", () => {
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+
+  it("builds a draft spec, writes nothing by default, and honors --out/--force + --fail-on-not-adopted", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const before = readdirSync(cwd).sort();
+      const r = paperSniperBurnerIsolationSpecReport({ cwd, env: {} }, { operatorLabel: "op", json: true });
+      expect(r.exitCode).toBe(0);
+      const obj = JSON.parse(r.text) as { schemaVersion: string; createsNoWallet: boolean; mainWalletExcluded: boolean; adopted: boolean };
+      expect(obj.schemaVersion).toBe("sniper.burner.isolation.spec.v1");
+      expect(obj.createsNoWallet).toBe(true);
+      expect(obj.mainWalletExcluded).toBe(true);
+      expect(obj.adopted).toBe(false);
+      expect(readdirSync(cwd).sort()).toEqual(before);
+      expect(paperSniperBurnerIsolationSpecReport({ cwd, env: {} }, { failOnNotAdopted: true }).exitCode).toBe(1);
+      expect(paperSniperBurnerIsolationSpecReport({ cwd, env: {} }, { outPath: "bi.json" }).exitCode).toBe(0);
+      expect(paperSniperBurnerIsolationSpecReport({ cwd, env: {} }, { outPath: "bi.json" }).exitCode).toBe(1);
+      expect(paperSniperBurnerIsolationSpecReport({ cwd, env: {} }, { outPath: "bi.json", force: true }).exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("honors an --input config (kill-switch pairing + label loss bound) and refuses an amount-shaped label", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cfg = writeJson(cwd, "bi-cfg.json", {
+        operatorLabel: "cfg-op",
+        maxLossLabel: "tiny-test-budget",
+        killSwitchSpecRef: "ks-main",
+        readinessStatus: "adopted",
+      });
+      const r = paperSniperBurnerIsolationSpecReport({ cwd, env: {} }, { inputPath: cfg, json: true });
+      expect(r.exitCode).toBe(0);
+      const obj = JSON.parse(r.text) as { operatorLabel: string; adopted: boolean; killSwitchSpecRef: string; maxLossLabel: string };
+      expect(obj.operatorLabel).toBe("cfg-op");
+      expect(obj.adopted).toBe(true);
+      expect(obj.killSwitchSpecRef).toBe("ks-main");
+      expect(obj.maxLossLabel).toBe("tiny-test-budget");
+      expect(paperSniperBurnerIsolationSpecReport({ cwd, env: {} }, { inputPath: cfg, failOnNotAdopted: true }).exitCode).toBe(0);
+      const bad = writeJson(cwd, "bad.json", { maxLossLabel: "0.5 SOL" });
+      const refused = paperSniperBurnerIsolationSpecReport({ cwd, env: {} }, { inputPath: bad });
+      expect(refused.exitCode).toBe(1);
+      expect(refused.text).toMatch(/pure LABEL/);
     } finally {
       cleanup();
     }

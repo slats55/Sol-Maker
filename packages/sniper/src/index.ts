@@ -419,6 +419,26 @@ export type {
 } from "./secrets-policy.js";
 
 export {
+  buildSniperBurnerIsolationSpec,
+  validateSniperBurnerIsolationSpec,
+  formatSniperBurnerIsolationSpec,
+  SniperBurnerIsolationSpecError,
+  SNIPER_BURNER_ISOLATION_SPEC_SCHEMA_VERSION,
+  SNIPER_BURNER_ISOLATION_SPEC_BANNER,
+  SNIPER_BURNER_ISOLATION_SPEC_DISCLAIMERS,
+  BURNER_ISOLATION_CORE_PRINCIPLES,
+  BURNER_ISOLATION_BASELINE_CAP_REQUIREMENTS,
+  BURNER_ISOLATION_BASELINE_APPROVALS,
+} from "./burner-isolation-spec.js";
+
+export type {
+  SniperBurnerIsolationReadiness,
+  BuildSniperBurnerIsolationSpecInput,
+  SniperBurnerIsolationSpec,
+  FormatSniperBurnerIsolationSpecOptions,
+} from "./burner-isolation-spec.js";
+
+export {
   buildSimulationIntentPlan,
   validateSimulationIntentPlan,
   formatSimulationIntentPlan,

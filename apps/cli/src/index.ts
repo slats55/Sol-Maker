@@ -54,6 +54,7 @@ import {
   paperSniperSafetyGatesReport,
   paperSniperKillSwitchSpecReport,
   paperSniperSecretsPolicyReport,
+  paperSniperBurnerIsolationSpecReport,
   paperPhase6PrereqsReport,
   paperPhase6IntentPlanReport,
   paperPhase6DiffIntentReport,
@@ -1600,6 +1601,35 @@ program
   .action(
     (opts: { input?: string; operator?: string; json?: boolean; out?: string; force?: boolean; failOnNotAdopted?: boolean }) => {
       const { text, exitCode } = paperSniperSecretsPolicyReport(
+        {},
+        {
+          inputPath: opts.input,
+          operatorLabel: opts.operator,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnNotAdopted: Boolean(opts.failOnNotAdopted),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:burner:isolation:spec")
+  .description(
+    "Build a machine-readable LOCAL burner isolation DESIGN artifact (`sniper.burner.isolation.spec.v1`). It is NOT a wallet: it creates no wallet, imports no wallet, and holds no key. Seven core principles are CONSTANTS that cannot be configured off: burner-only, main wallet permanently excluded, simulation required before any FUTURE send, redacted logging, explicit dangerous opt-in for any FUTURE live capability, human operator approval for every escalation, and creates-no-wallet. maxLossLabel must be a pure LABEL (digits/currency markers REFUSED — never an amount claim); killSwitchSpecRef pairs it with an adopted kill-switch spec. An ADOPTED spec is a Phase-6 PREREQUISITE signal, never authorization. Reads the optional --input config only, writes nothing unless --out. No network, no wallet",
+  )
+  .option("--input <path>", "spec config JSON (operator-friendly raw input; optional)")
+  .option("--operator <label>", "operator label (overrides the config's)")
+  .option("--json", "emit the spec as stable JSON")
+  .option("--out <path>", "write ONLY the spec JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-not-adopted", "exit non-zero while the spec is not ADOPTED")
+  .action(
+    (opts: { input?: string; operator?: string; json?: boolean; out?: string; force?: boolean; failOnNotAdopted?: boolean }) => {
+      const { text, exitCode } = paperSniperBurnerIsolationSpecReport(
         {},
         {
           inputPath: opts.input,

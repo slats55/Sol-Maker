@@ -96,6 +96,9 @@ import {
   buildSniperSecretsPolicy,
   formatSniperSecretsPolicy,
   SNIPER_SECRETS_POLICY_SCHEMA_VERSION,
+  buildSniperBurnerIsolationSpec,
+  formatSniperBurnerIsolationSpec,
+  SNIPER_BURNER_ISOLATION_SPEC_SCHEMA_VERSION,
   buildSimulationIntentPlan,
   formatSimulationIntentPlan,
   diffSimulationIntentPlans,
@@ -124,6 +127,7 @@ import {
   type Phase6PrerequisiteReportV2,
   type SniperKillSwitchSpec,
   type SniperSecretsPolicy,
+  type SniperBurnerIsolationSpec,
   type SimulationIntentPlan,
   type SimulationIntentPlanDiff,
 } from "@soulmaker/sniper";
@@ -5625,6 +5629,92 @@ export function paperSniperSecretsPolicyReport(
     return { text: JSON.stringify(redactValue(policy), null, 2), exitCode };
   }
   return { text: formatSniperSecretsPolicy(policy, { label: opts.inputPath }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 55 — paper:sniper:burner:isolation:spec
+//   Build a machine-readable LOCAL burner isolation DESIGN artifact
+//   (`sniper.burner.isolation.spec.v1`). It is NOT a wallet: it creates no
+//   wallet, imports no wallet, and holds no key. Loss bounds are LABELS only.
+//   Reads the optional --input config only; writes nothing unless --out.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperBurnerIsolationSpecCommandOptions {
+  /** Optional spec config JSON path (operator-friendly raw input). */
+  inputPath?: string;
+  /** Optional operator label (overrides the config's). */
+  operatorLabel?: string;
+  json?: boolean;
+  /** Optional path to write the spec JSON (writes nothing if omitted). */
+  outPath?: string;
+  /** Overwrite an existing --out file (refused by default). */
+  force?: boolean;
+  /** Exit non-zero when the spec is not ADOPTED. */
+  failOnNotAdopted?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:burner:isolation:spec` — build a machine-readable LOCAL burner isolation
+ * DESIGN artifact (`sniper.burner.isolation.spec.v1`). It is NOT a wallet: it creates no wallet,
+ * imports no wallet, and holds no key. The seven core principles (burner-only / main wallet
+ * excluded / simulation-before-any-send / redacted logging / explicit opt-in / operator approval /
+ * creates-no-wallet) are constants that cannot be configured off; `maxLossLabel` must be a pure
+ * LABEL (digits/currency markers refused — never an amount claim). `--json` emits the spec; `--out`
+ * writes ONLY the spec JSON (refusing overwrite without `--force`); `--fail-on-not-adopted` exits 1
+ * while not adopted. No network, no wallet.
+ */
+export function paperSniperBurnerIsolationSpecReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperBurnerIsolationSpecCommandOptions = {},
+): CliReport {
+  let config: Record<string, unknown> = {};
+  if (opts.inputPath) {
+    let raw: unknown;
+    try {
+      raw = readJsonValue(ctx, opts.inputPath, "burner isolation spec config");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (!isPlainObject(raw)) {
+      return { text: "Refusing: burner isolation spec config must be a JSON object.", exitCode: 1 };
+    }
+    if (raw.schemaVersion !== undefined && raw.schemaVersion !== SNIPER_BURNER_ISOLATION_SPEC_SCHEMA_VERSION) {
+      return { text: redactString(`Refusing: burner isolation spec schemaVersion must be "${SNIPER_BURNER_ISOLATION_SPEC_SCHEMA_VERSION}".`), exitCode: 1 };
+    }
+    config = raw;
+  }
+
+  let spec: SniperBurnerIsolationSpec;
+  try {
+    spec = buildSniperBurnerIsolationSpec({
+      operatorLabel: opts.operatorLabel ?? (typeof config.operatorLabel === "string" ? config.operatorLabel : null),
+      maxLossLabel: config.maxLossLabel as never,
+      futureCapRequirements: config.futureCapRequirements as never,
+      operatorApprovalRequirements: config.operatorApprovalRequirements as never,
+      killSwitchSpecRef: config.killSwitchSpecRef as never,
+      readinessStatus: config.readinessStatus as never,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(spec), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write burner isolation spec at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  const exitCode = opts.failOnNotAdopted && !spec.adopted ? 1 : 0;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(spec), null, 2), exitCode };
+  }
+  return { text: formatSniperBurnerIsolationSpec(spec, { label: opts.inputPath }), exitCode };
 }
 
 // ---------------------------------------------------------------------------
