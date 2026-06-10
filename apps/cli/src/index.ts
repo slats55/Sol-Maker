@@ -52,6 +52,7 @@ import {
   paperSniperAuditReport,
   paperSniperSessionPackReport,
   paperSniperSafetyGatesReport,
+  paperSniperKillSwitchSpecReport,
   paperPhase6PrereqsReport,
   paperPhase6IntentPlanReport,
   paperPhase6DiffIntentReport,
@@ -1548,6 +1549,35 @@ program
           outPath: opts.out,
           force: Boolean(opts.force),
           failOnWarning: Boolean(opts.failOnWarning),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:kill-switch:spec")
+  .description(
+    "Build a machine-readable LOCAL kill-switch DESIGN artifact (`sniper.kill_switch.spec.v1`). It is NOT a kill switch: it performs no process control, exposes no live controls, and its stop-live placeholder mode is PERMANENTLY disabled (the validator refuses anything else). Carries the fixed modes (stop-paper-decisions / stop-simulation / stop-live-disabled-placeholder), required operator confirmations (an unconfirmable switch is refused), the actions a tripped switch must forbid, escalation notes, and audit + test requirements — all merged with conservative canonical baselines. An ADOPTED spec is a Phase-6 PREREQUISITE signal, never authorization. Reads the optional --input config only, writes nothing unless --out. No network, no wallet",
+  )
+  .option("--input <path>", "spec config JSON (operator-friendly raw input; optional)")
+  .option("--operator <label>", "operator label (overrides the config's)")
+  .option("--json", "emit the spec as stable JSON")
+  .option("--out <path>", "write ONLY the spec JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-not-adopted", "exit non-zero while the spec is not ADOPTED")
+  .action(
+    (opts: { input?: string; operator?: string; json?: boolean; out?: string; force?: boolean; failOnNotAdopted?: boolean }) => {
+      const { text, exitCode } = paperSniperKillSwitchSpecReport(
+        {},
+        {
+          inputPath: opts.input,
+          operatorLabel: opts.operator,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnNotAdopted: Boolean(opts.failOnNotAdopted),
         },
       );
       console.log(text);

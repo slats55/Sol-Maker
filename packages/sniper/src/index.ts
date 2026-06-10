@@ -375,6 +375,31 @@ export type {
 } from "./phase6-prereqs-v2.js";
 
 export {
+  buildSniperKillSwitchSpec,
+  validateSniperKillSwitchSpec,
+  formatSniperKillSwitchSpec,
+  SniperKillSwitchSpecError,
+  SNIPER_KILL_SWITCH_SPEC_SCHEMA_VERSION,
+  SNIPER_KILL_SWITCH_SPEC_BANNER,
+  SNIPER_KILL_SWITCH_SPEC_DISCLAIMERS,
+  SNIPER_KILL_SWITCH_MODES,
+  KILL_SWITCH_BASELINE_CONFIRMATIONS,
+  KILL_SWITCH_BASELINE_DISABLED_ACTIONS,
+  KILL_SWITCH_BASELINE_AUDIT_REQUIREMENTS,
+  KILL_SWITCH_BASELINE_TEST_REQUIREMENTS,
+} from "./kill-switch-spec.js";
+
+export type {
+  SniperKillSwitchMode,
+  SniperKillSwitchModeStatus,
+  SniperKillSwitchModeSpec,
+  SniperKillSwitchReadiness,
+  BuildSniperKillSwitchSpecInput,
+  SniperKillSwitchSpec,
+  FormatSniperKillSwitchSpecOptions,
+} from "./kill-switch-spec.js";
+
+export {
   buildSimulationIntentPlan,
   validateSimulationIntentPlan,
   formatSimulationIntentPlan,

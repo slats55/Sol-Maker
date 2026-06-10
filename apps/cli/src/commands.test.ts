@@ -63,6 +63,7 @@ import {
   paperSniperAuditReport,
   paperSniperSessionPackReport,
   paperSniperSafetyGatesReport,
+  paperSniperKillSwitchSpecReport,
   paperPhase6PrereqsReport,
   paperPhase6IntentPlanReport,
   paperPhase6DiffIntentReport,
@@ -7953,6 +7954,50 @@ describe("paperSniperSafetyGatesReport (Sprint 39)", () => {
       const rw = paperSniperSafetyGatesReport({ cwd, env: {} }, { sessionPath: wrong });
       expect(rw.exitCode).toBe(1);
       expect(rw.text).toMatch(/session pack is invalid/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("paperSniperKillSwitchSpecReport (Sprint 53)", () => {
+  function writeJson(cwd: string, name: string, value: unknown): string {
+    writeFileSync(join(cwd, name), JSON.stringify(value, null, 2));
+    return name;
+  }
+
+  it("builds a draft spec with no input, writes nothing by default, and honors --out/--force", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const before = readdirSync(cwd).sort();
+      const r = paperSniperKillSwitchSpecReport({ cwd, env: {} }, { operatorLabel: "op", json: true });
+      expect(r.exitCode).toBe(0);
+      const obj = JSON.parse(r.text) as { schemaVersion: string; adopted: boolean; specOnly: boolean; modes: { mode: string; status: string }[] };
+      expect(obj.schemaVersion).toBe("sniper.kill_switch.spec.v1");
+      expect(obj.adopted).toBe(false);
+      expect(obj.specOnly).toBe(true);
+      expect(obj.modes.find((m) => m.mode === "stop-live-disabled-placeholder")!.status).toBe("placeholder-disabled");
+      expect(readdirSync(cwd).sort()).toEqual(before);
+      expect(paperSniperKillSwitchSpecReport({ cwd, env: {} }, { outPath: "ks.json" }).exitCode).toBe(0);
+      expect(paperSniperKillSwitchSpecReport({ cwd, env: {} }, { outPath: "ks.json" }).exitCode).toBe(1);
+      expect(paperSniperKillSwitchSpecReport({ cwd, env: {} }, { outPath: "ks.json", force: true }).exitCode).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("honors an --input config, --fail-on-not-adopted, and refuses an unsafe config", () => {
+    const { cwd, cleanup } = withConfig({ mode: "PAPER" });
+    try {
+      const cfg = writeJson(cwd, "ks-cfg.json", { operatorLabel: "cfg-op", readinessStatus: "adopted", escalationNotes: ["alert ops"] });
+      const r = paperSniperKillSwitchSpecReport({ cwd, env: {} }, { inputPath: cfg, json: true });
+      const obj = JSON.parse(r.text) as { operatorLabel: string; adopted: boolean };
+      expect(obj.operatorLabel).toBe("cfg-op");
+      expect(obj.adopted).toBe(true);
+      expect(paperSniperKillSwitchSpecReport({ cwd, env: {} }, { inputPath: cfg, failOnNotAdopted: true }).exitCode).toBe(0);
+      expect(paperSniperKillSwitchSpecReport({ cwd, env: {} }, { failOnNotAdopted: true }).exitCode).toBe(1);
+      const unsafe = writeJson(cwd, "unsafe.json", { requiredOperatorConfirmations: [] });
+      expect(paperSniperKillSwitchSpecReport({ cwd, env: {} }, { inputPath: unsafe }).exitCode).toBe(1);
     } finally {
       cleanup();
     }

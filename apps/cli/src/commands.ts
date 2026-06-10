@@ -90,6 +90,9 @@ import {
   formatPhase6PrerequisiteReport,
   buildPhase6PrerequisiteReportV2,
   formatPhase6PrerequisiteReportV2,
+  buildSniperKillSwitchSpec,
+  formatSniperKillSwitchSpec,
+  SNIPER_KILL_SWITCH_SPEC_SCHEMA_VERSION,
   buildSimulationIntentPlan,
   formatSimulationIntentPlan,
   diffSimulationIntentPlans,
@@ -116,6 +119,7 @@ import {
   type SniperSafetyGatesReportV2,
   type Phase6PrerequisiteReport,
   type Phase6PrerequisiteReportV2,
+  type SniperKillSwitchSpec,
   type SimulationIntentPlan,
   type SimulationIntentPlanDiff,
 } from "@soulmaker/sniper";
@@ -5445,6 +5449,93 @@ export function paperSniperSafetyGatesReport(
     return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
   }
   return { text: formatSniperSafetyGatesReport(report, { label: opts.sessionPath }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 53 — paper:sniper:kill-switch:spec
+//   Build a machine-readable LOCAL kill-switch DESIGN artifact
+//   (`sniper.kill_switch.spec.v1`). It is NOT a kill switch: no process
+//   control, no live controls, no network, no wallet. The live mode is a
+//   permanently-disabled placeholder. Reads the optional --input config only;
+//   writes nothing unless --out.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperKillSwitchSpecCommandOptions {
+  /** Optional spec config JSON path (operator-friendly raw input). */
+  inputPath?: string;
+  /** Optional operator label (overrides the config's). */
+  operatorLabel?: string;
+  json?: boolean;
+  /** Optional path to write the spec JSON (writes nothing if omitted). */
+  outPath?: string;
+  /** Overwrite an existing --out file (refused by default). */
+  force?: boolean;
+  /** Exit non-zero when the spec is not ADOPTED (useful as a Phase-6 prerequisite gate). */
+  failOnNotAdopted?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:kill-switch:spec` — build a machine-readable LOCAL kill-switch DESIGN
+ * artifact (`sniper.kill_switch.spec.v1`). It is NOT a kill switch: it performs no process control,
+ * exposes no live controls, and its `stop-live-disabled-placeholder` mode is permanently disabled.
+ * `--input` supplies an operator config (confirmations / disabled actions / escalation notes / audit
+ * + test requirements / readinessStatus); the canonical baselines are always merged in. `--json`
+ * emits the spec; `--out` writes ONLY the spec JSON (refusing overwrite without `--force`);
+ * `--fail-on-not-adopted` exits 1 while the spec is not adopted. No network, no wallet.
+ */
+export function paperSniperKillSwitchSpecReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperKillSwitchSpecCommandOptions = {},
+): CliReport {
+  let config: Record<string, unknown> = {};
+  if (opts.inputPath) {
+    let raw: unknown;
+    try {
+      raw = readJsonValue(ctx, opts.inputPath, "kill-switch spec config");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (!isPlainObject(raw)) {
+      return { text: "Refusing: kill-switch spec config must be a JSON object.", exitCode: 1 };
+    }
+    if (raw.schemaVersion !== undefined && raw.schemaVersion !== SNIPER_KILL_SWITCH_SPEC_SCHEMA_VERSION) {
+      return { text: redactString(`Refusing: kill-switch spec schemaVersion must be "${SNIPER_KILL_SWITCH_SPEC_SCHEMA_VERSION}".`), exitCode: 1 };
+    }
+    config = raw;
+  }
+
+  let spec: SniperKillSwitchSpec;
+  try {
+    spec = buildSniperKillSwitchSpec({
+      operatorLabel: opts.operatorLabel ?? (typeof config.operatorLabel === "string" ? config.operatorLabel : null),
+      requiredOperatorConfirmations: config.requiredOperatorConfirmations as never,
+      disabledActions: config.disabledActions as never,
+      escalationNotes: config.escalationNotes as never,
+      auditRequirements: config.auditRequirements as never,
+      testRequirements: config.testRequirements as never,
+      readinessStatus: config.readinessStatus as never,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(spec), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write kill-switch spec at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  const exitCode = opts.failOnNotAdopted && !spec.adopted ? 1 : 0;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(spec), null, 2), exitCode };
+  }
+  return { text: formatSniperKillSwitchSpec(spec, { label: opts.inputPath }), exitCode };
 }
 
 // ---------------------------------------------------------------------------

@@ -103,6 +103,7 @@ describe("@soulmaker/sniper — forbidden-import regression", () => {
     expect(names).toContain("phase6-prereqs.ts");
     expect(names).toContain("phase6-prereqs-v2.ts");
     expect(names).toContain("simulation-intent.ts");
+    expect(names).toContain("kill-switch-spec.ts");
     expect(names).toContain("simulation-intent-diff.ts");
   });
 
