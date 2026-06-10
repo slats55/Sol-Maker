@@ -101,6 +101,15 @@ importers:
 
   packages/security: {}
 
+  packages/simulation:
+    dependencies:
+      '@soulmaker/security':
+        specifier: workspace:*
+        version: link:../security
+      '@soulmaker/sniper':
+        specifier: workspace:*
+        version: link:../sniper
+
   packages/sniper:
     dependencies:
       '@soulmaker/risk':

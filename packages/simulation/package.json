@@ -1,0 +1,14 @@
+{
+  "name": "@soulmaker/simulation",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Phase 6 SAFE SIMULATION foundation: read-only, dry-run-only planning over validated PAPER artifacts. No wallet, key, signer, transaction build/sign/send, or live trading anywhere — structurally incapable of authorizing Phase 7.",
+  "exports": { ".": "./src/index.ts" },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@soulmaker/security": "workspace:*",
+    "@soulmaker/sniper": "workspace:*"
+  }
+}
