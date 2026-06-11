@@ -18,6 +18,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { basename, isAbsolute, join } from "node:path";
 import {
   loadConfig,
@@ -67,6 +68,8 @@ import {
   formatPhase6SimulationHandoffPackV1,
   buildSimulationRouteResolutionV1,
   formatSimulationRouteResolutionV1,
+  buildPhase6OperatorBundleV1,
+  formatPhase6OperatorBundleV1,
   PHASE6_READINESS_EVIDENCE_AREAS,
   SIMULATION_INTENT_PLAN_V2_SCHEMA_VERSION,
   SIMULATION_RESULT_V1_SCHEMA_VERSION,
@@ -79,6 +82,8 @@ import {
   type Phase6SimulationReadinessReportV1,
   type Phase6SimulationHandoffPackV1,
   type SimulationRouteResolutionV1,
+  type Phase6OperatorBundleV1,
+  type Phase6OperatorBundleRole,
 } from "@soulmaker/simulation";
 import {
   normalizeSniperCandidateList,
@@ -6802,6 +6807,633 @@ export function paperSimulationRouteReport(
     return { text: JSON.stringify(redactValue(artifact), null, 2), exitCode };
   }
   return { text: formatSimulationRouteResolutionV1(artifact, { label: opts.planPath }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 88 — paper:simulation:bundle
+//   The OPERATOR BUNDLE (`phase6.operator.bundle.v1`): thirteen chain
+//   artifacts (the twelve handoff roles plus the handoff pack itself)
+//   strictly validated in place and collected into one archiveable,
+//   re-verifiable operator artifact with per-file integrity refs (truncated
+//   sha256-128 digests — full 64-hex digests are key-shaped to the shared
+//   redactor ON PURPOSE), a recomputed blocking trail cross-checked against
+//   the handoff pack's verbatim trail, and a closed-set operator verdict
+//   whose best value is reviewable-paper-only. Reads only the named files;
+//   writes nothing unless --out; never signs, never sends.
+// ---------------------------------------------------------------------------
+
+export interface PaperSimulationBundleCommandOptions {
+  decisionsPath?: string;
+  runReportPath?: string;
+  gatesPath?: string;
+  prereqsPath?: string;
+  killSwitchPath?: string;
+  secretsPolicyPath?: string;
+  burnerIsolationPath?: string;
+  intentPlanPath?: string;
+  simulationResultPath?: string;
+  /** Path to the `simulation.route.resolution.v1` artifact. */
+  routePath?: string;
+  auditPath?: string;
+  readinessPath?: string;
+  /** Path to the `phase6.simulation.handoff.pack.v1` artifact. */
+  handoffPath?: string;
+  operatorLabel?: string;
+  bundleLabel?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit non-zero when the operator verdict is `blocked`. */
+  failOnBlocked?: boolean;
+  /** Exit non-zero when the bundle is incomplete (any artifact missing or invalid). */
+  failOnIncomplete?: boolean;
+}
+
+/**
+ * `soulmaker paper:simulation:bundle` — build a `phase6.operator.bundle.v1` from the named chain
+ * artifact files (the twelve handoff roles plus the handoff pack itself). Each artifact is
+ * strictly validated in place and summarized from VERBATIM structured fields; a missing artifact
+ * is CLASSIFIED as missing (never invented); a named-but-unreadable file refuses outright. Every
+ * named file gets an integrity reference (file name + truncated `sha256-128` digest of the bytes
+ * read). The chain's blocking conditions are RECOMPUTED from the bundled artifacts and
+ * cross-checked against the handoff pack's verbatim trail — a stale or tampered pack surfaces as
+ * a blocked bundle. The closed-set operator verdict can never be better than
+ * `reviewable-paper-only`, and `phase7LiveTradingReady` is a literal false. Reads only the named
+ * files, writes nothing unless `--out` (refusing overwrite without `--force`). Never signs, never
+ * sends. No network, no wallet.
+ */
+export function paperSimulationBundleReport(
+  ctx: CommandContext = {},
+  opts: PaperSimulationBundleCommandOptions = {},
+): CliReport {
+  const files: Partial<Record<Phase6OperatorBundleRole, { fileName: string; digest: string }>> = {};
+  const read = (
+    path: string | undefined,
+    role: Phase6OperatorBundleRole | null,
+    label: string,
+  ): { value: unknown; error?: string } => {
+    if (!path) return { value: undefined };
+    const resolved = resolvePath(ctx, path);
+    let bytes: Buffer;
+    try {
+      bytes = readFileSync(resolved);
+    } catch {
+      return { value: undefined, error: `cannot read ${label} file at ${resolved}` };
+    }
+    let value: unknown;
+    try {
+      value = JSON.parse(stripJsonBom(bytes.toString("utf8")));
+    } catch {
+      return { value: undefined, error: `${label} file is not valid JSON at ${resolved}` };
+    }
+    if (role) {
+      files[role] = {
+        fileName: path,
+        digest: `sha256-128:${createHash("sha256").update(bytes).digest("hex").slice(0, 32)}`,
+      };
+    }
+    return { value };
+  };
+  const sources = [
+    ["decisions", read(opts.decisionsPath, "decision", "decision report")],
+    ["run-report", read(opts.runReportPath, "run-report", "run report")],
+    ["gates", read(opts.gatesPath, "safety-gates", "safety gates report")],
+    ["prereqs", read(opts.prereqsPath, "prereqs", "phase6 prerequisite report")],
+    ["kill-switch", read(opts.killSwitchPath, "kill-switch-spec", "kill-switch spec")],
+    ["secrets-policy", read(opts.secretsPolicyPath, "secrets-policy", "secrets policy")],
+    ["burner-isolation", read(opts.burnerIsolationPath, "burner-isolation-spec", "burner isolation spec")],
+    ["intent-plan", read(opts.intentPlanPath, "intent-plan", "simulation intent plan")],
+    ["simulation-result", read(opts.simulationResultPath, "simulation-result", "simulation result")],
+    ["route", read(opts.routePath, "route-resolution", "route-resolution artifact")],
+    ["audit", read(opts.auditPath, "audit-report", "phase6 audit report")],
+    ["readiness", read(opts.readinessPath, "readiness-report", "phase6 readiness report")],
+    ["handoff", read(opts.handoffPath, "handoff-pack", "phase6 handoff pack")],
+  ] as const;
+  for (const [label, r] of sources) {
+    if (r.error) return { text: redactString(`Refusing: ${label}: ${r.error}`), exitCode: 1 };
+  }
+
+  let bundle: Phase6OperatorBundleV1;
+  try {
+    bundle = buildPhase6OperatorBundleV1({
+      decision: sources[0][1].value,
+      runReport: sources[1][1].value,
+      safetyGates: sources[2][1].value,
+      prereqs: sources[3][1].value,
+      killSwitchSpec: sources[4][1].value,
+      secretsPolicy: sources[5][1].value,
+      burnerIsolationSpec: sources[6][1].value,
+      intentPlan: sources[7][1].value,
+      simulationResult: sources[8][1].value,
+      routeResolution: sources[9][1].value,
+      auditReport: sources[10][1].value,
+      readinessReport: sources[11][1].value,
+      handoffPack: sources[12][1].value,
+      files,
+      operatorLabel: opts.operatorLabel ?? null,
+      bundleLabel: opts.bundleLabel ?? null,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(bundle), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write operator bundle at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  let exitCode = 0;
+  if (opts.failOnBlocked && bundle.operatorVerdict === "blocked") exitCode = 1;
+  if (opts.failOnIncomplete && !bundle.complete) exitCode = 1;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(bundle), null, 2), exitCode };
+  }
+  return { text: formatPhase6OperatorBundleV1(bundle, { label: opts.bundleLabel ?? undefined }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 88 — paper:sniper:dry-run
+//   The PAPER-only dry-run ORCHESTRATOR: one command that takes an operator
+//   candidate file and drives the ENTIRE existing chain — intake → preflight →
+//   policy → decision v2 → run report v2 → audit log → session pack → specs →
+//   gates v2 → prereqs v2 → intent plan v2 → simulation result → route
+//   resolution (honestly all-UNAVAILABLE; no resolver capability exists) →
+//   chain audit → readiness → handoff pack → operator bundle — writing every
+//   artifact into ONE output directory plus a deterministic RUN_SUMMARY.md.
+//   Every stage uses the existing production builders and command functions;
+//   nothing is faked, nothing is invented, a blocked chain is the honest
+//   artifact set (exit 0; --fail-on-blocked gates). It creates no live order,
+//   no transaction, touches no wallet, and reaches no network.
+// ---------------------------------------------------------------------------
+
+/** The artifact files one dry run writes into its output directory (stable order). */
+export const PAPER_DRY_RUN_FILES = [
+  "candidates.json",
+  "preflight.json",
+  "policy.json",
+  "decision.json",
+  "run-report.json",
+  "audit-log.json",
+  "session-pack.json",
+  "kill-switch.json",
+  "secrets-policy.json",
+  "burner-isolation.json",
+  "safety-gates.json",
+  "prereqs.json",
+  "intent-plan.json",
+  "simulation-result.json",
+  "route-resolution.json",
+  "chain-audit.json",
+  "readiness.json",
+  "handoff-pack.json",
+  "operator-bundle.json",
+  "RUN_SUMMARY.md",
+] as const;
+
+/** The canonical Phase 6 readiness evidence declarations (the same repo refs the e2e suite pins —
+ * each names the test file / doc that actually exercises that area in THIS repo). */
+export const PAPER_DRY_RUN_READINESS_EVIDENCE: readonly string[] = [
+  "package-boundary-tests=packages/simulation/src/no-forbidden-imports.test.ts",
+  "cli-commands=apps/cli/src/simulation-commands.test.ts",
+  "e2e-fixtures=apps/cli/src/simulation-e2e.test.ts",
+  "source-scans=packages/simulation/src/package-boundary.test.ts",
+  "docs=docs/SNIPER_RUNBOOK.md",
+  "diff-chain-tests=packages/simulation/src/intent-plan-diff.test.ts",
+  "handoff-pack-tests=packages/simulation/src/handoff-pack.test.ts",
+  "output-quality-tests=packages/simulation/src/operator-output-quality.test.ts",
+  "tally-validation-tests=packages/sniper/src/decision-tally-hardening.test.ts",
+  "dry-run-boundary-doc=docs/PHASE6_DRY_RUN_BOUNDARY.md",
+  "route-resolution-tests=packages/simulation/src/route-resolution.test.ts",
+];
+
+export interface PaperSniperDryRunCommandOptions {
+  /** Candidate list JSON path (raw operator input or a canonical sniper.candidate.list.v1). Required. */
+  candidatesPath?: string;
+  /** Optional preflight input (`sniper.preflight.input.v1`) with per-candidate inspection/risk. */
+  preflightInputPath?: string;
+  /** Optional policy config path (v1 configs are upgraded; default: a fail-closed v2 policy). */
+  policyPath?: string;
+  /** Optional existing kill-switch spec artifact path (built draft/adopted otherwise). */
+  killSwitchPath?: string;
+  /** Optional existing secrets policy artifact path (built draft/adopted otherwise). */
+  secretsPolicyPath?: string;
+  /** Optional existing burner isolation spec artifact path (built draft/adopted otherwise). */
+  burnerIsolationPath?: string;
+  /** Build the three governance specs as ADOPTED (requires --operator). Without this flag (and
+   * without supplied spec files) the specs are built as DRAFT and the chain blocks honestly. */
+  adoptSpecs?: boolean;
+  /** Apply the narrow paper-enter-review acknowledgment to the intent plan. */
+  acknowledgePaperEnterReview?: boolean;
+  /** Operator-declared stop-simulation kill-switch state (true BLOCKS the chain). */
+  stopSimulationTripped?: boolean;
+  operatorLabel?: string;
+  /** Label echoed into the plan / route / handoff / bundle artifacts. */
+  runLabel?: string;
+  /** Output DIRECTORY for the full artifact set (created if missing). Required. */
+  outDir?: string;
+  /** Overwrite existing artifact files in the output directory (refused by default). */
+  force?: boolean;
+  json?: boolean;
+  /** Exit non-zero when the final operator verdict is `blocked`. */
+  failOnBlocked?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:dry-run` — run the FULL PAPER dry-run pipeline over an operator-supplied
+ * candidate file and write the complete, validated, auditable artifact set into one output
+ * directory. Every stage is the EXISTING production path: candidate intake (strict mint
+ * validation), token preflight over operator-supplied inspection/risk data (entries without data
+ * stay honestly `unknown`), a fail-closed v2 policy, the v2 decision/run-report/gates/prereqs
+ * chain, the governance specs (DRAFT by default — pass `--adopt-specs` with `--operator` to adopt
+ * the canonical paper-only specs for this run, or supply your own adopted spec files), then the
+ * Phase 6 simulation chain (intent plan → result → route resolution → audit → readiness → handoff)
+ * and the Sprint 88 operator bundle with per-file integrity digests. Route resolution is honestly
+ * all-UNAVAILABLE: no route-resolver capability exists inside the simulation boundary and nothing
+ * is invented. A BLOCKED chain still writes the full honest artifact set (exit 0;
+ * `--fail-on-blocked` gates). Single-run diffs are not applicable and are not written. It creates
+ * no live order, builds no transaction, touches no wallet, and reaches no network.
+ */
+export function paperSniperDryRunReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperDryRunCommandOptions = {},
+): CliReport {
+  if (!opts.candidatesPath) return { text: "Refusing: --candidates <path> is required.", exitCode: 1 };
+  if (!opts.outDir) return { text: "Refusing: --out <dir> is required (the artifact output directory).", exitCode: 1 };
+  if (opts.adoptSpecs && !opts.operatorLabel) {
+    return { text: "Refusing: --adopt-specs requires --operator <label> (spec adoption is an explicit operator decision).", exitCode: 1 };
+  }
+
+  const outDir = resolvePath(ctx, opts.outDir);
+  if (!opts.force) {
+    for (const f of PAPER_DRY_RUN_FILES) {
+      if (existsSync(join(outDir, f))) {
+        return { text: redactString(`Refusing: ${join(outDir, f)} already exists (pass --force to overwrite).`), exitCode: 1 };
+      }
+    }
+  }
+
+  // 1) Candidate intake (same wrong-schema + strict-mint guards as the sibling commands).
+  let raw: unknown;
+  try {
+    raw = readJsonValue(ctx, opts.candidatesPath, "sniper candidate list");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  if (!isPlainObject(raw)) {
+    return { text: "Refusing: candidate list must be a JSON object with a candidates array.", exitCode: 1 };
+  }
+  if (raw.schemaVersion !== undefined && raw.schemaVersion !== SNIPER_CANDIDATE_LIST_SCHEMA_VERSION) {
+    return { text: redactString(`Refusing: candidate list schemaVersion must be "${SNIPER_CANDIDATE_LIST_SCHEMA_VERSION}".`), exitCode: 1 };
+  }
+  let candidateList: SniperCandidateList;
+  try {
+    candidateList = normalizeSniperCandidateList({
+      sourceLabel: typeof raw.sourceLabel === "string" ? raw.sourceLabel : opts.candidatesPath,
+      candidates: (raw.candidates ?? []) as never,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // 2) Optional preflight input (per-candidate inspection/risk; cross-checked against the list).
+  const dataById = new Map<string, SniperPreflightCandidateData>();
+  if (opts.preflightInputPath) {
+    let inputRaw: unknown;
+    try {
+      inputRaw = readJsonValue(ctx, opts.preflightInputPath, "preflight input");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (!isPlainObject(inputRaw)) {
+      return { text: "Refusing: preflight input must be a JSON object with an entries array.", exitCode: 1 };
+    }
+    if (inputRaw.schemaVersion !== undefined && inputRaw.schemaVersion !== SNIPER_PREFLIGHT_INPUT_SCHEMA_VERSION) {
+      return { text: redactString(`Refusing: preflight input schemaVersion must be "${SNIPER_PREFLIGHT_INPUT_SCHEMA_VERSION}".`), exitCode: 1 };
+    }
+    let inputArtifact: SniperPreflightInput;
+    try {
+      inputArtifact = normalizeSniperPreflightInput({
+        sourceLabel: typeof inputRaw.sourceLabel === "string" ? inputRaw.sourceLabel : opts.preflightInputPath,
+        candidateListRef: typeof inputRaw.candidateListRef === "string" ? inputRaw.candidateListRef : null,
+        entries: (inputRaw.entries ?? []) as never,
+        candidateList,
+      });
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    for (const e of inputArtifact.entries) {
+      const entry: SniperPreflightCandidateData = { candidateId: e.candidateId };
+      if (e.inspection !== null) entry.inspection = e.inspection;
+      if (e.risk !== null) entry.risk = e.risk;
+      dataById.set(e.candidateId, entry);
+    }
+  }
+
+  // 3) Policy: operator-supplied (v1 upgraded to v2) or the fail-closed default.
+  let policy: SniperPolicyConfigV2;
+  if (opts.policyPath) {
+    let policyValue: unknown;
+    try {
+      policyValue = readJsonValue(ctx, opts.policyPath, "policy config");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (!isPlainObject(policyValue)) {
+      return { text: "Refusing: policy config must be a JSON object.", exitCode: 1 };
+    }
+    try {
+      policy =
+        policyValue.schemaVersion === SNIPER_POLICY_CONFIG_SCHEMA_VERSION
+          ? upgradeSniperPolicyConfigV1ToV2(normalizeSniperPolicyConfig(policyValue as never))
+          : normalizeSniperPolicyConfigV2(policyValue as never);
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+  } else {
+    policy = normalizeSniperPolicyConfigV2({
+      policyLabel: "paper-dry-run-default-policy",
+      policyMode: "balanced-paper",
+      allowPaperEnter: true,
+      requirePreflightPass: true,
+      failClosedOnUnknownPreflight: true,
+      failClosedOnMissingRisk: true,
+    });
+  }
+
+  // 4) The sniper-side chain through the production builders (the fixtures' exact recipe).
+  const operatorLabel = opts.operatorLabel ?? null;
+  const runLabel = opts.runLabel ?? "paper-dry-run";
+  let chainFiles: Array<readonly [string, unknown]>;
+  try {
+    const preflight = buildSniperTokenPreflightReport({ candidateList, candidateData: [...dataById.values()] });
+    const decision = buildPaperSniperDecisionReportV2({ candidateList, preflight, policy });
+    const runReport = buildSniperRunReportV2({ candidateList, preflight, decision, policy, operatorLabel });
+    const decisionV1 = buildPaperSniperDecisionReport({ candidateList, preflight });
+    const runReportV1 = buildSniperRunReport({ candidateList, preflight, decision: decisionV1 });
+    const auditLog = buildSniperAuditLog({ runReport: runReportV1, runLabel });
+    const sessionPack = buildSniperSessionPack({
+      sessionLabel: runLabel,
+      artifacts: [
+        { label: "candidates", value: candidateList },
+        { label: "preflight", value: preflight },
+        { label: "decision", value: decision },
+        { label: "run-report", value: runReport },
+        { label: "audit-log", value: auditLog },
+        { label: "policy", value: policy },
+      ],
+    });
+    const readinessStatus = opts.adoptSpecs ? "adopted" : "draft";
+    const killSwitchSpec = opts.killSwitchPath
+      ? readJsonValue(ctx, opts.killSwitchPath, "kill-switch spec")
+      : buildSniperKillSwitchSpec({
+          operatorLabel,
+          requiredOperatorConfirmations: opts.adoptSpecs
+            ? [`${operatorLabel} confirms adoption of the canonical PAPER-only kill-switch spec for this dry run`]
+            : undefined,
+          readinessStatus,
+        });
+    const secretsPolicy = opts.secretsPolicyPath
+      ? readJsonValue(ctx, opts.secretsPolicyPath, "secrets policy")
+      : buildSniperSecretsPolicy({ operatorLabel, readinessStatus });
+    const burnerIsolationSpec = opts.burnerIsolationPath
+      ? readJsonValue(ctx, opts.burnerIsolationPath, "burner isolation spec")
+      : buildSniperBurnerIsolationSpec({ operatorLabel, killSwitchSpecRef: operatorLabel ?? runLabel, readinessStatus });
+    const gates = buildSniperSafetyGatesReportV2({
+      candidateList,
+      preflight,
+      policy,
+      decision,
+      runReport,
+      sessionPack,
+      auditLog,
+      operatorLabel,
+    });
+    const prereqs = buildPhase6PrerequisiteReportV2({
+      sessionPack,
+      policy,
+      safetyGates: gates,
+      decision,
+      runReport,
+      auditLog,
+      killSwitchSpec,
+      secretsPolicy,
+      burnerIsolationSpec,
+      operatorLabel,
+    });
+    chainFiles = [
+      ["candidates.json", candidateList],
+      ["preflight.json", preflight],
+      ["policy.json", policy],
+      ["decision.json", decision],
+      ["run-report.json", runReport],
+      ["audit-log.json", auditLog],
+      ["session-pack.json", sessionPack],
+      ["kill-switch.json", killSwitchSpec],
+      ["secrets-policy.json", secretsPolicy],
+      ["burner-isolation.json", burnerIsolationSpec],
+      ["safety-gates.json", gates],
+      ["prereqs.json", prereqs],
+    ] as const as Array<readonly [string, unknown]>;
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // 5) Write the sniper-side artifacts (the directory is created here, after every refusal path).
+  try {
+    mkdirSync(outDir, { recursive: true });
+    for (const [name, value] of chainFiles) {
+      writeFileSync(join(outDir, name), JSON.stringify(redactValue(value), null, 2) + "\n");
+    }
+  } catch {
+    return { text: redactString(`Refusing: cannot write dry-run artifacts under ${outDir}`), exitCode: 1 };
+  }
+
+  // 6) The Phase 6 simulation chain through the REAL command functions over the written files.
+  const inner: CommandContext = { ...ctx, cwd: outDir };
+  const force = true; // own-output files only; the pre-existing-file refusal already ran above.
+  const steps: Array<readonly [string, CliReport]> = [];
+  const run = (label: string, r: CliReport): CliReport | null => {
+    steps.push([label, r]);
+    return r.exitCode !== 0 ? r : null;
+  };
+  let failed =
+    run("intent-plan", paperSimulationIntentPlanReport(inner, {
+      decisionsPath: "decision.json",
+      gatesPath: "safety-gates.json",
+      prereqsPath: "prereqs.json",
+      killSwitchPath: "kill-switch.json",
+      secretsPolicyPath: "secrets-policy.json",
+      burnerIsolationPath: "burner-isolation.json",
+      acknowledgePaperEnterReview: Boolean(opts.acknowledgePaperEnterReview),
+      stopSimulationTripped: Boolean(opts.stopSimulationTripped),
+      operatorLabel: opts.operatorLabel,
+      planLabel: runLabel,
+      outPath: "intent-plan.json",
+      force,
+    }));
+  failed =
+    failed ??
+    run("simulation-result", paperSimulationResultReport(inner, {
+      planPath: "intent-plan.json",
+      stopSimulationTripped: Boolean(opts.stopSimulationTripped),
+      outPath: "simulation-result.json",
+      force,
+    }));
+  failed =
+    failed ??
+    run("route-resolution", paperSimulationRouteReport(inner, {
+      planPath: "intent-plan.json",
+      stopSimulationTripped: Boolean(opts.stopSimulationTripped),
+      operatorLabel: opts.operatorLabel,
+      resolutionLabel: runLabel,
+      outPath: "route-resolution.json",
+      force,
+    }));
+  const auditPaths = {
+    decisionsPath: "decision.json",
+    runReportPath: "run-report.json",
+    gatesPath: "safety-gates.json",
+    prereqsPath: "prereqs.json",
+    killSwitchPath: "kill-switch.json",
+    secretsPolicyPath: "secrets-policy.json",
+    burnerIsolationPath: "burner-isolation.json",
+    intentPlanPath: "intent-plan.json",
+    simulationResultPath: "simulation-result.json",
+    routePath: "route-resolution.json",
+  } as const;
+  failed =
+    failed ??
+    run("chain-audit", paperSimulationAuditReport(inner, {
+      ...auditPaths,
+      operatorLabel: opts.operatorLabel,
+      outPath: "chain-audit.json",
+      force,
+    }));
+  failed =
+    failed ??
+    run("readiness", paperSimulationReadinessReport(inner, {
+      auditPath: "chain-audit.json",
+      planPath: "intent-plan.json",
+      resultPath: "simulation-result.json",
+      evidence: [...PAPER_DRY_RUN_READINESS_EVIDENCE],
+      operatorLabel: opts.operatorLabel,
+      outPath: "readiness.json",
+      force,
+    }));
+  failed =
+    failed ??
+    run("handoff-pack", paperSimulationHandoffReport(inner, {
+      ...auditPaths,
+      auditPath: "chain-audit.json",
+      readinessPath: "readiness.json",
+      operatorLabel: opts.operatorLabel,
+      packLabel: runLabel,
+      outPath: "handoff-pack.json",
+      force,
+    }));
+  let bundleJson = "";
+  if (!failed) {
+    const r = paperSimulationBundleReport(inner, {
+      ...auditPaths,
+      auditPath: "chain-audit.json",
+      readinessPath: "readiness.json",
+      handoffPath: "handoff-pack.json",
+      operatorLabel: opts.operatorLabel,
+      bundleLabel: runLabel,
+      outPath: "operator-bundle.json",
+      force,
+      json: true,
+    });
+    steps.push(["operator-bundle", r]);
+    if (r.exitCode !== 0) failed = r;
+    else bundleJson = r.text;
+  }
+  if (failed) {
+    const failedLabel = steps[steps.length - 1]![0];
+    return {
+      text: redactString(
+        `Refusing: dry-run stage "${failedLabel}" failed:\n${failed.text}\n(Artifacts written so far remain under ${outDir} for inspection.)`,
+      ),
+      exitCode: 1,
+    };
+  }
+
+  const bundle = JSON.parse(bundleJson) as Phase6OperatorBundleV1;
+
+  // 7) RUN_SUMMARY.md — deterministic markdown derived ONLY from the bundle's structured state.
+  const summaryLines = [
+    "# PAPER Dry-Run Summary",
+    "",
+    "> **SIMULATION ONLY** — this run never signs, never sends, never authorizes live trading.",
+    "> Phase 7 (live/burner trading) is NOT authorized. `phase7LiveTradingReady` is literally `false`.",
+    "",
+    `- **Run label:** ${runLabel}`,
+    `- **Operator:** ${opts.operatorLabel ?? "(none declared)"}`,
+    `- **Operator verdict:** \`${bundle.operatorVerdict}\``,
+    `- **Route resolution:** ${bundle.routeResolutionStatus ?? "unknown"} (resolver attempted: ${String(bundle.routeResolverAttempted)})`,
+    `- **Readiness verdict (verbatim):** ${bundle.simulationReadyPerReadiness === null ? "unknown" : String(bundle.simulationReadyPerReadiness)}`,
+    `- **Chain blocking conditions:** ${bundle.chainBlockingCodes.length}`,
+    "",
+    `**What happened:** ${bundle.whatHappened}`,
+    "",
+    "## Blocking conditions",
+    "",
+    ...(bundle.whyBlocked.length > 0 ? bundle.whyBlocked.map((l) => `- ${l}`) : ["- none"]),
+    "",
+    "## What to inspect next",
+    "",
+    ...bundle.whatToInspectNext.map((l) => `- ${l}`),
+    "",
+    "## Artifacts",
+    "",
+    "| role | file | digest | state |",
+    "| --- | --- | --- | --- |",
+    ...bundle.artifacts.map((a, i) => {
+      const f = bundle.files[i]!;
+      const state = a.present ? (a.valid ? "valid" : "INVALID") : "missing";
+      return `| ${a.role} | ${f.fileName ?? "—"} | ${f.digest ?? "—"} | ${state} |`;
+    }),
+    "",
+    "Diffs are not applicable to a single run — compare two runs with `paper:simulation:diff:plan` / `paper:simulation:diff:result`.",
+    "",
+    "Inspect this folder in the web inspector: `pnpm web:inspect --dir <this directory>`.",
+    "",
+  ];
+  try {
+    writeFileSync(join(outDir, "RUN_SUMMARY.md"), redactString(summaryLines.join("\n")));
+  } catch {
+    return { text: redactString(`Refusing: cannot write RUN_SUMMARY.md under ${outDir}`), exitCode: 1 };
+  }
+
+  const exitCode = opts.failOnBlocked && bundle.operatorVerdict === "blocked" ? 1 : 0;
+  if (opts.json) {
+    return { text: bundleJson, exitCode };
+  }
+  const lines = [
+    "PAPER DRY-RUN COMPLETE — SIMULATION ONLY (never signs, never sends, never authorizes live trading)",
+    `verdict:  ${bundle.operatorVerdict}`,
+    `route:    ${bundle.routeResolutionStatus ?? "unknown"} (honest boundary — no resolver capability exists)`,
+    `readiness verdict (verbatim): ${bundle.simulationReadyPerReadiness === null ? "unknown" : String(bundle.simulationReadyPerReadiness)}`,
+    `blocking: ${bundle.chainBlockingCodes.length} chain blocking condition(s)`,
+    "",
+    `artifacts: ${PAPER_DRY_RUN_FILES.length} files under ${outDir}`,
+    ...PAPER_DRY_RUN_FILES.map((f) => `  - ${join(outDir, f)}`),
+    "",
+    `What happened: ${bundle.whatHappened}`,
+    ...(bundle.whyBlocked.length > 0 ? ["", "Why blocked:", ...bundle.whyBlocked.map((l) => `✗ ${l}`)] : []),
+    "",
+    "Next:",
+    ...bundle.whatToInspectNext.map((l) => `- ${l}`),
+    `- Full summary: ${join(outDir, "RUN_SUMMARY.md")}`,
+  ];
+  return { text: redactString(lines.join("\n")), exitCode };
 }
 
 // ---------------------------------------------------------------------------

@@ -336,7 +336,15 @@ fetched), and the readiness evidence bar now REQUIRES `route-resolution-tests` a
 area (older ten-area readiness artifacts re-validate as INVALID, fail-closed). Sprint 87 makes
 that artifact a first-class AUDITED and HANDED-OFF chain role — the route remains a
 contract/capability boundary: no resolver exists, the real dry-run remains unauthorized and
-unbuilt. A simulation result
+unbuilt. Sprint 88 adds the OPERATOR layer: `paper:simulation:bundle` builds a
+`phase6.operator.bundle.v1` over THIRTEEN roles (the twelve handoff roles plus the handoff pack
+itself, via `--handoff`) with per-file truncated `sha256-128` integrity digests, a blocking trail
+RECOMPUTED from the bundled artifacts and cross-checked against the handoff pack's verbatim trail
+(a stale/tampered pack blocks the bundle), and a closed-set operator verdict whose best value is
+`reviewable-paper-only`; and `paper:sniper:dry-run` is the one-command PAPER orchestrator — an
+operator candidate file in, the complete validated artifact directory out (nineteen artifacts plus
+`RUN_SUMMARY.md`), with route resolution honestly all-UNAVAILABLE and a blocked chain written as
+the honest record (`--fail-on-blocked` gates). A simulation result
 is never an execution and never live readiness — Phase 7 remains not started and unauthorized.
 
 ## Non-negotiable security rules (summary)

@@ -69,6 +69,8 @@ invariants.
 | `paper:simulation:validate` | `--plan` and/or `--result` | never | validates `simulation.intent.plan.v2` / `simulation.result.v1` (literal locks enforced) |
 | `paper:simulation:audit` | (none — missing artifacts reported as warnings) | `--out` only | `phase6.audit.report.v1` (chain audit over the ten v2/simulation artifacts incl. the route-resolution artifact via `--route`; reports, never authorizes) |
 | `paper:simulation:readiness` | (none — anything missing blocks) | `--out` only | `phase6.simulation.readiness.report.v1` (stack readiness; `phase7LiveTradingReady` is a literal false, always) |
+| `paper:simulation:bundle` | (none — missing artifacts classified) | `--out` only | `phase6.operator.bundle.v1` (S88 operator bundle over THIRTEEN roles incl. the handoff pack; recomputed blocking trail cross-checked against the pack; per-file `sha256-128` integrity digests; best verdict is `reviewable-paper-only`) |
+| `paper:sniper:dry-run` | `--candidates`, `--out` | a full directory | the S88 PAPER dry-run ORCHESTRATOR — one command, the whole chain (19 artifacts + `RUN_SUMMARY.md`) |
 
 Common flags: `--json` (stable JSON), `--out <path>` + `--force` (write the artifact; refuse overwrite
 without `--force`), and command-specific `--fail-on-*` CI gates (see [CI gates](#ci-gates)).
@@ -147,6 +149,20 @@ pnpm soulmaker paper:simulation:handoff \
   --audit audit.json --readiness readiness.json \
   --operator you --pack-label session-01 --out handoff.json
 # CI gates: --fail-on-incomplete / --fail-on-blocking / --fail-on-not-ready
+
+# 8) Collect the WHOLE chain into the S88 OPERATOR BUNDLE (thirteen roles — the twelve handoff
+#    roles plus the handoff pack itself). Every named file gets a truncated sha256-128 integrity
+#    digest; the chain's blocking conditions are RECOMPUTED from the bundled artifacts and
+#    cross-checked against the handoff pack's verbatim trail (a stale/tampered pack blocks the
+#    bundle); the closed-set operator verdict can never be better than reviewable-paper-only:
+pnpm soulmaker paper:simulation:bundle \
+  --decisions dec2.json --run-report run2.json --gates gates2.json --prereqs prereqs2.json \
+  --kill-switch ks.json --secrets-policy sp.json --burner-isolation bi.json \
+  --intent-plan plan.json --simulation-result result.json --route route.json \
+  --audit audit.json --readiness readiness.json --handoff handoff.json \
+  --operator you --bundle-label session-01 --out bundle.json
+# CI gates: --fail-on-blocked / --fail-on-incomplete. Re-running the same command over the same
+# files re-verifies the bundle: identical digests, identical verdict (byte-deterministic).
 ```
 
 What to expect, honestly:
@@ -175,6 +191,68 @@ What to expect, honestly:
   `phase7LiveTradingReady` to a literal false the validator refuses to see flipped.
 - A simulation result is **never** an execution, a trade, chain inclusion, or live readiness.
   Phase 7 (live/burner trading) remains not started and unauthorized.
+
+## The PAPER dry-run orchestrator (S88) — one command, the whole chain
+
+`paper:sniper:dry-run` is the operator's single entry point: it consumes a candidate file, runs
+the ENTIRE existing chain through the production builders and command functions (nothing is
+re-implemented, nothing is faked), and writes a complete, validated, auditable artifact directory.
+
+```bash
+pnpm soulmaker paper:sniper:dry-run \
+  --candidates my-candidates.json \
+  --preflight-input my-preflight-input.json \
+  --adopt-specs --acknowledge-paper-enter-review \
+  --operator you --run-label session-01 \
+  --out runs/session-01
+```
+
+Input shapes (both are existing, validated schemas):
+
+- `--candidates` — raw operator input `{ "sourceLabel": "...", "candidates": [{ "candidateId":
+  "...", "mint": "<base58 mint>", ... }] }` or a canonical `sniper.candidate.list.v1`. Every mint
+  is strictly validated; secret-length input is refused without being echoed.
+- `--preflight-input` (optional) — a `sniper.preflight.input.v1`: per-candidate, already-loaded
+  read-only inspection (`token:inspect` output) and advisory risk (`token:risk` output) values.
+  Candidates without data stay honestly `unknown`, and the default fail-closed policy then keeps
+  them out of paper-enter.
+
+Output: nineteen artifacts plus `RUN_SUMMARY.md` under `--out` (created if missing; existing
+artifact files refuse overwrite without `--force`):
+
+```text
+out/
+  candidates.json  preflight.json  policy.json
+  decision.json  run-report.json  audit-log.json  session-pack.json
+  kill-switch.json  secrets-policy.json  burner-isolation.json
+  safety-gates.json  prereqs.json
+  intent-plan.json  simulation-result.json  route-resolution.json
+  chain-audit.json  readiness.json  handoff-pack.json
+  operator-bundle.json  RUN_SUMMARY.md
+```
+
+What to expect, honestly:
+
+- **Specs are DRAFT by default and the chain blocks.** Spec adoption is an operator decision:
+  pass `--adopt-specs` with `--operator <label>` to adopt the canonical paper-only specs for the
+  run, or supply your own adopted spec artifacts via `--kill-switch` / `--secrets-policy` /
+  `--burner-isolation`.
+- **Clean candidates with paper-enters still end `blocked`.** Paper-enters always demand operator
+  review, so the prereq tracker's `NO_OPERATOR_BLOCKING` item stays unmet and the bundle carries
+  `simulation-blocked-prereqs-not-ready` verbatim — `--acknowledge-paper-enter-review` unblocks
+  the PLAN (loudly surfaced), but the condition is still reported through audit/handoff/bundle.
+  That is the system telling the truth, not a bug. A watch-only run (no paper-enter anywhere)
+  reaches `reviewable-paper-only` — the best verdict that exists.
+- **Route resolution is honestly UNAVAILABLE.** No route-resolver capability exists inside the
+  simulation boundary; route/destination/fee stay UNRESOLVED, never invented.
+- **A blocked chain still writes the full artifact set** (exit 0 — the artifacts ARE the honest
+  record; `--fail-on-blocked` gates on the final verdict). `--stop-simulation-tripped` blocks the
+  whole chain with the kill-switch code carried verbatim.
+- **Re-runs are byte-deterministic** for the same inputs; diffs are not applicable to a single
+  run — compare two runs with the diff commands.
+- Inspect the folder in the local web inspector: `pnpm web:inspect --dir runs/session-01`.
+- It creates no live order, builds no transaction, touches no wallet, reaches no network, and
+  cannot authorize Phase 7.
 
 ## The workflow, step by step
 

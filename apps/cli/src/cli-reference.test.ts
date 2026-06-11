@@ -37,6 +37,7 @@ const EXPECTED_COMMANDS: readonly string[] = [
   "paper:sniper:kill-switch:spec",
   "paper:sniper:secrets:policy",
   "paper:sniper:burner:isolation:spec",
+  "paper:sniper:dry-run",
   "paper:phase6:prereqs",
   "paper:phase6:intent:plan",
   "paper:phase6:diff:intent",
@@ -49,6 +50,7 @@ const EXPECTED_COMMANDS: readonly string[] = [
   "paper:simulation:diff:plan",
   "paper:simulation:diff:result",
   "paper:simulation:handoff",
+  "paper:simulation:bundle",
 ];
 
 /** Docs that must cover every registered command. */
@@ -143,6 +145,12 @@ const EXPECTED_SIMULATION_FLAGS: Readonly<Record<string, readonly string[]>> = {
     "--burner-isolation", "--intent-plan", "--simulation-result", "--route", "--audit", "--readiness",
     "--operator", "--pack-label", "--json", "--out", "--force",
     "--fail-on-incomplete", "--fail-on-blocking", "--fail-on-not-ready",
+  ],
+  "paper:simulation:bundle": [
+    "--decisions", "--run-report", "--gates", "--prereqs", "--kill-switch", "--secrets-policy",
+    "--burner-isolation", "--intent-plan", "--simulation-result", "--route", "--audit", "--readiness",
+    "--handoff", "--operator", "--bundle-label", "--json", "--out", "--force",
+    "--fail-on-blocked", "--fail-on-incomplete",
   ],
 };
 

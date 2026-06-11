@@ -68,6 +68,8 @@ import {
   paperSimulationDiffPlanReport,
   paperSimulationDiffResultReport,
   paperSimulationHandoffReport,
+  paperSimulationBundleReport,
+  paperSniperDryRunReport,
 } from "./commands.js";
 
 /** Coerce a commander string option to a number, or undefined when absent. */
@@ -1909,6 +1911,121 @@ program
           force: Boolean(opts.force),
           failOnBlocked: Boolean(opts.failOnBlocked),
           failOnUnavailable: Boolean(opts.failOnUnavailable),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:simulation:bundle")
+  .description(
+    "Build a phase6.operator.bundle.v1 OPERATOR BUNDLE from the named chain artifact files (the twelve handoff roles plus the handoff pack itself). Each artifact is strictly validated in place and summarized from verbatim structured fields; a missing artifact is CLASSIFIED as missing, never invented; every named file gets a truncated sha256-128 integrity digest. The chain's blocking conditions are RECOMPUTED and cross-checked against the handoff pack's verbatim trail (a stale/tampered pack blocks the bundle), and the closed-set operator verdict can never be better than reviewable-paper-only. phase7LiveTradingReady is a literal false. Reads only the named files; writes nothing unless --out. SIMULATION ONLY: never signs, never sends, never authorizes live trading. No network, no wallet",
+  )
+  .option("--decisions <path>", "v2 decision report JSON")
+  .option("--run-report <path>", "v2 run report JSON")
+  .option("--gates <path>", "v2 safety gates report JSON")
+  .option("--prereqs <path>", "v2 phase6 prerequisite report JSON")
+  .option("--kill-switch <path>", "kill-switch spec JSON")
+  .option("--secrets-policy <path>", "secrets policy JSON")
+  .option("--burner-isolation <path>", "burner isolation spec JSON")
+  .option("--intent-plan <path>", "simulation intent plan JSON (simulation.intent.plan.v2)")
+  .option("--simulation-result <path>", "simulation result JSON (simulation.result.v1)")
+  .option("--route <path>", "route-resolution artifact JSON (simulation.route.resolution.v1)")
+  .option("--audit <path>", "phase6 audit report JSON (phase6.audit.report.v1)")
+  .option("--readiness <path>", "phase6 readiness report JSON (phase6.simulation.readiness.report.v1)")
+  .option("--handoff <path>", "phase6 handoff pack JSON (phase6.simulation.handoff.pack.v1)")
+  .option("--operator <label>", "operator label echoed into the bundle")
+  .option("--bundle-label <label>", "bundle label echoed into the bundle")
+  .option("--json", "emit the operator bundle as stable JSON")
+  .option("--out <path>", "write ONLY the bundle JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-blocked", "exit non-zero when the operator verdict is blocked")
+  .option("--fail-on-incomplete", "exit non-zero when any bundled artifact is missing or invalid")
+  .action(
+    (opts: {
+      decisions?: string; runReport?: string; gates?: string; prereqs?: string; killSwitch?: string;
+      secretsPolicy?: string; burnerIsolation?: string; intentPlan?: string; simulationResult?: string;
+      route?: string; audit?: string; readiness?: string; handoff?: string; operator?: string;
+      bundleLabel?: string; json?: boolean; out?: string; force?: boolean;
+      failOnBlocked?: boolean; failOnIncomplete?: boolean;
+    }) => {
+      const { text, exitCode } = paperSimulationBundleReport(
+        {},
+        {
+          decisionsPath: opts.decisions,
+          runReportPath: opts.runReport,
+          gatesPath: opts.gates,
+          prereqsPath: opts.prereqs,
+          killSwitchPath: opts.killSwitch,
+          secretsPolicyPath: opts.secretsPolicy,
+          burnerIsolationPath: opts.burnerIsolation,
+          intentPlanPath: opts.intentPlan,
+          simulationResultPath: opts.simulationResult,
+          routePath: opts.route,
+          auditPath: opts.audit,
+          readinessPath: opts.readiness,
+          handoffPath: opts.handoff,
+          operatorLabel: opts.operator,
+          bundleLabel: opts.bundleLabel,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnBlocked: Boolean(opts.failOnBlocked),
+          failOnIncomplete: Boolean(opts.failOnIncomplete),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:dry-run")
+  .description(
+    "Run the FULL PAPER dry-run pipeline over an operator-supplied candidate file and write the complete validated artifact set (candidates -> preflight -> policy -> v2 decision/run-report/gates/prereqs -> specs -> intent plan -> simulation result -> route resolution -> chain audit -> readiness -> handoff pack -> operator bundle -> RUN_SUMMARY.md) into ONE output directory. Route resolution is honestly all-UNAVAILABLE: no route-resolver capability exists and nothing is invented. A BLOCKED chain still writes the full honest artifact set (exit 0; --fail-on-blocked gates). SIMULATION ONLY: it creates no live order, builds no transaction, touches no wallet, and reaches no network. Phase 7 (live trading) remains unauthorized",
+  )
+  .option("--candidates <path>", "candidate list JSON (raw operator input or sniper.candidate.list.v1; required)")
+  .option("--preflight-input <path>", "preflight input JSON with per-candidate inspection/risk (sniper.preflight.input.v1)")
+  .option("--policy <path>", "policy config JSON (v1 upgraded to v2; default: a fail-closed v2 policy)")
+  .option("--kill-switch <path>", "existing kill-switch spec artifact JSON (built draft/adopted otherwise)")
+  .option("--secrets-policy <path>", "existing secrets policy artifact JSON (built draft/adopted otherwise)")
+  .option("--burner-isolation <path>", "existing burner isolation spec artifact JSON (built draft/adopted otherwise)")
+  .option("--adopt-specs", "build the governance specs as ADOPTED for this run (requires --operator; DRAFT specs block the chain honestly otherwise)")
+  .option("--acknowledge-paper-enter-review", "apply the narrow paper-enter-review operator acknowledgment to the intent plan")
+  .option("--stop-simulation-tripped", "declare the stop-simulation kill switch TRIPPED (blocks the whole chain)")
+  .option("--operator <label>", "operator label echoed through the chain")
+  .option("--run-label <label>", "run label echoed into the plan/route/handoff/bundle artifacts")
+  .option("--out <dir>", "output DIRECTORY for the full artifact set (created if missing; required)")
+  .option("--force", "overwrite existing artifact files in the output directory (refused by default)")
+  .option("--json", "emit the final operator bundle as stable JSON")
+  .option("--fail-on-blocked", "exit non-zero when the final operator verdict is blocked")
+  .action(
+    (opts: {
+      candidates?: string; preflightInput?: string; policy?: string; killSwitch?: string;
+      secretsPolicy?: string; burnerIsolation?: string; adoptSpecs?: boolean;
+      acknowledgePaperEnterReview?: boolean; stopSimulationTripped?: boolean; operator?: string;
+      runLabel?: string; out?: string; force?: boolean; json?: boolean; failOnBlocked?: boolean;
+    }) => {
+      const { text, exitCode } = paperSniperDryRunReport(
+        {},
+        {
+          candidatesPath: opts.candidates,
+          preflightInputPath: opts.preflightInput,
+          policyPath: opts.policy,
+          killSwitchPath: opts.killSwitch,
+          secretsPolicyPath: opts.secretsPolicy,
+          burnerIsolationPath: opts.burnerIsolation,
+          adoptSpecs: Boolean(opts.adoptSpecs),
+          acknowledgePaperEnterReview: Boolean(opts.acknowledgePaperEnterReview),
+          stopSimulationTripped: Boolean(opts.stopSimulationTripped),
+          operatorLabel: opts.operator,
+          runLabel: opts.runLabel,
+          outDir: opts.out,
+          force: Boolean(opts.force),
+          json: Boolean(opts.json),
+          failOnBlocked: Boolean(opts.failOnBlocked),
         },
       );
       console.log(text);
