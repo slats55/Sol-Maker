@@ -34,6 +34,8 @@ const EVIDENCE: Record<(typeof PHASE6_READINESS_EVIDENCE_AREAS)[number], string>
   "output-quality-tests": "packages/simulation/src/operator-output-quality.test.ts",
   "tally-validation-tests": "packages/sniper/src/decision-tally-hardening.test.ts",
   "dry-run-boundary-doc": "docs/PHASE6_DRY_RUN_BOUNDARY.md",
+  // Sprint 86: the S85 route-resolution artifact layer joined the bar.
+  "route-resolution-tests": "packages/simulation/src/route-resolution.test.ts",
 };
 
 function greenInput(): BuildPhase6SimulationReadinessReportV1Input {
@@ -82,8 +84,8 @@ describe("phase6 simulation readiness — green path", () => {
   });
 });
 
-describe("phase6 simulation readiness — Sprint 80 recalibration", () => {
-  it("the bar now includes the S73–S79 areas (ten areas, stable order)", () => {
+describe("phase6 simulation readiness — Sprint 80 recalibration + Sprint 86 route-resolution bump", () => {
+  it("the bar now includes the S73–S79 areas AND the S86 route-resolution area (eleven areas, stable order)", () => {
     expect(PHASE6_READINESS_EVIDENCE_AREAS).toEqual([
       "package-boundary-tests",
       "cli-commands",
@@ -95,11 +97,12 @@ describe("phase6 simulation readiness — Sprint 80 recalibration", () => {
       "output-quality-tests",
       "tally-validation-tests",
       "dry-run-boundary-doc",
+      "route-resolution-tests",
     ]);
   });
 
   it("readiness stays FALSE when any new area is undeclared (fail-closed)", () => {
-    for (const area of ["diff-chain-tests", "handoff-pack-tests", "output-quality-tests", "tally-validation-tests", "dry-run-boundary-doc"] as const) {
+    for (const area of ["diff-chain-tests", "handoff-pack-tests", "output-quality-tests", "tally-validation-tests", "dry-run-boundary-doc", "route-resolution-tests"] as const) {
       const input = greenInput();
       const evidence = { ...(input.evidence as Record<string, string>) };
       delete evidence[area];
@@ -114,15 +117,32 @@ describe("phase6 simulation readiness — Sprint 80 recalibration", () => {
     const report = buildPhase6SimulationReadinessReportV1(greenInput());
     const stale = JSON.parse(JSON.stringify(report)) as Phase6SimulationReadinessReportV1;
     stale.evidence = stale.evidence.slice(0, 5);
-    expect(() => validatePhase6SimulationReadinessReportV1(stale)).toThrow(/must list all 10 areas/);
+    expect(() => validatePhase6SimulationReadinessReportV1(stale)).toThrow(/must list all 11 areas/);
+  });
+
+  it("S86: an artifact built against the TEN-area bar re-validates as INVALID (intended fail-closed bump)", () => {
+    const report = buildPhase6SimulationReadinessReportV1(greenInput());
+    const stale = JSON.parse(JSON.stringify(report)) as Phase6SimulationReadinessReportV1;
+    stale.evidence = stale.evidence.slice(0, 10); // exactly the pre-S86 bar
+    expect(stale.evidence.map((e) => e.area)).not.toContain("route-resolution-tests");
+    expect(() => validatePhase6SimulationReadinessReportV1(stale)).toThrow(/must list all 11 areas/);
   });
 
   it("readiness improves to GREEN exactly when the full new bar is declared — and phase7 stays false", () => {
     const r = buildPhase6SimulationReadinessReportV1(greenInput());
     expect(r.phase6SimulationReady).toBe(true);
-    expect(r.evidence.length).toBe(10);
+    expect(r.evidence.length).toBe(11);
     expect(r.evidence.every((e) => e.declared)).toBe(true);
     expect(r.phase7LiveTradingReady).toBe(false);
+  });
+
+  it("S86: declared route-resolution evidence never claims resolver capability — it is a verbatim declaration", () => {
+    const r = buildPhase6SimulationReadinessReportV1(greenInput());
+    const entry = r.evidence.find((e) => e.area === "route-resolution-tests");
+    expect(entry?.declared).toBe(true);
+    expect(entry?.ref).toBe("packages/simulation/src/route-resolution.test.ts");
+    // The report's own honesty notes still say declarations are never verified or capability claims.
+    expect(r.notes.join("\n")).toContain("DECLARATIONS recorded verbatim");
   });
 });
 
@@ -245,9 +265,48 @@ describe("phase6 simulation readiness — validator backstop", () => {
   );
 
   it("refuses a ready claim the checks/evidence contradict (fail-closed)", () => {
+    // A flipped ready verdict over an all-green report trips the ready-mirror check.
     const r = valid();
-    r.evidence[0] = { ...r.evidence[0]!, declared: false, ref: null };
+    r.phase6SimulationReady = false;
     expect(() => validatePhase6SimulationReadinessReportV1(r)).toThrow(/fail-closed/);
+    // An un-declared area now trips the S86 RECOMPUTED evidence-missing check first — the
+    // contradiction is refused either way, just with the more precise message.
+    const s = valid();
+    s.evidence[0] = { ...s.evidence[0]!, declared: false, ref: null };
+    expect(() => validatePhase6SimulationReadinessReportV1(s)).toThrow(
+      /must carry simulation-readiness-evidence-missing/,
+    );
+  });
+
+  it("S86: tampered route-resolution evidence with an unchanged blocking trail is refused (recomputed, never trusted)", () => {
+    // Un-declare the route-resolution area AND set ready=false so the old ready-mirror check is
+    // satisfied — the blocking trail still contradicts the evidence list, and that is refused.
+    const r = valid();
+    const idx = r.evidence.findIndex((e) => e.area === "route-resolution-tests");
+    r.evidence[idx] = { ...r.evidence[idx]!, declared: false, ref: null };
+    r.phase6SimulationReady = false;
+    expect(r.blockingReasonCodes).toEqual([]); // the tampered artifact still claims a clean trail
+    expect(() => validatePhase6SimulationReadinessReportV1(r)).toThrow(
+      /must carry simulation-readiness-evidence-missing/,
+    );
+  });
+
+  it("S86: an evidence-missing blocking code over fully-declared evidence is refused too (both directions recomputed)", () => {
+    const r = valid();
+    r.blockingReasonCodes = ["simulation-readiness-evidence-missing"];
+    r.phase6SimulationReady = false;
+    expect(() => validatePhase6SimulationReadinessReportV1(r)).toThrow(
+      /while every evidence area is declared/,
+    );
+  });
+
+  it("S86: a declared route-resolution area with a hollowed-out ref is refused", () => {
+    const r = valid();
+    const idx = r.evidence.findIndex((e) => e.area === "route-resolution-tests");
+    r.evidence[idx] = { ...r.evidence[idx]!, declared: true, ref: null };
+    expect(() => validatePhase6SimulationReadinessReportV1(r)).toThrow(
+      /ref must be a non-empty string when declared/,
+    );
   });
 });
 

@@ -1,7 +1,52 @@
-# Phase 6 Continuation Pack (continuation run 2026-06-10 #2, Sprints 73–82; addendum: S85)
+# Phase 6 Continuation Pack (continuation run 2026-06-10 #2, Sprints 73–82; addenda: S85, S86)
 
 The precise hand-off for the next session. Everything below is verifiable from the repo —
 no claim here rests on memory.
+
+## Addendum — Sprint 86 (route-resolution readiness evidence + operator CLI; 2026-06-10) — COMPLETED
+
+S86 integrated the S85 route-resolution artifact into the readiness workflow and the operator
+CLI path. Three changes, all fail-closed, none adding capability:
+
+- **Eleventh readiness evidence area:** `route-resolution-tests` joined
+  `PHASE6_READINESS_EVIDENCE_AREAS` (append-only, stable order). A readiness artifact built
+  against the ten-area bar re-validates as INVALID — the intended fail-closed bump, same as S80.
+  Missing route-resolution evidence blocks readiness with
+  `simulation-readiness-evidence-missing`.
+- **Validator hardening (S86):** the readiness validator now RECOMPUTES the evidence-missing
+  blocking code from the report's own evidence list (the one blocking code it can recompute) —
+  an undeclared area with a clean blocking trail, or the code over fully-declared evidence, is
+  refused in both directions. Mirrors are never trusted where recomputation is possible.
+- **`paper:simulation:route` CLI command:** builds a `simulation.route.resolution.v1` from a
+  named `simulation.intent.plan.v2` via the S85 CANONICAL builder — the only one that exists, so
+  the command can only ever emit the honest all-UNAVAILABLE record under
+  `unavailable-no-route-resolver`. Flags: `--plan` (required), `--stop-simulation-tripped`,
+  `--operator`, `--resolution-label`, `--json`, `--out`/`--force`, `--fail-on-blocked`,
+  `--fail-on-unavailable` (a CI tripwire that trips on every honest artifact until a separately
+  authorized resolver exists). Missing/garbage input refuses; an invalid/blocked plan or tripped
+  stop switch yields a BLOCKED artifact (exit 0; the gate flags it). Pinned in the CLI reference
+  validator (commands AND flags); the full e2e chain now runs plan → result → route → audit →
+  readiness (11 evidence areas) → diffs → handoff with byte determinism.
+
+New decision a successor must not undo:
+
+13. **Route-resolution evidence is required by readiness, but route resolution itself remains
+    UNAVAILABLE.** The `route-resolution-tests` area claims only that the ARTIFACT layer is
+    tested. The result path does NOT consume route-resolution artifacts yet — that wiring belongs
+    to the future, separately-authorized dry-run boundary (`PHASE6_DRY_RUN_BOUNDARY.md`, S86
+    section), which must consume the strictly re-validated artifact as its only route-state
+    input. Never bridge that gap by inventing resolved facts or relaxing the canonical builder.
+
+Honest boundary note: `paper:simulation:result` and the audit/handoff role sets were deliberately
+NOT extended to consume route.json this sprint — forcing that link before the dry-run boundary is
+designed-in would be artificial. Readiness requires the EVIDENCE; the chain records the ARTIFACT.
+
+Updated next slices: (1) operator dress rehearsal over real candidate intake (see the runbook's
+S86-prep section — needs operator-supplied real input; never invent it); (2) handoff-pack diff
+(`phase6.simulation.handoff.pack.diff.v1`) if session-over-session comparison proves useful;
+(3) extend the audit/handoff role registry with the route-resolution artifact as a TENTH/TWELFTH
+audited role (conscious fail-closed bump, mirrors S80/S86); (4) Phase 7 boundary spec doc (docs
+ONLY, fresh authorization required).
 
 ## Addendum — Sprint 85 (route-resolution artifact; 2026-06-10)
 
@@ -91,9 +136,9 @@ simulation; `phase7LiveTradingReady` is a validated literal false). New in this 
 9. **Tally recomputation is now part of both decision validators** (v1 + v2). Every production
    path (builders, tighten-only enforcement, v1→v2 upgrade) derives tallies identically — if a
    future builder path fails this, fix the path, never the validator.
-10. **The readiness evidence bar is ten areas and append-only.** Extending it is the sanctioned
-    way to raise the Phase 6 bar; an old artifact failing re-validation is the intended fail-closed
-    behavior.
+10. **The readiness evidence bar is append-only.** Extending it is the sanctioned way to raise
+    the Phase 6 bar; an old artifact failing re-validation is the intended fail-closed behavior.
+    (Ten areas when this was written; ELEVEN since S86 added `route-resolution-tests`.)
 11. **The dry-run boundary stays design-only** until a fresh explicit authorization. The honest
     technical finding (signing is not the barrier; route/amount resolution and transaction
     construction are) is recorded in `PHASE6_DRY_RUN_BOUNDARY.md` — implement behind the EXISTING

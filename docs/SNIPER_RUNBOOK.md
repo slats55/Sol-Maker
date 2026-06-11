@@ -65,6 +65,7 @@ invariants.
 | `paper:phase6:diff:intent` | `--base`, `--next` | never | `simulation.intent.plan.diff.v1` (INERT) |
 | `paper:simulation:intent:plan` | (none — missing inputs BLOCK honestly) | `--out` only | `simulation.intent.plan.v2` (the first REAL Phase 6 artifact; fail-closed preview) |
 | `paper:simulation:result` | `--plan` | `--out` only | `simulation.result.v1` (dry-run-only; unavailable dry-run reported honestly) |
+| `paper:simulation:route` | `--plan` | `--out` only | `simulation.route.resolution.v1` (route PROVENANCE only; every entry honestly UNAVAILABLE — no resolver capability exists) |
 | `paper:simulation:validate` | `--plan` and/or `--result` | never | validates `simulation.intent.plan.v2` / `simulation.result.v1` (literal locks enforced) |
 | `paper:simulation:audit` | (none — missing artifacts reported as warnings) | `--out` only | `phase6.audit.report.v1` (chain audit over the nine v2/simulation artifacts; reports, never authorizes) |
 | `paper:simulation:readiness` | (none — anything missing blocks) | `--out` only | `phase6.simulation.readiness.report.v1` (stack readiness; `phase7LiveTradingReady` is a literal false, always) |
@@ -91,6 +92,18 @@ pnpm soulmaker paper:simulation:result --plan plan.json --out result.json
 # 3) Validate any simulation artifact strictly (literal safety locks enforced):
 pnpm soulmaker paper:simulation:validate --plan plan.json --result result.json
 
+# 3b) Record the route-resolution PROVENANCE for the plan (S86). This is honest bookkeeping,
+#     not capability: no route resolver exists inside the boundary, so every entry comes back
+#     UNAVAILABLE under the fixed `unavailable-no-route-resolver` id — route, destination, and
+#     fee stay UNRESOLVED, never invented. That outcome is the system telling the truth about
+#     its capability boundary, not a safety failure:
+pnpm soulmaker paper:simulation:route --plan plan.json --operator you \
+  --resolution-label session-01 --out route.json
+#     A missing/invalid/blocked plan or --stop-simulation-tripped produces a BLOCKED artifact
+#     (exit 0 — the blocked artifact is the honest record; --fail-on-blocked is the CI gate).
+#     --fail-on-unavailable exists as a CI tripwire but trips on EVERY honest artifact until a
+#     separately-authorized resolver exists.
+
 # 4) Audit the WHOLE chain (each artifact strictly validated; structured cross-refs checked):
 pnpm soulmaker paper:simulation:audit \
   --decisions dec2.json --run-report run2.json --gates gates2.json --prereqs prereqs2.json \
@@ -110,6 +123,7 @@ pnpm soulmaker paper:simulation:readiness \
   --evidence output-quality-tests=packages/simulation/src/operator-output-quality.test.ts \
   --evidence tally-validation-tests=packages/sniper/src/decision-tally-hardening.test.ts \
   --evidence dry-run-boundary-doc=docs/PHASE6_DRY_RUN_BOUNDARY.md \
+  --evidence route-resolution-tests=packages/simulation/src/route-resolution.test.ts \
   --operator you --fail-on-not-ready
 
 # 6) Compare two sessions' artifacts (structured fields only; both sides strictly validated —
@@ -484,15 +498,18 @@ operator-supplied things; nothing else, and none of them is ever invented by the
 
 With those in hand the rehearsal is the documented workflow above, verbatim: intake → preflight
 input bundle → preflight → decide (v2) → report (v2) → gates (v2) → prereqs (v2) → adopted specs →
-`paper:simulation:intent:plan` → `paper:simulation:result` → `paper:simulation:audit` →
-`paper:simulation:readiness` → `paper:simulation:handoff`. Record the produced session pack and
-handoff pack as the rehearsal evidence. Expectations to hold the run to, honestly:
+`paper:simulation:intent:plan` → `paper:simulation:result` → `paper:simulation:route` →
+`paper:simulation:audit` → `paper:simulation:readiness` → `paper:simulation:handoff`. Record the
+produced session pack and handoff pack as the rehearsal evidence. Expectations to hold the run
+to, honestly:
 
 - Real candidates will mostly land `watch` / `paper-reject` / `unknown` — that is the system
   working, not failing. A `paper-enter` demands the operator review acknowledgment, exactly as in
   the fixtures.
 - Destination/fee previews stay UNRESOLVED and the dry-run stays UNAVAILABLE (no route-resolution
-  capability exists — see `simulation.route.resolution.v1`, which records that state per entry).
+  capability exists — `paper:simulation:route` records exactly that state per entry as a
+  `simulation.route.resolution.v1`; an all-UNAVAILABLE artifact is the truthful capability
+  boundary, not a safety failure).
 - Nothing in the rehearsal signs, sends, or touches a wallet; a tripped stop switch must block the
   whole simulation chain (worth rehearsing once on purpose).
 

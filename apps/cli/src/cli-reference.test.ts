@@ -42,6 +42,7 @@ const EXPECTED_COMMANDS: readonly string[] = [
   "paper:phase6:diff:intent",
   "paper:simulation:intent:plan",
   "paper:simulation:result",
+  "paper:simulation:route",
   "paper:simulation:validate",
   "paper:simulation:audit",
   "paper:simulation:readiness",
@@ -120,6 +121,10 @@ const EXPECTED_SIMULATION_FLAGS: Readonly<Record<string, readonly string[]>> = {
   "paper:simulation:result": [
     "--plan", "--stop-simulation-tripped", "--json", "--out", "--force",
     "--fail-on-blocked", "--fail-on-unresolved", "--fail-on-dry-run-unavailable",
+  ],
+  "paper:simulation:route": [
+    "--plan", "--stop-simulation-tripped", "--operator", "--resolution-label", "--json", "--out",
+    "--force", "--fail-on-blocked", "--fail-on-unavailable",
   ],
   "paper:simulation:validate": ["--plan", "--result", "--json"],
   "paper:simulation:audit": [

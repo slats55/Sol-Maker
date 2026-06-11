@@ -324,7 +324,13 @@ Sprint 75 adds the simulation-aware session handoff: `paper:simulation:handoff` 
 `phase6.simulation.handoff.pack.v1` over the eleven chain artifacts — each strictly validated in
 place and summarized from verbatim structured fields, missing artifacts CLASSIFIED (never
 invented), the chain's blocking conditions and the readiness verdict carried verbatim, one
-deterministic next safe action, and a literal-false `phase7LiveTradingReady`. A simulation result
+deterministic next safe action, and a literal-false `phase7LiveTradingReady`. Sprint 86 adds the
+route-resolution provenance step: `paper:simulation:route` builds a
+`simulation.route.resolution.v1` from a validated intent plan via the canonical builder — the
+only one that exists, so every entry is honestly UNAVAILABLE under the fixed
+`unavailable-no-route-resolver` id (route/destination/fee stay UNRESOLVED, never invented or
+fetched), and the readiness evidence bar now REQUIRES `route-resolution-tests` as its eleventh
+area (older ten-area readiness artifacts re-validate as INVALID, fail-closed). A simulation result
 is never an execution and never live readiness — Phase 7 remains not started and unauthorized.
 
 ## Non-negotiable security rules (summary)

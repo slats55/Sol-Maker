@@ -70,7 +70,11 @@ export class Phase6SimulationReadinessReportV1Error extends Error {
  * operator output quality, decision tally validation, dry-run boundary doc) became part of the
  * Phase 6 bar, so readiness now requires their evidence too — fail-closed: a readiness artifact
  * built against the older five-area bar re-validates as INVALID and must be rebuilt (it is never
- * silently trusted against the new bar). */
+ * silently trusted against the new bar). Sprint 86: the S85 route-resolution artifact layer
+ * (`simulation.route.resolution.v1`) joined the bar as `route-resolution-tests` — the same
+ * conscious fail-closed bump: a ten-area artifact re-validates as INVALID. Declaring this
+ * evidence claims ONLY that the route-resolution ARTIFACT layer is tested; route resolution
+ * itself remains honestly UNAVAILABLE (no resolver capability exists inside this boundary). */
 export const PHASE6_READINESS_EVIDENCE_AREAS = [
   "package-boundary-tests",
   "cli-commands",
@@ -82,6 +86,7 @@ export const PHASE6_READINESS_EVIDENCE_AREAS = [
   "output-quality-tests",
   "tally-validation-tests",
   "dry-run-boundary-doc",
+  "route-resolution-tests",
 ] as const;
 
 /** One of the evidence areas. */
@@ -298,8 +303,9 @@ export function buildPhase6SimulationReadinessReportV1(
 /**
  * Strictly validate a value as a {@link Phase6SimulationReadinessReportV1} and return it narrowed.
  * Enforces the four literal safety locks, that `phase7LiveTradingReady` is LITERALLY false (the
- * flag cannot be true, ever), the fixed evidence-area order, blocking/ready consistency, and the
- * code-severity buckets. Throws {@link Phase6SimulationReadinessReportV1Error} (or a
+ * flag cannot be true, ever), the fixed evidence-area order, blocking/ready consistency, the
+ * code-severity buckets, and (S86) the RECOMPUTED evidence-missing blocking code — the one
+ * blocking code the report's own evidence list can recompute is never trusted as a mirror. Throws {@link Phase6SimulationReadinessReportV1Error} (or a
  * SimulationSafetyError for a flipped lock) on the first problem. Pure.
  */
 export function validatePhase6SimulationReadinessReportV1(value: unknown): Phase6SimulationReadinessReportV1 {
@@ -360,6 +366,18 @@ export function validatePhase6SimulationReadinessReportV1(value: unknown): Phase
     if (!SIMULATION_REASON_CODE_DEFINITIONS[c].blocking) {
       throw new Phase6SimulationReadinessReportV1Error(`phase6 readiness report.blockingReasonCodes contains non-blocking code "${c}"`);
     }
+  }
+  // Sprint 86 hardening: the evidence-missing blocking code is RECOMPUTABLE from the evidence
+  // declarations the report itself carries — so it is recomputed, never trusted. A report whose
+  // evidence list contradicts its blocking trail (an undeclared area with no evidence-missing
+  // code, or the code with every area declared) is refused outright.
+  const expectedEvidenceMissing = evidence.some((e) => !e.declared);
+  if (blockingCodes.includes("simulation-readiness-evidence-missing") !== expectedEvidenceMissing) {
+    throw new Phase6SimulationReadinessReportV1Error(
+      expectedEvidenceMissing
+        ? "phase6 readiness report.blockingReasonCodes must carry simulation-readiness-evidence-missing while any evidence area is undeclared (recomputed, never trusted)"
+        : "phase6 readiness report.blockingReasonCodes carries simulation-readiness-evidence-missing while every evidence area is declared (recomputed, never trusted)",
+    );
   }
   if (typeof value.phase6SimulationReady !== "boolean") {
     throw new Phase6SimulationReadinessReportV1Error("phase6 readiness report.phase6SimulationReady must be a boolean");

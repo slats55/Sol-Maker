@@ -61,6 +61,7 @@ import {
   paperPhase6DiffIntentReport,
   paperSimulationIntentPlanReport,
   paperSimulationResultReport,
+  paperSimulationRouteReport,
   paperSimulationValidateReport,
   paperSimulationAuditReport,
   paperSimulationReadinessReport,
@@ -1870,6 +1871,44 @@ program
           failOnBlocked: Boolean(opts.failOnBlocked),
           failOnUnresolved: Boolean(opts.failOnUnresolved),
           failOnDryRunUnavailable: Boolean(opts.failOnDryRunUnavailable),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:simulation:route")
+  .description(
+    "Build a `simulation.route.resolution.v1` — the honest ROUTE-RESOLUTION PROVENANCE record over a named `simulation.intent.plan.v2`, via the package's CANONICAL builder (the only one that exists). No route-resolution capability exists inside the simulation boundary, so every entry is honestly UNAVAILABLE under the fixed `unavailable-no-route-resolver` id: route, destination, and fee stay UNRESOLVED — never invented, never fetched, never typed in by hand. A missing/invalid/blocked plan or a declared stop-simulation kill switch produces a BLOCKED artifact with stable reason codes (the blocked artifact IS the honest record). This artifact is provenance only: not live trading, not a buy recommendation, not a transaction approval; it never signs, never sends, never resolves. Reads only the named file, writes nothing unless --out. No network, no wallet",
+  )
+  .option("--plan <path>", "simulation intent plan JSON (simulation.intent.plan.v2; required)")
+  .option("--stop-simulation-tripped", "declare the stop-simulation kill switch TRIPPED at resolution time (blocks the artifact)")
+  .option("--operator <label>", "operator label echoed into the artifact")
+  .option("--resolution-label <label>", "resolution label echoed into the artifact")
+  .option("--json", "emit the route-resolution artifact as stable JSON")
+  .option("--out <path>", "write ONLY the artifact JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-blocked", "exit non-zero when the artifact is BLOCKED")
+  .option("--fail-on-unavailable", "exit non-zero when any entry is UNAVAILABLE (trips on every honest artifact until a separately-authorized resolver exists)")
+  .action(
+    (opts: {
+      plan?: string; stopSimulationTripped?: boolean; operator?: string; resolutionLabel?: string;
+      json?: boolean; out?: string; force?: boolean; failOnBlocked?: boolean; failOnUnavailable?: boolean;
+    }) => {
+      const { text, exitCode } = paperSimulationRouteReport(
+        {},
+        {
+          planPath: opts.plan,
+          stopSimulationTripped: Boolean(opts.stopSimulationTripped),
+          operatorLabel: opts.operator,
+          resolutionLabel: opts.resolutionLabel,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnBlocked: Boolean(opts.failOnBlocked),
+          failOnUnavailable: Boolean(opts.failOnUnavailable),
         },
       );
       console.log(text);

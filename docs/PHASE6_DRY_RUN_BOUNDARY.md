@@ -136,6 +136,22 @@ boundary can now CONSUME a validated statement of what route state exists instea
 and today that statement is honestly "unavailable, everywhere". Implementing an actual resolver
 remains unauthorized by this document.
 
+### Sprint 86 — the artifact is now part of the operator path and the readiness bar
+
+Two integration facts a future implementing session must account for (still no new capability):
+
+- **Operators generate the artifact with `paper:simulation:route`** (from a validated
+  `simulation.intent.plan.v2`; the CLI calls the canonical builder and can therefore only ever
+  emit the all-UNAVAILABLE record — a blocked/invalid plan or a tripped stop switch yields a
+  BLOCKED artifact). A future dry-run boundary must consume THIS artifact — strictly re-validated,
+  with per-entry status checked — as its route-state input; it must never accept route facts from
+  anywhere else, and an `unavailable`/`unresolved` entry means there is nothing truthful to
+  simulate for it.
+- **The Phase 6 readiness evidence bar now REQUIRES `route-resolution-tests`** (eleventh area,
+  fail-closed: ten-area artifacts re-validate as INVALID). Declaring that evidence claims only
+  that the route-resolution ARTIFACT layer is tested. It does NOT claim a resolver exists, and
+  readiness stays structurally incapable of claiming live-trading readiness either way.
+
 ## Required tests BEFORE any implementation lands
 
 1. Import-allowlist + forbidden-token + determinism scans for the new package (day one).

@@ -1,15 +1,16 @@
 /**
- * Sprint 68 (+78) — END-TO-END Phase 6 fixture chain through the REAL CLI command functions.
+ * Sprint 68 (+78, +86) — END-TO-END Phase 6 fixture chain through the REAL CLI command functions.
  *
  * The base chain is FICTIONAL and built by the PRODUCTION sniper builders (the simulation
  * package's fixture helpers), written into a temp dir, then driven through the actual commands:
- * intent plan → result → validate → chain audit → readiness → diffs → handoff (the FULL Phase 6
- * surface as of Sprint 78). Proves, with production validators:
+ * intent plan → result → validate → route resolution → chain audit → readiness (eleven-area
+ * evidence bar incl. route-resolution-tests) → diffs → handoff (the FULL Phase 6 surface as of
+ * Sprint 86). Proves, with production validators:
  *
- *   - the whole Phase 6 surface coheres end to end (plan unblocked, result honest, audit clean,
- *     readiness green, diffs identical for a self-pair, handoff complete with the verbatim
- *     readiness verdict);
- *   - byte determinism (two full runs produce byte-identical artifacts across ALL ten files);
+ *   - the whole Phase 6 surface coheres end to end (plan unblocked, result honest, route
+ *     resolution honestly all-UNAVAILABLE, audit clean, readiness green, diffs identical for a
+ *     self-pair, handoff complete with the verbatim readiness verdict);
+ *   - byte determinism (two full runs produce byte-identical artifacts across ALL files);
  *   - no command writes anything by default; --out refuses overwrite without --force;
  *   - no fixture or generated artifact carries a secret-shaped key or value;
  *   - the chain FAILS CLOSED: a kill-switch stop blocks plan AND result AND propagates into the
@@ -27,6 +28,7 @@ import {
   buildFictionalReadyChain,
   validateSimulationIntentPlanV2,
   validateSimulationResultV1,
+  validateSimulationRouteResolutionV1,
   validatePhase6AuditReportV1,
   validatePhase6SimulationReadinessReportV1,
   validateSimulationIntentPlanDiffV2,
@@ -36,6 +38,7 @@ import {
 import {
   paperSimulationIntentPlanReport,
   paperSimulationResultReport,
+  paperSimulationRouteReport,
   paperSimulationValidateReport,
   paperSimulationAuditReport,
   paperSimulationReadinessReport,
@@ -46,7 +49,7 @@ import {
 
 const CHAIN_FILES = ["dec2.json", "run2.json", "gates2.json", "prereqs2.json", "ks.json", "sp.json", "bi.json"] as const;
 const GENERATED_FILES = ["plan.json", "result.json", "audit.json"] as const;
-const EXTENDED_FILES = ["readiness.json", "plan-diff.json", "result-diff.json", "handoff.json"] as const;
+const EXTENDED_FILES = ["route.json", "readiness.json", "plan-diff.json", "result-diff.json", "handoff.json"] as const;
 
 /** Write the FICTIONAL base chain into `dir` (production-builder output, serialized verbatim). */
 function writeBaseChain(dir: string): void {
@@ -108,6 +111,7 @@ const EVIDENCE = [
   "output-quality-tests=packages/simulation/src/operator-output-quality.test.ts",
   "tally-validation-tests=packages/sniper/src/decision-tally-hardening.test.ts",
   "dry-run-boundary-doc=docs/PHASE6_DRY_RUN_BOUNDARY.md",
+  "route-resolution-tests=packages/simulation/src/route-resolution.test.ts",
 ] as const;
 
 const HANDOFF_OPTS = {
@@ -126,13 +130,22 @@ const HANDOFF_OPTS = {
   packLabel: "fictional-e2e-handoff",
 } as const;
 
-/** Sprint 78: run the FULL chain — core pipeline + readiness + both diffs + handoff. */
+/** Sprint 78 (+86): run the FULL chain — core pipeline + route resolution + readiness + both
+ * diffs + handoff. The route step records the honest all-UNAVAILABLE provenance over the plan;
+ * the result path does NOT consume it (the dry-run boundary that would is design-only). */
 function runFullPipeline(cwd: string): void {
   runPipeline(cwd);
   const ctx = { cwd, env: {} };
   const must = (label: string, r: { exitCode: number; text: string }): void => {
     expect(r.exitCode, `${label}: ${r.text.slice(0, 200)}`).toBe(0);
   };
+  must("route", paperSimulationRouteReport(ctx, {
+    planPath: "plan.json",
+    operatorLabel: "fictional-operator",
+    resolutionLabel: "fictional-e2e-route",
+    outPath: "route.json",
+    failOnBlocked: true,
+  }));
   must("readiness", paperSimulationReadinessReport(ctx, {
     auditPath: "audit.json",
     planPath: "plan.json",
@@ -305,9 +318,20 @@ describe("phase6 e2e (S78) — the FULL chain through every simulation command",
   it("runs the full chain; every artifact validates; readiness is green; the handoff is complete", () => {
     withTmp((tmp) => {
       runFullPipeline(tmp);
+      // S86: the route-resolution provenance is part of the operator path — and it is honest:
+      // no resolver capability exists, so every entry is UNAVAILABLE and nothing is invented.
+      const route = validateSimulationRouteResolutionV1(readJson(tmp, "route.json"));
+      expect(route.resolutionStatus).toBe("unavailable");
+      expect(route.routeResolverId).toBe("unavailable-no-route-resolver");
+      expect(route.routeResolverAttempted).toBe(false);
+      expect(route.entryCount).toBe(2);
+      expect(route.unavailableEntryCount).toBe(2);
+      expect(route.liveStateCaveat).toBe(false);
+      expect(route.phase7LiveTradingReady).toBe(false);
       const readiness = validatePhase6SimulationReadinessReportV1(readJson(tmp, "readiness.json"));
       expect(readiness.phase6SimulationReady).toBe(true);
       expect(readiness.phase7LiveTradingReady).toBe(false);
+      expect(readiness.evidence.find((e) => e.area === "route-resolution-tests")?.declared).toBe(true);
       const planDiff = validateSimulationIntentPlanDiffV2(readJson(tmp, "plan-diff.json"));
       expect(planDiff.hasChange).toBe(false);
       expect(planDiff.diffReasonCodes).toEqual(["simulation-diff-plan-identical"]);
@@ -322,7 +346,7 @@ describe("phase6 e2e (S78) — the FULL chain through every simulation command",
     });
   });
 
-  it("two full runs are byte-identical across ALL ten generated/source files", () => {
+  it("two full runs are byte-identical across ALL generated/source files (route included)", () => {
     withTmp((a) => {
       withTmp((b) => {
         runFullPipeline(a);
@@ -340,12 +364,15 @@ describe("phase6 e2e (S78) — the FULL chain through every simulation command",
       runFullPipeline(tmp);
       const before = readdirSync(tmp).sort();
       // No default writes.
+      paperSimulationRouteReport(ctx, { planPath: "plan.json", json: true });
       paperSimulationReadinessReport(ctx, { auditPath: "audit.json", planPath: "plan.json", resultPath: "result.json", evidence: [...EVIDENCE], json: true });
       paperSimulationDiffPlanReport(ctx, { basePath: "plan.json", nextPath: "plan.json", json: true });
       paperSimulationDiffResultReport(ctx, { basePath: "result.json", nextPath: "result.json", json: true });
       paperSimulationHandoffReport(ctx, { ...HANDOFF_OPTS, json: true });
       expect(readdirSync(tmp).sort()).toEqual(before);
       // Overwrite refusal on every extended output; --force succeeds.
+      expect(paperSimulationRouteReport(ctx, { planPath: "plan.json", outPath: "route.json" }).exitCode).toBe(1);
+      expect(paperSimulationRouteReport(ctx, { planPath: "plan.json", outPath: "route.json", force: true }).exitCode).toBe(0);
       expect(paperSimulationReadinessReport(ctx, { auditPath: "audit.json", planPath: "plan.json", resultPath: "result.json", evidence: [...EVIDENCE], outPath: "readiness.json" }).exitCode).toBe(1);
       expect(paperSimulationDiffPlanReport(ctx, { basePath: "plan.json", nextPath: "plan.json", outPath: "plan-diff.json" }).exitCode).toBe(1);
       expect(paperSimulationDiffResultReport(ctx, { basePath: "result.json", nextPath: "result.json", outPath: "result-diff.json" }).exitCode).toBe(1);
@@ -370,6 +397,12 @@ describe("phase6 e2e (S78) — the FULL chain through every simulation command",
       expect(handoffR.exitCode).toBe(1);
       const pack = validatePhase6SimulationHandoffPackV1(JSON.parse(handoffR.text));
       expect(pack.chainBlockingCodes).toContain("simulation-blocked-kill-switch-stop");
+      // S86: route resolution over the stopped (blocked) plan fails closed with the chain.
+      const routeR = paperSimulationRouteReport(ctx, { planPath: "plan-stop.json", json: true, failOnBlocked: true });
+      expect(routeR.exitCode).toBe(1);
+      const blockedRoute = validateSimulationRouteResolutionV1(JSON.parse(routeR.text));
+      expect(blockedRoute.blockingReasonCodes).toContain("simulation-route-resolution-blocked-plan");
+      expect(blockedRoute.entryCount).toBe(0);
     });
   });
 

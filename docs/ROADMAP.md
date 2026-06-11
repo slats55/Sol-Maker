@@ -870,6 +870,17 @@ remaining safe Phase 6 gaps:
   sensitive-named/execution-shaped fields (CLOSED v1 schema), and REQUIRES the explicit
   `liveStateCaveat` on any label-resolved fact a future authorized resolver might emit. 11 new
   append-only `simulation-route-resolution-*` reason codes.
+- ✅ **(S86) Route-resolution readiness evidence + operator CLI** — the readiness evidence bar
+  grew from ten to ELEVEN areas (`route-resolution-tests`; a ten-area artifact re-validates as
+  INVALID, fail-closed, same as the S80 bump), the readiness validator now RECOMPUTES the
+  evidence-missing blocking code from the report's own evidence list (a contradicting mirror is
+  refused in both directions), and `paper:simulation:route` gives operators the S85 canonical
+  builder from the CLI: a validated intent plan in, the honest all-UNAVAILABLE
+  `simulation.route.resolution.v1` out (`unavailable-no-route-resolver`; blocked plans/tripped
+  stop switch → BLOCKED artifact; `--fail-on-blocked`/`--fail-on-unavailable` CI gates). The full
+  e2e chain now runs plan → result → route → audit → readiness → diffs → handoff. Declared
+  route-resolution evidence claims the ARTIFACT layer is tested — a resolver still does not
+  exist, deliberately.
 
 **Still honestly missing from Phase 6 (future, in order):**
 

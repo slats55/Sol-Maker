@@ -65,6 +65,8 @@ import {
   formatPhase6SimulationReadinessReportV1,
   buildPhase6SimulationHandoffPackV1,
   formatPhase6SimulationHandoffPackV1,
+  buildSimulationRouteResolutionV1,
+  formatSimulationRouteResolutionV1,
   PHASE6_READINESS_EVIDENCE_AREAS,
   SIMULATION_INTENT_PLAN_V2_SCHEMA_VERSION,
   SIMULATION_RESULT_V1_SCHEMA_VERSION,
@@ -76,6 +78,7 @@ import {
   type Phase6ReadinessEvidenceArea,
   type Phase6SimulationReadinessReportV1,
   type Phase6SimulationHandoffPackV1,
+  type SimulationRouteResolutionV1,
 } from "@soulmaker/simulation";
 import {
   normalizeSniperCandidateList,
@@ -6700,6 +6703,93 @@ export function paperSimulationHandoffReport(
     return { text: JSON.stringify(redactValue(pack), null, 2), exitCode };
   }
   return { text: formatPhase6SimulationHandoffPackV1(pack, { label: opts.packLabel ?? undefined }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 86 — paper:simulation:route
+//   The route-resolution PROVENANCE artifact (`simulation.route.resolution.v1`)
+//   from a named intent-plan file via the S85 canonical builder — the ONLY
+//   builder that exists: no route-resolution capability lives inside this
+//   boundary, so every entry is honestly UNAVAILABLE under the fixed
+//   `unavailable-no-route-resolver` id. Nothing is resolved, invented, or
+//   fetched. Reads only the named file; writes nothing unless --out.
+// ---------------------------------------------------------------------------
+
+export interface PaperSimulationRouteCommandOptions {
+  /** Path to the `simulation.intent.plan.v2` artifact (required). */
+  planPath?: string;
+  /** Operator-declared stop-simulation kill-switch state AT RESOLUTION TIME (true BLOCKS). */
+  stopSimulationTripped?: boolean;
+  operatorLabel?: string;
+  /** Optional resolution label echoed into the artifact. */
+  resolutionLabel?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit non-zero when the artifact is BLOCKED (missing/invalid/blocked plan or tripped stop). */
+  failOnBlocked?: boolean;
+  /** Exit non-zero when any entry is UNAVAILABLE — the canonical state today, so this gate trips
+   * on EVERY honest artifact until a separately-authorized resolver exists. CI tripwire only. */
+  failOnUnavailable?: boolean;
+}
+
+/**
+ * `soulmaker paper:simulation:route` — build a `simulation.route.resolution.v1` from a named
+ * intent-plan file using the package's CANONICAL builder, the only one that exists: no
+ * route-resolution capability lives inside the simulation boundary (the import allowlist keeps it
+ * that way), so every entry is honestly UNAVAILABLE under the fixed `unavailable-no-route-resolver`
+ * id — route, destination, and fee stay unresolved, never invented, never fetched. The plan is
+ * strictly validated in place; a missing/invalid/blocked plan or a declared stop-simulation switch
+ * produces a BLOCKED artifact with stable reason codes (exit 0 — the blocked artifact IS the
+ * honest record; `--fail-on-blocked` gates it). A named-but-unreadable file refuses outright.
+ * Reads only the named file; writes nothing unless `--out` (refusing overwrite without `--force`).
+ * Never signs, never sends, never resolves. No network, no wallet.
+ */
+export function paperSimulationRouteReport(
+  ctx: CommandContext = {},
+  opts: PaperSimulationRouteCommandOptions = {},
+): CliReport {
+  if (!opts.planPath) {
+    return { text: "Refusing: --plan <path> is required (a simulation.intent.plan.v2 artifact).", exitCode: 1 };
+  }
+  let raw: unknown;
+  try {
+    raw = readJsonValue(ctx, opts.planPath, "simulation intent plan");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let artifact: SimulationRouteResolutionV1;
+  try {
+    artifact = buildSimulationRouteResolutionV1({
+      intentPlan: raw,
+      stopSimulationTripped: Boolean(opts.stopSimulationTripped),
+      operatorLabel: opts.operatorLabel ?? null,
+      resolutionLabel: opts.resolutionLabel ?? null,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(artifact), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write route-resolution artifact at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  let exitCode = 0;
+  if (opts.failOnBlocked && artifact.blocked) exitCode = 1;
+  if (opts.failOnUnavailable && artifact.unavailableEntryCount > 0) exitCode = 1;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(artifact), null, 2), exitCode };
+  }
+  return { text: formatSimulationRouteResolutionV1(artifact, { label: opts.planPath }), exitCode };
 }
 
 // ---------------------------------------------------------------------------

@@ -70,6 +70,7 @@ function withHandoffDir<T>(fn: (d: HandoffDir) => T): T {
       "output-quality-tests": "packages/simulation/src/operator-output-quality.test.ts",
       "tally-validation-tests": "packages/sniper/src/decision-tally-hardening.test.ts",
       "dry-run-boundary-doc": "docs/PHASE6_DRY_RUN_BOUNDARY.md",
+      "route-resolution-tests": "packages/simulation/src/route-resolution.test.ts",
     },
     operatorLabel: "fictional-operator",
   });
