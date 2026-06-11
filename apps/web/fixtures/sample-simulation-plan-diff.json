@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "simulation.intent.plan.diff.v2",
+  "banner": "SIMULATION INTENT PLAN DIFF V2 (PREVIEW COMPARISON ONLY — DRY-RUN-ONLY, NEVER SIGNS, NEVER SENDS)",
+  "generatedBy": "@soulmaker/simulation",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "neverAuthorizesLiveTrading": true,
+  "neverSigns": true,
+  "neverSends": true,
+  "dryRunOnly": true,
+  "disclaimers": [
+    "SIMULATION INTENT PLAN DIFF V2 — a deterministic comparison of two strictly-validated simulation intent plans (base vs next), computed from STRUCTURED FIELDS ONLY (never from prose).",
+    "A diff over simulation previews is still a preview: it does not sign, does not send, and does not authorize live trading.",
+    "SIMULATION ONLY — a deterministic, read-only, dry-run-only artifact over validated PAPER inputs; nothing here is, or can become, a live action.",
+    "It can NEVER authorize live trading: neverAuthorizesLiveTrading is literally true and the validator refuses anything else.",
+    "It NEVER signs and NEVER sends: this package holds no wallet, no key material, no signing surface, and no transaction-submission surface.",
+    "Where a real on-chain dry-run is impossible without transaction material it is reported as UNAVAILABLE with an honest reason code — never faked.",
+    "Phase 7 (live/burner trading) is NOT started, NOT authorized, and cannot be authorized from here.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim."
+  ],
+  "base": {
+    "planLabel": "sample-fictional-plan",
+    "operatorLabel": "sample-fictional-operator",
+    "blocked": false,
+    "entryCount": 2,
+    "unresolvedEntryCount": 2,
+    "blockingCodeCount": 0,
+    "warningCodeCount": 4
+  },
+  "next": {
+    "planLabel": "sample-fictional-plan",
+    "operatorLabel": "sample-fictional-operator",
+    "blocked": true,
+    "entryCount": 0,
+    "unresolvedEntryCount": 0,
+    "blockingCodeCount": 1,
+    "warningCodeCount": 1
+  },
+  "newlyBlocked": true,
+  "noLongerBlocked": false,
+  "blockingCodesAdded": [
+    "simulation-blocked-kill-switch-stop"
+  ],
+  "blockingCodesRemoved": [],
+  "warningCodesAdded": [],
+  "warningCodesRemoved": [
+    "simulation-preview-unresolved-destination",
+    "simulation-preview-unresolved-amount",
+    "simulation-preview-unresolved-fee"
+  ],
+  "sourceRefChanges": [],
+  "readinessChangedFields": [],
+  "specAdoptionChangedFields": [
+    "stopSimulationDeclaredTripped"
+  ],
+  "acknowledgmentChanged": false,
+  "entriesAdded": [],
+  "entriesRemoved": [
+    "fic-sim-a",
+    "fic-sim-b"
+  ],
+  "commonEntryCount": 0,
+  "entryChanges": [],
+  "deltas": {
+    "entryCount": -2,
+    "unresolvedEntryCount": -2,
+    "blockingCodeCount": 1,
+    "warningCodeCount": -3
+  },
+  "diffReasonCodes": [
+    "simulation-diff-plan-newly-blocked",
+    "simulation-diff-plan-blocking-codes-changed",
+    "simulation-diff-plan-warning-codes-changed",
+    "simulation-diff-plan-spec-adoption-changed",
+    "simulation-diff-plan-entries-changed"
+  ],
+  "hasChange": true,
+  "hasNewBlocking": true,
+  "hasNewUnresolved": false,
+  "notes": [
+    "0 entries added, 2 removed, 0 in both (0 changed); 5 finding(s).",
+    "Every finding is computed from the two plans' VERBATIM structured fields — this diff re-derives nothing, parses no prose, and is not a trade signal."
+  ]
+}

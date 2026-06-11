@@ -1,0 +1,131 @@
+{
+  "schemaVersion": "phase6.simulation.readiness.report.v1",
+  "banner": "PHASE 6 SIMULATION READINESS REPORT (SIMULATION READINESS ONLY — NEVER LIVE-TRADING READINESS)",
+  "generatedBy": "@soulmaker/simulation",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "neverAuthorizesLiveTrading": true,
+  "neverSigns": true,
+  "neverSends": true,
+  "dryRunOnly": true,
+  "phase7LiveTradingReady": false,
+  "disclaimers": [
+    "PHASE 6 SIMULATION READINESS — artifact checks are machine-verified here; evidence declarations are operator-supplied references listed verbatim (this report cannot run tests and never claims it did).",
+    "phase7LiveTradingReady is ALWAYS false: this artifact is structurally incapable of claiming live-trading readiness, and the validator refuses anything else.",
+    "SIMULATION ONLY — a deterministic, read-only, dry-run-only artifact over validated PAPER inputs; nothing here is, or can become, a live action.",
+    "It can NEVER authorize live trading: neverAuthorizesLiveTrading is literally true and the validator refuses anything else.",
+    "It NEVER signs and NEVER sends: this package holds no wallet, no key material, no signing surface, and no transaction-submission surface.",
+    "Where a real on-chain dry-run is impossible without transaction material it is reported as UNAVAILABLE with an honest reason code — never faked.",
+    "Phase 7 (live/burner trading) is NOT started, NOT authorized, and cannot be authorized from here.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim."
+  ],
+  "operatorLabel": "sample-fictional-operator",
+  "artifactChecks": [
+    {
+      "id": "AUDIT_VALID",
+      "title": "Chain audit valid",
+      "passed": true,
+      "detail": "the chain audit is strictly valid"
+    },
+    {
+      "id": "AUDIT_PASSED",
+      "title": "Chain audit passed",
+      "passed": true,
+      "detail": "no blocking finding"
+    },
+    {
+      "id": "CHAIN_COMPLETE",
+      "title": "Chain complete",
+      "passed": true,
+      "detail": "all 10 chain artifacts present and valid"
+    },
+    {
+      "id": "PLAN_VALID",
+      "title": "Intent plan valid",
+      "passed": true,
+      "detail": "strictly valid; 2 preview entries"
+    },
+    {
+      "id": "RESULT_VALID",
+      "title": "Simulation result valid",
+      "passed": true,
+      "detail": "strictly valid; status skipped_unresolved"
+    }
+  ],
+  "evidence": [
+    {
+      "area": "package-boundary-tests",
+      "ref": "packages/simulation/src/no-forbidden-imports.test.ts",
+      "declared": true
+    },
+    {
+      "area": "cli-commands",
+      "ref": "apps/cli/src/simulation-commands.test.ts",
+      "declared": true
+    },
+    {
+      "area": "e2e-fixtures",
+      "ref": "apps/cli/src/simulation-e2e.test.ts",
+      "declared": true
+    },
+    {
+      "area": "source-scans",
+      "ref": "packages/simulation/src/package-boundary.test.ts",
+      "declared": true
+    },
+    {
+      "area": "docs",
+      "ref": "docs/SNIPER_RUNBOOK.md",
+      "declared": true
+    },
+    {
+      "area": "diff-chain-tests",
+      "ref": "packages/simulation/src/intent-plan-diff.test.ts",
+      "declared": true
+    },
+    {
+      "area": "handoff-pack-tests",
+      "ref": "packages/simulation/src/handoff-pack.test.ts",
+      "declared": true
+    },
+    {
+      "area": "output-quality-tests",
+      "ref": "packages/simulation/src/operator-output-quality.test.ts",
+      "declared": true
+    },
+    {
+      "area": "tally-validation-tests",
+      "ref": "packages/sniper/src/decision-tally-hardening.test.ts",
+      "declared": true
+    },
+    {
+      "area": "dry-run-boundary-doc",
+      "ref": "docs/PHASE6_DRY_RUN_BOUNDARY.md",
+      "declared": true
+    },
+    {
+      "area": "route-resolution-tests",
+      "ref": "packages/simulation/src/route-resolution.test.ts",
+      "declared": true
+    }
+  ],
+  "phase6SimulationReady": true,
+  "blockingReasonCodes": [],
+  "warningReasonCodes": [
+    "simulation-readiness-chain-conditions-present"
+  ],
+  "outcomeReasonCodes": [
+    "simulation-readiness-green"
+  ],
+  "notes": [
+    "5/5 artifact checks passed; 11/11 evidence areas declared; phase6SimulationReady=true.",
+    "Evidence references are DECLARATIONS recorded verbatim — this report cannot run tests and never claims it did.",
+    "phase6SimulationReady speaks ONLY to the simulation stack. It is never live-trading readiness: phase7LiveTradingReady is literally false, always."
+  ]
+}

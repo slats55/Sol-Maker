@@ -18,7 +18,10 @@ export type SchemaFamily =
   | "sensitivity"
   | "coverage"
   | "plan"
-  | "research";
+  | "research"
+  | "sniper"
+  | "simulation"
+  | "phase6";
 
 export interface ReportSchemaInfo {
   readonly id: string;
@@ -188,6 +191,113 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
     description:
       "Conservative delta between two research campaign indexes: campaign-digest change, runs added/removed/changed, attention transitions, aggregate count/schema deltas, and a conservative regression flag.",
     cli: "paper:backtest:diff:research:index",
+  },
+
+  // --- Sniper PAPER pipeline (S25–S87; verified against origin/master) -------
+  // These are integrity/safety artifacts from the paper-only sniper pipeline.
+  // None of them is an order, a transaction, or live-trading readiness.
+  {
+    id: "sniper.paper.decision.report.v2",
+    title: "Sniper paper decision report v2",
+    family: "sniper",
+    stability: "stable",
+    description:
+      "Paper-only sniper decisions per candidate (skip/watch/paper-enter/paper-reject/unknown) with machine-readable reason codes and policy visibility. A paper-enter is a SIMULATED classification, never an order.",
+    cli: "paper:sniper:decide",
+  },
+  {
+    id: "sniper.run.report.v2",
+    title: "Sniper run report v2",
+    family: "sniper",
+    stability: "stable",
+    description:
+      "Operator run summary bundling already-built local artifacts verbatim: decisions, preflight statuses, reason-code rollups, policy visibility, and operator-blocking reasons. Built with --schema-version v2.",
+    cli: "paper:sniper:report",
+  },
+  {
+    id: "sniper.run.report.diff.v2",
+    title: "Sniper run report diff v2",
+    family: "sniper",
+    stability: "stable",
+    description:
+      "Structured comparison of two v2 run reports: decision/preflight transitions, operator-blocking reasons added/removed, and reason-code count deltas. Built with --schema-version v2.",
+    cli: "paper:sniper:diff:report",
+  },
+
+  // --- Phase 6 simulation chain (S61–S87; verified against origin/master) ----
+  // Read-only, dry-run-only artifacts. The route resolver and the real dry-run
+  // engine do NOT exist; unavailable/unresolved states are the honest record.
+  {
+    id: "simulation.intent.plan.v2",
+    title: "Simulation intent plan v2",
+    family: "simulation",
+    stability: "stable",
+    description:
+      "Fail-closed SIMULATION PREVIEW over the strictly-validated v2 chain. Destination/amount/fee previews stay UNRESOLVED (never invented); anything missing or not ready produces a BLOCKED plan.",
+    cli: "paper:simulation:intent:plan",
+  },
+  {
+    id: "simulation.result.v1",
+    title: "Simulation result v1",
+    family: "simulation",
+    stability: "stable",
+    description:
+      "The honest record of one simulation pass over a validated plan: unresolved entries are SKIPPED and the dry-run reports UNAVAILABLE (no real dry-run engine exists — nothing is faked).",
+    cli: "paper:simulation:result",
+  },
+  {
+    id: "simulation.route.resolution.v1",
+    title: "Simulation route resolution v1",
+    family: "simulation",
+    stability: "stable",
+    description:
+      "Per-entry route/destination/fee PROVENANCE over a validated plan. No route resolver exists inside the boundary, so every entry is honestly UNAVAILABLE under the fixed unavailable-no-route-resolver id.",
+    cli: "paper:simulation:route",
+  },
+  {
+    id: "simulation.intent.plan.diff.v2",
+    title: "Simulation plan diff v2",
+    family: "simulation",
+    stability: "stable",
+    description:
+      "Structured-field-only comparison of two simulation intent plans: blocked transitions, reason-code movements, source-ref changes, and per-entry preview changes.",
+    cli: "paper:simulation:diff:plan",
+  },
+  {
+    id: "simulation.result.diff.v1",
+    title: "Simulation result diff v1",
+    family: "simulation",
+    stability: "stable",
+    description:
+      "Structured-field-only comparison of two simulation results: status/blocked transitions, code movements, adapter changes, and per-entry outcome changes.",
+    cli: "paper:simulation:diff:result",
+  },
+  {
+    id: "phase6.audit.report.v1",
+    title: "Phase 6 chain audit",
+    family: "phase6",
+    stability: "stable",
+    description:
+      "Chain audit over the ten Phase 6 artifacts (incl. the S87 route-resolution role): each strictly validated in place, structured cross-references checked, chain conditions surfaced verbatim. Reports — never authorizes.",
+    cli: "paper:simulation:audit",
+  },
+  {
+    id: "phase6.simulation.readiness.report.v1",
+    title: "Phase 6 simulation readiness",
+    family: "phase6",
+    stability: "stable",
+    description:
+      "Structural 'is the Phase 6 simulation stack green?' verdict: machine-verified artifact checks plus eleven verbatim evidence declarations (incl. route-resolution-tests). phase7LiveTradingReady is a literal false, always.",
+    cli: "paper:simulation:readiness",
+  },
+  {
+    id: "phase6.simulation.handoff.pack.v1",
+    title: "Phase 6 handoff pack",
+    family: "phase6",
+    stability: "stable",
+    description:
+      "Session handoff over the twelve Phase 6 chain artifacts (incl. the S87 route-resolution role), each strictly validated and summarized from verbatim structured fields; missing artifacts classified, never invented.",
+    cli: "paper:simulation:handoff",
   },
 ];
 

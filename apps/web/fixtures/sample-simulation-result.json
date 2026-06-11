@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "simulation.result.v1",
+  "banner": "SIMULATION RESULT V1 (DRY-RUN-ONLY — NOT AN EXECUTION, NOT A TRADE, NEVER A LIVE ACTION)",
+  "generatedBy": "@soulmaker/simulation",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "neverAuthorizesLiveTrading": true,
+  "neverSigns": true,
+  "neverSends": true,
+  "dryRunOnly": true,
+  "disclaimers": [
+    "SIMULATION RESULT V1 — the honest record of one simulation pass over a validated intent plan; it never claims chain inclusion, execution, trade success, or profit/loss.",
+    "SIMULATION ONLY — a deterministic, read-only, dry-run-only artifact over validated PAPER inputs; nothing here is, or can become, a live action.",
+    "It can NEVER authorize live trading: neverAuthorizesLiveTrading is literally true and the validator refuses anything else.",
+    "It NEVER signs and NEVER sends: this package holds no wallet, no key material, no signing surface, and no transaction-submission surface.",
+    "Where a real on-chain dry-run is impossible without transaction material it is reported as UNAVAILABLE with an honest reason code — never faked.",
+    "Phase 7 (live/burner trading) is NOT started, NOT authorized, and cannot be authorized from here.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim."
+  ],
+  "simulationMode": "dry-run-preview",
+  "sourcePlanRef": {
+    "schemaVersion": "simulation.intent.plan.v2",
+    "planLabel": "sample-fictional-plan",
+    "operatorLabel": "sample-fictional-operator",
+    "blocked": false,
+    "entryCount": 2
+  },
+  "adapterSummary": {
+    "adapterId": "unavailable-safe-boundary",
+    "capabilityStatement": "No real dry-run capability exists inside the simulation safety boundary: an on-chain dry-run needs built and signed transaction material, which this package is structurally forbidden from producing. Every attempt reports UNAVAILABLE — honestly, never faked.",
+    "neverSigns": true,
+    "neverSends": true
+  },
+  "resultStatus": "skipped_unresolved",
+  "dryRunAttempted": false,
+  "dryRunUnavailableReason": null,
+  "blockedReasonCodes": [],
+  "warningReasonCodes": [
+    "simulation-dry-run-skipped-unresolved-preview"
+  ],
+  "outcomeReasonCodes": [
+    "simulation-result-validated"
+  ],
+  "entries": [
+    {
+      "candidateId": "fic-sim-a",
+      "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+      "entryStatus": "skipped_unresolved",
+      "reasonCodes": [
+        "simulation-dry-run-skipped-unresolved-preview"
+      ],
+      "detail": "skipped: 3 unresolved preview field(s) (destination, amount, fee) — nothing is simulated from invented values",
+      "unresolvedFields": [
+        "destination",
+        "amount",
+        "fee"
+      ]
+    },
+    {
+      "candidateId": "fic-sim-b",
+      "mint": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+      "entryStatus": "skipped_unresolved",
+      "reasonCodes": [
+        "simulation-dry-run-skipped-unresolved-preview"
+      ],
+      "detail": "skipped: 3 unresolved preview field(s) (destination, amount, fee) — nothing is simulated from invented values",
+      "unresolvedFields": [
+        "destination",
+        "amount",
+        "fee"
+      ]
+    }
+  ],
+  "entryCount": 2,
+  "skippedCount": 2,
+  "unavailableCount": 0,
+  "failedCount": 0,
+  "completedCount": 0,
+  "notes": [
+    "2 entries: 2 skipped (unresolved), 0 unavailable, 0 failed safely, 0 completed safely.",
+    "A dry-run completion is a SIMULATION outcome only — never chain inclusion, never execution, never a trade.",
+    "Nothing was signed, nothing was sent — the adapter contract has no such outcome to report."
+  ]
+}

@@ -1425,6 +1425,817 @@ function renderResearchCampaignDiffView(rec: Record<string, unknown>): RawHtml {
 }
 
 /* ------------------------------------------------------------------ *
+ * Sniper + Phase 6 simulation artifacts (S25–S87 backend schemas).
+ *
+ * Shared honesty rules for every renderer below:
+ *   - These artifacts are PAPER/SIMULATION-only safety records. Views never
+ *     phrase anything as an order, an execution, or live-trading readiness.
+ *   - UNRESOLVED / UNAVAILABLE / BLOCKED states are the honest record of a
+ *     capability boundary (no route resolver, no dry-run engine exists) and
+ *     are rendered as such — never as success, never as failure.
+ *   - Literal safety locks are echoed from the artifact's own data; a lock
+ *     that reads unsafe gets a LOUD caution (the backend validator would
+ *     refuse such an artifact — treat it as tampered).
+ * ------------------------------------------------------------------ */
+
+/** Render a capped string list as comma-joined `<code>` items (or a dash). */
+function codeListDetail(list: StringListRead): HtmlValue {
+  if (list.items.length === 0) return DASH;
+  const joined = list.items.join(", ");
+  const suffix = list.hidden > 0 ? ` (+${list.hidden} more)` : "";
+  return html`<code>${joined}</code>${suffix}`;
+}
+
+/** A Section listing the artifact's reason-code trails (only those present). */
+function reasonCodesSection(
+  rec: Record<string, unknown>,
+  fields: readonly { readonly key: string; readonly label: string }[],
+): RawHtml | null {
+  const items = fields
+    .map(({ key, label }) => ({ label, list: readStringArray(rec, key) }))
+    .filter(({ list }) => list.total > 0)
+    .map(({ label, list }) => ({ term: `${label} (${list.total})`, detail: codeListDetail(list) }));
+  if (items.length === 0) return null;
+  return kvSection("Reason codes", "Stable machine-readable codes carried by the artifact itself.", items);
+}
+
+/**
+ * Echo the artifact's literal safety locks. The locks are read from the data
+ * (never assumed); a lock that reads UNSAFE is surfaced loudly — the backend
+ * validators refuse such artifacts, so an unsafe claim means tampering.
+ */
+function safetyLocksSection(rec: Record<string, unknown>): RawHtml {
+  const locks: readonly (readonly [string, string])[] = [
+    ["neverAuthorizesLiveTrading", "must be true"],
+    ["neverSigns", "must be true"],
+    ["neverSends", "must be true"],
+    ["dryRunOnly", "must be true"],
+  ];
+  const items: { term: string; detail: HtmlValue }[] = [];
+  const violations: string[] = [];
+  for (const [key] of locks) {
+    const value = readBoolean(rec, key);
+    if (value === false) violations.push(key);
+    items.push({ term: key, detail: boolText(value) });
+  }
+  const phase7 = readBoolean(rec, "phase7LiveTradingReady");
+  if (rec["phase7LiveTradingReady"] !== undefined) {
+    if (phase7 !== false) violations.push("phase7LiveTradingReady");
+    items.push({
+      term: "phase7LiveTradingReady",
+      detail: phase7 === false ? "no (a literal false — this artifact can never claim live-trading readiness)" : boolText(phase7),
+    });
+  }
+  return html`
+    ${kvSection("Safety locks (self-declared by the artifact)", "Echoed from the artifact's own data. The backend validators refuse any artifact whose locks read unsafe.", items)}
+    ${
+      violations.length > 0
+        ? RiskNotice({
+            tone: "caution",
+            title: "Unsafe lock claim — treat this artifact as tampered",
+            body: html`This artifact claims an unsafe state for: <code>${violations.join(", ")}</code>. The
+              backend validators refuse such artifacts outright; do not trust any other field in it.`,
+          })
+        : null
+    }
+  `;
+}
+
+/** A one-line "next safe action" Section when the artifact carries one. */
+function nextSafeActionSection(rec: Record<string, unknown>): RawHtml | null {
+  const action = readString(rec, "nextSafeAction", 400);
+  if (action === null) return null;
+  return Section({
+    title: "Next safe action (from the artifact)",
+    body: html`<p class="sm-muted-line">${action}</p>`,
+  });
+}
+
+/** Render the plan/source ref `{ planLabel, operatorLabel, blocked, entryCount }` shape. */
+function planRefItems(ref: Record<string, unknown> | null): { term: string; detail: HtmlValue }[] {
+  if (ref === null) return [{ term: "source plan", detail: "not present" }];
+  return [
+    { term: "plan label", detail: text(readString(ref, "planLabel")) },
+    { term: "plan operator", detail: text(readString(ref, "operatorLabel")) },
+    { term: "plan blocked", detail: boolText(readBoolean(ref, "blocked")) },
+    { term: "plan entryCount", detail: num(readNumber(ref, "entryCount")) },
+  ];
+}
+
+function renderSimulationIntentPlanView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const blocked = need(missing, "blocked", readBoolean(rec, "blocked"));
+  const entryCount = need(missing, "entryCount", readNumber(rec, "entryCount"));
+  const entries = readArray(rec, "entries") ?? [];
+  const refs = readArray(rec, "sourceArtifactRefs") ?? [];
+
+  const cap = capRows(entries);
+  const entryRows = cap.shown.map((entry) => {
+    const e = asRecord(entry) ?? {};
+    return [
+      text(readString(e, "candidateId")),
+      digestCode(readString(e, "mint")),
+      text(readString(e, "previewStatus")),
+      text(readStringArray(e, "unresolvedFields").items.join(", ") || null),
+    ];
+  });
+  const refCap = capRows(refs);
+  const refRows = refCap.shown.map((entry) => {
+    const r = asRecord(entry) ?? {};
+    return [
+      text(readString(r, "role")),
+      code(readString(r, "expectedSchemaVersion")),
+      boolText(readBoolean(r, "present")),
+      boolText(readBoolean(r, "valid")),
+      text(readString(r, "label")),
+    ];
+  });
+
+  return html`
+    ${kvSection("Simulation intent plan (preview only — nothing executes)", "A fail-closed PREVIEW over the validated v2 chain. Unsupplied values stay UNRESOLVED, never invented.", [
+      { term: "planLabel", detail: text(readString(rec, "planLabel")) },
+      { term: "operatorLabel", detail: text(readString(rec, "operatorLabel")) },
+      { term: "status", detail: blocked === true ? "BLOCKED (honest fail-closed state — zero previews built)" : blocked === false ? "unblocked preview" : DASH },
+      { term: "entryCount", detail: num(entryCount) },
+      { term: "unresolvedEntryCount", detail: num(readNumber(rec, "unresolvedEntryCount")) },
+      { term: "paper-enter review acknowledged", detail: boolText(readBoolean(rec, "paperEnterReviewAcknowledgmentApplied")) },
+    ])}
+    ${safetyLocksSection(rec)}
+    ${reasonCodesSection(rec, [
+      { key: "blockingReasonCodes", label: "Blocking" },
+      { key: "warningReasonCodes", label: "Warnings" },
+      { key: "outcomeReasonCodes", label: "Outcomes" },
+    ]) ?? ""}
+    ${tableSection({
+      title: "Preview entries (SIMULATED — never orders)",
+      description: "Destination/amount/fee previews stay UNRESOLVED until a validated source exists; nothing is invented.",
+      columns: [{ header: "Candidate" }, { header: "Mint" }, { header: "Preview status" }, { header: "Unresolved fields" }],
+      rows: entryRows,
+      empty: blocked === true ? "A blocked plan carries zero preview entries (honest)." : "No entries present.",
+      caption: capCaption(cap, "entries"),
+    })}
+    ${tableSection({
+      title: "Source artifact refs",
+      columns: [{ header: "Role" }, { header: "Expected schema" }, { header: "Present" }, { header: "Valid" }, { header: "Label" }],
+      rows: refRows,
+      empty: "No source refs present.",
+      caption: capCaption(refCap, "refs"),
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderSimulationResultView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const resultStatus = need(missing, "resultStatus", readString(rec, "resultStatus"));
+  const dryRunAttempted = need(missing, "dryRunAttempted", readBoolean(rec, "dryRunAttempted"));
+  const planRef = readRecord(rec, "sourcePlanRef");
+  const adapter = readRecord(rec, "adapterSummary");
+  const entries = readArray(rec, "entries") ?? [];
+
+  const cap = capRows(entries);
+  const entryRows = cap.shown.map((entry) => {
+    const e = asRecord(entry) ?? {};
+    return [
+      text(readString(e, "candidateId")),
+      digestCode(readString(e, "mint")),
+      text(readString(e, "entryStatus")),
+      text(readString(e, "detail")),
+    ];
+  });
+
+  return html`
+    ${kvSection("Simulation result (dry-run-only — not an execution, not a trade)", "The honest record of one simulation pass. No real dry-run engine exists; skipped/unavailable is the truthful boundary, not a failure.", [
+      { term: "resultStatus", detail: text(resultStatus) },
+      { term: "dryRunAttempted", detail: dryRunAttempted === false ? "no (no dry-run capability exists inside the boundary — honestly reported, never faked)" : boolText(dryRunAttempted) },
+      { term: "adapter", detail: code(adapter ? readString(adapter, "adapterId") : null) },
+      ...planRefItems(planRef),
+    ])}
+    ${safetyLocksSection(rec)}
+    ${tableSection({
+      title: "Outcome tallies",
+      columns: [{ header: "Measure" }, { header: "Count", align: "right" }],
+      rows: [
+        ["entries", num(readNumber(rec, "entryCount"))],
+        ["skipped (unresolved preview)", num(readNumber(rec, "skippedCount"))],
+        ["dry-run unavailable", num(readNumber(rec, "unavailableCount"))],
+        ["failed safely", num(readNumber(rec, "failedCount"))],
+        ["completed safely (still simulation only)", num(readNumber(rec, "completedCount"))],
+      ],
+      empty: "No tallies present.",
+    })}
+    ${reasonCodesSection(rec, [
+      { key: "blockedReasonCodes", label: "Blocking" },
+      { key: "warningReasonCodes", label: "Warnings" },
+      { key: "outcomeReasonCodes", label: "Outcomes" },
+    ]) ?? ""}
+    ${tableSection({
+      title: "Per-entry outcomes",
+      columns: [{ header: "Candidate" }, { header: "Mint" }, { header: "Status" }, { header: "Detail" }],
+      rows: entryRows,
+      empty: "No entries present (a blocked result carries zero entries — honest).",
+      caption: capCaption(cap, "entries"),
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderRouteResolutionView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const status = need(missing, "resolutionStatus", readString(rec, "resolutionStatus"));
+  const resolverId = need(missing, "routeResolverId", readString(rec, "routeResolverId"));
+  const attempted = readBoolean(rec, "routeResolverAttempted");
+  const caveat = readBoolean(rec, "liveStateCaveat");
+  const planRef = readRecord(rec, "sourcePlanRef");
+  const entries = readArray(rec, "entries") ?? [];
+
+  const cap = capRows(entries);
+  const previewStatus = (e: Record<string, unknown>, key: string): string => {
+    const p = readRecord(e, key);
+    const s = p ? readString(p, "status") : null;
+    if (s === "unresolved") return "UNRESOLVED (never invented)";
+    if (s === "resolved-as-label") return `label: ${text(p ? readString(p, "label") : null)}`;
+    return DASH;
+  };
+  const entryRows = cap.shown.map((entry) => {
+    const e = asRecord(entry) ?? {};
+    return [
+      text(readString(e, "candidateId")),
+      digestCode(readString(e, "mint")),
+      text(readString(e, "routeResolutionStatus")),
+      previewStatus(e, "routePreview"),
+      previewStatus(e, "destinationPreview"),
+      previewStatus(e, "feePreview"),
+    ];
+  });
+
+  return html`
+    ${
+      status === "unavailable"
+        ? RiskNotice({
+            tone: "info",
+            title: "Route resolution UNAVAILABLE — the truthful capability boundary, not a failure",
+            body: html`No route resolver exists inside the simulation boundary, so every entry is honestly
+              UNAVAILABLE: route, destination, and fee stay unresolved — never invented, never fetched. A
+              future, separately-authorized resolution layer is the only path to resolved facts.`,
+          })
+        : status === "blocked"
+          ? RiskNotice({
+              tone: "caution",
+              title: "Route resolution BLOCKED (fail-closed)",
+              body: html`The source plan was missing, invalid, or blocked — or a stop switch was declared
+                tripped. A blocked artifact carries zero entries; nothing is resolved over a blocked chain.`,
+            })
+          : null
+    }
+    ${kvSection("Route resolution (provenance only — never signs, never sends, never resolves)", "The per-entry record of which route/destination/fee facts exist for a validated plan.", [
+      { term: "resolutionStatus", detail: text(status === null ? null : status.toUpperCase()) },
+      { term: "resolutionLabel", detail: text(readString(rec, "resolutionLabel")) },
+      { term: "operatorLabel", detail: text(readString(rec, "operatorLabel")) },
+      { term: "routeResolverId", detail: code(resolverId) },
+      { term: "resolver attempted", detail: attempted === false ? "no — the no-resolver id can never claim an attempt" : boolText(attempted) },
+      { term: "live-state caveat", detail: caveat === true ? "YES — label-resolved facts come from live chain state; never a deterministic fixture" : boolText(caveat) },
+      ...planRefItems(planRef),
+    ])}
+    ${safetyLocksSection(rec)}
+    ${tableSection({
+      title: "Resolution tallies",
+      columns: [{ header: "Measure" }, { header: "Count", align: "right" }],
+      rows: [
+        ["entries", num(readNumber(rec, "entryCount"))],
+        ["resolved", num(readNumber(rec, "resolvedEntryCount"))],
+        ["unresolved", num(readNumber(rec, "unresolvedEntryCount"))],
+        ["unavailable", num(readNumber(rec, "unavailableEntryCount"))],
+      ],
+      empty: "No tallies present.",
+    })}
+    ${reasonCodesSection(rec, [
+      { key: "blockingReasonCodes", label: "Blocking" },
+      { key: "warningReasonCodes", label: "Warnings" },
+      { key: "outcomeReasonCodes", label: "Outcomes" },
+    ]) ?? ""}
+    ${tableSection({
+      title: "Per-entry route facts",
+      description: "A fact either exists as a validated label with provenance, or is honestly unresolved.",
+      columns: [
+        { header: "Candidate" },
+        { header: "Mint" },
+        { header: "Status" },
+        { header: "Route" },
+        { header: "Destination" },
+        { header: "Fee" },
+      ],
+      rows: entryRows,
+      empty: "No entries (a blocked route-resolution carries zero entries — honest).",
+      caption: capCaption(cap, "entries"),
+    })}
+    ${nextSafeActionSection(rec) ?? ""}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderPhase6AuditView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const auditPassed = need(missing, "auditPassed", readBoolean(rec, "auditPassed"));
+  const chainComplete = need(missing, "chainComplete", readBoolean(rec, "chainComplete"));
+  const artifacts = readArray(rec, "artifacts") ?? [];
+  const findings = readArray(rec, "findings") ?? [];
+
+  const artifactCap = capRows(artifacts);
+  const artifactRows = artifactCap.shown.map((entry) => {
+    const a = asRecord(entry) ?? {};
+    const present = readBoolean(a, "present");
+    const valid = readBoolean(a, "valid");
+    return [
+      text(readString(a, "role")),
+      code(readString(a, "expectedSchemaVersion")),
+      present === false ? "ABSENT" : valid === true ? "present, valid" : valid === false ? "present, INVALID" : DASH,
+      text(readString(a, "label")),
+    ];
+  });
+  const findingCap = capRows(findings);
+  const findingRows = findingCap.shown.map((entry) => {
+    const f = asRecord(entry) ?? {};
+    return [
+      code(readString(f, "code")),
+      text(readStringArray(f, "roles").items.join(", ") || null),
+      text(readString(f, "detail")),
+    ];
+  });
+
+  return html`
+    ${kvSection("Phase 6 chain audit (reports the chain — never authorizes anything)", "Each chain artifact strictly validated in place; structured cross-references checked; the chain's own conditions surfaced verbatim.", [
+      { term: "audit verdict", detail: auditPassed === true ? "PASSED (no blocking finding)" : auditPassed === false ? "FAILED" : DASH },
+      { term: "chain", detail: chainComplete === true ? "COMPLETE" : chainComplete === false ? "incomplete (missing artifacts are reported, never assumed)" : DASH },
+      { term: "operatorLabel", detail: text(readString(rec, "operatorLabel")) },
+      { term: "present / valid", detail: `${num(readNumber(rec, "presentCount"))} / ${num(readNumber(rec, "validCount"))}` },
+      { term: "missing / invalid", detail: `${num(readNumber(rec, "missingCount"))} / ${num(readNumber(rec, "invalidCount"))}` },
+      { term: "blocking findings", detail: num(readNumber(rec, "blockingFindingCount")) },
+    ])}
+    ${safetyLocksSection(rec)}
+    ${tableSection({
+      title: "Audited roles",
+      description: "The ten audited chain roles — including the route-resolution role added by Sprint 87.",
+      columns: [{ header: "Role" }, { header: "Expected schema" }, { header: "State" }, { header: "Label" }],
+      rows: artifactRows,
+      empty: "No artifact states present.",
+      caption: capCaption(artifactCap, "roles"),
+    })}
+    ${tableSection({
+      title: "Findings",
+      columns: [{ header: "Code" }, { header: "Roles" }, { header: "Detail" }],
+      rows: findingRows,
+      empty: "No findings.",
+      caption: capCaption(findingCap, "findings"),
+    })}
+    ${reasonCodesSection(rec, [{ key: "chainConditionCodes", label: "Chain conditions (verbatim — never waived)" }]) ?? ""}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderPhase6ReadinessView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const ready = need(missing, "phase6SimulationReady", readBoolean(rec, "phase6SimulationReady"));
+  const checks = readArray(rec, "artifactChecks") ?? [];
+  const evidence = readArray(rec, "evidence") ?? [];
+
+  const checkCap = capRows(checks);
+  const checkRows = checkCap.shown.map((entry) => {
+    const c = asRecord(entry) ?? {};
+    return [
+      code(readString(c, "id")),
+      boolText(readBoolean(c, "passed")),
+      text(readString(c, "detail")),
+    ];
+  });
+  const evidenceCap = capRows(evidence);
+  const evidenceRows = evidenceCap.shown.map((entry) => {
+    const e = asRecord(entry) ?? {};
+    const declared = readBoolean(e, "declared");
+    return [
+      code(readString(e, "area")),
+      declared === true ? "declared" : declared === false ? "NOT DECLARED (blocks readiness)" : DASH,
+      text(readString(e, "ref")),
+    ];
+  });
+
+  return html`
+    ${kvSection("Phase 6 simulation readiness (simulation stack only — never live-trading readiness)", "Artifact checks are machine-verified; evidence references are DECLARATIONS recorded verbatim — the artifact cannot run tests and never claims it did.", [
+      { term: "phase 6 simulation ready", detail: ready === true ? "YES (simulation stack only)" : ready === false ? "NO (fail-closed)" : DASH },
+      { term: "phase 7 live trading ready", detail: "NO — a literal false, permanently; Phase 7 remains not started and unauthorized" },
+      { term: "operatorLabel", detail: text(readString(rec, "operatorLabel")) },
+    ])}
+    ${safetyLocksSection(rec)}
+    ${tableSection({
+      title: "Artifact checks (machine-verified)",
+      columns: [{ header: "Check" }, { header: "Passed" }, { header: "Detail" }],
+      rows: checkRows,
+      empty: "No artifact checks present.",
+      caption: capCaption(checkCap, "checks"),
+    })}
+    ${tableSection({
+      title: "Declared evidence (verbatim; never verified here)",
+      description: "The eleven-area evidence bar — including route-resolution-tests (added by Sprint 86).",
+      columns: [{ header: "Area" }, { header: "State" }, { header: "Reference" }],
+      rows: evidenceRows,
+      empty: "No evidence entries present.",
+      caption: capCaption(evidenceCap, "areas"),
+    })}
+    ${reasonCodesSection(rec, [
+      { key: "blockingReasonCodes", label: "Blocking" },
+      { key: "warningReasonCodes", label: "Warnings" },
+      { key: "outcomeReasonCodes", label: "Outcomes" },
+    ]) ?? ""}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderPhase6HandoffView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const complete = need(missing, "complete", readBoolean(rec, "complete"));
+  const readiness = readBoolean(rec, "simulationReadyPerReadiness");
+  const artifacts = readArray(rec, "artifacts") ?? [];
+
+  const cap = capRows(artifacts);
+  const artifactRows = cap.shown.map((entry) => {
+    const a = asRecord(entry) ?? {};
+    const present = readBoolean(a, "present");
+    const valid = readBoolean(a, "valid");
+    const summary = readRecord(a, "summary");
+    const summaryText =
+      summary === null
+        ? DASH
+        : Object.entries(summary)
+            .slice(0, 8)
+            .map(([k, v]) => `${k}=${v === null ? "null" : typeof v === "object" ? "…" : String(v)}`)
+            .join("  ");
+    return [
+      text(readString(a, "role")),
+      present === false ? "MISSING (classified, not invented)" : valid === true ? "present, valid" : valid === false ? "present, INVALID" : DASH,
+      text(readString(a, "label")),
+      summaryText,
+    ];
+  });
+  const operatorReasons = readStringArray(rec, "operatorBlockingReasons");
+
+  return html`
+    ${kvSection("Phase 6 handoff pack (session handoff only — never signs, never sends, never authorizes)", "Each chain artifact strictly validated and summarized from verbatim structured fields.", [
+      { term: "packLabel", detail: text(readString(rec, "packLabel")) },
+      { term: "operatorLabel", detail: text(readString(rec, "operatorLabel")) },
+      { term: "complete", detail: complete === true ? "yes — every handoff artifact present and strictly valid" : complete === false ? "no (missing/invalid artifacts classified honestly)" : DASH },
+      { term: "valid / missing / invalid", detail: `${num(readNumber(rec, "validCount"))} / ${num(readNumber(rec, "missingCount"))} / ${num(readNumber(rec, "invalidCount"))}` },
+      {
+        term: "readiness verdict (verbatim)",
+        detail:
+          readiness === true
+            ? "phase 6 SIMULATION ready (never live readiness)"
+            : readiness === false
+              ? "NOT ready"
+              : "unknown — no valid readiness report supplied (never guessed)",
+      },
+    ])}
+    ${safetyLocksSection(rec)}
+    ${tableSection({
+      title: "Handoff roles",
+      description: "The twelve handed-off chain roles — including the route-resolution role added by Sprint 87.",
+      columns: [{ header: "Role" }, { header: "State" }, { header: "Label" }, { header: "Summary (verbatim fields)" }],
+      rows: artifactRows,
+      empty: "No artifact states present.",
+      caption: capCaption(cap, "roles"),
+    })}
+    ${reasonCodesSection(rec, [{ key: "chainBlockingCodes", label: "Chain blocking conditions (verbatim — never waived)" }]) ?? ""}
+    ${
+      operatorReasons.total > 0
+        ? Section({
+            title: `Operator-blocking reasons (${operatorReasons.total}; verbatim from the run report)`,
+            body: html`<ul class="sm-bullets">
+              ${operatorReasons.items.map((reason) => html`<li>${reason}</li>`)}
+            </ul>`,
+          })
+        : null
+    }
+    ${nextSafeActionSection(rec) ?? ""}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderSimulationPlanDiffView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const hasChange = need(missing, "hasChange", readBoolean(rec, "hasChange"));
+  const hasNewBlocking = need(missing, "hasNewBlocking", readBoolean(rec, "hasNewBlocking"));
+  const base = readRecord(rec, "base");
+  const next = readRecord(rec, "next");
+
+  const sideRow = (label: string, side: Record<string, unknown> | null): readonly HtmlValue[] => [
+    label,
+    text(side ? readString(side, "planLabel") : null),
+    boolText(side ? readBoolean(side, "blocked") : null),
+    num(side ? readNumber(side, "entryCount") : null),
+    num(side ? readNumber(side, "unresolvedEntryCount") : null),
+    num(side ? readNumber(side, "blockingCodeCount") : null),
+  ];
+
+  return html`
+    ${flagNotice({
+      flag: hasNewBlocking,
+      trueTitle: "Newly blocking — the next plan carries blocking state the base did not",
+      falseTitle: "No new blocking state",
+      absentTitle: "hasNewBlocking flag missing",
+      trueTone: "caution",
+      reasons: readStringArray(rec, "blockingCodesAdded"),
+      falseBody: html`Neither side introduced a new blocking condition.`,
+    })}
+    ${flagNotice({
+      flag: hasChange,
+      trueTitle: "Structured changes detected between the two plans",
+      falseTitle: "Identical — no structured-field change",
+      absentTitle: "hasChange flag missing",
+      trueTone: "info",
+      reasons: readStringArray(rec, "diffReasonCodes"),
+      falseBody: html`The two plans agree on every compared structured field.`,
+    })}
+    ${tableSection({
+      title: "Base vs next",
+      columns: [
+        { header: "Side" },
+        { header: "Plan label" },
+        { header: "Blocked" },
+        { header: "Entries", align: "right" },
+        { header: "Unresolved", align: "right" },
+        { header: "Blocking codes", align: "right" },
+      ],
+      rows: [sideRow("base", base), sideRow("next", next)],
+      empty: "Side summaries not present.",
+    })}
+    ${kvSection("Movements", undefined, [
+      { term: "blocking codes added", detail: codeListDetail(readStringArray(rec, "blockingCodesAdded")) },
+      { term: "blocking codes removed", detail: codeListDetail(readStringArray(rec, "blockingCodesRemoved")) },
+      { term: "warning codes added", detail: codeListDetail(readStringArray(rec, "warningCodesAdded")) },
+      { term: "warning codes removed", detail: codeListDetail(readStringArray(rec, "warningCodesRemoved")) },
+      { term: "entries added", detail: codeListDetail(readStringArray(rec, "entriesAdded")) },
+      { term: "entries removed", detail: codeListDetail(readStringArray(rec, "entriesRemoved")) },
+    ])}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderSimulationResultDiffView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const hasChange = need(missing, "hasChange", readBoolean(rec, "hasChange"));
+  const hasNewBlocking = need(missing, "hasNewBlocking", readBoolean(rec, "hasNewBlocking"));
+  const base = readRecord(rec, "base");
+  const next = readRecord(rec, "next");
+
+  const sideRow = (label: string, side: Record<string, unknown> | null): readonly HtmlValue[] => [
+    label,
+    text(side ? readString(side, "resultStatus") : null),
+    code(side ? readString(side, "adapterId") : null),
+    boolText(side ? readBoolean(side, "dryRunAttempted") : null),
+    num(side ? readNumber(side, "entryCount") : null),
+    num(side ? readNumber(side, "blockedCodeCount") : null),
+  ];
+
+  return html`
+    ${flagNotice({
+      flag: hasNewBlocking,
+      trueTitle: "Newly blocking — the next result carries blocking state the base did not",
+      falseTitle: "No new blocking state",
+      absentTitle: "hasNewBlocking flag missing",
+      trueTone: "caution",
+      reasons: readStringArray(rec, "blockedCodesAdded"),
+      falseBody: html`Neither side introduced a new blocking condition.`,
+    })}
+    ${flagNotice({
+      flag: hasChange,
+      trueTitle: "Structured changes detected between the two results",
+      falseTitle: "Identical — no structured-field change",
+      absentTitle: "hasChange flag missing",
+      trueTone: "info",
+      reasons: readStringArray(rec, "diffReasonCodes"),
+      falseBody: html`The two results agree on every compared structured field.`,
+    })}
+    ${tableSection({
+      title: "Base vs next",
+      columns: [
+        { header: "Side" },
+        { header: "Result status" },
+        { header: "Adapter" },
+        { header: "Dry-run attempted" },
+        { header: "Entries", align: "right" },
+        { header: "Blocked codes", align: "right" },
+      ],
+      rows: [sideRow("base", base), sideRow("next", next)],
+      empty: "Side summaries not present.",
+    })}
+    ${kvSection("Movements", undefined, [
+      { term: "blocked codes added", detail: codeListDetail(readStringArray(rec, "blockedCodesAdded")) },
+      { term: "blocked codes removed", detail: codeListDetail(readStringArray(rec, "blockedCodesRemoved")) },
+      { term: "warning codes added", detail: codeListDetail(readStringArray(rec, "warningCodesAdded")) },
+      { term: "warning codes removed", detail: codeListDetail(readStringArray(rec, "warningCodesRemoved")) },
+      { term: "entries added", detail: codeListDetail(readStringArray(rec, "entriesAdded")) },
+      { term: "entries removed", detail: codeListDetail(readStringArray(rec, "entriesRemoved")) },
+    ])}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderSniperDecisionV2View(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const candidateCount = need(missing, "candidateCount", readNumber(rec, "candidateCount"));
+  const paperEnterCount = need(missing, "paperEnterCount", readNumber(rec, "paperEnterCount"));
+  const codeCounts = readRecord(rec, "reasonCodeCounts");
+  const codeRows = codeCounts
+    ? capRows(Object.entries(codeCounts)).shown.map(([codeKey, count]) => [
+        code(codeKey),
+        typeof count === "number" && Number.isFinite(count) ? num(count) : DASH,
+      ])
+    : [];
+
+  return html`
+    ${kvSection("Sniper paper decision report v2 (decisions are SIMULATED classifications — never orders)", undefined, [
+      { term: "sourceLabel", detail: text(readString(rec, "sourceLabel")) },
+      { term: "candidateCount", detail: num(candidateCount) },
+      { term: "policy applied", detail: `${boolText(readBoolean(rec, "policyApplied"))}${readString(rec, "policyLabel") ? ` (${text(readString(rec, "policyLabel"))})` : ""}` },
+      { term: "upgradedFromV1", detail: boolText(readBoolean(rec, "upgradedFromV1")) },
+    ])}
+    ${tableSection({
+      title: "Decision tallies (paper-only)",
+      columns: [{ header: "Decision" }, { header: "Count", align: "right" }],
+      rows: [
+        ["skip", num(readNumber(rec, "skipCount"))],
+        ["watch", num(readNumber(rec, "watchCount"))],
+        ["paper-enter (SIMULATED — demands operator review)", num(paperEnterCount)],
+        ["paper-reject", num(readNumber(rec, "paperRejectCount"))],
+        ["unknown (fail-closed, never guessed)", num(readNumber(rec, "unknownCount"))],
+      ],
+      empty: "No tallies present.",
+    })}
+    ${tableSection({
+      title: "Reason-code occurrences",
+      columns: [{ header: "Code" }, { header: "Count", align: "right" }],
+      rows: codeRows,
+      empty: "No per-candidate reason codes recorded.",
+    })}
+    ${reasonCodesSection(rec, [
+      { key: "reportReasonCodes", label: "Report-level codes" },
+      { key: "ciFailReasons", label: "CI fail reasons" },
+      { key: "warnings", label: "Warnings" },
+    ]) ?? ""}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderSniperRunReportV2View(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const candidateCount = need(missing, "candidateCount", readNumber(rec, "candidateCount"));
+  const decisionSummary = readRecord(rec, "decisionSummary");
+  const preflightSummary = readRecord(rec, "preflightSummary");
+  const policy = readRecord(rec, "policySummary");
+  const operatorReasons = readStringArray(rec, "operatorBlockingReasons");
+  const candidates = readArray(rec, "candidates") ?? [];
+
+  const cap = capRows(candidates);
+  const candidateRows = cap.shown.map((entry) => {
+    const c = asRecord(entry) ?? {};
+    return [
+      text(readString(c, "candidateId")),
+      text(readString(c, "preflightStatus")),
+      text(readString(c, "decision")),
+      boolText(readBoolean(c, "riskBlocked")),
+    ];
+  });
+
+  return html`
+    ${kvSection("Sniper run report v2 (verbatim bundle — re-derives nothing; never a trade signal)", undefined, [
+      { term: "operatorLabel", detail: text(readString(rec, "operatorLabel")) },
+      { term: "sourceLabel", detail: text(readString(rec, "sourceLabel")) },
+      { term: "candidateCount", detail: num(candidateCount) },
+      { term: "decision artifact schema", detail: code(readString(rec, "decisionSchemaVersion")) },
+      { term: "policy", detail: text(policy ? readString(policy, "policyLabel") : null) },
+      { term: "missing required preflight input", detail: boolText(readBoolean(rec, "missingRequiredPreflightInput")) },
+      { term: "unresolved unknowns", detail: codeListDetail(readStringArray(rec, "unresolvedUnknownIds")) },
+      { term: "upgradedFromV1", detail: boolText(readBoolean(rec, "upgradedFromV1")) },
+    ])}
+    ${tableSection({
+      title: "Decision tallies (paper-only, carried verbatim)",
+      columns: [{ header: "Decision" }, { header: "Count", align: "right" }],
+      rows: decisionSummary
+        ? [
+            ["skip", num(readNumber(decisionSummary, "skipCount"))],
+            ["watch", num(readNumber(decisionSummary, "watchCount"))],
+            ["paper-enter (SIMULATED)", num(readNumber(decisionSummary, "paperEnterCount"))],
+            ["paper-reject", num(readNumber(decisionSummary, "paperRejectCount"))],
+            ["unknown", num(readNumber(decisionSummary, "unknownCount"))],
+          ]
+        : [],
+      empty: "decisionSummary not present.",
+    })}
+    ${tableSection({
+      title: "Preflight tallies",
+      columns: [{ header: "Status" }, { header: "Count", align: "right" }],
+      rows: preflightSummary
+        ? [
+            ["pass", num(readNumber(preflightSummary, "passCount"))],
+            ["warn", num(readNumber(preflightSummary, "warnCount"))],
+            ["fail", num(readNumber(preflightSummary, "failCount"))],
+            ["unknown", num(readNumber(preflightSummary, "unknownCount"))],
+          ]
+        : [],
+      empty: "preflightSummary not present.",
+    })}
+    ${
+      operatorReasons.total > 0
+        ? RiskNotice({
+            tone: "caution",
+            title: `Operator-blocking reasons (${operatorReasons.total}) — must be resolved by a human`,
+            body: html`<ul class="sm-bullets sm-bullets--deny">
+              ${operatorReasons.items.map((reason) => html`<li>${reason}</li>`)}
+            </ul>`,
+          })
+        : RiskNotice({
+            tone: "info",
+            title: "No operator-blocking reasons recorded",
+            body: html`The run report lists nothing an operator must resolve — still a paper-only record,
+              never a go-live signal.`,
+          })
+    }
+    ${tableSection({
+      title: "Candidates (verbatim)",
+      columns: [{ header: "Candidate" }, { header: "Preflight" }, { header: "Decision" }, { header: "Risk blocked" }],
+      rows: candidateRows,
+      empty: "No candidates present.",
+      caption: capCaption(cap, "candidates"),
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderSniperRunReportDiffV2View(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const hasAnyChange = need(missing, "hasAnyChange", readBoolean(rec, "hasAnyChange"));
+  const newOperatorBlocking = need(missing, "hasNewOperatorBlocking", readBoolean(rec, "hasNewOperatorBlocking"));
+  const decisionChanges = readArray(rec, "decisionChanges") ?? [];
+  const codeDeltas = readRecord(rec, "reasonCodeCountDeltas");
+
+  const changeCap = capRows(decisionChanges);
+  const changeRows = changeCap.shown.map((entry) => {
+    const c = asRecord(entry) ?? {};
+    return [
+      text(readString(c, "candidateId")),
+      `${text(readString(c, "from"))} → ${text(readString(c, "to"))}`,
+    ];
+  });
+  const deltaRows = codeDeltas
+    ? capRows(Object.entries(codeDeltas)).shown.map(([codeKey, delta]) => [
+        code(codeKey),
+        typeof delta === "number" && Number.isFinite(delta) ? signed(delta) : DASH,
+      ])
+    : [];
+
+  return html`
+    ${flagNotice({
+      flag: newOperatorBlocking,
+      trueTitle: "Newly operator-blocking — the next run needs human review the base did not",
+      falseTitle: "No new operator-blocking reasons",
+      absentTitle: "hasNewOperatorBlocking flag missing",
+      trueTone: "caution",
+      reasons: readStringArray(rec, "operatorBlockingReasonsAdded"),
+      falseBody: html`No operator-blocking reason was added between the two runs.`,
+    })}
+    ${flagNotice({
+      flag: hasAnyChange,
+      trueTitle: "Changes detected between the two run reports (v1 core or v2 layer)",
+      falseTitle: "Identical — no change in either layer",
+      absentTitle: "hasAnyChange flag missing",
+      trueTone: "info",
+      reasons: { items: [], total: 0, hidden: 0 },
+      falseBody: html`The two run reports agree on every compared structured field.`,
+    })}
+    ${kvSection("Transitions (paper-only classifications — never orders)", undefined, [
+      { term: "newly paper-enter (SIMULATED)", detail: codeListDetail(readStringArray(rec, "newlyPaperEnterIds")) },
+      { term: "no longer paper-enter", detail: codeListDetail(readStringArray(rec, "noLongerPaperEnterIds")) },
+      { term: "newly unknown", detail: codeListDetail(readStringArray(rec, "newlyUnknownIds")) },
+      { term: "candidates added", detail: codeListDetail(readStringArray(rec, "candidatesAdded")) },
+      { term: "candidates removed", detail: codeListDetail(readStringArray(rec, "candidatesRemoved")) },
+    ])}
+    ${tableSection({
+      title: "Decision changes",
+      columns: [{ header: "Candidate" }, { header: "Transition" }],
+      rows: changeRows,
+      empty: "No decision changes.",
+      caption: capCaption(changeCap, "changes"),
+    })}
+    ${tableSection({
+      title: "Reason-code count deltas",
+      columns: [{ header: "Code" }, { header: "Δ", align: "right" }],
+      rows: deltaRows,
+      empty: "No code-count deltas.",
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
+/* ------------------------------------------------------------------ *
  * Dispatch.
  * ------------------------------------------------------------------ */
 
@@ -1465,6 +2276,28 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderResearchBundleDiffView(rec);
     case "backtest.research.campaign.diff.v1":
       return renderResearchCampaignDiffView(rec);
+    case "sniper.paper.decision.report.v2":
+      return renderSniperDecisionV2View(rec);
+    case "sniper.run.report.v2":
+      return renderSniperRunReportV2View(rec);
+    case "sniper.run.report.diff.v2":
+      return renderSniperRunReportDiffV2View(rec);
+    case "simulation.intent.plan.v2":
+      return renderSimulationIntentPlanView(rec);
+    case "simulation.result.v1":
+      return renderSimulationResultView(rec);
+    case "simulation.route.resolution.v1":
+      return renderRouteResolutionView(rec);
+    case "simulation.intent.plan.diff.v2":
+      return renderSimulationPlanDiffView(rec);
+    case "simulation.result.diff.v1":
+      return renderSimulationResultDiffView(rec);
+    case "phase6.audit.report.v1":
+      return renderPhase6AuditView(rec);
+    case "phase6.simulation.readiness.report.v1":
+      return renderPhase6ReadinessView(rec);
+    case "phase6.simulation.handoff.pack.v1":
+      return renderPhase6HandoffView(rec);
     default:
       return null;
   }

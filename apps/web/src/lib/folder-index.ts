@@ -47,15 +47,28 @@ export interface ArtifactVerdict {
 interface VerdictCapability {
   readonly regression: boolean;
   readonly change: boolean;
+  /** The exact boolean field read for the regression verdict (default `hasRegression`).
+   * Set ONLY when the backend schema names its own regression-grade flag differently. */
+  readonly regressionKey?: string;
+  /** The exact boolean field read for the change verdict (default `hasChange`). */
+  readonly changeKey?: string;
 }
 
 /**
- * Which recognized schemas actually carry a `hasRegression` / `hasChange`
- * boolean. This mirrors the backend diff interfaces verified on `master`
- * (packages/backtest/src/*-diff.ts): the sensitivity / suite / matrix diffs
- * carry only `hasRegression`; the research-manifest diff carries only
- * `hasChange`; the research bundle and campaign diffs carry BOTH. Any schema NOT
- * listed here carries neither field, so its verdicts are `not-applicable`.
+ * Which recognized schemas actually carry a regression / change verdict
+ * boolean, and under which exact field name. This mirrors the backend diff
+ * interfaces verified on `master`:
+ *   - backtest diffs (packages/backtest/src/*-diff.ts): the sensitivity /
+ *     suite / matrix diffs carry only `hasRegression`; the research-manifest
+ *     diff carries only `hasChange`; bundle and campaign diffs carry BOTH.
+ *   - simulation diffs (packages/simulation/src/*-diff.ts): both carry
+ *     `hasChange`, and their own regression-grade verdict is `hasNewBlocking`
+ *     (a previously-unblocked plan/result became blocked).
+ *   - the sniper run-report diff v2 (packages/sniper/src/run-report-v2-diff.ts)
+ *     carries `hasAnyChange` (v1 core OR v2 layer change) and its
+ *     regression-grade verdict is `hasNewOperatorBlocking`.
+ * Any schema NOT listed here carries neither field, so its verdicts are
+ * `not-applicable` — never inferred.
  */
 const VERDICT_CAPABILITIES: Readonly<Record<string, VerdictCapability>> = {
   "backtest.suite.diff.v1": { regression: true, change: false },
@@ -64,6 +77,9 @@ const VERDICT_CAPABILITIES: Readonly<Record<string, VerdictCapability>> = {
   "backtest.research.manifest.diff.v1": { regression: false, change: true },
   "backtest.research.bundle.diff.v1": { regression: true, change: true },
   "backtest.research.campaign.diff.v1": { regression: true, change: true },
+  "simulation.intent.plan.diff.v2": { regression: true, change: true, regressionKey: "hasNewBlocking" },
+  "simulation.result.diff.v1": { regression: true, change: true, regressionKey: "hasNewBlocking" },
+  "sniper.run.report.diff.v2": { regression: true, change: true, regressionKey: "hasNewOperatorBlocking", changeKey: "hasAnyChange" },
 };
 
 /** Read a boolean verdict flag the schema is KNOWN to carry. */
@@ -121,13 +137,21 @@ export function extractVerdict(schemaVersion: string | null, raw: unknown): Arti
     };
   }
 
-  const hasRegression = capability.regression ? readFlagState(record, "hasRegression") : "not-applicable";
-  const hasChange = capability.change ? readFlagState(record, "hasChange") : "not-applicable";
+  const regressionKey = capability.regressionKey ?? "hasRegression";
+  const changeKey = capability.changeKey ?? "hasChange";
+  const hasRegression = capability.regression ? readFlagState(record, regressionKey) : "not-applicable";
+  const hasChange = capability.change ? readFlagState(record, changeKey) : "not-applicable";
+  if (capability.regression && regressionKey !== "hasRegression") {
+    notes.push(`Regression verdict read from this schema's own \`${regressionKey}\` flag.`);
+  }
+  if (capability.change && changeKey !== "hasChange") {
+    notes.push(`Change verdict read from this schema's own \`${changeKey}\` flag.`);
+  }
   if (hasRegression === "missing") {
-    notes.push("Expected `hasRegression` boolean was absent or not a boolean — reported as missing, not false.");
+    notes.push(`Expected \`${regressionKey}\` boolean was absent or not a boolean — reported as missing, not false.`);
   }
   if (hasChange === "missing") {
-    notes.push("Expected `hasChange` boolean was absent or not a boolean — reported as missing, not false.");
+    notes.push(`Expected \`${changeKey}\` boolean was absent or not a boolean — reported as missing, not false.`);
   }
   return { hasRegression, hasChange, notes };
 }

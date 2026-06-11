@@ -18,7 +18,9 @@ export type CommandGroup =
   | "Paper trading"
   | "Strategy"
   | "Backtest research"
-  | "Research runs";
+  | "Research runs"
+  | "Sniper (paper-only)"
+  | "Phase 6 simulation";
 
 export const COMMAND_GROUP_ORDER: readonly CommandGroup[] = [
   "Diagnostics",
@@ -28,6 +30,8 @@ export const COMMAND_GROUP_ORDER: readonly CommandGroup[] = [
   "Strategy",
   "Backtest research",
   "Research runs",
+  "Sniper (paper-only)",
+  "Phase 6 simulation",
 ];
 
 export interface CommandRef {
@@ -275,6 +279,121 @@ export const COMMANDS: readonly CommandRef[] = [
     summary:
       "Conservative delta between two campaign indexes (runs paired by runId): hasChange plus a conservative integrity hasRegression. Reads two files, writes nothing.",
     group: "Research runs",
+    readsChain: false,
+  },
+
+  // Sniper (paper-only) — the S25+ integrity/safety pipeline over LOCAL JSON
+  // artifacts the operator authors. Nothing here places orders, builds
+  // transactions, or touches a wallet; a paper-enter is a SIMULATED
+  // classification that always demands operator review.
+  {
+    command: "paper:sniper:candidates:validate",
+    summary: "Validate an operator-authored local candidate list (paper-only intake; no scraper, no fetch).",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
+  {
+    command: "paper:sniper:preflight",
+    summary: "Summarize local token:inspect / token:risk output per candidate (pass / warn / fail / unknown).",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
+  {
+    command: "paper:sniper:decide",
+    summary:
+      "Paper-only decisions per candidate (skip / watch / paper-enter / paper-reject / unknown). Use --schema-version v2 for the reason-coded v2 artifact. Never an order.",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
+  {
+    command: "paper:sniper:report",
+    summary:
+      "Bundle a run's already-built artifacts into one operator summary (verbatim; re-derives nothing). Use --schema-version v2 for rollups + operator-blocking reasons.",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
+  {
+    command: "paper:sniper:diff:report",
+    summary:
+      "Structured comparison of two run reports (decision/preflight transitions, code deltas). Use --schema-version v2 for the v2 layers. Reads two files, writes nothing.",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
+  {
+    command: "paper:sniper:safety:gates",
+    summary: "Fail-closed go/no-go gates over a session's artifacts — exits non-zero when NOT ready.",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
+  {
+    command: "paper:phase6:prereqs",
+    summary: "Track Phase 6 prerequisites from a session pack (reports readiness; NEVER authorizes anything).",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
+
+  // Phase 6 simulation — read-only, dry-run-only artifacts over the validated
+  // v2 chain. The route resolver and the real dry-run engine do NOT exist:
+  // unresolved/unavailable states in these artifacts are the honest record,
+  // and phase7LiveTradingReady is a literal false everywhere it appears.
+  {
+    command: "paper:simulation:intent:plan",
+    summary:
+      "Fail-closed SIMULATION PREVIEW over the validated v2 chain (simulation.intent.plan.v2). Unsupplied values stay UNRESOLVED; anything missing/not-ready BLOCKS the plan.",
+    group: "Phase 6 simulation",
+    readsChain: false,
+  },
+  {
+    command: "paper:simulation:result",
+    summary:
+      "One honest simulation pass over a validated plan (simulation.result.v1): unresolved entries SKIPPED, dry-run honestly UNAVAILABLE (no engine exists — nothing faked).",
+    group: "Phase 6 simulation",
+    readsChain: false,
+  },
+  {
+    command: "paper:simulation:route",
+    summary:
+      "Route-resolution PROVENANCE over a validated plan (simulation.route.resolution.v1). No resolver exists, so every entry is honestly UNAVAILABLE — never invented.",
+    group: "Phase 6 simulation",
+    readsChain: false,
+  },
+  {
+    command: "paper:simulation:validate",
+    summary: "Strictly validate simulation artifacts with the production validators (literal safety locks enforced).",
+    group: "Phase 6 simulation",
+    readsChain: false,
+  },
+  {
+    command: "paper:simulation:audit",
+    summary:
+      "Chain audit over the ten Phase 6 artifacts incl. the route-resolution role via --route (phase6.audit.report.v1). Reports — never authorizes.",
+    group: "Phase 6 simulation",
+    readsChain: false,
+  },
+  {
+    command: "paper:simulation:readiness",
+    summary:
+      "Structural simulation-stack readiness verdict with eleven verbatim evidence declarations (phase6.simulation.readiness.report.v1). phase7LiveTradingReady is a literal false.",
+    group: "Phase 6 simulation",
+    readsChain: false,
+  },
+  {
+    command: "paper:simulation:diff:plan",
+    summary: "Structured-field-only comparison of two simulation intent plans (simulation.intent.plan.diff.v2).",
+    group: "Phase 6 simulation",
+    readsChain: false,
+  },
+  {
+    command: "paper:simulation:diff:result",
+    summary: "Structured-field-only comparison of two simulation results (simulation.result.diff.v1).",
+    group: "Phase 6 simulation",
+    readsChain: false,
+  },
+  {
+    command: "paper:simulation:handoff",
+    summary:
+      "Session handoff over the twelve Phase 6 chain artifacts incl. the route-resolution role via --route (phase6.simulation.handoff.pack.v1). Missing artifacts classified, never invented.",
+    group: "Phase 6 simulation",
     readsChain: false,
   },
 ];

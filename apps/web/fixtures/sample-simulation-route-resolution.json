@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "simulation.route.resolution.v1",
+  "banner": "SIMULATION ROUTE RESOLUTION V1 (ROUTE PROVENANCE ONLY — NOT LIVE TRADING, NOT A BUY RECOMMENDATION, NOT A TRANSACTION APPROVAL; NEVER SIGNS, NEVER SENDS)",
+  "generatedBy": "@soulmaker/simulation",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "neverAuthorizesLiveTrading": true,
+  "neverSigns": true,
+  "neverSends": true,
+  "dryRunOnly": true,
+  "phase7LiveTradingReady": false,
+  "disclaimers": [
+    "SIMULATION ROUTE RESOLUTION V1 — the honest per-entry record of which route/destination/fee facts exist for a validated intent plan; an unresolved fact stays unresolved, never invented, and `resolved` is refused unless every required fact is present.",
+    "Not live trading, not a buy recommendation, not a transaction approval: this artifact only DESCRIBES route-resolution state so a future, separately-authorized dry-run boundary can know what honestly exists.",
+    "A label-resolved fact can only come from LIVE chain state — the artifact then carries an explicit live-state caveat and must never be mistaken for a deterministic fixture.",
+    "phase7LiveTradingReady is ALWAYS false: a route-resolution artifact is structurally incapable of claiming live-trading readiness, and the validator refuses anything else.",
+    "SIMULATION ONLY — a deterministic, read-only, dry-run-only artifact over validated PAPER inputs; nothing here is, or can become, a live action.",
+    "It can NEVER authorize live trading: neverAuthorizesLiveTrading is literally true and the validator refuses anything else.",
+    "It NEVER signs and NEVER sends: this package holds no wallet, no key material, no signing surface, and no transaction-submission surface.",
+    "Where a real on-chain dry-run is impossible without transaction material it is reported as UNAVAILABLE with an honest reason code — never faked.",
+    "Phase 7 (live/burner trading) is NOT started, NOT authorized, and cannot be authorized from here.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim."
+  ],
+  "operatorLabel": "sample-fictional-operator",
+  "resolutionLabel": "sample-fictional-route",
+  "sourcePlanRef": {
+    "expectedSchemaVersion": "simulation.intent.plan.v2",
+    "present": true,
+    "valid": true,
+    "suppliedSchemaVersion": "simulation.intent.plan.v2",
+    "planLabel": "sample-fictional-plan",
+    "operatorLabel": "sample-fictional-operator",
+    "blocked": false,
+    "entryCount": 2
+  },
+  "routeResolverId": "unavailable-no-route-resolver",
+  "routeResolverAttempted": false,
+  "stopSimulationDeclaredTripped": false,
+  "resolutionStatus": "unavailable",
+  "blocked": false,
+  "liveStateCaveat": false,
+  "blockingReasonCodes": [],
+  "warningReasonCodes": [
+    "simulation-route-resolution-unavailable-no-resolver"
+  ],
+  "outcomeReasonCodes": [
+    "simulation-route-resolution-validated"
+  ],
+  "entries": [
+    {
+      "candidateId": "fic-sim-a",
+      "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+      "routeResolutionStatus": "unavailable",
+      "routePreview": {
+        "status": "unresolved",
+        "label": null
+      },
+      "destinationPreview": {
+        "status": "unresolved",
+        "label": null
+      },
+      "feePreview": {
+        "status": "unresolved",
+        "label": null
+      },
+      "unresolvedFields": [
+        "route",
+        "destination",
+        "fee"
+      ],
+      "reasonCodes": [
+        "simulation-route-resolution-unavailable-no-resolver"
+      ],
+      "operatorText": "Route resolution for fic-sim-a: UNAVAILABLE — no validated route-resolution capability exists inside this boundary; route, destination, and fee stay unresolved (never invented)."
+    },
+    {
+      "candidateId": "fic-sim-b",
+      "mint": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+      "routeResolutionStatus": "unavailable",
+      "routePreview": {
+        "status": "unresolved",
+        "label": null
+      },
+      "destinationPreview": {
+        "status": "unresolved",
+        "label": null
+      },
+      "feePreview": {
+        "status": "unresolved",
+        "label": null
+      },
+      "unresolvedFields": [
+        "route",
+        "destination",
+        "fee"
+      ],
+      "reasonCodes": [
+        "simulation-route-resolution-unavailable-no-resolver"
+      ],
+      "operatorText": "Route resolution for fic-sim-b: UNAVAILABLE — no validated route-resolution capability exists inside this boundary; route, destination, and fee stay unresolved (never invented)."
+    }
+  ],
+  "entryCount": 2,
+  "resolvedEntryCount": 0,
+  "unresolvedEntryCount": 0,
+  "unavailableEntryCount": 2,
+  "nextSafeAction": "Nothing to act on: no validated route-resolution capability exists inside this boundary, and every entry is honestly UNAVAILABLE. A future, separately-reviewed and explicitly-authorized resolution layer is the only path to resolved facts — never invent them by hand.",
+  "notes": [
+    "2 entries: 0 resolved / 0 unresolved / 2 unavailable.",
+    "An unresolved fact stays unresolved — nothing here invents a route, destination, fee, pool, or address.",
+    "Route-resolution provenance only: not live trading, not a buy recommendation, not a transaction approval."
+  ]
+}
