@@ -67,6 +67,7 @@ describe("@soulmaker/simulation — package manifest boundary", () => {
       "index.ts",
       "intent-plan-diff.ts",
       "intent-plan.ts",
+      "operator-bundle.ts",
       "readiness.ts",
       "reason-codes.ts",
       "result-diff.ts",

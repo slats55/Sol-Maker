@@ -33,6 +33,8 @@ import {
   formatPhase6SimulationHandoffPackV1,
   buildSimulationRouteResolutionV1,
   formatSimulationRouteResolutionV1,
+  buildPhase6OperatorBundleV1,
+  formatPhase6OperatorBundleV1,
   SIMULATION_OPERATOR_SAFETY_LINE,
   type SimulationIntentPlanV2,
 } from "./index.js";
@@ -128,6 +130,24 @@ function allOutputs(): Record<string, string> {
     "handoff (empty)": formatPhase6SimulationHandoffPackV1(emptyHandoff),
     "route resolution (unavailable)": formatSimulationRouteResolutionV1(buildSimulationRouteResolutionV1({ intentPlan: plan })),
     "route resolution (blocked)": formatSimulationRouteResolutionV1(buildSimulationRouteResolutionV1({})),
+    "operator bundle (complete)": formatPhase6OperatorBundleV1(
+      buildPhase6OperatorBundleV1({
+        decision: chain.decision,
+        runReport: chain.runReport,
+        safetyGates: chain.gates,
+        prereqs: chain.prereqs,
+        killSwitchSpec: chain.killSwitchSpec,
+        secretsPolicy: chain.secretsPolicy,
+        burnerIsolationSpec: chain.burnerIsolationSpec,
+        intentPlan: plan,
+        simulationResult: result,
+        routeResolution: route,
+        auditReport: audit,
+        readinessReport: readiness,
+        handoffPack: handoff,
+      }),
+    ),
+    "operator bundle (empty)": formatPhase6OperatorBundleV1(buildPhase6OperatorBundleV1({})),
   };
 }
 

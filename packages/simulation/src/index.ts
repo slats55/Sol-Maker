@@ -198,6 +198,28 @@ export {
 } from "./route-resolution.js";
 
 export {
+  PHASE6_OPERATOR_BUNDLE_V1_SCHEMA_VERSION,
+  PHASE6_OPERATOR_BUNDLE_V1_BANNER,
+  PHASE6_OPERATOR_BUNDLE_V1_GENERATED_BY,
+  PHASE6_OPERATOR_BUNDLE_V1_DISCLAIMERS,
+  PHASE6_OPERATOR_BUNDLE_ROLES,
+  PHASE6_OPERATOR_BUNDLE_VERDICTS,
+  PHASE6_OPERATOR_BUNDLE_DIGEST_PATTERN,
+  Phase6OperatorBundleV1Error,
+  buildPhase6OperatorBundleV1,
+  validatePhase6OperatorBundleV1,
+  formatPhase6OperatorBundleV1,
+  type Phase6OperatorBundleRole,
+  type Phase6OperatorBundleVerdict,
+  type Phase6OperatorBundleSummary,
+  type Phase6OperatorBundleArtifact,
+  type Phase6OperatorBundleFileRef,
+  type Phase6OperatorBundleV1,
+  type BuildPhase6OperatorBundleV1Input,
+  type FormatPhase6OperatorBundleV1Options,
+} from "./operator-bundle.js";
+
+export {
   SIMULATION_REASON_CATEGORIES,
   SIMULATION_REASON_SEVERITIES,
   SIMULATION_REASON_CODES,
