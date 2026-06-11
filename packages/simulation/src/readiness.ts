@@ -36,7 +36,7 @@ import {
 } from "./reason-codes.js";
 import { validateSimulationIntentPlanV2, type SimulationIntentPlanV2 } from "./intent-plan.js";
 import { validateSimulationResultV1, type SimulationResultV1 } from "./result.js";
-import { validatePhase6AuditReportV1, type Phase6AuditReportV1 } from "./chain-audit.js";
+import { validatePhase6AuditReportV1, PHASE6_AUDIT_ROLES, type Phase6AuditReportV1 } from "./chain-audit.js";
 
 /** Stable schema identifier for the readiness report. Bump only on a breaking change. */
 export const PHASE6_SIMULATION_READINESS_REPORT_V1_SCHEMA_VERSION = "phase6.simulation.readiness.report.v1";
@@ -226,9 +226,9 @@ export function buildPhase6SimulationReadinessReportV1(
     }
     if (!audit.artifact.chainComplete) {
       blocking.push("simulation-readiness-chain-incomplete");
-      artifactChecks.push({ id: "CHAIN_COMPLETE", title: "Chain complete", passed: false, detail: `${audit.artifact.validCount}/9 artifacts valid` });
+      artifactChecks.push({ id: "CHAIN_COMPLETE", title: "Chain complete", passed: false, detail: `${audit.artifact.validCount}/${PHASE6_AUDIT_ROLES.length} artifacts valid` });
     } else {
-      artifactChecks.push({ id: "CHAIN_COMPLETE", title: "Chain complete", passed: true, detail: "all 9 chain artifacts present and valid" });
+      artifactChecks.push({ id: "CHAIN_COMPLETE", title: "Chain complete", passed: true, detail: `all ${PHASE6_AUDIT_ROLES.length} chain artifacts present and valid` });
     }
     if (audit.artifact.chainConditionCodes.length > 0) {
       warnings.push("simulation-readiness-chain-conditions-present");

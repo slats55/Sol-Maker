@@ -1,15 +1,18 @@
 /**
- * Sprint 68 (+78, +86) — END-TO-END Phase 6 fixture chain through the REAL CLI command functions.
+ * Sprint 68 (+78, +86, +87) — END-TO-END Phase 6 fixture chain through the REAL CLI command
+ * functions.
  *
  * The base chain is FICTIONAL and built by the PRODUCTION sniper builders (the simulation
  * package's fixture helpers), written into a temp dir, then driven through the actual commands:
- * intent plan → result → validate → route resolution → chain audit → readiness (eleven-area
- * evidence bar incl. route-resolution-tests) → diffs → handoff (the FULL Phase 6 surface as of
- * Sprint 86). Proves, with production validators:
+ * intent plan → result → validate → route resolution → chain audit (--route; the route is an
+ * audited role since Sprint 87) → readiness (eleven-area evidence bar incl.
+ * route-resolution-tests) → diffs → handoff (--route; a handed-off role since Sprint 87).
+ * Proves, with production validators:
  *
  *   - the whole Phase 6 surface coheres end to end (plan unblocked, result honest, route
- *     resolution honestly all-UNAVAILABLE, audit clean, readiness green, diffs identical for a
- *     self-pair, handoff complete with the verbatim readiness verdict);
+ *     resolution honestly all-UNAVAILABLE, audit clean over all TEN roles, readiness green,
+ *     diffs identical for a self-pair, handoff complete over all TWELVE roles with the verbatim
+ *     readiness verdict);
  *   - byte determinism (two full runs produce byte-identical artifacts across ALL files);
  *   - no command writes anything by default; --out refuses overwrite without --force;
  *   - no fixture or generated artifact carries a secret-shaped key or value;
@@ -48,8 +51,8 @@ import {
 } from "./commands.js";
 
 const CHAIN_FILES = ["dec2.json", "run2.json", "gates2.json", "prereqs2.json", "ks.json", "sp.json", "bi.json"] as const;
-const GENERATED_FILES = ["plan.json", "result.json", "audit.json"] as const;
-const EXTENDED_FILES = ["route.json", "readiness.json", "plan-diff.json", "result-diff.json", "handoff.json"] as const;
+const GENERATED_FILES = ["plan.json", "result.json", "route.json", "audit.json"] as const;
+const EXTENDED_FILES = ["readiness.json", "plan-diff.json", "result-diff.json", "handoff.json"] as const;
 
 /** Write the FICTIONAL base chain into `dir` (production-builder output, serialized verbatim). */
 function writeBaseChain(dir: string): void {
@@ -85,10 +88,12 @@ const AUDIT_OPTS = {
   burnerIsolationPath: "bi.json",
   intentPlanPath: "plan.json",
   simulationResultPath: "result.json",
+  routePath: "route.json",
   operatorLabel: "fictional-operator",
 } as const;
 
-/** Run the core Phase 6 pipeline through the real commands; assert every exit code. */
+/** Run the core Phase 6 pipeline through the real commands; assert every exit code. S87: the
+ * route-resolution artifact is built BEFORE the audit — it is an audited role now. */
 function runPipeline(cwd: string): void {
   const ctx = { cwd, env: {} };
   const must = (label: string, r: { exitCode: number; text: string }): void => {
@@ -97,6 +102,13 @@ function runPipeline(cwd: string): void {
   must("intent-plan", paperSimulationIntentPlanReport(ctx, { ...PLAN_OPTS, outPath: "plan.json" }));
   must("result", paperSimulationResultReport(ctx, { planPath: "plan.json", outPath: "result.json" }));
   must("validate", paperSimulationValidateReport(ctx, { planPath: "plan.json", resultPath: "result.json" }));
+  must("route", paperSimulationRouteReport(ctx, {
+    planPath: "plan.json",
+    operatorLabel: "fictional-operator",
+    resolutionLabel: "fictional-e2e-route",
+    outPath: "route.json",
+    failOnBlocked: true,
+  }));
   must("audit", paperSimulationAuditReport(ctx, { ...AUDIT_OPTS, outPath: "audit.json", failOnFindings: true, failOnIncomplete: true }));
 }
 
@@ -124,28 +136,23 @@ const HANDOFF_OPTS = {
   burnerIsolationPath: "bi.json",
   intentPlanPath: "plan.json",
   simulationResultPath: "result.json",
+  routePath: "route.json",
   auditPath: "audit.json",
   readinessPath: "readiness.json",
   operatorLabel: "fictional-operator",
   packLabel: "fictional-e2e-handoff",
 } as const;
 
-/** Sprint 78 (+86): run the FULL chain — core pipeline + route resolution + readiness + both
- * diffs + handoff. The route step records the honest all-UNAVAILABLE provenance over the plan;
- * the result path does NOT consume it (the dry-run boundary that would is design-only). */
+/** Sprint 78 (+86, +87): run the FULL chain — core pipeline (which now builds the route before
+ * the audit) + readiness + both diffs + handoff. The route step records the honest
+ * all-UNAVAILABLE provenance over the plan; the result path does NOT consume it (the dry-run
+ * boundary that would is design-only). */
 function runFullPipeline(cwd: string): void {
   runPipeline(cwd);
   const ctx = { cwd, env: {} };
   const must = (label: string, r: { exitCode: number; text: string }): void => {
     expect(r.exitCode, `${label}: ${r.text.slice(0, 200)}`).toBe(0);
   };
-  must("route", paperSimulationRouteReport(ctx, {
-    planPath: "plan.json",
-    operatorLabel: "fictional-operator",
-    resolutionLabel: "fictional-e2e-route",
-    outPath: "route.json",
-    failOnBlocked: true,
-  }));
   must("readiness", paperSimulationReadinessReport(ctx, {
     auditPath: "audit.json",
     planPath: "plan.json",
@@ -188,6 +195,10 @@ describe("phase6 e2e — the full simulation chain through the real CLI commands
       expect(audit.auditPassed).toBe(true);
       expect(audit.chainComplete).toBe(true);
       expect(audit.neverAuthorizesLiveTrading).toBe(true);
+      // S87: the route-resolution artifact is an audited role of the complete chain.
+      const routeState = audit.artifacts.find((a) => a.role === "route-resolution")!;
+      expect(routeState.present).toBe(true);
+      expect(routeState.valid).toBe(true);
     });
   });
 
@@ -208,7 +219,7 @@ describe("phase6 e2e — the full simulation chain through the real CLI commands
       const ctx = { cwd: tmp, env: {} };
       const before = readdirSync(tmp).sort();
       paperSimulationIntentPlanReport(ctx, { ...PLAN_OPTS, json: true });
-      paperSimulationAuditReport(ctx, { ...AUDIT_OPTS, intentPlanPath: undefined, simulationResultPath: undefined, json: true });
+      paperSimulationAuditReport(ctx, { ...AUDIT_OPTS, intentPlanPath: undefined, simulationResultPath: undefined, routePath: undefined, json: true });
       paperSimulationValidateReport(ctx, { planPath: "dec2.json" }); // wrong schema — still no writes
       expect(readdirSync(tmp).sort()).toEqual(before);
       runPipeline(tmp);
@@ -280,7 +291,7 @@ describe("phase6 e2e — negative fixtures (the chain fails closed)", () => {
       const planR = paperSimulationIntentPlanReport(ctx, { ...PLAN_OPTS, decisionsPath: "dec1.json", json: true });
       const plan = validateSimulationIntentPlanV2(JSON.parse(planR.text));
       expect(plan.blockingReasonCodes).toContain("simulation-blocked-v1-artifact");
-      const auditR = paperSimulationAuditReport(ctx, { ...AUDIT_OPTS, decisionsPath: "dec1.json", intentPlanPath: undefined, simulationResultPath: undefined, failOnFindings: true });
+      const auditR = paperSimulationAuditReport(ctx, { ...AUDIT_OPTS, decisionsPath: "dec1.json", intentPlanPath: undefined, simulationResultPath: undefined, routePath: undefined, failOnFindings: true });
       expect(auditR.exitCode).toBe(1);
     });
   });
@@ -339,7 +350,12 @@ describe("phase6 e2e (S78) — the FULL chain through every simulation command",
       expect(resultDiff.hasChange).toBe(false);
       const handoff = validatePhase6SimulationHandoffPackV1(readJson(tmp, "handoff.json"));
       expect(handoff.complete).toBe(true);
-      expect(handoff.validCount).toBe(11);
+      expect(handoff.validCount).toBe(12);
+      // S87: the route artifact is a handed-off role with a verbatim structured summary.
+      const routeState = handoff.artifacts.find((a) => a.role === "route-resolution")!;
+      expect(routeState.valid).toBe(true);
+      expect(routeState.summary!.resolutionStatus).toBe("unavailable");
+      expect(routeState.summary!.routeResolverAttempted).toBe(false);
       // The handoff's verbatim readiness verdict mirrors the readiness artifact exactly.
       expect(handoff.simulationReadyPerReadiness).toBe(readiness.phase6SimulationReady);
       expect(handoff.phase7LiveTradingReady).toBe(false);

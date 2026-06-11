@@ -308,10 +308,12 @@ SKIPPED, and the only dry-run adapter honestly reports **UNAVAILABLE** (a real d
 transaction material the boundary forbids building — nothing is faked). `paper:simulation:validate`
 strictly validates both artifacts, including their literal safety locks (`neverSigns`, `neverSends`,
 `dryRunOnly`, `neverAuthorizesLiveTrading`). Sprint 67 closes the v2 audit gap:
-`paper:simulation:audit` builds a `phase6.audit.report.v1` over the **nine** chain artifacts —
-each strictly validated in place, structured cross-references checked (labels/counts/blocked
-states, never prose), missing artifacts reported as warnings, invalid/v1/mismatched artifacts
-failing the audit, and the chain's own blocking conditions surfaced verbatim. Sprint 69 adds the
+`paper:simulation:audit` builds a `phase6.audit.report.v1` over the **ten** chain artifacts
+(Sprint 87 added the route-resolution artifact via `--route`) — each strictly validated in
+place, structured cross-references checked (labels/counts/blocked states, never prose; a route
+built from a different plan is a blocking mismatch), missing artifacts reported as warnings,
+invalid/v1/mismatched artifacts failing the audit, and the chain's own blocking conditions
+surfaced verbatim. Sprint 69 adds the
 structural verdict: `paper:simulation:readiness` builds a `phase6.simulation.readiness.report.v1`
 whose artifact checks are machine-verified and whose evidence references are recorded verbatim as
 declarations — and whose `phase7LiveTradingReady` is a **literal false** the validator refuses to
@@ -321,16 +323,20 @@ compare two strictly-validated artifacts from STRUCTURED FIELDS ONLY — blocked
 movements, source-ref mismatches, and per-entry changes surfaced as stable `simulation-diff-*`
 findings, with `--fail-on-diff` as the CI gate (an invalid or tampered side refuses outright).
 Sprint 75 adds the simulation-aware session handoff: `paper:simulation:handoff` builds a
-`phase6.simulation.handoff.pack.v1` over the eleven chain artifacts — each strictly validated in
-place and summarized from verbatim structured fields, missing artifacts CLASSIFIED (never
-invented), the chain's blocking conditions and the readiness verdict carried verbatim, one
-deterministic next safe action, and a literal-false `phase7LiveTradingReady`. Sprint 86 adds the
+`phase6.simulation.handoff.pack.v1` over the twelve chain artifacts (Sprint 87 added the
+route-resolution artifact via `--route`) — each strictly validated in place and summarized from
+verbatim structured fields, missing artifacts CLASSIFIED (never invented), the chain's blocking
+conditions and the readiness verdict carried verbatim, one deterministic next safe action, and a
+literal-false `phase7LiveTradingReady`. Sprint 86 adds the
 route-resolution provenance step: `paper:simulation:route` builds a
 `simulation.route.resolution.v1` from a validated intent plan via the canonical builder — the
 only one that exists, so every entry is honestly UNAVAILABLE under the fixed
 `unavailable-no-route-resolver` id (route/destination/fee stay UNRESOLVED, never invented or
 fetched), and the readiness evidence bar now REQUIRES `route-resolution-tests` as its eleventh
-area (older ten-area readiness artifacts re-validate as INVALID, fail-closed). A simulation result
+area (older ten-area readiness artifacts re-validate as INVALID, fail-closed). Sprint 87 makes
+that artifact a first-class AUDITED and HANDED-OFF chain role — the route remains a
+contract/capability boundary: no resolver exists, the real dry-run remains unauthorized and
+unbuilt. A simulation result
 is never an execution and never live readiness — Phase 7 remains not started and unauthorized.
 
 ## Non-negotiable security rules (summary)

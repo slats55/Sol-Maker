@@ -152,6 +152,23 @@ Two integration facts a future implementing session must account for (still no n
   that the route-resolution ARTIFACT layer is tested. It does NOT claim a resolver exists, and
   readiness stays structurally incapable of claiming live-trading readiness either way.
 
+### Sprint 87 — the artifact is now an audited and handed-off chain role
+
+Still no new capability — the route artifact in every audited/handed-off chain remains the honest
+all-UNAVAILABLE record until a separately-authorized resolver exists:
+
+- **`phase6.audit.report.v1` audits the route as its TENTH role** (S85 validator in place; a
+  missing route is a warning, an invalid/tampered route fails the audit, a blocked route's
+  reasons surface verbatim as chain conditions) and cross-checks the route's `sourcePlanRef`
+  against the audited plan — a route built from a different plan is a blocking mismatch.
+- **`phase6.simulation.handoff.pack.v1` hands the route off as its TWELFTH role** with a
+  verbatim structured summary; a blocked route's codes carry into the pack's blocking conditions.
+- Both bumps are CONSCIOUS fail-closed breaks: pre-S87 nine-role audits and eleven-role packs
+  re-validate as INVALID and must be rebuilt over the current chain.
+- A future implementing session inherits this shape: the dry-run boundary's route-state input is
+  the strictly re-validated route artifact that the audit and handoff already carry — never a
+  side channel.
+
 ## Required tests BEFORE any implementation lands
 
 1. Import-allowlist + forbidden-token + determinism scans for the new package (day one).

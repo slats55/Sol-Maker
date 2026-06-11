@@ -1,16 +1,19 @@
 /**
- * Sprint 67 — `phase6.audit.report.v1`: the chain audit over the nine v2/simulation artifacts.
+ * Sprint 67 (+87) — `phase6.audit.report.v1`: the chain audit over the ten v2/simulation
+ * artifacts (Sprint 87 added the route-resolution artifact as an audited role).
  *
  * Proves: a complete chain audits clean; missing artifacts are WARNINGS (incomplete, not failed);
- * invalid artifacts, v1 stand-ins, and structured cross-reference mismatches are BLOCKING; the
- * chain's own conditions (not-ready, not-adopted, blocked plan/result) are surfaced verbatim and
- * never waived; the report is deterministic, lock-validated, and authorizes nothing.
+ * invalid artifacts, v1 stand-ins, and structured cross-reference mismatches are BLOCKING (a
+ * route built from a different plan is a mismatch); the chain's own conditions (not-ready,
+ * not-adopted, blocked plan/result/route) are surfaced verbatim and never waived; the report is
+ * deterministic, lock-validated, and authorizes nothing.
  */
 
 import { describe, it, expect } from "vitest";
 import {
   buildSimulationIntentPlanV2,
   buildSimulationResultV1,
+  buildSimulationRouteResolutionV1,
   buildPhase6AuditReportV1,
   validatePhase6AuditReportV1,
   formatPhase6AuditReportV1,
@@ -20,6 +23,7 @@ import {
   type Phase6AuditReportV1,
   type SimulationIntentPlanV2,
   type SimulationResultV1,
+  type SimulationRouteResolutionV1,
 } from "./index.js";
 import { buildFictionalReadyChain, buildFictionalWatchOnlyChain, type FictionalSimulationChain } from "./fixtures.js";
 import { buildSniperKillSwitchSpec } from "@soulmaker/sniper";
@@ -28,6 +32,7 @@ interface FullChain {
   chain: FictionalSimulationChain;
   plan: SimulationIntentPlanV2;
   result: SimulationResultV1;
+  route: SimulationRouteResolutionV1;
 }
 
 function readyFull(): FullChain {
@@ -44,7 +49,8 @@ function readyFull(): FullChain {
     planLabel: "fictional-plan",
   });
   const result = buildSimulationResultV1({ plan });
-  return { chain, plan, result };
+  const route = buildSimulationRouteResolutionV1({ intentPlan: plan });
+  return { chain, plan, result, route };
 }
 
 function watchOnlyFull(): FullChain {
@@ -60,7 +66,8 @@ function watchOnlyFull(): FullChain {
     planLabel: "fictional-plan",
   });
   const result = buildSimulationResultV1({ plan });
-  return { chain, plan, result };
+  const route = buildSimulationRouteResolutionV1({ intentPlan: plan });
+  return { chain, plan, result, route };
 }
 
 function auditInput(full: FullChain): BuildPhase6AuditReportV1Input {
@@ -74,6 +81,7 @@ function auditInput(full: FullChain): BuildPhase6AuditReportV1Input {
     burnerIsolationSpec: full.chain.burnerIsolationSpec,
     intentPlan: full.plan,
     simulationResult: full.result,
+    routeResolution: full.route,
     operatorLabel: "fictional-operator",
   };
 }
@@ -83,7 +91,7 @@ describe("phase6 chain audit — complete chains", () => {
     const report = buildPhase6AuditReportV1(auditInput(watchOnlyFull()));
     expect(report.auditPassed).toBe(true);
     expect(report.chainComplete).toBe(true);
-    expect(report.validCount).toBe(9);
+    expect(report.validCount).toBe(10);
     expect(report.findings.map((f) => f.code)).toEqual(["audit-chain-complete"]);
     expect(report.chainConditionCodes).toEqual([]);
     expect(() => validatePhase6AuditReportV1(report)).not.toThrow();
@@ -147,9 +155,9 @@ describe("phase6 chain audit — findings", () => {
     expect(report.findings.some((f) => f.code === "audit-artifact-missing" && f.roles.includes("simulation-result"))).toBe(true);
   });
 
-  it("an EMPTY audit reports all nine artifacts missing and still passes (honest incompleteness)", () => {
+  it("an EMPTY audit reports all ten artifacts missing and still passes (honest incompleteness)", () => {
     const report = buildPhase6AuditReportV1({});
-    expect(report.missingCount).toBe(9);
+    expect(report.missingCount).toBe(10);
     expect(report.auditPassed).toBe(true);
     expect(report.chainComplete).toBe(false);
     expect(() => validatePhase6AuditReportV1(report)).not.toThrow();
@@ -248,6 +256,142 @@ describe("phase6 chain audit — validator backstop", () => {
     const r = valid();
     r.artifacts[0] = { ...r.artifacts[0]!, present: false, valid: null, suppliedSchemaVersion: null, label: null };
     expect(() => validatePhase6AuditReportV1(r)).toThrow(/chainComplete|recomputed/);
+  });
+});
+
+describe("phase6 chain audit — Sprint 87 route-resolution role", () => {
+  it("a route built from THIS chain's plan audits clean (10/10, role present and valid)", () => {
+    const report = buildPhase6AuditReportV1(auditInput(readyFull()));
+    expect(report.auditPassed).toBe(true);
+    expect(report.chainComplete).toBe(true);
+    expect(report.validCount).toBe(10);
+    const state = report.artifacts.find((a) => a.role === "route-resolution")!;
+    expect(state.present).toBe(true);
+    expect(state.valid).toBe(true);
+    expect(state.expectedSchemaVersion).toBe("simulation.route.resolution.v1");
+    expect(() => validatePhase6AuditReportV1(report)).not.toThrow();
+  });
+
+  it("a missing route is a WARNING (incomplete chain, audit still passes)", () => {
+    const input = auditInput(readyFull());
+    delete input.routeResolution;
+    const report = buildPhase6AuditReportV1(input);
+    expect(report.auditPassed).toBe(true);
+    expect(report.chainComplete).toBe(false);
+    expect(report.findings.some((f) => f.code === "audit-artifact-missing" && f.roles.includes("route-resolution"))).toBe(true);
+  });
+
+  it("a route with a flipped literal lock is BLOCKING (classified invalid via the S85 validator)", () => {
+    const input = auditInput(readyFull());
+    input.routeResolution = { ...(input.routeResolution as Record<string, unknown>), neverSends: false };
+    const report = buildPhase6AuditReportV1(input);
+    expect(report.auditPassed).toBe(false);
+    expect(report.findings.some((f) => f.code === "audit-artifact-invalid" && f.roles.includes("route-resolution"))).toBe(true);
+  });
+
+  it("a route with a flipped phase7LiveTradingReady is BLOCKING (classified invalid)", () => {
+    const input = auditInput(readyFull());
+    input.routeResolution = { ...(input.routeResolution as Record<string, unknown>), phase7LiveTradingReady: true };
+    const report = buildPhase6AuditReportV1(input);
+    expect(report.auditPassed).toBe(false);
+    const state = report.artifacts.find((a) => a.role === "route-resolution")!;
+    expect(state.valid).toBe(false);
+    expect(state.error).toMatch(/phase7LiveTradingReady/);
+  });
+
+  it("a route under a wrong schemaVersion is BLOCKING (classified invalid)", () => {
+    const input = auditInput(readyFull());
+    input.routeResolution = { ...(input.routeResolution as Record<string, unknown>), schemaVersion: "simulation.route.resolution.v2" };
+    const report = buildPhase6AuditReportV1(input);
+    expect(report.auditPassed).toBe(false);
+    const state = report.artifacts.find((a) => a.role === "route-resolution")!;
+    expect(state.valid).toBe(false);
+    expect(state.suppliedSchemaVersion).toBe("simulation.route.resolution.v2");
+  });
+
+  it("a route claiming 'resolved' without facts is BLOCKING (the S85 validator refuses the claim)", () => {
+    const full = readyFull();
+    const tampered = JSON.parse(JSON.stringify(full.route)) as SimulationRouteResolutionV1;
+    (tampered.entries[0] as { routeResolutionStatus: string }).routeResolutionStatus = "resolved";
+    const report = buildPhase6AuditReportV1({ ...auditInput(full), routeResolution: tampered });
+    expect(report.auditPassed).toBe(false);
+    const state = report.artifacts.find((a) => a.role === "route-resolution")!;
+    expect(state.valid).toBe(false);
+  });
+
+  it("a route built from a DIFFERENT plan is a BLOCKING source-ref mismatch (entryCount disagrees)", () => {
+    const ready = readyFull();
+    const watch = watchOnlyFull();
+    // The ready plan carries 2 preview entries; the watch-only route was built from a 0-entry plan.
+    const report = buildPhase6AuditReportV1({ ...auditInput(ready), routeResolution: watch.route });
+    expect(report.auditPassed).toBe(false);
+    expect(
+      report.findings.some(
+        (f) =>
+          f.code === "audit-source-ref-mismatch" &&
+          f.roles.includes("route-resolution") &&
+          f.detail.includes("entryCount"),
+      ),
+    ).toBe(true);
+  });
+
+  it("a route whose plan-ref label disagrees with the supplied plan is a BLOCKING mismatch", () => {
+    const full = readyFull();
+    const otherPlan = buildSimulationIntentPlanV2({
+      decision: full.chain.decision,
+      safetyGates: full.chain.gates,
+      prereqs: full.chain.prereqs,
+      killSwitchSpec: full.chain.killSwitchSpec,
+      secretsPolicy: full.chain.secretsPolicy,
+      burnerIsolationSpec: full.chain.burnerIsolationSpec,
+      operatorAcknowledgedPaperEnterReview: true,
+      operatorLabel: "fictional-operator",
+      planLabel: "a-different-plan",
+    });
+    const report = buildPhase6AuditReportV1({ ...auditInput(full), routeResolution: buildSimulationRouteResolutionV1({ intentPlan: otherPlan }) });
+    expect(report.auditPassed).toBe(false);
+    expect(
+      report.findings.some(
+        (f) => f.code === "audit-source-ref-mismatch" && f.roles.includes("route-resolution") && f.detail.includes("planLabel"),
+      ),
+    ).toBe(true);
+  });
+
+  it("a BLOCKED route built with NO plan, audited beside a valid plan, is a BLOCKING mismatch", () => {
+    const full = readyFull();
+    const blockedRoute = buildSimulationRouteResolutionV1({});
+    expect(blockedRoute.blocked).toBe(true);
+    const report = buildPhase6AuditReportV1({ ...auditInput(full), routeResolution: blockedRoute });
+    expect(report.auditPassed).toBe(false);
+    expect(
+      report.findings.some((f) => f.code === "audit-source-ref-mismatch" && f.roles.includes("route-resolution")),
+    ).toBe(true);
+  });
+
+  it("a blocked route's blocking codes are surfaced VERBATIM as chain conditions", () => {
+    const blockedRoute = buildSimulationRouteResolutionV1({});
+    const report = buildPhase6AuditReportV1({ routeResolution: blockedRoute });
+    expect(report.chainConditionCodes).toContain("simulation-route-resolution-missing-plan");
+  });
+
+  it("the honest all-UNAVAILABLE route adds NO chain condition (unavailable is not blocking)", () => {
+    const report = buildPhase6AuditReportV1(auditInput(watchOnlyFull()));
+    expect(report.chainConditionCodes).toEqual([]);
+  });
+
+  it("a stale pre-S87 nine-role audit artifact re-validates as INVALID (intended fail-closed bump)", () => {
+    const report = JSON.parse(JSON.stringify(buildPhase6AuditReportV1(auditInput(readyFull())))) as Phase6AuditReportV1;
+    const stale = {
+      ...report,
+      artifacts: report.artifacts.filter((a) => a.role !== "route-resolution"),
+    };
+    expect(stale.artifacts).toHaveLength(9); // exactly the pre-S87 shape
+    expect(() => validatePhase6AuditReportV1(stale)).toThrow(/must list all 10 chain roles/);
+  });
+
+  it("the formatter shows the route role's state (present and valid on a full chain)", () => {
+    const text = formatPhase6AuditReportV1(buildPhase6AuditReportV1(auditInput(readyFull())));
+    expect(text).toContain("- route-resolution: present, valid");
   });
 });
 

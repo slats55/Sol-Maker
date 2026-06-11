@@ -23,6 +23,7 @@ import {
   paperSimulationIntentPlanReport,
   paperSimulationResultReport,
   paperSimulationValidateReport,
+  paperSimulationRouteReport,
   paperSimulationAuditReport,
   paperSimulationReadinessReport,
 } from "./commands.js";
@@ -282,6 +283,7 @@ describe("paper:simulation:audit", () => {
       ).exitCode,
     ).toBe(0);
     expect(paperSimulationResultReport({ cwd: tmp }, { planPath: "plan.json", outPath: "result.json" }).exitCode).toBe(0);
+    expect(paperSimulationRouteReport({ cwd: tmp }, { planPath: "plan.json", outPath: "route.json" }).exitCode).toBe(0);
   }
 
   it("audits the full chain from files (exit 0); missing run-report is a warning, not a failure", () => {
@@ -290,7 +292,7 @@ describe("paper:simulation:audit", () => {
       writePlanAndResult(tmp);
       const r = paperSimulationAuditReport(
         { cwd: tmp },
-        { ...AUDIT_PATHS, runReportPath: "run2.json", intentPlanPath: "plan.json", simulationResultPath: "result.json", json: true },
+        { ...AUDIT_PATHS, runReportPath: "run2.json", intentPlanPath: "plan.json", simulationResultPath: "result.json", routePath: "route.json", json: true },
       );
       expect(r.exitCode).toBe(0);
       const report = JSON.parse(r.text) as { auditPassed: boolean; chainComplete: boolean };
@@ -328,6 +330,33 @@ describe("paper:simulation:audit", () => {
       expect(paperSimulationAuditReport({ cwd: tmp }, { ...AUDIT_PATHS, outPath: "audit.json", force: true }).exitCode).toBe(0);
     });
   });
+
+  it("S87: a missing --route leaves the chain incomplete (warning); a tampered route FAILS the audit", () => {
+    withChainDir((tmp, chain) => {
+      writeFileSync(join(tmp, "run2.json"), JSON.stringify(chain.runReport));
+      writePlanAndResult(tmp);
+      const noRoute = paperSimulationAuditReport(
+        { cwd: tmp },
+        { ...AUDIT_PATHS, runReportPath: "run2.json", intentPlanPath: "plan.json", simulationResultPath: "result.json", json: true },
+      );
+      expect(noRoute.exitCode).toBe(0);
+      const partial = JSON.parse(noRoute.text) as { auditPassed: boolean; chainComplete: boolean };
+      expect(partial.auditPassed).toBe(true); // missing route is a warning, never invented
+      expect(partial.chainComplete).toBe(false);
+      // A flipped literal lock on the route artifact is a BLOCKING finding.
+      const route = JSON.parse(readFileSync(join(tmp, "route.json"), "utf8")) as Record<string, unknown>;
+      route.neverSends = false;
+      writeFileSync(join(tmp, "evil-route.json"), JSON.stringify(route));
+      const failed = paperSimulationAuditReport(
+        { cwd: tmp },
+        { ...AUDIT_PATHS, runReportPath: "run2.json", intentPlanPath: "plan.json", simulationResultPath: "result.json", routePath: "evil-route.json", failOnFindings: true },
+      );
+      expect(failed.exitCode).toBe(1);
+      expect(failed.text).toContain("audit-artifact-invalid");
+      // A named-but-unreadable route file refuses outright.
+      expect(paperSimulationAuditReport({ cwd: tmp }, { ...AUDIT_PATHS, routePath: "nope.json" }).exitCode).toBe(1);
+    });
+  });
 });
 
 describe("paper:simulation:readiness", () => {
@@ -354,13 +383,14 @@ describe("paper:simulation:readiness", () => {
       ).exitCode,
     ).toBe(0);
     expect(paperSimulationResultReport({ cwd: tmp }, { planPath: "plan.json", outPath: "result.json" }).exitCode).toBe(0);
+    expect(paperSimulationRouteReport({ cwd: tmp }, { planPath: "plan.json", outPath: "route.json" }).exitCode).toBe(0);
     expect(
       paperSimulationAuditReport(
         { cwd: tmp },
         {
           decisionsPath: "dec2.json", runReportPath: "run2.json", gatesPath: "gates2.json", prereqsPath: "prereqs2.json",
           killSwitchPath: "ks.json", secretsPolicyPath: "sp.json", burnerIsolationPath: "bi.json",
-          intentPlanPath: "plan.json", simulationResultPath: "result.json", outPath: "audit.json",
+          intentPlanPath: "plan.json", simulationResultPath: "result.json", routePath: "route.json", outPath: "audit.json",
         },
       ).exitCode,
     ).toBe(0);

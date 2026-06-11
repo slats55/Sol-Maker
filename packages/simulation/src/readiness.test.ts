@@ -10,6 +10,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildSimulationIntentPlanV2,
   buildSimulationResultV1,
+  buildSimulationRouteResolutionV1,
   buildPhase6AuditReportV1,
   buildPhase6SimulationReadinessReportV1,
   validatePhase6SimulationReadinessReportV1,
@@ -61,6 +62,7 @@ function greenInput(): BuildPhase6SimulationReadinessReportV1Input {
     burnerIsolationSpec: chain.burnerIsolationSpec,
     intentPlan: plan,
     simulationResult: result,
+    routeResolution: buildSimulationRouteResolutionV1({ intentPlan: plan }),
     operatorLabel: "fictional-operator",
   });
   return { auditReport: audit, intentPlan: plan, simulationResult: result, evidence: EVIDENCE, operatorLabel: "fictional-operator" };
@@ -169,7 +171,7 @@ describe("phase6 simulation readiness — fail-closed blockers", () => {
 
   it("an INCOMPLETE chain blocks even when the audit passed", () => {
     const input = greenInput();
-    input.auditReport = buildPhase6AuditReportV1({}); // all nine missing: passes, incomplete
+    input.auditReport = buildPhase6AuditReportV1({}); // all ten missing: passes, incomplete
     const r = buildPhase6SimulationReadinessReportV1(input);
     expect(r.phase6SimulationReady).toBe(false);
     expect(r.blockingReasonCodes).toContain("simulation-readiness-chain-incomplete");
@@ -223,6 +225,7 @@ describe("phase6 simulation readiness — fail-closed blockers", () => {
       burnerIsolationSpec: chain.burnerIsolationSpec,
       intentPlan: plan,
       simulationResult: result,
+      routeResolution: buildSimulationRouteResolutionV1({ intentPlan: plan }),
     });
     const r = buildPhase6SimulationReadinessReportV1({
       auditReport: audit,

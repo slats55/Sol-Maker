@@ -62,6 +62,7 @@ function allOutputs(): Record<string, string> {
   const blockedPlan = buildSimulationIntentPlanV2({});
   const result = buildSimulationResultV1({ plan });
   const blockedResult = buildSimulationResultV1({ plan, stopSimulationTripped: true });
+  const route = buildSimulationRouteResolutionV1({ intentPlan: plan });
   const audit = buildPhase6AuditReportV1({
     decision: chain.decision,
     runReport: chain.runReport,
@@ -72,6 +73,7 @@ function allOutputs(): Record<string, string> {
     burnerIsolationSpec: chain.burnerIsolationSpec,
     intentPlan: plan,
     simulationResult: result,
+    routeResolution: route,
   });
   const incompleteAudit = buildPhase6AuditReportV1({ decision: chain.decision });
   const readiness = buildPhase6SimulationReadinessReportV1({
@@ -103,6 +105,7 @@ function allOutputs(): Record<string, string> {
     burnerIsolationSpec: chain.burnerIsolationSpec,
     intentPlan: plan,
     simulationResult: result,
+    routeResolution: route,
     auditReport: audit,
     readinessReport: readiness,
   });
@@ -200,9 +203,9 @@ describe("operator output quality — degraded states stay readable", () => {
     expect(text).toContain("nothing is simulated from invented values");
   });
 
-  it("an empty handoff classifies all eleven artifacts as missing, honestly", () => {
+  it("an empty handoff classifies all twelve artifacts as missing, honestly", () => {
     const text = formatPhase6SimulationHandoffPackV1(buildPhase6SimulationHandoffPackV1({}));
-    expect(text).toContain("0/11 artifacts strictly valid");
+    expect(text).toContain("0/12 artifacts strictly valid");
     expect(text).toContain("MISSING (classified, not invented)");
   });
 });
@@ -222,6 +225,7 @@ describe("operator output quality — simulation readiness never implies live re
       burnerIsolationSpec: chain.burnerIsolationSpec,
       intentPlan: plan,
       simulationResult: result,
+      routeResolution: buildSimulationRouteResolutionV1({ intentPlan: plan }),
     });
     const readiness = buildPhase6SimulationReadinessReportV1({
       auditReport: audit,

@@ -1936,7 +1936,7 @@ program
 program
   .command("paper:simulation:audit")
   .description(
-    "Build a `phase6.audit.report.v1` — the CHAIN AUDIT over the nine v2/simulation artifacts (decision v2, run report v2, safety gates v2, prereqs v2, the three governance specs, the simulation intent plan v2, the simulation result v1). Each artifact is strictly validated in place; MISSING artifacts are warnings (an incomplete chain is reported, never assumed); invalid artifacts, v1 stand-ins, and structured cross-reference mismatches FAIL the audit; the chain's own blocking conditions (not-ready gates/prereqs, non-adopted specs, blocked plan/result) are surfaced VERBATIM and never waived. The audit reports — it never authorizes anything; Phase 7 remains not started. Reads only the named files, writes nothing unless --out. No network, no wallet",
+    "Build a `phase6.audit.report.v1` — the CHAIN AUDIT over the ten v2/simulation artifacts (decision v2, run report v2, safety gates v2, prereqs v2, the three governance specs, the simulation intent plan v2, the simulation result v1, the route-resolution artifact v1). Each artifact is strictly validated in place; MISSING artifacts are warnings (an incomplete chain is reported, never assumed); invalid artifacts, v1 stand-ins, and structured cross-reference mismatches FAIL the audit (a route built from a different plan is a mismatch); the chain's own blocking conditions (not-ready gates/prereqs, non-adopted specs, blocked plan/result/route) are surfaced VERBATIM and never waived. The audit reports — it never authorizes anything; Phase 7 remains not started. Reads only the named files, writes nothing unless --out. No network, no wallet",
   )
   .option("--decisions <path>", "v2 decision report JSON")
   .option("--run-report <path>", "v2 run report JSON")
@@ -1947,6 +1947,7 @@ program
   .option("--burner-isolation <path>", "burner isolation spec JSON")
   .option("--intent-plan <path>", "simulation intent plan JSON (simulation.intent.plan.v2)")
   .option("--simulation-result <path>", "simulation result JSON (simulation.result.v1)")
+  .option("--route <path>", "route-resolution artifact JSON (simulation.route.resolution.v1)")
   .option("--operator <label>", "operator label echoed into the report")
   .option("--json", "emit the audit report as stable JSON")
   .option("--out <path>", "write ONLY the audit report JSON to this path (writes nothing if omitted)")
@@ -1958,7 +1959,7 @@ program
     (opts: {
       decisions?: string; runReport?: string; gates?: string; prereqs?: string; killSwitch?: string;
       secretsPolicy?: string; burnerIsolation?: string; intentPlan?: string; simulationResult?: string;
-      operator?: string; json?: boolean; out?: string; force?: boolean;
+      route?: string; operator?: string; json?: boolean; out?: string; force?: boolean;
       failOnFindings?: boolean; failOnIncomplete?: boolean; failOnChainConditions?: boolean;
     }) => {
       const { text, exitCode } = paperSimulationAuditReport(
@@ -1973,6 +1974,7 @@ program
           burnerIsolationPath: opts.burnerIsolation,
           intentPlanPath: opts.intentPlan,
           simulationResultPath: opts.simulationResult,
+          routePath: opts.route,
           operatorLabel: opts.operator,
           json: Boolean(opts.json),
           outPath: opts.out,
@@ -2032,7 +2034,7 @@ program
 program
   .command("paper:simulation:handoff")
   .description(
-    "Build a `phase6.simulation.handoff.pack.v1` — the simulation-aware SESSION HANDOFF over eleven chain artifacts (decision v2, run report v2, safety gates v2, prereqs v2, the three governance specs, the simulation intent plan v2, the simulation result v1, the phase6 audit report, the phase6 readiness report). Each artifact is strictly validated in place and summarized from VERBATIM structured fields; a MISSING artifact is classified as missing — state is never invented. The chain's blocking conditions and the readiness verdict are carried verbatim, and phase7LiveTradingReady is a LITERAL false the validator refuses to see flipped — a handoff pack can never claim or authorize live trading. Reads only the named files, writes nothing unless --out. No network, no wallet",
+    "Build a `phase6.simulation.handoff.pack.v1` — the simulation-aware SESSION HANDOFF over twelve chain artifacts (decision v2, run report v2, safety gates v2, prereqs v2, the three governance specs, the simulation intent plan v2, the simulation result v1, the route-resolution artifact v1, the phase6 audit report, the phase6 readiness report). Each artifact is strictly validated in place and summarized from VERBATIM structured fields; a MISSING artifact is classified as missing — state is never invented. The chain's blocking conditions (including a blocked route's) and the readiness verdict are carried verbatim, and phase7LiveTradingReady is a LITERAL false the validator refuses to see flipped — a handoff pack can never claim or authorize live trading. Reads only the named files, writes nothing unless --out. No network, no wallet",
   )
   .option("--decisions <path>", "v2 decision report JSON")
   .option("--run-report <path>", "v2 run report JSON")
@@ -2043,6 +2045,7 @@ program
   .option("--burner-isolation <path>", "burner isolation spec JSON")
   .option("--intent-plan <path>", "simulation intent plan JSON (simulation.intent.plan.v2)")
   .option("--simulation-result <path>", "simulation result JSON (simulation.result.v1)")
+  .option("--route <path>", "route-resolution artifact JSON (simulation.route.resolution.v1)")
   .option("--audit <path>", "phase6 audit report JSON (phase6.audit.report.v1)")
   .option("--readiness <path>", "phase6 readiness report JSON (phase6.simulation.readiness.report.v1)")
   .option("--operator <label>", "operator label echoed into the pack")
@@ -2057,7 +2060,7 @@ program
     (opts: {
       decisions?: string; runReport?: string; gates?: string; prereqs?: string; killSwitch?: string;
       secretsPolicy?: string; burnerIsolation?: string; intentPlan?: string; simulationResult?: string;
-      audit?: string; readiness?: string; operator?: string; packLabel?: string; json?: boolean;
+      route?: string; audit?: string; readiness?: string; operator?: string; packLabel?: string; json?: boolean;
       out?: string; force?: boolean; failOnIncomplete?: boolean; failOnBlocking?: boolean; failOnNotReady?: boolean;
     }) => {
       const { text, exitCode } = paperSimulationHandoffReport(
@@ -2072,6 +2075,7 @@ program
           burnerIsolationPath: opts.burnerIsolation,
           intentPlanPath: opts.intentPlan,
           simulationResultPath: opts.simulationResult,
+          routePath: opts.route,
           auditPath: opts.audit,
           readinessPath: opts.readiness,
           operatorLabel: opts.operator,

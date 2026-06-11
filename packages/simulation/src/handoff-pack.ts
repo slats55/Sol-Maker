@@ -3,10 +3,10 @@
  * Sprint 75 — the simulation-aware session/handoff bundle).
  *
  * The sniper session pack v2 honestly classifies simulation artifacts as `unsupported` — it
- * predates them. This pack is the simulation-aware handoff: ELEVEN chain artifacts (the nine
- * audited roles plus the chain audit and the readiness report) are each strictly validated in
- * place and summarized from STRUCTURED FIELDS ONLY, so an operator (or the next session) can pick
- * up exactly where this one left off:
+ * predates them. This pack is the simulation-aware handoff: TWELVE chain artifacts (the ten
+ * audited roles — Sprint 87 added the route-resolution artifact — plus the chain audit and the
+ * readiness report) are each strictly validated in place and summarized from STRUCTURED FIELDS
+ * ONLY, so an operator (or the next session) can pick up exactly where this one left off:
  *
  *   - per-artifact presence / validity / supplied schema / label / flat structured summary
  *     (a missing artifact is CLASSIFIED as missing — state is never invented for it)
@@ -78,6 +78,11 @@ import {
   PHASE6_SIMULATION_READINESS_REPORT_V1_SCHEMA_VERSION,
   type Phase6SimulationReadinessReportV1,
 } from "./readiness.js";
+import {
+  validateSimulationRouteResolutionV1,
+  SIMULATION_ROUTE_RESOLUTION_V1_SCHEMA_VERSION,
+  type SimulationRouteResolutionV1,
+} from "./route-resolution.js";
 
 /** Stable schema identifier for the Phase 6 handoff pack. Bump only on a breaking change. */
 export const PHASE6_SIMULATION_HANDOFF_PACK_V1_SCHEMA_VERSION = "phase6.simulation.handoff.pack.v1";
@@ -91,7 +96,7 @@ export const PHASE6_SIMULATION_HANDOFF_PACK_V1_GENERATED_BY = "@soulmaker/simula
 
 /** Required disclaimer statements carried by every handoff pack (stable order). */
 export const PHASE6_SIMULATION_HANDOFF_PACK_V1_DISCLAIMERS: readonly string[] = [
-  "PHASE 6 SIMULATION HANDOFF PACK — eleven chain artifacts strictly validated in place and summarized from STRUCTURED FIELDS ONLY; a missing artifact is classified as missing, never invented.",
+  "PHASE 6 SIMULATION HANDOFF PACK — twelve chain artifacts strictly validated in place and summarized from STRUCTURED FIELDS ONLY; a missing artifact is classified as missing, never invented.",
   "The chain's blocking conditions and the readiness verdict are carried VERBATIM — this pack reports them; it never waives, re-judges, or authorizes anything.",
   "phase7LiveTradingReady is ALWAYS false: a handoff pack is structurally incapable of claiming live-trading readiness, and the validator refuses anything else.",
   ...SIMULATION_PACKAGE_DISCLAIMERS,
@@ -107,7 +112,9 @@ export class Phase6SimulationHandoffPackV1Error extends Error {
 
 // --- model -------------------------------------------------------------------
 
-/** The handoff roles (stable order — the chain's build order, then audit, then readiness). */
+/** The handoff roles (stable order — the chain's build order, then audit, then readiness; Sprint
+ * 87 added `route-resolution`, a CONSCIOUS fail-closed bump: an eleven-role pre-S87 handoff pack
+ * no longer validates and must be rebuilt over the current chain). */
 export const PHASE6_HANDOFF_ROLES = [
   "decision",
   "run-report",
@@ -118,6 +125,7 @@ export const PHASE6_HANDOFF_ROLES = [
   "burner-isolation-spec",
   "intent-plan",
   "simulation-result",
+  "route-resolution",
   "audit-report",
   "readiness-report",
 ] as const;
@@ -209,6 +217,8 @@ export interface BuildPhase6SimulationHandoffPackV1Input {
   intentPlan?: unknown;
   /** `simulation.result.v1`. */
   simulationResult?: unknown;
+  /** `simulation.route.resolution.v1`. */
+  routeResolution?: unknown;
   /** `phase6.audit.report.v1`. */
   auditReport?: unknown;
   /** `phase6.simulation.readiness.report.v1`. */
@@ -349,6 +359,9 @@ export function buildPhase6SimulationHandoffPackV1(
   const simulationResult = check<SimulationResultV1>("simulation-result", SIMULATION_RESULT_V1_SCHEMA_VERSION,
     input.simulationResult, validateSimulationResultV1, (a) => a.sourcePlanRef.planLabel,
     (a) => ({ resultStatus: a.resultStatus, entryCount: a.entryCount, dryRunAttempted: a.dryRunAttempted, adapterId: a.adapterSummary.adapterId }));
+  const routeResolution = check<SimulationRouteResolutionV1>("route-resolution", SIMULATION_ROUTE_RESOLUTION_V1_SCHEMA_VERSION,
+    input.routeResolution, validateSimulationRouteResolutionV1, (a) => a.resolutionLabel,
+    (a) => ({ resolutionStatus: a.resolutionStatus, blocked: a.blocked, entryCount: a.entryCount, unavailableEntryCount: a.unavailableEntryCount, liveStateCaveat: a.liveStateCaveat, routeResolverAttempted: a.routeResolverAttempted }));
   const auditReport = check<Phase6AuditReportV1>("audit-report", PHASE6_AUDIT_REPORT_V1_SCHEMA_VERSION,
     input.auditReport, validatePhase6AuditReportV1, (a) => a.operatorLabel,
     (a) => ({ auditPassed: a.auditPassed, chainComplete: a.chainComplete, blockingFindingCount: a.blockingFindingCount, chainConditionCount: a.chainConditionCodes.length }));
@@ -356,7 +369,7 @@ export function buildPhase6SimulationHandoffPackV1(
     input.readinessReport, validatePhase6SimulationReadinessReportV1, (a) => a.operatorLabel,
     (a) => ({ phase6SimulationReady: a.phase6SimulationReady, blockingCount: a.blockingReasonCodes.length, declaredEvidenceCount: a.evidence.filter((e) => e.declared).length }));
 
-  const all = [decision, runReport, gates, prereqs, killSwitch, secretsPolicy, burnerIsolation, intentPlan, simulationResult, auditReport, readinessReport];
+  const all = [decision, runReport, gates, prereqs, killSwitch, secretsPolicy, burnerIsolation, intentPlan, simulationResult, routeResolution, auditReport, readinessReport];
   const artifacts = all.map((a) => a.state);
 
   // 2) Verdicts — every one derived from structured state; nothing invented.
@@ -369,6 +382,7 @@ export function buildPhase6SimulationHandoffPackV1(
   const chainBlockingCodes = dedupeSimulationReasonCodes([
     ...(intentPlan.artifact?.blockingReasonCodes ?? []),
     ...(simulationResult.artifact?.blockedReasonCodes ?? []),
+    ...(routeResolution.artifact?.blockingReasonCodes ?? []),
     ...(auditReport.artifact?.chainConditionCodes ?? []),
     ...(readinessReport.artifact?.blockingReasonCodes ?? []),
   ]);
@@ -544,11 +558,13 @@ export function validatePhase6SimulationHandoffPackV1(value: unknown): Phase6Sim
   };
   const planSummary = summaryOf("intent-plan");
   const resultSummary = summaryOf("simulation-result");
+  const routeSummary = summaryOf("route-resolution");
   const auditSummary = summaryOf("audit-report");
   const readinessSummary = summaryOf("readiness-report");
   const summarySignalsBlocking =
     planSummary?.blocked === true ||
     resultSummary?.resultStatus === "blocked" ||
+    routeSummary?.blocked === true ||
     (typeof auditSummary?.chainConditionCount === "number" && auditSummary.chainConditionCount > 0) ||
     (typeof readinessSummary?.blockingCount === "number" && readinessSummary.blockingCount > 0);
   if (summarySignalsBlocking && (value.chainBlockingCodes as unknown[]).length === 0) {

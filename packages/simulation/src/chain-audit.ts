@@ -3,11 +3,12 @@
  *
  * Closes the known v1-only audit gap: the v1 `sniper.audit.log.v1` walks one run's step trail,
  * but nothing audited the **v2 chain as a chain** — and nothing could audit the simulation
- * artifacts at all. This report does both: each of the NINE chain artifacts (decision v2, run
+ * artifacts at all. This report does both: each of the TEN chain artifacts (decision v2, run
  * report v2, safety gates v2, prereqs v2, the three governance specs, the simulation intent plan
- * v2, and the simulation result v1) is strictly validated in place, and the chain's STRUCTURED
- * cross-references are checked (plan summary vs. decision, result plan-ref vs. plan — labels,
- * counts, blocked states; never prose). It lives in `@soulmaker/simulation` because the sniper
+ * v2, the simulation result v1, and — Sprint 87 — the route-resolution artifact v1) is strictly
+ * validated in place, and the chain's STRUCTURED cross-references are checked (plan summary vs.
+ * decision, result plan-ref vs. plan, route plan-ref vs. plan — labels, counts, blocked states;
+ * never prose). It lives in `@soulmaker/simulation` because the sniper
  * package can never depend on simulation artifacts (the dependency points the other way), and is
  * named in the `phase6.*` family for the same reason. There is no wall-clock here, so
  * "staleness" is exactly what the cross-reference checks can prove: artifacts that disagree were
@@ -75,6 +76,11 @@ import {
   SIMULATION_RESULT_V1_SCHEMA_VERSION,
   type SimulationResultV1,
 } from "./result.js";
+import {
+  validateSimulationRouteResolutionV1,
+  SIMULATION_ROUTE_RESOLUTION_V1_SCHEMA_VERSION,
+  type SimulationRouteResolutionV1,
+} from "./route-resolution.js";
 
 /** Stable schema identifier for the Phase 6 chain audit. Bump only on a breaking change. */
 export const PHASE6_AUDIT_REPORT_V1_SCHEMA_VERSION = "phase6.audit.report.v1";
@@ -102,7 +108,9 @@ export class Phase6AuditReportV1Error extends Error {
 
 // --- model -------------------------------------------------------------------
 
-/** The audited chain roles (stable order — the chain's build order). */
+/** The audited chain roles (stable order — the chain's build order; Sprint 87 added
+ * `route-resolution`, a CONSCIOUS fail-closed bump: a nine-role pre-S87 audit artifact no longer
+ * validates and must be rebuilt over the current chain). */
 export const PHASE6_AUDIT_ROLES = [
   "decision",
   "run-report",
@@ -113,6 +121,7 @@ export const PHASE6_AUDIT_ROLES = [
   "burner-isolation-spec",
   "intent-plan",
   "simulation-result",
+  "route-resolution",
 ] as const;
 
 /** One of the audited chain roles. */
@@ -194,6 +203,8 @@ export interface BuildPhase6AuditReportV1Input {
   intentPlan?: unknown;
   /** `simulation.result.v1`. */
   simulationResult?: unknown;
+  /** `simulation.route.resolution.v1`. */
+  routeResolution?: unknown;
   /** Optional operator label echoed into the report. */
   operatorLabel?: string | null;
 }
@@ -295,8 +306,10 @@ export function buildPhase6AuditReportV1(input: BuildPhase6AuditReportV1Input = 
     input.intentPlan, validateSimulationIntentPlanV2, (a) => a.planLabel);
   const simulationResult = audit<SimulationResultV1>("simulation-result", SIMULATION_RESULT_V1_SCHEMA_VERSION,
     input.simulationResult, validateSimulationResultV1, (a) => a.sourcePlanRef.planLabel);
+  const routeResolution = audit<SimulationRouteResolutionV1>("route-resolution", SIMULATION_ROUTE_RESOLUTION_V1_SCHEMA_VERSION,
+    input.routeResolution, validateSimulationRouteResolutionV1, (a) => a.resolutionLabel);
 
-  const all = [decision, runReport, gates, prereqs, killSwitch, secretsPolicy, burnerIsolation, intentPlan, simulationResult];
+  const all = [decision, runReport, gates, prereqs, killSwitch, secretsPolicy, burnerIsolation, intentPlan, simulationResult, routeResolution];
   const artifacts = all.map((a) => a.state);
 
   // 2) Findings — missing (warning), invalid / v1 stand-in (blocking).
@@ -375,6 +388,33 @@ export function buildPhase6AuditReportV1(input: BuildPhase6AuditReportV1Input = 
       });
     }
   }
+  // Sprint 87: the route resolution's plan ref must agree with the audited plan. The route
+  // validator already enforces every internal mirror (blocked ⇔ blocking codes recomputed from
+  // the ref, entries ⇔ plan entryCount, "resolved" refused without facts), so the audit's job is
+  // only the CROSS-artifact question: was this route built from THIS chain's plan?
+  if (intentPlan.artifact && routeResolution.artifact) {
+    const ref = routeResolution.artifact.sourcePlanRef;
+    if (ref.valid === true) {
+      const mismatches: string[] = [];
+      if (ref.planLabel !== intentPlan.artifact.planLabel) mismatches.push("planLabel");
+      if (ref.operatorLabel !== intentPlan.artifact.operatorLabel) mismatches.push("operatorLabel");
+      if (ref.entryCount !== intentPlan.artifact.entryCount) mismatches.push("entryCount");
+      if (ref.blocked !== intentPlan.artifact.blocked) mismatches.push("blocked");
+      if (mismatches.length > 0) {
+        findings.push({
+          code: "audit-source-ref-mismatch",
+          roles: ["intent-plan", "route-resolution"],
+          detail: `the route resolution's plan ref disagrees with the supplied plan on: ${mismatches.join(", ")} — it was built from a different plan`,
+        });
+      }
+    } else {
+      findings.push({
+        code: "audit-source-ref-mismatch",
+        roles: ["intent-plan", "route-resolution"],
+        detail: "the route resolution records its source plan as missing/invalid while the audited chain supplies a strictly-valid plan — it was not built from this chain's plan",
+      });
+    }
+  }
 
   const presentCount = artifacts.filter((a) => a.present).length;
   const validCount = artifacts.filter((a) => a.valid === true).length;
@@ -396,6 +436,7 @@ export function buildPhase6AuditReportV1(input: BuildPhase6AuditReportV1Input = 
   if (burnerIsolation.artifact && !burnerIsolation.artifact.adopted) conditions.push("simulation-blocked-burner-isolation-not-adopted");
   if (intentPlan.artifact) conditions.push(...intentPlan.artifact.blockingReasonCodes);
   if (simulationResult.artifact) conditions.push(...simulationResult.artifact.blockedReasonCodes);
+  if (routeResolution.artifact) conditions.push(...routeResolution.artifact.blockingReasonCodes);
   const chainConditionCodes = dedupeSimulationReasonCodes(conditions);
 
   const notes = [

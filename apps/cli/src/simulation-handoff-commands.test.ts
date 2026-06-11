@@ -17,6 +17,7 @@ import {
   buildFictionalReadyChain,
   buildSimulationIntentPlanV2,
   buildSimulationResultV1,
+  buildSimulationRouteResolutionV1,
   buildPhase6AuditReportV1,
   buildPhase6SimulationReadinessReportV1,
   validatePhase6SimulationHandoffPackV1,
@@ -27,7 +28,7 @@ interface HandoffDir {
   tmp: string;
 }
 
-/** Write the full FICTIONAL 11-artifact chain into a temp dir. */
+/** Write the full FICTIONAL 12-artifact chain into a temp dir. */
 function withHandoffDir<T>(fn: (d: HandoffDir) => T): T {
   const tmp = mkdtempSync(join(tmpdir(), "simulation-handoff-cli-"));
   const chain = buildFictionalReadyChain();
@@ -43,6 +44,7 @@ function withHandoffDir<T>(fn: (d: HandoffDir) => T): T {
     planLabel: "fictional-plan",
   });
   const result = buildSimulationResultV1({ plan });
+  const route = buildSimulationRouteResolutionV1({ intentPlan: plan, operatorLabel: "fictional-operator" });
   const audit = buildPhase6AuditReportV1({
     decision: chain.decision,
     runReport: chain.runReport,
@@ -53,6 +55,7 @@ function withHandoffDir<T>(fn: (d: HandoffDir) => T): T {
     burnerIsolationSpec: chain.burnerIsolationSpec,
     intentPlan: plan,
     simulationResult: result,
+    routeResolution: route,
     operatorLabel: "fictional-operator",
   });
   const readiness = buildPhase6SimulationReadinessReportV1({
@@ -84,6 +87,7 @@ function withHandoffDir<T>(fn: (d: HandoffDir) => T): T {
     ["bi.json", chain.burnerIsolationSpec],
     ["plan.json", plan],
     ["result.json", result],
+    ["route.json", route],
     ["audit.json", audit],
     ["readiness.json", readiness],
   ];
@@ -105,6 +109,7 @@ const ALL_PATHS = {
   burnerIsolationPath: "bi.json",
   intentPlanPath: "plan.json",
   simulationResultPath: "result.json",
+  routePath: "route.json",
   auditPath: "audit.json",
   readinessPath: "readiness.json",
 } as const;
@@ -116,7 +121,7 @@ describe("paper:simulation:handoff", () => {
       expect(r.exitCode).toBe(0);
       const pack = validatePhase6SimulationHandoffPackV1(JSON.parse(r.text));
       expect(pack.complete).toBe(true);
-      expect(pack.validCount).toBe(11);
+      expect(pack.validCount).toBe(12);
       expect(pack.simulationReadyPerReadiness).toBe(true);
       expect(pack.phase7LiveTradingReady).toBe(false);
       expect(pack.neverSigns).toBe(true);
@@ -146,6 +151,27 @@ describe("paper:simulation:handoff", () => {
       expect(gated.exitCode).toBe(1);
       // The complete chain passes the same gate.
       expect(paperSimulationHandoffReport({ cwd: tmp }, { ...ALL_PATHS, failOnIncomplete: true }).exitCode).toBe(0);
+    });
+  });
+
+  it("S87: a missing route is classified; a route with a flipped lock is classified invalid", () => {
+    withHandoffDir(({ tmp }) => {
+      const { routePath: _omit, ...rest } = ALL_PATHS;
+      const missing = paperSimulationHandoffReport({ cwd: tmp }, { ...rest, json: true });
+      expect(missing.exitCode).toBe(0);
+      const missingPack = validatePhase6SimulationHandoffPackV1(JSON.parse(missing.text));
+      expect(missingPack.complete).toBe(false);
+      expect(missingPack.missingRoles).toEqual(["route-resolution"]);
+      const route = JSON.parse(readFileSync(join(tmp, "route.json"), "utf8")) as Record<string, unknown>;
+      route.dryRunOnly = false;
+      writeFileSync(join(tmp, "evil-route.json"), JSON.stringify(route, null, 2));
+      const invalid = paperSimulationHandoffReport({ cwd: tmp }, { ...ALL_PATHS, routePath: "evil-route.json", json: true });
+      expect(invalid.exitCode).toBe(0);
+      const invalidPack = validatePhase6SimulationHandoffPackV1(JSON.parse(invalid.text));
+      expect(invalidPack.invalidRoles).toContain("route-resolution");
+      const state = invalidPack.artifacts.find((a) => a.role === "route-resolution")!;
+      expect(state.valid).toBe(false);
+      expect(state.error).toBeTruthy();
     });
   });
 

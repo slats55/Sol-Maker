@@ -67,7 +67,7 @@ invariants.
 | `paper:simulation:result` | `--plan` | `--out` only | `simulation.result.v1` (dry-run-only; unavailable dry-run reported honestly) |
 | `paper:simulation:route` | `--plan` | `--out` only | `simulation.route.resolution.v1` (route PROVENANCE only; every entry honestly UNAVAILABLE — no resolver capability exists) |
 | `paper:simulation:validate` | `--plan` and/or `--result` | never | validates `simulation.intent.plan.v2` / `simulation.result.v1` (literal locks enforced) |
-| `paper:simulation:audit` | (none — missing artifacts reported as warnings) | `--out` only | `phase6.audit.report.v1` (chain audit over the nine v2/simulation artifacts; reports, never authorizes) |
+| `paper:simulation:audit` | (none — missing artifacts reported as warnings) | `--out` only | `phase6.audit.report.v1` (chain audit over the ten v2/simulation artifacts incl. the route-resolution artifact via `--route`; reports, never authorizes) |
 | `paper:simulation:readiness` | (none — anything missing blocks) | `--out` only | `phase6.simulation.readiness.report.v1` (stack readiness; `phase7LiveTradingReady` is a literal false, always) |
 
 Common flags: `--json` (stable JSON), `--out <path>` + `--force` (write the artifact; refuse overwrite
@@ -92,11 +92,12 @@ pnpm soulmaker paper:simulation:result --plan plan.json --out result.json
 # 3) Validate any simulation artifact strictly (literal safety locks enforced):
 pnpm soulmaker paper:simulation:validate --plan plan.json --result result.json
 
-# 3b) Record the route-resolution PROVENANCE for the plan (S86). This is honest bookkeeping,
-#     not capability: no route resolver exists inside the boundary, so every entry comes back
-#     UNAVAILABLE under the fixed `unavailable-no-route-resolver` id — route, destination, and
-#     fee stay UNRESOLVED, never invented. That outcome is the system telling the truth about
-#     its capability boundary, not a safety failure:
+# 3b) Record the route-resolution PROVENANCE for the plan (S86; audited and handed off since
+#     S87). This is honest bookkeeping, not capability: no route resolver exists inside the
+#     boundary, so every entry comes back UNAVAILABLE under the fixed
+#     `unavailable-no-route-resolver` id — route, destination, and fee stay UNRESOLVED, never
+#     invented. That outcome is the system telling the truth about its capability boundary, not
+#     a safety failure:
 pnpm soulmaker paper:simulation:route --plan plan.json --operator you \
   --resolution-label session-01 --out route.json
 #     A missing/invalid/blocked plan or --stop-simulation-tripped produces a BLOCKED artifact
@@ -104,11 +105,14 @@ pnpm soulmaker paper:simulation:route --plan plan.json --operator you \
 #     --fail-on-unavailable exists as a CI tripwire but trips on EVERY honest artifact until a
 #     separately-authorized resolver exists.
 
-# 4) Audit the WHOLE chain (each artifact strictly validated; structured cross-refs checked):
+# 4) Audit the WHOLE chain (each artifact strictly validated; structured cross-refs checked —
+#    since S87 the route artifact is an audited role: a route built from a different plan is a
+#    blocking mismatch, and a blocked route's reasons surface verbatim as chain conditions):
 pnpm soulmaker paper:simulation:audit \
   --decisions dec2.json --run-report run2.json --gates gates2.json --prereqs prereqs2.json \
   --kill-switch ks.json --secrets-policy sp.json --burner-isolation bi.json \
-  --intent-plan plan.json --simulation-result result.json --operator you --out audit.json
+  --intent-plan plan.json --simulation-result result.json --route route.json \
+  --operator you --out audit.json
 
 # 5) The structural readiness verdict (artifact checks machine-verified; evidence DECLARED):
 pnpm soulmaker paper:simulation:readiness \
@@ -133,12 +137,13 @@ pnpm soulmaker paper:simulation:diff:result --base result-old.json --next result
 # CI: exit non-zero on ANY structured change:
 pnpm soulmaker paper:simulation:diff:plan --base plan-old.json --next plan.json --fail-on-diff
 
-# 7) Hand the WHOLE session to the next operator/session (eleven artifacts, each strictly
-#    validated and summarized verbatim; a missing artifact is CLASSIFIED, never invented):
+# 7) Hand the WHOLE session to the next operator/session (twelve artifacts since S87 — the
+#    route artifact is a handed-off role — each strictly validated and summarized verbatim; a
+#    missing artifact is CLASSIFIED, never invented):
 pnpm soulmaker paper:simulation:handoff \
   --decisions dec2.json --run-report run2.json --gates gates2.json --prereqs prereqs2.json \
   --kill-switch ks.json --secrets-policy sp.json --burner-isolation bi.json \
-  --intent-plan plan.json --simulation-result result.json \
+  --intent-plan plan.json --simulation-result result.json --route route.json \
   --audit audit.json --readiness readiness.json \
   --operator you --pack-label session-01 --out handoff.json
 # CI gates: --fail-on-incomplete / --fail-on-blocking / --fail-on-not-ready
@@ -499,9 +504,10 @@ operator-supplied things; nothing else, and none of them is ever invented by the
 With those in hand the rehearsal is the documented workflow above, verbatim: intake → preflight
 input bundle → preflight → decide (v2) → report (v2) → gates (v2) → prereqs (v2) → adopted specs →
 `paper:simulation:intent:plan` → `paper:simulation:result` → `paper:simulation:route` →
-`paper:simulation:audit` → `paper:simulation:readiness` → `paper:simulation:handoff`. Record the
-produced session pack and handoff pack as the rehearsal evidence. Expectations to hold the run
-to, honestly:
+`paper:simulation:audit` (with `--route`) → `paper:simulation:readiness` →
+`paper:simulation:handoff` (with `--route`; since S87 the route artifact is an audited and
+handed-off role — omitting it leaves the chain honestly incomplete). Record the produced session
+pack and handoff pack as the rehearsal evidence. Expectations to hold the run to, honestly:
 
 - Real candidates will mostly land `watch` / `paper-reject` / `unknown` — that is the system
   working, not failing. A `paper-enter` demands the operator review acknowledgment, exactly as in

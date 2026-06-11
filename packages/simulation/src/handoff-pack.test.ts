@@ -13,6 +13,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildSimulationIntentPlanV2,
   buildSimulationResultV1,
+  buildSimulationRouteResolutionV1,
   buildPhase6AuditReportV1,
   buildPhase6SimulationReadinessReportV1,
   buildPhase6SimulationHandoffPackV1,
@@ -24,7 +25,7 @@ import {
 } from "./index.js";
 import { buildFictionalReadyChain, type FictionalSimulationChain } from "./fixtures.js";
 
-/** Build the full FICTIONAL 11-artifact input (chain + plan + result + audit + readiness). */
+/** Build the full FICTIONAL 12-artifact input (chain + plan + result + route + audit + readiness). */
 function fullInput(chain: FictionalSimulationChain = buildFictionalReadyChain()): BuildPhase6SimulationHandoffPackV1Input {
   const plan = buildSimulationIntentPlanV2({
     decision: chain.decision,
@@ -38,6 +39,7 @@ function fullInput(chain: FictionalSimulationChain = buildFictionalReadyChain())
     planLabel: "fictional-plan",
   });
   const result = buildSimulationResultV1({ plan });
+  const route = buildSimulationRouteResolutionV1({ intentPlan: plan, resolutionLabel: "fictional-route" });
   const audit = buildPhase6AuditReportV1({
     decision: chain.decision,
     runReport: chain.runReport,
@@ -48,6 +50,7 @@ function fullInput(chain: FictionalSimulationChain = buildFictionalReadyChain())
     burnerIsolationSpec: chain.burnerIsolationSpec,
     intentPlan: plan,
     simulationResult: result,
+    routeResolution: route,
     operatorLabel: "fictional-operator",
   });
   const readiness = buildPhase6SimulationReadinessReportV1({
@@ -79,6 +82,7 @@ function fullInput(chain: FictionalSimulationChain = buildFictionalReadyChain())
     burnerIsolationSpec: chain.burnerIsolationSpec,
     intentPlan: plan,
     simulationResult: result,
+    routeResolution: route,
     auditReport: audit,
     readinessReport: readiness,
     operatorLabel: "fictional-operator",
@@ -94,7 +98,7 @@ describe("buildPhase6SimulationHandoffPackV1 — complete chain", () => {
   it("hands off a complete chain with verbatim summaries and the green readiness verdict", () => {
     const pack = buildPhase6SimulationHandoffPackV1(fullInput());
     expect(pack.complete).toBe(true);
-    expect(pack.validCount).toBe(11);
+    expect(pack.validCount).toBe(12);
     expect(pack.missingRoles).toEqual([]);
     expect(pack.invalidRoles).toEqual([]);
     expect(pack.artifacts.map((a) => a.role)).toEqual([...PHASE6_HANDOFF_ROLES]);
@@ -178,9 +182,86 @@ describe("buildPhase6SimulationHandoffPackV1 — classification, never invention
   it("an empty input produces an all-missing, honest pack (no throw)", () => {
     const pack = buildPhase6SimulationHandoffPackV1({});
     expect(pack.complete).toBe(false);
-    expect(pack.missingCount).toBe(11);
+    expect(pack.missingCount).toBe(12);
     expect(pack.chainBlockingCodes).toEqual([]);
     expect(pack.simulationReadyPerReadiness).toBeNull();
+  });
+});
+
+describe("buildPhase6SimulationHandoffPackV1 — Sprint 87 route-resolution role", () => {
+  it("hands off the route artifact with a verbatim structured summary (honest all-UNAVAILABLE)", () => {
+    const pack = buildPhase6SimulationHandoffPackV1(fullInput());
+    const state = pack.artifacts.find((a) => a.role === "route-resolution")!;
+    expect(state.present).toBe(true);
+    expect(state.valid).toBe(true);
+    expect(state.expectedSchemaVersion).toBe("simulation.route.resolution.v1");
+    expect(state.label).toBe("fictional-route");
+    expect(state.summary).toEqual({
+      resolutionStatus: "unavailable",
+      blocked: false,
+      entryCount: 2,
+      unavailableEntryCount: 2,
+      liveStateCaveat: false,
+      routeResolverAttempted: false,
+    });
+  });
+
+  it("classifies a missing route (and stays a valid, honest pack)", () => {
+    const input = fullInput();
+    delete (input as Record<string, unknown>).routeResolution;
+    const pack = buildPhase6SimulationHandoffPackV1(input);
+    expect(pack.complete).toBe(false);
+    expect(pack.missingRoles).toEqual(["route-resolution"]);
+    const state = pack.artifacts.find((a) => a.role === "route-resolution")!;
+    expect(state.present).toBe(false);
+    expect(state.valid).toBeNull();
+    expect(state.summary).toBeNull();
+    expect(() => validatePhase6SimulationHandoffPackV1(clone(pack))).not.toThrow();
+  });
+
+  it("classifies an invalid route (flipped lock / fake 'resolved' claim) with its redacted error", () => {
+    const input = fullInput();
+    input.routeResolution = { ...(input.routeResolution as Record<string, unknown>), neverSigns: false };
+    const pack = buildPhase6SimulationHandoffPackV1(input);
+    expect(pack.invalidRoles).toEqual(["route-resolution"]);
+    const state = pack.artifacts.find((a) => a.role === "route-resolution")!;
+    expect(state.valid).toBe(false);
+    expect(state.error).toBeTruthy();
+    expect(state.summary).toBeNull();
+  });
+
+  it("a BLOCKED route's blocking codes are carried verbatim into the chain conditions", () => {
+    const input = fullInput();
+    input.routeResolution = buildSimulationRouteResolutionV1({}); // no plan → blocked, honest
+    const pack = buildPhase6SimulationHandoffPackV1(input);
+    expect(pack.chainBlockingCodes).toContain("simulation-route-resolution-missing-plan");
+    expect(pack.hasBlockingConditions).toBe(true);
+  });
+
+  it("refuses stripped blocking codes while the route summary alone signals a blocked route", () => {
+    // A pack carrying ONLY a blocked route: its summary (blocked=true) is the single blocking
+    // signal, so the summary-derived lower bound must refuse a stripped trail by itself.
+    const pack = clone(buildPhase6SimulationHandoffPackV1({ routeResolution: buildSimulationRouteResolutionV1({}) }));
+    expect(pack.chainBlockingCodes.length).toBeGreaterThan(0);
+    (pack as { chainBlockingCodes: string[] }).chainBlockingCodes = [];
+    (pack as { hasBlockingConditions: boolean }).hasBlockingConditions = false;
+    expect(() => validatePhase6SimulationHandoffPackV1(pack)).toThrow(/cannot be empty while an embedded valid artifact summary/);
+  });
+
+  it("a stale pre-S87 eleven-role handoff pack re-validates as INVALID (intended fail-closed bump)", () => {
+    const pack = clone(buildPhase6SimulationHandoffPackV1(fullInput()));
+    const stale = {
+      ...pack,
+      artifacts: pack.artifacts.filter((a) => a.role !== "route-resolution"),
+    };
+    expect(stale.artifacts).toHaveLength(11); // exactly the pre-S87 shape
+    expect(() => validatePhase6SimulationHandoffPackV1(stale)).toThrow(/must list all 12 handoff roles/);
+  });
+
+  it("the formatter renders the route state and its UNAVAILABLE status without greenwashing", () => {
+    const text = formatPhase6SimulationHandoffPackV1(buildPhase6SimulationHandoffPackV1(fullInput()));
+    expect(text).toContain("- route-resolution: present, valid");
+    expect(text).toContain("resolutionStatus=unavailable");
   });
 });
 
@@ -276,7 +357,7 @@ describe("handoff pack — determinism and formatting", () => {
     delete (input as Record<string, unknown>).runReport;
     const text = formatPhase6SimulationHandoffPackV1(buildPhase6SimulationHandoffPackV1(input));
     expect(text).toContain("MISSING (classified, not invented)");
-    expect(text).toContain("10/11 artifacts strictly valid");
+    expect(text).toContain("11/12 artifacts strictly valid");
   });
 
   it("throws the module error on malformed input shape only", () => {

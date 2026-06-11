@@ -881,6 +881,17 @@ remaining safe Phase 6 gaps:
   e2e chain now runs plan → result → route → audit → readiness → diffs → handoff. Declared
   route-resolution evidence claims the ARTIFACT layer is tested — a resolver still does not
   exist, deliberately.
+- ✅ **(S87) Route artifact audited and handed off** — `route-resolution` is now a first-class
+  chain role: TENTH audited role in `phase6.audit.report.v1` (S85 validator in place; missing =
+  warning, invalid/tampered = blocking, a blocked route's reasons surface verbatim as chain
+  conditions, and the route's `sourcePlanRef` is cross-checked against the audited plan — a route
+  built from a different plan is a blocking mismatch) and TWELFTH handed-off role in
+  `phase6.simulation.handoff.pack.v1` (verbatim structured summary; blocked-route codes carried
+  into the pack's blocking conditions; the summary-derived blocking lower bound now includes the
+  route). `--route <path>` on `paper:simulation:audit` / `paper:simulation:handoff` (pinned in
+  the CLI reference validator). Pre-S87 nine-role audits and eleven-role packs re-validate as
+  INVALID — conscious fail-closed bumps, same shape as S80/S86. Still no resolver, no dry-run
+  engine, no Phase 7: the audited/handed-off route is the honest all-UNAVAILABLE record.
 
 **Still honestly missing from Phase 6 (future, in order):**
 

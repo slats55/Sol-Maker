@@ -1,7 +1,51 @@
-# Phase 6 Continuation Pack (continuation run 2026-06-10 #2, Sprints 73–82; addenda: S85, S86)
+# Phase 6 Continuation Pack (continuation run 2026-06-10 #2, Sprints 73–82; addenda: S85, S86, S87)
 
 The precise hand-off for the next session. Everything below is verifiable from the repo —
 no claim here rests on memory.
+
+## Addendum — Sprint 87 (route artifact audited and handed off; 2026-06-10) — COMPLETED
+
+S87 executed exactly the slice S86 named as "next slice (3)": the route-resolution artifact is
+now a first-class AUDITED and HANDED-OFF role. No capability was added; the route remains a
+contract/provenance boundary, the real resolver does not exist, the real dry-run remains
+unauthorized and unbuilt, and Phase 7 remains unauthorized.
+
+- **Audit role bump (9 → 10):** `route-resolution` joined `PHASE6_AUDIT_ROLES`
+  (`phase6.audit.report.v1`). The supplied artifact is validated by the S85 validator (which
+  recomputes every mirror — never trusted), a missing route is a WARNING (incomplete chain,
+  honest), an invalid/tampered/wrong-schema route is BLOCKING, and a blocked route's blocking
+  codes surface VERBATIM as chain conditions. A pre-S87 nine-role audit artifact re-validates as
+  INVALID — the intended fail-closed bump, same shape as S80/S86.
+- **Structured plan↔route cross-checks:** when both the plan and the route are strictly valid,
+  the route's `sourcePlanRef` must agree with the audited plan on planLabel / operatorLabel /
+  entryCount / blocked (a disagreement is a blocking `audit-source-ref-mismatch`); a route that
+  records its plan as missing/invalid beside a strictly-valid audited plan is likewise a
+  mismatch (it was not built from this chain's plan). Blocked-plan consistency is covered by the
+  combination: the S85 validator already refuses a green route over a blocked ref, and the
+  cross-check refuses a ref that disagrees with the audited plan.
+- **Handoff role bump (11 → 12):** `route-resolution` joined `PHASE6_HANDOFF_ROLES`
+  (`phase6.simulation.handoff.pack.v1`) with a verbatim structured summary (resolutionStatus,
+  blocked, entryCount, unavailableEntryCount, liveStateCaveat, routeResolverAttempted); a
+  blocked route's codes are carried verbatim into `chainBlockingCodes`, and the validator's
+  recomputable lower bound now also refuses a stripped blocking trail while the route summary
+  alone signals a blocked route. A pre-S87 eleven-role pack re-validates as INVALID.
+- **CLI:** `--route <path>` on `paper:simulation:audit` and `paper:simulation:handoff` (pinned
+  in the CLI reference validator, commands AND flags). A named-but-unreadable route file refuses
+  outright; an omitted flag classifies the role per the audit/handoff missing conventions. No
+  command calls a resolver, constructs a transaction, or touches RPC.
+- **E2E chain:** plan → result → validate → route → audit (`--route`) → readiness (11 evidence
+  areas) → diffs → handoff (`--route`), byte-deterministic across two full runs. The readiness
+  `CHAIN_COMPLETE` check detail no longer hardcodes "9" (it follows `PHASE6_AUDIT_ROLES.length`),
+  so a chain audited without the route is honestly NOT ready until re-audited with it.
+
+Honest boundary note (unchanged from S86): the route artifact in the audit/handoff is still the
+honest all-UNAVAILABLE record — `paper:simulation:result` still does NOT consume route.json; that
+wiring belongs to the future, separately-authorized dry-run boundary.
+
+Updated next slices: (1) operator dress rehearsal over real candidate intake (runbook S86-prep
+section; now exercises `--route` through audit/handoff); (2) handoff-pack diff
+(`phase6.simulation.handoff.pack.diff.v1`) if session-over-session comparison proves useful;
+(3) Phase 7 boundary spec doc (docs ONLY, fresh authorization required).
 
 ## Addendum — Sprint 86 (route-resolution readiness evidence + operator CLI; 2026-06-10) — COMPLETED
 

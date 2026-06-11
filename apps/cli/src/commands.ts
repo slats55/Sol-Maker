@@ -6383,10 +6383,11 @@ export function paperSimulationValidateReport(
 }
 
 // ---------------------------------------------------------------------------
-// Sprint 67 — paper:simulation:audit
-//   The Phase 6 CHAIN AUDIT (`phase6.audit.report.v1`) over the nine v2/
-//   simulation artifacts. Reports; never authorizes. Reads only the named
-//   files; writes nothing unless --out.
+// Sprint 67 (+87) — paper:simulation:audit
+//   The Phase 6 CHAIN AUDIT (`phase6.audit.report.v1`) over the ten v2/
+//   simulation artifacts (Sprint 87 added the route-resolution artifact).
+//   Reports; never authorizes. Reads only the named files; writes nothing
+//   unless --out.
 // ---------------------------------------------------------------------------
 
 export interface PaperSimulationAuditCommandOptions {
@@ -6399,6 +6400,8 @@ export interface PaperSimulationAuditCommandOptions {
   burnerIsolationPath?: string;
   intentPlanPath?: string;
   simulationResultPath?: string;
+  /** Path to the `simulation.route.resolution.v1` artifact (Sprint 87). */
+  routePath?: string;
   operatorLabel?: string;
   json?: boolean;
   outPath?: string;
@@ -6414,7 +6417,8 @@ export interface PaperSimulationAuditCommandOptions {
 /**
  * `soulmaker paper:simulation:audit` — build a `phase6.audit.report.v1` over the named chain
  * artifact files (decision v2, run report v2, safety gates v2, prereqs v2, the three specs, the
- * simulation intent plan v2, and the simulation result v1). Each artifact is strictly validated
+ * simulation intent plan v2, the simulation result v1, and the route-resolution artifact v1).
+ * Each artifact is strictly validated
  * in place; missing artifacts are WARNINGS (an incomplete chain is reported, never assumed);
  * invalid artifacts, v1 stand-ins, and structured cross-reference mismatches FAIL the audit; the
  * chain's own blocking conditions are surfaced verbatim and never waived. A named-but-unreadable
@@ -6444,6 +6448,7 @@ export function paperSimulationAuditReport(
     ["burner-isolation", read(opts.burnerIsolationPath, "burner isolation spec")],
     ["intent-plan", read(opts.intentPlanPath, "simulation intent plan")],
     ["simulation-result", read(opts.simulationResultPath, "simulation result")],
+    ["route", read(opts.routePath, "route-resolution artifact")],
   ] as const;
   for (const [label, r] of sources) {
     if (r.error) return { text: redactString(`Refusing: ${label}: ${r.error}`), exitCode: 1 };
@@ -6461,6 +6466,7 @@ export function paperSimulationAuditReport(
       burnerIsolationSpec: sources[6][1].value,
       intentPlan: sources[7][1].value,
       simulationResult: sources[8][1].value,
+      routeResolution: sources[9][1].value,
       operatorLabel: opts.operatorLabel ?? null,
     });
   } catch (err) {
@@ -6590,12 +6596,13 @@ export function paperSimulationReadinessReport(
 }
 
 // ---------------------------------------------------------------------------
-// Sprint 75 — paper:simulation:handoff
+// Sprint 75 (+87) — paper:simulation:handoff
 //   The simulation-aware session handoff (`phase6.simulation.handoff.pack.v1`):
-//   eleven chain artifacts strictly validated in place and summarized from
-//   structured fields; missing artifacts CLASSIFIED, never invented. Reads
-//   only the named files; writes nothing unless --out; never signs, never
-//   sends; phase7LiveTradingReady is a literal false.
+//   twelve chain artifacts (Sprint 87 added the route-resolution artifact)
+//   strictly validated in place and summarized from structured fields;
+//   missing artifacts CLASSIFIED, never invented. Reads only the named files;
+//   writes nothing unless --out; never signs, never sends;
+//   phase7LiveTradingReady is a literal false.
 // ---------------------------------------------------------------------------
 
 export interface PaperSimulationHandoffCommandOptions {
@@ -6608,6 +6615,8 @@ export interface PaperSimulationHandoffCommandOptions {
   burnerIsolationPath?: string;
   intentPlanPath?: string;
   simulationResultPath?: string;
+  /** Path to the `simulation.route.resolution.v1` artifact (Sprint 87). */
+  routePath?: string;
   auditPath?: string;
   readinessPath?: string;
   operatorLabel?: string;
@@ -6625,8 +6634,9 @@ export interface PaperSimulationHandoffCommandOptions {
 
 /**
  * `soulmaker paper:simulation:handoff` — build a `phase6.simulation.handoff.pack.v1` from the
- * named chain artifact files (the nine audited roles plus the chain audit and the readiness
- * report). Each artifact is strictly validated in place and summarized from VERBATIM structured
+ * named chain artifact files (the ten audited roles — including the Sprint 87 route-resolution
+ * artifact — plus the chain audit and the readiness report). Each artifact is strictly validated
+ * in place and summarized from VERBATIM structured
  * fields; a missing artifact is CLASSIFIED as missing (never invented); a named-but-unreadable
  * file refuses outright. The chain's blocking conditions and the readiness verdict are carried
  * verbatim, and `phase7LiveTradingReady` is a literal false. Reads only the named files, writes
@@ -6655,6 +6665,7 @@ export function paperSimulationHandoffReport(
     ["burner-isolation", read(opts.burnerIsolationPath, "burner isolation spec")],
     ["intent-plan", read(opts.intentPlanPath, "simulation intent plan")],
     ["simulation-result", read(opts.simulationResultPath, "simulation result")],
+    ["route", read(opts.routePath, "route-resolution artifact")],
     ["audit", read(opts.auditPath, "phase6 audit report")],
     ["readiness", read(opts.readinessPath, "phase6 readiness report")],
   ] as const;
@@ -6674,8 +6685,9 @@ export function paperSimulationHandoffReport(
       burnerIsolationSpec: sources[6][1].value,
       intentPlan: sources[7][1].value,
       simulationResult: sources[8][1].value,
-      auditReport: sources[9][1].value,
-      readinessReport: sources[10][1].value,
+      routeResolution: sources[9][1].value,
+      auditReport: sources[10][1].value,
+      readinessReport: sources[11][1].value,
       operatorLabel: opts.operatorLabel ?? null,
       packLabel: opts.packLabel ?? null,
     });
