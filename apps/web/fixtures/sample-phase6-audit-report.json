@@ -1,0 +1,152 @@
+{
+  "schemaVersion": "phase6.audit.report.v1",
+  "banner": "PHASE 6 CHAIN AUDIT V1 (REPORTS THE CHAIN — NEVER AUTHORIZES ANYTHING)",
+  "generatedBy": "@soulmaker/simulation",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "neverAuthorizesLiveTrading": true,
+  "neverSigns": true,
+  "neverSends": true,
+  "dryRunOnly": true,
+  "disclaimers": [
+    "PHASE 6 CHAIN AUDIT — each chain artifact is strictly validated in place and the chain's STRUCTURED cross-references are checked; the audit reports, it never waives, re-judges, or authorizes.",
+    "SIMULATION ONLY — a deterministic, read-only, dry-run-only artifact over validated PAPER inputs; nothing here is, or can become, a live action.",
+    "It can NEVER authorize live trading: neverAuthorizesLiveTrading is literally true and the validator refuses anything else.",
+    "It NEVER signs and NEVER sends: this package holds no wallet, no key material, no signing surface, and no transaction-submission surface.",
+    "Where a real on-chain dry-run is impossible without transaction material it is reported as UNAVAILABLE with an honest reason code — never faked.",
+    "Phase 7 (live/burner trading) is NOT started, NOT authorized, and cannot be authorized from here.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim."
+  ],
+  "operatorLabel": "sample-fictional-operator",
+  "artifacts": [
+    {
+      "role": "decision",
+      "expectedSchemaVersion": "sniper.paper.decision.report.v2",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "sniper.paper.decision.report.v2",
+      "label": "fictional-simulation-fixture",
+      "error": null
+    },
+    {
+      "role": "run-report",
+      "expectedSchemaVersion": "sniper.run.report.v2",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "sniper.run.report.v2",
+      "label": "fictional-operator",
+      "error": null
+    },
+    {
+      "role": "safety-gates",
+      "expectedSchemaVersion": "sniper.safety.gates.report.v2",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "sniper.safety.gates.report.v2",
+      "label": "fictional-operator",
+      "error": null
+    },
+    {
+      "role": "prereqs",
+      "expectedSchemaVersion": "phase6.prerequisite.report.v2",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "phase6.prerequisite.report.v2",
+      "label": "fictional-operator",
+      "error": null
+    },
+    {
+      "role": "kill-switch-spec",
+      "expectedSchemaVersion": "sniper.kill_switch.spec.v1",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "sniper.kill_switch.spec.v1",
+      "label": "fictional-operator",
+      "error": null
+    },
+    {
+      "role": "secrets-policy",
+      "expectedSchemaVersion": "sniper.secrets.policy.v1",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "sniper.secrets.policy.v1",
+      "label": "fictional-operator",
+      "error": null
+    },
+    {
+      "role": "burner-isolation-spec",
+      "expectedSchemaVersion": "sniper.burner.isolation.spec.v1",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "sniper.burner.isolation.spec.v1",
+      "label": "fictional-operator",
+      "error": null
+    },
+    {
+      "role": "intent-plan",
+      "expectedSchemaVersion": "simulation.intent.plan.v2",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "simulation.intent.plan.v2",
+      "label": "sample-fictional-plan",
+      "error": null
+    },
+    {
+      "role": "simulation-result",
+      "expectedSchemaVersion": "simulation.result.v1",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "simulation.result.v1",
+      "label": "sample-fictional-plan",
+      "error": null
+    },
+    {
+      "role": "route-resolution",
+      "expectedSchemaVersion": "simulation.route.resolution.v1",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "simulation.route.resolution.v1",
+      "label": "sample-fictional-route",
+      "error": null
+    }
+  ],
+  "findings": [
+    {
+      "code": "audit-chain-complete",
+      "roles": [
+        "decision",
+        "run-report",
+        "safety-gates",
+        "prereqs",
+        "kill-switch-spec",
+        "secrets-policy",
+        "burner-isolation-spec",
+        "intent-plan",
+        "simulation-result",
+        "route-resolution"
+      ],
+      "detail": "every audited chain artifact is present and strictly valid"
+    }
+  ],
+  "auditPassed": true,
+  "chainComplete": true,
+  "chainConditionCodes": [
+    "simulation-blocked-prereqs-not-ready"
+  ],
+  "presentCount": 10,
+  "validCount": 10,
+  "missingCount": 0,
+  "invalidCount": 0,
+  "blockingFindingCount": 0,
+  "notes": [
+    "10/10 artifacts present and valid; 0 missing; 0 invalid; 0 blocking finding(s); auditPassed=true.",
+    "the chain carries 1 blocking condition(s) of its own — surfaced verbatim, never waived or re-judged here",
+    "This audit REPORTS the chain. Passing it is never authorization for anything — Phase 7 remains not started and unauthorized."
+  ]
+}

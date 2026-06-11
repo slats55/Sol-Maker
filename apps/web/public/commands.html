@@ -514,6 +514,163 @@
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article>
         </div></div>
+  </section><section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Sniper (paper-only)</h2>
+
+            </div>
+
+          </div>
+    <div class="sm-section__body"><div class="sm-cmdgrid">
+          <article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:sniper:candidates:validate</code>
+    <p class="sm-cmd__summary">Validate an operator-authored local candidate list (paper-only intake; no scraper, no fetch).</p>
+
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:sniper:preflight</code>
+    <p class="sm-cmd__summary">Summarize local token:inspect / token:risk output per candidate (pass / warn / fail / unknown).</p>
+
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:sniper:decide</code>
+    <p class="sm-cmd__summary">Paper-only decisions per candidate (skip / watch / paper-enter / paper-reject / unknown). Use --schema-version v2 for the reason-coded v2 artifact. Never an order.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Paper-only sniper decisions per candidate (skip/watch/paper-enter/paper-reject/unknown) with machine-readable reason codes and policy visibility. A paper-enter is a SIMULATED classification, never an order.">
+    <code>sniper.paper.decision.report.v2</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:sniper:report</code>
+    <p class="sm-cmd__summary">Bundle a run&#39;s already-built artifacts into one operator summary (verbatim; re-derives nothing). Use --schema-version v2 for rollups + operator-blocking reasons.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Operator run summary bundling already-built local artifacts verbatim: decisions, preflight statuses, reason-code rollups, policy visibility, and operator-blocking reasons. Built with --schema-version v2.">
+    <code>sniper.run.report.v2</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:sniper:diff:report</code>
+    <p class="sm-cmd__summary">Structured comparison of two run reports (decision/preflight transitions, code deltas). Use --schema-version v2 for the v2 layers. Reads two files, writes nothing.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Structured comparison of two v2 run reports: decision/preflight transitions, operator-blocking reasons added/removed, and reason-code count deltas. Built with --schema-version v2.">
+    <code>sniper.run.report.diff.v2</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:sniper:safety:gates</code>
+    <p class="sm-cmd__summary">Fail-closed go/no-go gates over a session&#39;s artifacts — exits non-zero when NOT ready.</p>
+
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:phase6:prereqs</code>
+    <p class="sm-cmd__summary">Track Phase 6 prerequisites from a session pack (reports readiness; NEVER authorizes anything).</p>
+
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article>
+        </div></div>
+  </section><section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Phase 6 simulation</h2>
+
+            </div>
+
+          </div>
+    <div class="sm-section__body"><div class="sm-cmdgrid">
+          <article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:simulation:intent:plan</code>
+    <p class="sm-cmd__summary">Fail-closed SIMULATION PREVIEW over the validated v2 chain (simulation.intent.plan.v2). Unsupplied values stay UNRESOLVED; anything missing/not-ready BLOCKS the plan.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Fail-closed SIMULATION PREVIEW over the strictly-validated v2 chain. Destination/amount/fee previews stay UNRESOLVED (never invented); anything missing or not ready produces a BLOCKED plan.">
+    <code>simulation.intent.plan.v2</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:simulation:result</code>
+    <p class="sm-cmd__summary">One honest simulation pass over a validated plan (simulation.result.v1): unresolved entries SKIPPED, dry-run honestly UNAVAILABLE (no engine exists — nothing faked).</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="The honest record of one simulation pass over a validated plan: unresolved entries are SKIPPED and the dry-run reports UNAVAILABLE (no real dry-run engine exists — nothing is faked).">
+    <code>simulation.result.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:simulation:route</code>
+    <p class="sm-cmd__summary">Route-resolution PROVENANCE over a validated plan (simulation.route.resolution.v1). No resolver exists, so every entry is honestly UNAVAILABLE — never invented.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Per-entry route/destination/fee PROVENANCE over a validated plan. No route resolver exists inside the boundary, so every entry is honestly UNAVAILABLE under the fixed unavailable-no-route-resolver id.">
+    <code>simulation.route.resolution.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:simulation:validate</code>
+    <p class="sm-cmd__summary">Strictly validate simulation artifacts with the production validators (literal safety locks enforced).</p>
+
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:simulation:audit</code>
+    <p class="sm-cmd__summary">Chain audit over the ten Phase 6 artifacts incl. the route-resolution role via --route (phase6.audit.report.v1). Reports — never authorizes.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Chain audit over the ten Phase 6 artifacts (incl. the S87 route-resolution role): each strictly validated in place, structured cross-references checked, chain conditions surfaced verbatim. Reports — never authorizes.">
+    <code>phase6.audit.report.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:simulation:readiness</code>
+    <p class="sm-cmd__summary">Structural simulation-stack readiness verdict with eleven verbatim evidence declarations (phase6.simulation.readiness.report.v1). phase7LiveTradingReady is a literal false.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Structural &#39;is the Phase 6 simulation stack green?&#39; verdict: machine-verified artifact checks plus eleven verbatim evidence declarations (incl. route-resolution-tests). phase7LiveTradingReady is a literal false, always.">
+    <code>phase6.simulation.readiness.report.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:simulation:diff:plan</code>
+    <p class="sm-cmd__summary">Structured-field-only comparison of two simulation intent plans (simulation.intent.plan.diff.v2).</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Structured-field-only comparison of two simulation intent plans: blocked transitions, reason-code movements, source-ref changes, and per-entry preview changes.">
+    <code>simulation.intent.plan.diff.v2</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:simulation:diff:result</code>
+    <p class="sm-cmd__summary">Structured-field-only comparison of two simulation results (simulation.result.diff.v1).</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Structured-field-only comparison of two simulation results: status/blocked transitions, code movements, adapter changes, and per-entry outcome changes.">
+    <code>simulation.result.diff.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:simulation:handoff</code>
+    <p class="sm-cmd__summary">Session handoff over the twelve Phase 6 chain artifacts incl. the route-resolution role via --route (phase6.simulation.handoff.pack.v1). Missing artifacts classified, never invented.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="Session handoff over the twelve Phase 6 chain artifacts (incl. the S87 route-resolution role), each strictly validated and summarized from verbatim structured fields; missing artifacts classified, never invented.">
+    <code>phase6.simulation.handoff.pack.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article>
+        </div></div>
   </section>
 
     <section class="sm-section">

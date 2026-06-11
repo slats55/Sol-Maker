@@ -1,0 +1,193 @@
+{
+  "schemaVersion": "sniper.run.report.diff.v2",
+  "banner": "SIMULATED PAPER-ONLY SNIPER RUN REPORT DIFF V2",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "disclaimers": [
+    "SIMULATED PAPER-ONLY SNIPER RUN REPORT DIFF V2 — the v1 diff core (computed VERBATIM by the unchanged v1 differ) plus structured comparisons of the v2 layers: policy visibility, preflight-input coverage, unresolved unknowns, operator-blocking reasons, and reason-code rollups.",
+    "It compares ALREADY-BUILT local artifacts and re-derives nothing: every transition is computed from the two reports' VERBATIM structured fields (operator-blocking reasons are compared as verbatim strings, never parsed).",
+    "A `paper-enter` transition is a change between two SIMULATED, paper-only classifications — NOT a buy/sell order, NOT a transaction, and NOT live-trading readiness.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim.",
+    "No wallet, key, signing, sending, or transaction planning is involved anywhere in this diff."
+  ],
+  "base": {
+    "operatorLabel": "fictional-operator",
+    "sourceLabel": "fictional-simulation-fixture",
+    "candidateCount": 2,
+    "decisionSchemaVersion": "sniper.paper.decision.report.v2",
+    "upgradedFromV1": false,
+    "policySummary": {
+      "appliedPerDecision": true,
+      "policyLabel": "fictional-simulation-policy",
+      "policySchemaVersion": "sniper.policy.config.v2",
+      "suppliedPolicySchemaVersion": "sniper.policy.config.v2",
+      "policyMode": "balanced-paper",
+      "riskLimits": {
+        "disallowedReasonCodes": [],
+        "disallowedPreflightStatuses": [],
+        "maxWarningsPerCandidate": null,
+        "requireRiskPresent": true,
+        "requireInspectionPresent": false,
+        "requirePreflightInputArtifact": false
+      }
+    },
+    "preflightInputCoverage": null,
+    "missingRequiredPreflightInput": false,
+    "unresolvedUnknownIds": [],
+    "operatorBlockingReasons": [],
+    "reasonCodeCounts": {
+      "preflight-warning": 2,
+      "watch-candidate": 2
+    },
+    "blockingReasonCodeCounts": {}
+  },
+  "next": {
+    "operatorLabel": "fictional-operator",
+    "sourceLabel": "fictional-simulation-fixture",
+    "candidateCount": 2,
+    "decisionSchemaVersion": "sniper.paper.decision.report.v2",
+    "upgradedFromV1": false,
+    "policySummary": {
+      "appliedPerDecision": true,
+      "policyLabel": "fictional-simulation-policy",
+      "policySchemaVersion": "sniper.policy.config.v2",
+      "suppliedPolicySchemaVersion": "sniper.policy.config.v2",
+      "policyMode": "balanced-paper",
+      "riskLimits": {
+        "disallowedReasonCodes": [],
+        "disallowedPreflightStatuses": [],
+        "maxWarningsPerCandidate": null,
+        "requireRiskPresent": true,
+        "requireInspectionPresent": false,
+        "requirePreflightInputArtifact": false
+      }
+    },
+    "preflightInputCoverage": null,
+    "missingRequiredPreflightInput": false,
+    "unresolvedUnknownIds": [],
+    "operatorBlockingReasons": [
+      "2 SIMULATED paper-enter(s) need operator review before any further step: fic-sim-a, fic-sim-b."
+    ],
+    "reasonCodeCounts": {
+      "paper-enter-candidate": 2,
+      "policy-allowed-paper-enter": 2
+    },
+    "blockingReasonCodeCounts": {}
+  },
+  "candidatesAdded": [],
+  "candidatesRemoved": [],
+  "commonCount": 2,
+  "decisionChanges": [
+    {
+      "candidateId": "fic-sim-a",
+      "from": "watch",
+      "to": "paper-enter"
+    },
+    {
+      "candidateId": "fic-sim-b",
+      "from": "watch",
+      "to": "paper-enter"
+    }
+  ],
+  "preflightStatusChanges": [
+    {
+      "candidateId": "fic-sim-a",
+      "from": "warn",
+      "to": "pass"
+    },
+    {
+      "candidateId": "fic-sim-b",
+      "from": "warn",
+      "to": "pass"
+    }
+  ],
+  "newlyInvalidIds": [],
+  "newlyPreflightFailedIds": [],
+  "newlyRiskBlockedIds": [],
+  "newlyPaperEnterIds": [
+    "fic-sim-a",
+    "fic-sim-b"
+  ],
+  "noLongerPaperEnterIds": [],
+  "newlyUnknownIds": [],
+  "noLongerUnknownIds": [],
+  "recoveryIds": [],
+  "deltas": {
+    "candidateCount": 0,
+    "paperEnter": 2,
+    "paperReject": 0,
+    "skip": 0,
+    "watch": -2,
+    "riskBlocked": 0,
+    "preflightFailed": 0,
+    "unknown": 0
+  },
+  "hasChange": true,
+  "hasNewInvalid": false,
+  "hasNewPreflightFailure": false,
+  "hasNewRiskBlock": false,
+  "hasNewPaperEnter": true,
+  "hasNewUnknown": false,
+  "hasRecovery": false,
+  "notes": [
+    "0 added, 0 removed, 2 in both; 2 decision change(s), 2 preflight-status change(s).",
+    "Every transition is computed VERBATIM from the two run reports — this diff re-derives nothing and is not a trade signal.",
+    "V2 layers: CHANGED (policy 0 field(s), coverage 0 field(s), 1 blocking reason(s) added, 2 candidate code trail(s) moved)."
+  ],
+  "decisionSchemaVersionChanged": false,
+  "upgradedFromV1Changed": false,
+  "policySummaryChangedFields": [],
+  "newlyPolicyMismatch": false,
+  "noLongerPolicyMismatch": false,
+  "preflightCoveragePresenceChanged": false,
+  "preflightCoverageChangedFields": [],
+  "newlyMissingRequiredPreflightInput": false,
+  "noLongerMissingRequiredPreflightInput": false,
+  "newlyUnresolvedUnknownIds": [],
+  "noLongerUnresolvedUnknownIds": [],
+  "operatorBlockingReasonsAdded": [
+    "2 SIMULATED paper-enter(s) need operator review before any further step: fic-sim-a, fic-sim-b."
+  ],
+  "operatorBlockingReasonsRemoved": [],
+  "reasonCodeCountDeltas": {
+    "paper-enter-candidate": 2,
+    "policy-allowed-paper-enter": 2,
+    "preflight-warning": -2,
+    "watch-candidate": -2
+  },
+  "blockingCodeCountDeltas": {},
+  "rollupPresenceChanged": false,
+  "candidateCodeChanges": [
+    {
+      "candidateId": "fic-sim-a",
+      "codesAdded": [
+        "policy-allowed-paper-enter",
+        "paper-enter-candidate"
+      ],
+      "codesRemoved": [
+        "preflight-warning",
+        "watch-candidate"
+      ]
+    },
+    {
+      "candidateId": "fic-sim-b",
+      "codesAdded": [
+        "policy-allowed-paper-enter",
+        "paper-enter-candidate"
+      ],
+      "codesRemoved": [
+        "preflight-warning",
+        "watch-candidate"
+      ]
+    }
+  ],
+  "hasV2LayerChange": true,
+  "hasAnyChange": true,
+  "hasNewOperatorBlocking": true
+}

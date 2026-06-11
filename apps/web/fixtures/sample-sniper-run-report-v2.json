@@ -1,0 +1,156 @@
+{
+  "schemaVersion": "sniper.run.report.v2",
+  "banner": "SIMULATED PAPER-ONLY SNIPER RUN REPORT V2",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "disclaimers": [
+    "SIMULATED PAPER-ONLY SNIPER RUN REPORT V2 — the v1 operator run summary plus reason-code rollups, policy visibility, preflight-input coverage, unresolved unknowns, and operator-blocking reasons.",
+    "It bundles ALREADY-BUILT local artifacts and re-derives nothing: statuses, decisions, reason codes, and policy facts are carried VERBATIM.",
+    "A `paper-enter` carried through here is a SIMULATED, paper-only classification — NOT a buy/sell order, NOT a transaction, and NOT live-trading readiness.",
+    "A missing artifact or an unresolved unknown is surfaced (operator-blocking reasons), never invented or papered over.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim.",
+    "No wallet, key, signing, sending, or transaction planning is involved anywhere in this report."
+  ],
+  "operatorLabel": "fictional-operator",
+  "sourceLabel": "fictional-simulation-fixture",
+  "candidateCount": 2,
+  "artifactsPresent": {
+    "candidates": true,
+    "preflight": true,
+    "decision": true,
+    "workflow": false
+  },
+  "preflightSummary": {
+    "candidateCount": 2,
+    "passCount": 2,
+    "warnCount": 0,
+    "failCount": 0,
+    "unknownCount": 0
+  },
+  "decisionSummary": {
+    "candidateCount": 2,
+    "skipCount": 0,
+    "watchCount": 0,
+    "paperEnterCount": 2,
+    "paperRejectCount": 0,
+    "unknownCount": 0
+  },
+  "workflowSummary": null,
+  "candidates": [
+    {
+      "candidateId": "fic-sim-a",
+      "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+      "mintValid": true,
+      "preflightStatus": "pass",
+      "decision": "paper-enter",
+      "riskBlocked": false,
+      "watchedMissingInfo": false,
+      "reasons": [
+        "decision · risk decision PASS_FOR_PAPER_EVALUATION",
+        "decision · preflight pass and all deterministic entry rules satisfied (SIMULATED paper entry only)"
+      ],
+      "blockingRiskFlags": [],
+      "reasonCodes": [
+        "policy-allowed-paper-enter",
+        "paper-enter-candidate"
+      ]
+    },
+    {
+      "candidateId": "fic-sim-b",
+      "mint": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+      "mintValid": true,
+      "preflightStatus": "pass",
+      "decision": "paper-enter",
+      "riskBlocked": false,
+      "watchedMissingInfo": false,
+      "reasons": [
+        "decision · risk decision PASS_FOR_PAPER_EVALUATION",
+        "decision · preflight pass and all deterministic entry rules satisfied (SIMULATED paper entry only)"
+      ],
+      "blockingRiskFlags": [],
+      "reasonCodes": [
+        "policy-allowed-paper-enter",
+        "paper-enter-candidate"
+      ]
+    }
+  ],
+  "paperEnterIds": [
+    "fic-sim-a",
+    "fic-sim-b"
+  ],
+  "paperRejectIds": [],
+  "skipIds": [],
+  "watchIds": [],
+  "decisionUnknownIds": [],
+  "preflightFailedIds": [],
+  "preflightUnknownIds": [],
+  "riskBlockedIds": [],
+  "watchedMissingInfoIds": [],
+  "invalidCandidateIds": [],
+  "hasInvalidCandidate": false,
+  "hasPreflightFailure": false,
+  "hasRiskBlock": false,
+  "hasPaperEnter": true,
+  "hasUnknown": false,
+  "hasMissingRecommendedArtifact": false,
+  "failReasons": [
+    "2 candidate(s) would paper-enter (SIMULATED only): fic-sim-a, fic-sim-b"
+  ],
+  "navigation": [
+    {
+      "label": "paper-enter (SIMULATED)",
+      "candidateIds": [
+        "fic-sim-a",
+        "fic-sim-b"
+      ]
+    }
+  ],
+  "warnings": [
+    "2 candidate(s) carried a SIMULATED paper-enter — this is not a buy order."
+  ],
+  "notes": [
+    "2 candidate(s); preflight supplied, decision supplied, workflow absent.",
+    "Every status and decision is carried VERBATIM from the supplied artifacts — this report re-derives nothing and is not a trade signal."
+  ],
+  "decisionSchemaVersion": "sniper.paper.decision.report.v2",
+  "reasonCodeRollup": {
+    "reasonCodeCounts": {
+      "paper-enter-candidate": 2,
+      "policy-allowed-paper-enter": 2
+    },
+    "categoryCounts": {
+      "decision": 2,
+      "policy": 2
+    },
+    "blockingReasonCodeCounts": {},
+    "reportReasonCodes": []
+  },
+  "policySummary": {
+    "appliedPerDecision": true,
+    "policyLabel": "fictional-simulation-policy",
+    "policySchemaVersion": "sniper.policy.config.v2",
+    "suppliedPolicySchemaVersion": "sniper.policy.config.v2",
+    "policyMode": "balanced-paper",
+    "riskLimits": {
+      "disallowedReasonCodes": [],
+      "disallowedPreflightStatuses": [],
+      "maxWarningsPerCandidate": null,
+      "requireRiskPresent": true,
+      "requireInspectionPresent": false,
+      "requirePreflightInputArtifact": false
+    }
+  },
+  "preflightInputCoverage": null,
+  "missingRequiredPreflightInput": false,
+  "unresolvedUnknownIds": [],
+  "operatorBlockingReasons": [
+    "2 SIMULATED paper-enter(s) need operator review before any further step: fic-sim-a, fic-sim-b."
+  ],
+  "upgradedFromV1": false
+}

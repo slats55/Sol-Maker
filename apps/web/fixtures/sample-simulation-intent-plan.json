@@ -1,0 +1,175 @@
+{
+  "schemaVersion": "simulation.intent.plan.v2",
+  "banner": "SIMULATION INTENT PLAN V2 (SIMULATION PREVIEW ONLY — DRY-RUN-ONLY, NEVER SIGNS, NEVER SENDS)",
+  "generatedBy": "@soulmaker/simulation",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "neverAuthorizesLiveTrading": true,
+  "neverSigns": true,
+  "neverSends": true,
+  "dryRunOnly": true,
+  "disclaimers": [
+    "SIMULATION INTENT PLAN V2 — a fail-closed PREVIEW over the strictly-validated v2 chain; every value the paper chain cannot supply is marked UNRESOLVED, never invented.",
+    "SIMULATION ONLY — a deterministic, read-only, dry-run-only artifact over validated PAPER inputs; nothing here is, or can become, a live action.",
+    "It can NEVER authorize live trading: neverAuthorizesLiveTrading is literally true and the validator refuses anything else.",
+    "It NEVER signs and NEVER sends: this package holds no wallet, no key material, no signing surface, and no transaction-submission surface.",
+    "Where a real on-chain dry-run is impossible without transaction material it is reported as UNAVAILABLE with an honest reason code — never faked.",
+    "Phase 7 (live/burner trading) is NOT started, NOT authorized, and cannot be authorized from here.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim."
+  ],
+  "operatorLabel": "sample-fictional-operator",
+  "planLabel": "sample-fictional-plan",
+  "sourceArtifactRefs": [
+    {
+      "role": "decision",
+      "expectedSchemaVersion": "sniper.paper.decision.report.v2",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "sniper.paper.decision.report.v2",
+      "label": "fictional-simulation-fixture"
+    },
+    {
+      "role": "safety-gates",
+      "expectedSchemaVersion": "sniper.safety.gates.report.v2",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "sniper.safety.gates.report.v2",
+      "label": "fictional-operator"
+    },
+    {
+      "role": "prereqs",
+      "expectedSchemaVersion": "phase6.prerequisite.report.v2",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "phase6.prerequisite.report.v2",
+      "label": "fictional-operator"
+    },
+    {
+      "role": "kill-switch-spec",
+      "expectedSchemaVersion": "sniper.kill_switch.spec.v1",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "sniper.kill_switch.spec.v1",
+      "label": "fictional-operator"
+    },
+    {
+      "role": "secrets-policy",
+      "expectedSchemaVersion": "sniper.secrets.policy.v1",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "sniper.secrets.policy.v1",
+      "label": "fictional-operator"
+    },
+    {
+      "role": "burner-isolation-spec",
+      "expectedSchemaVersion": "sniper.burner.isolation.spec.v1",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "sniper.burner.isolation.spec.v1",
+      "label": "fictional-operator"
+    }
+  ],
+  "decisionSummary": {
+    "sourceLabel": "fictional-simulation-fixture",
+    "decisionCount": 2,
+    "paperEnterCount": 2,
+    "hasPaperEnter": true
+  },
+  "readinessSummary": {
+    "gatesReady": true,
+    "gatesFailCount": 0,
+    "prereqsReady": false,
+    "prereqsNotMetCount": 1
+  },
+  "specAdoptionSummary": {
+    "killSwitchAdopted": true,
+    "secretsPolicyAdopted": true,
+    "burnerIsolationAdopted": true,
+    "stopSimulationDeclaredTripped": false
+  },
+  "paperEnterReviewAcknowledgmentApplied": true,
+  "blocked": false,
+  "blockingReasonCodes": [],
+  "warningReasonCodes": [
+    "simulation-operator-acknowledged-paper-enter-review",
+    "simulation-preview-unresolved-destination",
+    "simulation-preview-unresolved-amount",
+    "simulation-preview-unresolved-fee"
+  ],
+  "outcomeReasonCodes": [
+    "simulation-plan-ready"
+  ],
+  "entries": [
+    {
+      "candidateId": "fic-sim-a",
+      "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+      "intendedActionPreview": "simulated-entry-preview",
+      "previewStatus": "unresolved",
+      "destinationPreview": {
+        "status": "unresolved",
+        "label": null
+      },
+      "amountPreview": {
+        "status": "unresolved",
+        "label": null
+      },
+      "feePreview": {
+        "status": "unresolved",
+        "label": null
+      },
+      "unresolvedFields": [
+        "destination",
+        "amount",
+        "fee"
+      ],
+      "reasonCodes": [
+        "simulation-preview-unresolved-destination",
+        "simulation-preview-unresolved-amount",
+        "simulation-preview-unresolved-fee"
+      ],
+      "operatorText": "Preview of a SIMULATED entry for fic-sim-a: 3 field(s) unresolved (destination, amount, fee). Nothing is invented; nothing is executed."
+    },
+    {
+      "candidateId": "fic-sim-b",
+      "mint": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+      "intendedActionPreview": "simulated-entry-preview",
+      "previewStatus": "unresolved",
+      "destinationPreview": {
+        "status": "unresolved",
+        "label": null
+      },
+      "amountPreview": {
+        "status": "unresolved",
+        "label": null
+      },
+      "feePreview": {
+        "status": "unresolved",
+        "label": null
+      },
+      "unresolvedFields": [
+        "destination",
+        "amount",
+        "fee"
+      ],
+      "reasonCodes": [
+        "simulation-preview-unresolved-destination",
+        "simulation-preview-unresolved-amount",
+        "simulation-preview-unresolved-fee"
+      ],
+      "operatorText": "Preview of a SIMULATED entry for fic-sim-b: 3 field(s) unresolved (destination, amount, fee). Nothing is invented; nothing is executed."
+    }
+  ],
+  "entryCount": 2,
+  "unresolvedEntryCount": 2,
+  "notes": [
+    "2 preview entries (one per SIMULATED paper-enter); 2 carry unresolved fields.",
+    "Unresolved fields stay unresolved — the pipeline never invents a destination, amount, fee, pool, or route.",
+    "Ready for SIMULATION ONLY: this plan never authorizes live trading, never signs, never sends."
+  ]
+}
