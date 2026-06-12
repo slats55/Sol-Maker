@@ -2531,6 +2531,8 @@ program
   .option("--slippage-cap-bps <bps>", "explicit slippage cap in basis points (refused when missing)")
   .option("--risk-score-cap <n>", "explicit advisory risk score cap (refused when missing)")
   .option("--max-quote-age-ms <ms>", "explicit quote-age cap: a build whose fresh quote aged past it (slow provider) is refused; the envelope always carries quotedAt for downstream gates")
+  .option("--allowed-programs <path>", "OPTIONAL program allowlist (JSON array of base58 program ids): every statically-resolvable invoked program must be listed, and ALT-loaded program ids refuse honestly; absent = no program check")
+  .option("--report-out <path>", "write the txbuild.report.v1 attempt record here — on BOTH outcomes (a refused build is a first-class artifact with codes + next safe actions)")
   .option("--endpoint <url>", "override the provider base URL")
   .option("--allow-paper-read", "explicitly allow the network read while in PAPER mode")
   .option("--json", "emit the build result as stable JSON")
@@ -2552,6 +2554,8 @@ program
       slippageCapBps?: string;
       riskScoreCap?: string;
       maxQuoteAgeMs?: string;
+      allowedPrograms?: string;
+      reportOut?: string;
       endpoint?: string;
       allowPaperRead?: boolean;
       json?: boolean;
@@ -2575,6 +2579,8 @@ program
           slippageCapBps: opts.slippageCapBps,
           riskScoreCap: opts.riskScoreCap,
           maxQuoteAgeMs: opts.maxQuoteAgeMs,
+          allowedProgramsPath: opts.allowedPrograms,
+          reportOutPath: opts.reportOut,
           endpoint: opts.endpoint,
           allowPaperRead: Boolean(opts.allowPaperRead),
           json: Boolean(opts.json),

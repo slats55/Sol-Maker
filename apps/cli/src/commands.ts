@@ -125,8 +125,11 @@ import {
 } from "@soulmaker/txpreview";
 import {
   createJupiterSwapBuilder,
+  composeTxBuildReport,
   type SwapTransactionBuilder,
   type JupiterSwapBuilderOptions,
+  type BuildSwapRequest,
+  type TxBuildReport,
 } from "@soulmaker/txbuilder";
 import {
   resolveExecutionMode,
@@ -6361,6 +6364,10 @@ export interface ExecutionBuildCommandOptions {
   riskScoreCap?: string;
   /** Sprint 93: explicit quote-age cap in ms — a build whose fresh quote aged past it refuses. */
   maxQuoteAgeMs?: string;
+  /** S95: OPTIONAL program allowlist file (JSON array of base58 program ids). Absent = no check. */
+  allowedProgramsPath?: string;
+  /** S95: write the txbuild.report.v1 attempt record here — on BOTH outcomes (built AND refused). */
+  reportOutPath?: string;
   endpoint?: string;
   allowPaperRead?: boolean;
   json?: boolean;
@@ -6382,6 +6389,12 @@ export async function executionBuildReport(
   if (!opts.riskPath) return { text: "Refusing: --risk <token-risk.json> is required (run token:risk --json --out first; building blind is never allowed).", exitCode: 1 };
   if (opts.outPath) {
     const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+  }
+  if (opts.reportOutPath) {
+    const resolved = resolvePath(ctx, opts.reportOutPath);
     if (!opts.force && existsSync(resolved)) {
       return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
     }
@@ -6454,6 +6467,32 @@ export async function executionBuildReport(
   if (riskValue.mint !== opts.candidateMint) {
     return { text: "Refusing: the --risk report is for a DIFFERENT mint than --candidate-mint.", exitCode: 1 };
   }
+  // S95: the risk report's flag ids ride into the build request so Token-2022 BLOCKER
+  // extensions refuse with their own code. Defensive read — a flagless report stays valid.
+  const riskFlags: Array<{ id: string | null; severity: string | null }> = Array.isArray(riskValue.flags)
+    ? riskValue.flags
+        .filter(isPlainObject)
+        .slice(0, 64)
+        .map((f) => ({
+          id: typeof f.id === "string" ? f.id : null,
+          severity: typeof f.severity === "string" ? f.severity : null,
+        }))
+    : [];
+
+  // S95: OPTIONAL program allowlist file — a JSON array of base58 program ids. Absent = no check.
+  let allowedPrograms: string[] | null = null;
+  if (opts.allowedProgramsPath) {
+    let listValue: unknown;
+    try {
+      listValue = readJsonValue(ctx, opts.allowedProgramsPath, "program allowlist");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (!Array.isArray(listValue) || listValue.some((p) => typeof p !== "string")) {
+      return { text: "Refusing: --allowed-programs must be a JSON array of base58 program id strings.", exitCode: 1 };
+    }
+    allowedPrograms = listValue as string[];
+  }
 
   const resolved = resolveExecutionMode({
     requested: opts.request ?? "paper",
@@ -6464,7 +6503,7 @@ export async function executionBuildReport(
 
   const makeBuilder = ctx.createSwapBuilder ?? createJupiterSwapBuilder;
   const builder = makeBuilder({ baseUrl: opts.endpoint, clock: ctx.now });
-  const result = await builder.build({
+  const buildRequest: BuildSwapRequest = {
     candidateMint: opts.candidateMint,
     inputMint: opts.inputMint ?? WSOL_MINT,
     amountRaw,
@@ -6473,19 +6512,45 @@ export async function executionBuildReport(
     network: opts.request === "devnet" ? "devnet" : "mainnet-beta",
     executionMode: resolved.mode,
     killSwitchActive: config.killSwitch || stop,
-    risk: { score: riskValue.score, decision: riskValue.decision },
-    controls: { maxSpendLamports, slippageCapBps, riskScoreCap, maxQuoteAgeMs },
-  });
+    risk: { score: riskValue.score, decision: riskValue.decision, flags: riskFlags },
+    controls: { maxSpendLamports, slippageCapBps, riskScoreCap, maxQuoteAgeMs, allowedPrograms },
+  };
+  const result = await builder.build(buildRequest);
+
+  // S95: every attempt — built or refused — can leave one auditable txbuild.report.v1.
+  const writeBuildReport = (envelopeRef: string | null): { report: TxBuildReport; error: string | null } => {
+    const report = composeTxBuildReport({
+      request: buildRequest,
+      builderId: builder.builderId,
+      endpointHost: builder.endpointHost,
+      attemptedAt: (ctx.now ?? isoNow)(),
+      refusals: result.built ? [] : result.refusals,
+      quoteFacts: result.quoteFacts ?? null,
+      txFacts: result.txFacts ?? null,
+      envelopeRef,
+    });
+    if (!opts.reportOutPath) return { report, error: null };
+    const resolvedReportPath = resolvePath(ctx, opts.reportOutPath);
+    try {
+      writeFileSync(resolvedReportPath, JSON.stringify(redactValue(report), null, 2) + "\n");
+      return { report, error: null };
+    } catch {
+      return { report, error: `cannot write the build report at ${resolvedReportPath}` };
+    }
+  };
 
   if (!result.built) {
+    const { report, error: reportError } = writeBuildReport(null);
     const lines = [
       `BUILD REFUSED (${result.refusals.length} reason(s); resolved mode: ${resolved.mode})`,
-      ...result.refusals.map((r) => `  - ${r.code}: ${r.detail}`),
+      ...report.refusals.flatMap((r) => [`  - ${r.code}: ${r.detail}`, `      next: ${r.nextAction}`]),
       "",
       "Nothing was fetched or built unless every pre-network check passed. Fix the refusals and re-run.",
+      ...(opts.reportOutPath && reportError === null ? [`wrote ${resolvePath(ctx, opts.reportOutPath)}`] : []),
+      ...(reportError !== null ? [`WARNING: ${reportError}`] : []),
     ];
     if (opts.json) {
-      return { text: JSON.stringify(redactValue({ built: false, mode: resolved.mode, refusals: result.refusals }), null, 2), exitCode: 1 };
+      return { text: JSON.stringify(redactValue({ built: false, mode: resolved.mode, refusals: report.refusals, report }), null, 2), exitCode: 1 };
     }
     return { text: redactString(lines.join("\n")), exitCode: 1 };
   }
@@ -6507,10 +6572,13 @@ export async function executionBuildReport(
     }
     wroteLine = `\nwrote ${resolvedPath}`;
   }
+  const { report: buildReport, error: reportError } = writeBuildReport(opts.outPath ?? null);
+  if (opts.reportOutPath && reportError === null) wroteLine += `\nwrote ${resolvePath(ctx, opts.reportOutPath)}`;
+  if (reportError !== null) wroteLine += `\nWARNING: ${reportError}`;
 
   if (opts.json) {
     return {
-      text: JSON.stringify({ ...(redactValue({ built: true, mode: resolved.mode, quoteFacts: result.quoteFacts }) as Record<string, unknown>), envelope: envelopeOut }, null, 2),
+      text: JSON.stringify({ ...(redactValue({ built: true, mode: resolved.mode, quoteFacts: result.quoteFacts, report: buildReport }) as Record<string, unknown>), envelope: envelopeOut }, null, 2),
       exitCode: 0,
     };
   }
@@ -6522,6 +6590,7 @@ export async function executionBuildReport(
     `fee payer:    ${result.envelope.feePayerPublicKey} (public key)`,
     `quote:        in ${result.quoteFacts.inAmountRaw} raw -> out ${result.quoteFacts.outAmountRaw} raw @ ${result.quoteFacts.quotedAt}`,
     `impact:       ${result.quoteFacts.priceImpactPct ?? "not reported"}%`,
+    `tx shape:     v${String(result.txFacts.version)}, ${result.txFacts.instructionCount} instruction(s), blockhash ${result.txFacts.blockhashPresent ? "present" : "MISSING"}, ${result.txFacts.staticProgramIds.length} static program(s), ${result.txFacts.addressTableLookupCount} address-table lookup(s)`,
     wroteLine.trim(),
     "",
     "Next:",
@@ -10592,6 +10661,7 @@ export async function paperSniperRehearseReport(
       push("tx-simulate", "skipped", "nothing to simulate without a build", []);
     } else {
       envelopePath = join(outDir, "envelope.json");
+      const buildReportPath = join(outDir, "txbuild-report.json");
       const build = await executionBuildReport(ctx, {
         candidateMint: buildMint,
         amountSol: opts.amountSol ?? "0.01",
@@ -10606,14 +10676,36 @@ export async function paperSniperRehearseReport(
         endpoint: opts.endpoint,
         allowPaperRead: opts.allowPaperRead,
         outPath: envelopePath,
+        reportOutPath: buildReportPath,
         force: opts.force,
       });
+      // S95: the build leaves an auditable txbuild.report.v1 on BOTH outcomes — a refused
+      // build is a first-class artifact (codes + guidance), not just truncated text.
+      const buildReportArtifacts = existsSync(buildReportPath) ? ["txbuild-report.json"] : [];
       if (build.exitCode !== 0 || !existsSync(envelopePath)) {
-        push("tx-build", "blocked", `build refused: ${build.text.slice(0, 300)}`, [], REHEARSE_NEXT["tx-build"] ?? null);
+        let refusalCodes = "";
+        if (existsSync(buildReportPath)) {
+          try {
+            const parsed = JSON.parse(stripJsonBom(readFileSync(buildReportPath, "utf8"))) as { refusals?: Array<{ code?: string }> };
+            refusalCodes = (parsed.refusals ?? [])
+              .map((r) => r.code)
+              .filter((c): c is string => typeof c === "string")
+              .join(", ");
+          } catch {
+            refusalCodes = "";
+          }
+        }
+        push(
+          "tx-build",
+          "blocked",
+          refusalCodes.length > 0 ? `build refused: ${refusalCodes} (codes + next safe actions in txbuild-report.json)` : `build refused: ${build.text.slice(0, 300)}`,
+          buildReportArtifacts,
+          REHEARSE_NEXT["tx-build"] ?? null,
+        );
         envelopePath = null;
         push("tx-simulate", "skipped", "nothing to simulate without a build", []);
       } else {
-        push("tx-build", "executed", `UNSIGNED mainnet-dry-run envelope built for ${buildMint} (nothing signed, nothing sent)`, ["envelope.json"]);
+        push("tx-build", "executed", `UNSIGNED mainnet-dry-run envelope built for ${buildMint} (nothing signed, nothing sent)`, ["envelope.json", ...buildReportArtifacts]);
         simulationPath = join(outDir, "tx-simulation.json");
         const sim = await paperSimulationTxReport(ctx, {
           envelopePath,
@@ -10623,9 +10715,18 @@ export async function paperSniperRehearseReport(
           force: opts.force,
         });
         let simOutcome: string | null = null;
+        let simClassification: string | null = null;
+        let simNextAction: string | null = null;
         if (existsSync(simulationPath)) {
           try {
-            simOutcome = (JSON.parse(stripJsonBom(readFileSync(simulationPath, "utf8"))) as { outcome?: string }).outcome ?? null;
+            const parsed = JSON.parse(stripJsonBom(readFileSync(simulationPath, "utf8"))) as {
+              outcome?: string;
+              classification?: string;
+              classificationNextAction?: string;
+            };
+            simOutcome = parsed.outcome ?? null;
+            simClassification = typeof parsed.classification === "string" ? parsed.classification : null;
+            simNextAction = typeof parsed.classificationNextAction === "string" ? parsed.classificationNextAction : null;
           } catch {
             simOutcome = null;
           }
@@ -10636,7 +10737,14 @@ export async function paperSniperRehearseReport(
           push("tx-simulate", "unavailable", `simulation produced no report (exit ${sim.exitCode}): ${sim.text.slice(0, 200)}`, [], REHEARSE_NEXT["tx-simulate"] ?? null);
           simulationPath = null;
         } else {
-          push("tx-simulate", "failed", `simulation outcome: ${simOutcome}`, ["tx-simulation.json"]);
+          // S95: a failed simulation names its deterministic classification + next safe action.
+          push(
+            "tx-simulate",
+            "failed",
+            `simulation outcome: ${simOutcome}${simClassification !== null ? ` (classification: ${simClassification})` : ""}`,
+            ["tx-simulation.json"],
+            simNextAction,
+          );
         }
       }
     }

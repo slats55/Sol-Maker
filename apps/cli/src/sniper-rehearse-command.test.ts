@@ -416,7 +416,95 @@ describe("paper:sniper:rehearse — mainnet-dry-run (build + simulate; can NEVER
       expect(stages["tx-build"]?.status).toBe("executed");
       expect(stages["tx-simulate"]?.status).toBe("failed");
       expect(stages["tx-simulate"]?.detail).toContain("simulated-failed");
+      // S95: a failed simulation names its deterministic classification + next safe action.
+      expect(stages["tx-simulate"]?.detail).toContain("classification: program-error");
+      expect(stages["tx-simulate"]?.nextCommand).toContain("Rebuild from a fresh quote");
       expect(report.outcome).toBe("blocked");
+    });
+  });
+
+  it("S95: EVERY build attempt — built or refused — leaves an auditable txbuild-report.json", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeConfig(tmp);
+      const { ctx } = dryRunCtx(tmp);
+      // Refused attempt (REJECT risk): no envelope, but the report artifact exists with guidance.
+      const refused = await paperSniperRehearseReport(ctx, {
+        mode: "mainnet-dry-run",
+        candidatesPath: writeCandidates(tmp),
+        outDir: "out-refused",
+        wallet: WALLET.publicKey.toBase58(),
+        riskPath: writeRisk(tmp, "REJECT", 100),
+        ...BUILD_FLAGS,
+        json: true,
+      });
+      expect(refused.exitCode).toBe(0);
+      const refusedStages = stageMap(JSON.parse(refused.text) as RehearseJson);
+      expect(refusedStages["tx-build"]?.status).toBe("blocked");
+      expect(existsSync(join(tmp, "out-refused", "envelope.json"))).toBe(false);
+      const refusedReport = JSON.parse(readFileSync(join(tmp, "out-refused", "txbuild-report.json"), "utf8")) as {
+        schemaVersion: string;
+        outcome: string;
+        refusals: Array<{ code: string; nextAction: string }>;
+      };
+      expect(refusedReport.schemaVersion).toBe("txbuild.report.v1");
+      expect(refusedReport.outcome).toBe("refused");
+      expect(refusedReport.refusals.some((x) => x.code === "build-refused-risk-rejected")).toBe(true);
+      expect(refusedReport.refusals.every((x) => x.nextAction.length > 20)).toBe(true);
+
+      // Built attempt: the report records BUILT with quote + shape facts alongside the envelope.
+      const built = await paperSniperRehearseReport(ctx, {
+        mode: "mainnet-dry-run",
+        candidatesPath: writeCandidates(tmp),
+        outDir: "out-built",
+        wallet: WALLET.publicKey.toBase58(),
+        riskPath: writeRisk(tmp, "PASS_FOR_PAPER_EVALUATION", 5),
+        ...BUILD_FLAGS,
+        json: true,
+      });
+      expect(built.exitCode, built.text.slice(0, 800)).toBe(0);
+      const builtReport = JSON.parse(readFileSync(join(tmp, "out-built", "txbuild-report.json"), "utf8")) as {
+        outcome: string;
+        txFacts: { blockhashPresent: boolean } | null;
+        quoteFacts: { inAmountRaw: string } | null;
+      };
+      expect(builtReport.outcome).toBe("built");
+      expect(builtReport.txFacts?.blockhashPresent).toBe(true);
+      expect(builtReport.quoteFacts?.inAmountRaw).toBe("10000000");
+      expect(existsSync(join(tmp, "out-built", "envelope.json"))).toBe(true);
+    });
+  });
+
+  it("S95: a Token-2022 BLOCKER flag in the risk evidence refuses the build with its own code", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeConfig(tmp);
+      const { ctx, sendSeamTouched } = dryRunCtx(tmp);
+      writeFileSync(
+        join(tmp, "risk.json"),
+        JSON.stringify({
+          mint: USDC,
+          score: 10,
+          decision: "CAUTION",
+          flags: [{ id: "transfer-hook-present", severity: "critical", label: "x", detail: "y" }],
+          summary: [],
+          generatedAt: "t",
+          disclaimer: "x",
+        }),
+      );
+      const r = await paperSniperRehearseReport(ctx, {
+        mode: "mainnet-dry-run",
+        candidatesPath: writeCandidates(tmp),
+        outDir: "out",
+        wallet: WALLET.publicKey.toBase58(),
+        riskPath: "risk.json",
+        ...BUILD_FLAGS,
+        json: true,
+      });
+      expect(r.exitCode).toBe(0);
+      const stages = stageMap(JSON.parse(r.text) as RehearseJson);
+      expect(stages["tx-build"]?.status).toBe("blocked");
+      expect(stages["tx-build"]?.detail).toContain("build-refused-token2022-blocker");
+      expect(existsSync(join(tmp, "out", "envelope.json"))).toBe(false);
+      expect(sendSeamTouched()).toBe(0);
     });
   });
 

@@ -275,6 +275,149 @@ describe("execution:build — refusal-first at the CLI layer", () => {
       expect(r.text).not.toContain("[REDACTED]");
     });
   });
+
+  it("S95: --report-out writes a txbuild.report.v1 on REFUSAL — codes joined to guidance, exit still 1", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeConfig(tmp);
+      const risk = writeRisk(tmp, USDC, 10, "REJECT");
+      const r = await executionBuildReport(
+        { cwd: tmp, env: {}, createSwapBuilder: () => fakeBuilder() },
+        {
+          candidateMint: USDC,
+          amountSol: "0.01",
+          slippageBps: "50",
+          wallet: SIGNER.publicKey.toBase58(),
+          riskPath: risk,
+          maxSpendSol: "0.02",
+          slippageCapBps: "100",
+          riskScoreCap: "30",
+          request: "mainnet-dry-run",
+          reportOutPath: "txbuild-report.json",
+        },
+      );
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toContain("build-refused-risk-rejected");
+      expect(r.text).toContain("next:"); // guidance rides on the text output
+      const report = JSON.parse(readFileSync(join(tmp, "txbuild-report.json"), "utf8")) as {
+        schemaVersion: string;
+        outcome: string;
+        refusals: Array<{ code: string; message: string; nextAction: string }>;
+        envelopeRef: string | null;
+        neverSigns: boolean;
+        phase7LiveTradingReady: boolean;
+      };
+      expect(report.schemaVersion).toBe("txbuild.report.v1");
+      expect(report.outcome).toBe("refused");
+      expect(report.refusals.some((x) => x.code === "build-refused-risk-rejected")).toBe(true);
+      for (const refusal of report.refusals) {
+        expect(refusal.message.length).toBeGreaterThan(20);
+        expect(refusal.nextAction.length).toBeGreaterThan(20);
+      }
+      expect(report.envelopeRef).toBeNull();
+      expect(report.neverSigns).toBe(true);
+      expect(report.phase7LiveTradingReady).toBe(false);
+    });
+  });
+
+  it("S95: --report-out on success records BUILT with quote facts, tx shape facts, and the envelope ref", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeConfig(tmp);
+      const risk = writeRisk(tmp, USDC, 10, "PASS_FOR_PAPER_EVALUATION");
+      const r = await executionBuildReport(
+        { cwd: tmp, env: {}, createSwapBuilder: () => fakeBuilder() },
+        {
+          candidateMint: USDC,
+          amountSol: "0.01",
+          slippageBps: "50",
+          wallet: SIGNER.publicKey.toBase58(),
+          riskPath: risk,
+          maxSpendSol: "0.02",
+          slippageCapBps: "100",
+          riskScoreCap: "30",
+          request: "mainnet-dry-run",
+          outPath: "envelope.json",
+          reportOutPath: "txbuild-report.json",
+        },
+      );
+      expect(r.exitCode, r.text.slice(0, 500)).toBe(0);
+      const report = JSON.parse(readFileSync(join(tmp, "txbuild-report.json"), "utf8")) as {
+        outcome: string;
+        refusals: unknown[];
+        quoteFacts: { inAmountRaw: string } | null;
+        txFacts: { blockhashPresent: boolean; versionSupported: boolean } | null;
+        envelopeRef: string | null;
+      };
+      expect(report.outcome).toBe("built");
+      expect(report.refusals).toEqual([]);
+      expect(report.quoteFacts?.inAmountRaw).toBe("10000000");
+      expect(report.txFacts?.blockhashPresent).toBe(true);
+      expect(report.txFacts?.versionSupported).toBe(true);
+      expect(report.envelopeRef).toBe("envelope.json");
+      // The report never embeds the transaction body.
+      expect(readFileSync(join(tmp, "txbuild-report.json"), "utf8")).not.toContain("txBase64");
+    });
+  });
+
+  it("S95: Token-2022 BLOCKER flags in the --risk file refuse the build pre-network", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeConfig(tmp);
+      writeFileSync(
+        join(tmp, "risk.json"),
+        JSON.stringify({
+          mint: USDC,
+          score: 10,
+          decision: "CAUTION",
+          flags: [{ id: "permanent-delegate-present", severity: "critical", label: "x", detail: "y" }],
+          summary: [],
+          generatedAt: "t",
+          disclaimer: "x",
+        }),
+      );
+      const r = await executionBuildReport(
+        { cwd: tmp, env: {}, createSwapBuilder: () => fakeBuilder() },
+        {
+          candidateMint: USDC,
+          amountSol: "0.01",
+          slippageBps: "50",
+          wallet: SIGNER.publicKey.toBase58(),
+          riskPath: "risk.json",
+          maxSpendSol: "0.02",
+          slippageCapBps: "100",
+          riskScoreCap: "30",
+          request: "mainnet-dry-run",
+        },
+      );
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toContain("build-refused-token2022-blocker");
+      expect(r.text).toContain("permanent-delegate-present");
+    });
+  });
+
+  it("S95: a malformed --allowed-programs file refuses; a malformed entry refuses with the taxonomy code", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeConfig(tmp);
+      const risk = writeRisk(tmp, USDC, 10, "PASS_FOR_PAPER_EVALUATION");
+      const base = {
+        candidateMint: USDC,
+        amountSol: "0.01",
+        slippageBps: "50",
+        wallet: SIGNER.publicKey.toBase58(),
+        riskPath: risk,
+        maxSpendSol: "0.02",
+        slippageCapBps: "100",
+        riskScoreCap: "30",
+        request: "mainnet-dry-run",
+      };
+      writeFileSync(join(tmp, "not-a-list.json"), JSON.stringify({ programs: [] }));
+      const notList = await executionBuildReport({ cwd: tmp, env: {}, createSwapBuilder: () => fakeBuilder() }, { ...base, allowedProgramsPath: "not-a-list.json" });
+      expect(notList.exitCode).toBe(1);
+      expect(notList.text).toContain("JSON array");
+      writeFileSync(join(tmp, "bad-entry.json"), JSON.stringify(["not-base58!!"]));
+      const badEntry = await executionBuildReport({ cwd: tmp, env: {}, createSwapBuilder: () => fakeBuilder() }, { ...base, allowedProgramsPath: "bad-entry.json" });
+      expect(badEntry.exitCode).toBe(1);
+      expect(badEntry.text).toContain("build-refused-unsupported-instruction");
+    });
+  });
 });
 
 describe("execution:devnet:send — devnet-only, double opt-in, journaled", () => {
