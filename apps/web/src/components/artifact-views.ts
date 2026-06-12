@@ -2579,6 +2579,16 @@ function renderSniperRehearsalView(rec: Record<string, unknown>): RawHtml {
     ${kvSection("Rehearsal run", undefined, [
       { term: "mode", detail: code(mode) },
       { term: "outcome", detail: text(outcome) },
+      {
+        term: "risk evidence source",
+        detail: text(
+          readString(rec, "riskSource") === "automatic"
+            ? "automatic (deep token:risk per candidate — S94)"
+            : readString(rec, "riskSource") === "operator"
+              ? "operator-supplied"
+              : (readString(rec, "riskSource") ?? DASH),
+        ),
+      },
       { term: "generated at", detail: text(readString(rec, "generatedAt")) },
       { term: "executed / skipped / blocked", detail: text(`${num(readNumber(rec, "executedCount"))} / ${num(readNumber(rec, "skippedCount"))} / ${num(readNumber(rec, "blockedCount"))}`) },
       { term: "never sends on mainnet", detail: text(boolText(readBoolean(rec, "neverSendsOnMainnet"))) },
@@ -2623,10 +2633,51 @@ function renderExecutionReadinessView(rec: Record<string, unknown>): RawHtml {
     })}
     ${kvSection("Verdict", undefined, [
       { term: "verdict", detail: text(verdict) },
+      { term: "network / evaluated for", detail: text(`${readString(rec, "network") ?? DASH} / ${readString(rec, "requestedMode") ?? DASH}`) },
       { term: "conditions satisfied", detail: text(`${num(readNumber(rec, "satisfiedCount"))} / ${num(readNumber(rec, "totalChecks"))}`) },
       { term: "blocked reason", detail: text(readString(rec, "blockedReason")) },
       { term: "next safe action", detail: text(readString(rec, "nextSafeAction")) },
     ])}
+    ${(() => {
+      const caps = asRecord(rec["caps"]);
+      if (caps === null) return "";
+      return kvSection("Operator caps in effect", "Null/UNSET means the operator never supplied the cap — no default exists by design.", [
+        { term: "max spend per trade (SOL)", detail: num(readNumber(caps, "maxSpendPerTradeSol")) },
+        { term: "session loss cap (SOL)", detail: num(readNumber(caps, "sessionLossCapSol")) },
+        { term: "slippage cap (bps)", detail: num(readNumber(caps, "slippageCapBps")) },
+        { term: "risk score cap", detail: num(readNumber(caps, "riskScoreCap")) },
+        { term: "quote age cap (ms)", detail: num(readNumber(caps, "quoteAgeCapMs")) },
+      ]);
+    })()}
+    ${(() => {
+      const evidence = asRecord(rec["evidence"]);
+      const risk = evidence === null ? null : asRecord(evidence["risk"]);
+      if (risk === null) return "";
+      const t22 = asArray(risk["token2022Flags"]) ?? [];
+      const t22Rows: (readonly HtmlValue[])[] = [];
+      for (const row of t22.slice(0, 16)) {
+        const flag = asRecord(row);
+        if (flag === null) continue;
+        t22Rows.push([code(readString(flag, "id")), text(readString(flag, "severity"))]);
+      }
+      return html`
+        ${kvSection("Risk evidence (condition 11)", "From the operator-named token:risk report — advisory, never a buy signal.", [
+          { term: "score / cap", detail: text(`${num(readNumber(risk, "score"))} / ${num(readNumber(risk, "cap"))}`) },
+          { term: "decision", detail: text(readString(risk, "decision")) },
+          { term: "mint", detail: digestCode(readString(risk, "mint")) },
+          { term: "source", detail: text(readString(risk, "source")) },
+        ])}
+        ${t22Rows.length === 0
+          ? ""
+          : tableSection({
+              title: "Token-2022 extension flags on the risk evidence",
+              description: "Critical/high entries are the extension blockers (hooks, permanent delegates, frozen defaults, fees).",
+              columns: [{ header: "Flag" }, { header: "Severity" }],
+              rows: t22Rows,
+              empty: "",
+            })}
+      `;
+    })()}
     ${freshness === null
       ? ""
       : kvSection("Quote freshness evidence (condition 9)", "Evaluated from a LIVE fetch report against the explicit operator cap — operator-supplied quote artifacts are refused as a freshness source.", [
@@ -2686,11 +2737,24 @@ function renderDevnetRehearsalView(rec: Record<string, unknown>): RawHtml {
       {
         term: "airdrop",
         detail: text(
-          airdrop === null ? DASH : `${readString(airdrop, "status") ?? "unknown"} (${num(readNumber(airdrop, "lamports"))} lamports requested)`,
+          airdrop === null
+            ? DASH
+            : `${readString(airdrop, "status") ?? "unknown"} (${num(readNumber(airdrop, "lamports"))} lamports requested${
+                readNumber(airdrop, "attempts") !== null ? `; ${num(readNumber(airdrop, "attempts"))} bounded attempt(s)` : ""
+              })`,
         ),
       },
       { term: "never mainnet", detail: text(boolText(readBoolean(rec, "neverMainnet"))) },
     ])}
+    ${(() => {
+      const guidance = asArray(rec["fundingGuidance"]);
+      if (guidance === null || guidance.length === 0) return "";
+      return kvSection(
+        "Funding guidance (devnet-funding-blocked)",
+        "Devnet faucet only — the throwaway keypair is reused on rerun, so external funding sticks to the same key. Never mainnet funding.",
+        guidance.slice(0, 5).map((g, i) => ({ term: `step ${i + 1}`, detail: text(typeof g === "string" ? g : null) })),
+      );
+    })()}
     ${tableSection({
       title: "Steps",
       columns: [{ header: "Step" }, { header: "Status" }, { header: "Detail" }],

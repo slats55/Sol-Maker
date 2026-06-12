@@ -378,7 +378,7 @@ export const COMMANDS: readonly CommandRef[] = [
   {
     command: "paper:sniper:rehearse",
     summary:
-      "The S93 UNIFIED rehearsal workflow: chain candidates → risk bridge → quote fetch/prepare → dry-run → unsigned build → real simulation → optional devnet broadcast → readiness over ONE output directory with an honest per-stage record (sniper.rehearsal.report.v1). Closed mode set paper (default, offline) | devnet (broadcast only behind --devnet-send + the double opt-in) | mainnet-dry-run (structurally cannot send). NO mainnet-live mode.",
+      "The S93/S94 UNIFIED rehearsal workflow: chain candidates → risk evidence (S94: AUTOMATIC deep token:risk per candidate in mainnet-dry-run mode, Token-2022 extensions included; --skip-auto-risk / --preflight-input / --risk override) → quote fetch/prepare → dry-run → unsigned build → real simulation → optional devnet broadcast → readiness over ONE output directory with an honest per-stage record (sniper.rehearsal.report.v1 with riskSource). Closed mode set paper (default, offline) | devnet (broadcast only behind --devnet-send + the double opt-in) | mainnet-dry-run (structurally cannot send). NO mainnet-live mode.",
     group: "Sniper (paper-only)",
     readsChain: true,
   },

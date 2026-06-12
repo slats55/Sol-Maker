@@ -641,7 +641,7 @@
           >
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:sniper:rehearse</code>
-    <p class="sm-cmd__summary">The S93 UNIFIED rehearsal workflow: chain candidates → risk bridge → quote fetch/prepare → dry-run → unsigned build → real simulation → optional devnet broadcast → readiness over ONE output directory with an honest per-stage record (sniper.rehearsal.report.v1). Closed mode set paper (default, offline) | devnet (broadcast only behind --devnet-send + the double opt-in) | mainnet-dry-run (structurally cannot send). NO mainnet-live mode.</p>
+    <p class="sm-cmd__summary">The S93/S94 UNIFIED rehearsal workflow: chain candidates → risk evidence (S94: AUTOMATIC deep token:risk per candidate in mainnet-dry-run mode, Token-2022 extensions included; --skip-auto-risk / --preflight-input / --risk override) → quote fetch/prepare → dry-run → unsigned build → real simulation → optional devnet broadcast → readiness over ONE output directory with an honest per-stage record (sniper.rehearsal.report.v1 with riskSource). Closed mode set paper (default, offline) | devnet (broadcast only behind --devnet-send + the double opt-in) | mainnet-dry-run (structurally cannot send). NO mainnet-live mode.</p>
     <div class="sm-cmd__artifact">
             <span class="sm-cmd__artifact-label">artifact</span>
             <span class="sm-schema sm-schema--stable" title="The S93 unified rehearsal workflow&#39;s honest per-stage record (candidates → risk bridge → quote fetch/prepare → dry-run → build → simulate → optional devnet broadcast → readiness). Closed mode set paper | devnet | mainnet-dry-run; no mode can send on mainnet.">
