@@ -21,7 +21,8 @@ export type SchemaFamily =
   | "research"
   | "sniper"
   | "simulation"
-  | "phase6";
+  | "phase6"
+  | "routequote";
 
 export interface ReportSchemaInfo {
   readonly id: string;
@@ -251,8 +252,26 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
     family: "simulation",
     stability: "stable",
     description:
-      "Per-entry route/destination/fee PROVENANCE over a validated plan. No route resolver exists inside the boundary, so every entry is honestly UNAVAILABLE under the fixed unavailable-no-route-resolver id.",
+      "Per-entry route/destination/fee PROVENANCE over a validated plan. Honestly UNAVAILABLE without quote observations; with a prepared routequote (S91) observed quotes enter as label facts with provenance and the mandatory live-state caveat — still never executable.",
     cli: "paper:simulation:route",
+  },
+  {
+    id: "routequote.observation.input.v1",
+    title: "Route quote observation",
+    family: "routequote",
+    stability: "stable",
+    description:
+      "One operator-supplied READ-ONLY quote observation for one candidate mint. CLOSED outcome set (quote-observed | unavailable | blocked | error | unsupported — nothing can mean executable); label-only facts; observed-at is an operator LABEL, never system time.",
+    cli: "paper:routequote:prepare",
+  },
+  {
+    id: "routequote.prepared.v1",
+    title: "Route quote prepared input",
+    family: "routequote",
+    stability: "stable",
+    description:
+      "Quote observations paired to candidates BY MINT with deterministic label-only route facts and the mandatory caveat set. The bridge paper:sniper:dry-run consumes via --routequote — observation provenance only, never executable, never an order.",
+    cli: "paper:routequote:prepare",
   },
   {
     id: "simulation.intent.plan.diff.v2",

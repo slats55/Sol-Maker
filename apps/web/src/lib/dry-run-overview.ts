@@ -65,10 +65,12 @@ export interface DryRunOverview {
 export const DRY_RUN_VERDICTS = ["reviewable-paper-only", "blocked", "attention", "incomplete"] as const;
 
 /**
- * The per-status route explanation (mirrors the CLI's honest wording).
+ * The per-status route explanation (mirrors the CLI's honest wording). Pass `attempted` when the
+ * bundle/artifact says a resolver attempted resolution — `unresolved`/`resolved` then describe
+ * read-only quote facts instead of the bare boundary statement.
  * Unknown statuses get the generic boundary statement — never a made-up state.
  */
-export function routeStatusExplanation(status: string | null): string {
+export function routeStatusExplanation(status: string | null, attempted?: boolean | null): string {
   switch (status) {
     case "unavailable":
       return "Expected — no route resolver exists inside the simulation boundary; nothing was faked.";
@@ -76,8 +78,14 @@ export function routeStatusExplanation(status: string | null): string {
       return "The intent plan is blocked, so no resolution was attempted.";
     case "no_entries":
       return "Watch-only plan — there was nothing to resolve.";
+    case "unresolved":
+      return attempted === true
+        ? "A read-only quote observation supplied partial label facts (live-state caveat); the rest stay honestly unresolved — never invented, never executable."
+        : "Required route facts are still missing — they stay unresolved, never invented.";
     case "resolved":
-      return "Resolved provenance is recorded; the live-state caveat applies (still PAPER only).";
+      return attempted === true
+        ? "Label-resolved facts from a read-only quote observation; the live-state caveat applies (still PAPER only, never executable)."
+        : "Resolved provenance is recorded; the live-state caveat applies (still PAPER only).";
     default:
       return "Honest boundary — no route-resolver capability exists; nothing was invented.";
   }

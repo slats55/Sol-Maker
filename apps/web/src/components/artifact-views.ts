@@ -1677,7 +1677,8 @@ function renderRouteResolutionView(rec: Record<string, unknown>): RawHtml {
             title: "Route resolution UNAVAILABLE — the truthful capability boundary, not a failure",
             body: html`No route resolver exists inside the simulation boundary, so every entry is honestly
               UNAVAILABLE: route, destination, and fee stay unresolved — never invented, never fetched. A
-              future, separately-authorized resolution layer is the only path to resolved facts.`,
+              read-only quote observation (paper:routequote:prepare) or a future, separately-authorized
+              resolution layer is the only path to resolved facts.`,
           })
         : status === "blocked"
           ? RiskNotice({
@@ -1686,14 +1687,23 @@ function renderRouteResolutionView(rec: Record<string, unknown>): RawHtml {
               body: html`The source plan was missing, invalid, or blocked — or a stop switch was declared
                 tripped. A blocked artifact carries zero entries; nothing is resolved over a blocked chain.`,
             })
-          : null
+          : attempted === true
+            ? RiskNotice({
+                tone: "info",
+                title: "Read-only quote facts recorded — observation provenance only, never executable",
+                body: html`Label facts entered this artifact from a READ-ONLY quote observation layer.
+                  A quote proves a route was visible at some point — it may have expired, slippage is not
+                  guaranteed, the route was never simulated, and nothing here can sign, send, or execute.
+                  The live-state caveat applies to every label-resolved fact.`,
+              })
+            : null
     }
-    ${kvSection("Route resolution (provenance only — never signs, never sends, never resolves)", "The per-entry record of which route/destination/fee facts exist for a validated plan.", [
+    ${kvSection("Route resolution (provenance only — never signs, never sends, never executes)", "The per-entry record of which route/destination/fee facts exist for a validated plan.", [
       { term: "resolutionStatus", detail: text(status === null ? null : status.toUpperCase()) },
       { term: "resolutionLabel", detail: text(readString(rec, "resolutionLabel")) },
       { term: "operatorLabel", detail: text(readString(rec, "operatorLabel")) },
       { term: "routeResolverId", detail: code(resolverId) },
-      { term: "resolver attempted", detail: attempted === false ? "no — the no-resolver id can never claim an attempt" : boolText(attempted) },
+      { term: "resolver attempted", detail: attempted === true ? "yes — read-only label facts with provenance (never execution)" : attempted === false ? "no — nothing was attempted; every fact stays honestly unresolved" : boolText(attempted) },
       { term: "live-state caveat", detail: caveat === true ? "YES — label-resolved facts come from live chain state; never a deterministic fixture" : boolText(caveat) },
       ...planRefItems(planRef),
     ])}
@@ -1730,6 +1740,111 @@ function renderRouteResolutionView(rec: Record<string, unknown>): RawHtml {
       caption: capCaption(cap, "entries"),
     })}
     ${nextSafeActionSection(rec) ?? ""}
+    ${partialNotice(missing)}
+  `;
+}
+
+/** The observation-only framing notice shared by both routequote views (S91). */
+function routeQuoteObservationNotice(): RawHtml {
+  return RiskNotice({
+    tone: "info",
+    title: "Read-only quote observation — never executable, never an order",
+    body: html`A quote observation proves a route/quote was VISIBLE at some point — nothing more. It
+      may have expired, slippage is not guaranteed, the route was never simulated, and nothing in
+      this artifact can sign, send, build a transaction, or execute a route.`,
+  });
+}
+
+function renderRouteQuoteObservationView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const quoteStatus = need(missing, "quoteStatus", readString(rec, "quoteStatus"));
+  return html`
+    ${routeQuoteObservationNotice()}
+    ${kvSection("Quote observation (label-only facts)", "One operator-supplied READ-ONLY observation for one candidate mint. The outcome set is CLOSED — nothing can mean executable.", [
+      { term: "quoteStatus", detail: text(quoteStatus) },
+      { term: "source", detail: code(readString(rec, "source")) },
+      { term: "candidateMint", detail: digestCode(readString(rec, "candidateMint")) },
+      { term: "inputMint", detail: digestCode(readString(rec, "inputMint")) },
+      { term: "outputMint", detail: digestCode(readString(rec, "outputMint")) },
+      { term: "amountIn (label)", detail: text(readString(rec, "amountInLabel")) },
+      { term: "amountOut (label)", detail: text(readString(rec, "amountOutLabel")) },
+      { term: "venue (label)", detail: text(readString(rec, "venueLabel")) },
+      { term: "fee (label)", detail: text(readString(rec, "feeLabel")) },
+      { term: "observed at (operator label — never system time)", detail: text(readString(rec, "observedAtLabel")) },
+      { term: "status reason", detail: text(readString(rec, "statusReason")) },
+    ])}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderRouteQuotePreparedView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const observed = need(missing, "observedCount", readNumber(rec, "observedCount"));
+  const entries = readArray(rec, "entries") ?? [];
+  const caveats = readStringArray(rec, "caveats");
+
+  const cap = capRows(entries);
+  const entryRows = cap.shown.map((entry) => {
+    const e = asRecord(entry) ?? {};
+    return [
+      text(readString(e, "candidateId")),
+      digestCode(readString(e, "mint")),
+      text(readString(e, "quoteStatus")),
+      text(readString(e, "routeLabel", 300)),
+      text(readString(e, "feeLabel")),
+      text(readString(e, "statusReason")),
+    ];
+  });
+
+  return html`
+    ${routeQuoteObservationNotice()}
+    ${kvSection("Prepared route quote input (the S91 bridge)", "Quote observations paired to candidates BY MINT; observed entries carry deterministic label-only route facts the route-resolution stage may consume.", [
+      { term: "resolver (provenance id)", detail: code(readString(rec, "resolverId")) },
+      { term: "source", detail: text(readString(rec, "sourceLabel")) },
+      { term: "candidate list", detail: text(readString(rec, "candidateListRef")) },
+      { term: "entries", detail: num(readNumber(rec, "entryCount")) },
+      { term: "validation", detail: text(readString(rec, "validationStatus")) },
+      { term: "phase7LiveTradingReady", detail: boolText(readBoolean(rec, "phase7LiveTradingReady")) },
+    ])}
+    ${tableSection({
+      title: "Quote outcomes (closed set)",
+      description: "quote-observed | unavailable | blocked | error | unsupported — nothing here can ever mean executable.",
+      columns: [{ header: "Outcome" }, { header: "Count", align: "right" }],
+      rows: [
+        ["quote-observed", num(observed)],
+        ["unavailable", num(readNumber(rec, "unavailableCount"))],
+        ["blocked", num(readNumber(rec, "blockedCount"))],
+        ["error", num(readNumber(rec, "errorCount"))],
+        ["unsupported", num(readNumber(rec, "unsupportedCount"))],
+      ],
+      empty: "No tallies present.",
+    })}
+    ${tableSection({
+      title: "Per-candidate quote state",
+      description: "A candidate without an observation stays honestly unavailable — never invented, never upgraded.",
+      columns: [
+        { header: "Candidate" },
+        { header: "Mint" },
+        { header: "Quote" },
+        { header: "Route fact (label only)" },
+        { header: "Fee (label)" },
+        { header: "Reason" },
+      ],
+      rows: entryRows,
+      empty: "No entries.",
+      caption: capCaption(cap, "entries"),
+    })}
+    ${
+      caveats.total > 0
+        ? Section({
+            title: `Mandatory caveats (${String(caveats.total)})`,
+            description: "Carried verbatim by every observed quote — the validator refuses an artifact that drops one.",
+            body: html`<ul class="sm-bullets sm-bullets--plain">
+              ${caveats.items.map((c) => html`<li>${c}</li>`)}
+            </ul>`,
+          })
+        : ""
+    }
     ${partialNotice(missing)}
   `;
 }
@@ -2480,6 +2595,10 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderSimulationResultView(rec);
     case "simulation.route.resolution.v1":
       return renderRouteResolutionView(rec);
+    case "routequote.observation.input.v1":
+      return renderRouteQuoteObservationView(rec);
+    case "routequote.prepared.v1":
+      return renderRouteQuotePreparedView(rec);
     case "simulation.intent.plan.diff.v2":
       return renderSimulationPlanDiffView(rec);
     case "simulation.result.diff.v1":

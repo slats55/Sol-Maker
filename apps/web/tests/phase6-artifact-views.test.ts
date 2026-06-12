@@ -121,7 +121,8 @@ describe("route resolution — UNAVAILABLE renders as the truthful boundary", ()
 
   it("shows the fixed no-resolver id and that no attempt was claimed", () => {
     expect(out).toContain("unavailable-no-route-resolver");
-    expect(out).toContain("the no-resolver id can never claim an attempt");
+    // S91 wording: an unattempted resolution states plainly that nothing was attempted.
+    expect(out).toContain("no — nothing was attempted; every fact stays honestly unresolved");
   });
 
   it("renders per-entry route/destination/fee facts as UNRESOLVED (never invented)", () => {

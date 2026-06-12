@@ -306,6 +306,13 @@ export const COMMANDS: readonly CommandRef[] = [
     readsChain: false,
   },
   {
+    command: "paper:routequote:prepare",
+    summary:
+      "The S91 read-only ROUTE QUOTE bridge: pair operator-supplied quote observation files to candidates by mint and emit the routequote.prepared.v1 artifact paper:sniper:dry-run consumes via --routequote. Closed outcome set — an observed quote is an observation with mandatory caveats, never executable.",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
+  {
     command: "paper:sniper:decide",
     summary:
       "Paper-only decisions per candidate (skip / watch / paper-enter / paper-reject / unknown). Use --schema-version v2 for the reason-coded v2 artifact. Never an order.",
@@ -341,7 +348,7 @@ export const COMMANDS: readonly CommandRef[] = [
   {
     command: "paper:sniper:dry-run",
     summary:
-      "The S88 PAPER dry-run ORCHESTRATOR: one command runs the whole chain over an operator-supplied candidate file (19 artifacts + RUN_SUMMARY.md into ONE output directory). A BLOCKED chain still writes the full honest artifact set; route resolution stays honestly UNAVAILABLE. Never an order, never a transaction.",
+      "The S88 PAPER dry-run ORCHESTRATOR: one command runs the whole chain over an operator-supplied candidate file (19 artifacts + RUN_SUMMARY.md into ONE output directory). A BLOCKED chain still writes the full honest artifact set; route resolution stays honestly UNAVAILABLE unless --routequote supplies read-only quote observations (label facts + live-state caveat — never executable). Never an order, never a transaction.",
     group: "Sniper (paper-only)",
     readsChain: false,
   },
@@ -367,7 +374,7 @@ export const COMMANDS: readonly CommandRef[] = [
   {
     command: "paper:simulation:route",
     summary:
-      "Route-resolution PROVENANCE over a validated plan (simulation.route.resolution.v1). No resolver exists, so every entry is honestly UNAVAILABLE — never invented.",
+      "Route-resolution PROVENANCE over a validated plan (simulation.route.resolution.v1). Honestly UNAVAILABLE without --quotes; with --quotes read-only quote observations enter as label facts with the live-state caveat — never invented, never executable.",
     group: "Phase 6 simulation",
     readsChain: false,
   },

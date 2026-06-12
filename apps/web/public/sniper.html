@@ -190,7 +190,10 @@
       </div><div class="sm-capstrip__item sm-capstrip__item--available" title="13-role integrity bundle with per-file digests (phase6.operator.bundle.v1).">
         <span class="sm-capstrip__label">Operator bundle</span>
         <span class="sm-pill sm-pill--safe">available</span>
-      </div><div class="sm-capstrip__item sm-capstrip__item--boundary-only" title="Honestly UNAVAILABLE — no resolver capability exists inside the simulation boundary.">
+      </div><div class="sm-capstrip__item sm-capstrip__item--available" title="paper:routequote:prepare pairs operator-supplied quote observations to candidates by mint — observation provenance only, never executable.">
+        <span class="sm-capstrip__label">Read-only route quotes</span>
+        <span class="sm-pill sm-pill--safe">available</span>
+      </div><div class="sm-capstrip__item sm-capstrip__item--boundary-only" title="No resolver capability exists inside the simulation boundary — read-only quote observations can supply label facts; execution never.">
         <span class="sm-capstrip__label">Route resolver</span>
         <span class="sm-pill sm-pill--caution">boundary only</span>
       </div><div class="sm-capstrip__item sm-capstrip__item--disabled" title="Phase 7 is unauthorized: no wallet, no keys, no signing, no orders — by construction.">
@@ -289,14 +292,14 @@
       <caption class="sm-table__caption">Joined from the run&#39;s own candidate list, preflight report, and decision report. A paper-enter is a SIMULATED classification — never an order.</caption>
       <thead>
         <tr>
-          <th scope="col" class="sm-td--left">Candidate</th><th scope="col" class="sm-td--left">Mint</th><th scope="col" class="sm-td--left">Preflight</th><th scope="col" class="sm-td--left">Risk (advisory)</th><th scope="col" class="sm-td--left">Decision</th><th scope="col" class="sm-td--left">Blocking codes</th><th scope="col" class="sm-td--left">Next action</th>
+          <th scope="col" class="sm-td--left">Candidate</th><th scope="col" class="sm-td--left">Mint</th><th scope="col" class="sm-td--left">Preflight</th><th scope="col" class="sm-td--left">Risk (advisory)</th><th scope="col" class="sm-td--left">Decision</th><th scope="col" class="sm-td--left">Route quote</th><th scope="col" class="sm-td--left">Blocking codes</th><th scope="col" class="sm-td--left">Next action</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-                  <td class="sm-td--left"><span title="rehearsal-clean">RHCL</span></td><td class="sm-td--left"><code class="sm-digest" title="US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx">US517G5965ay…</code></td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">pass</span></td><td class="sm-td--left"><span title="advisory risk projection — never a buy signal">PASS_FOR_PAPER_EVALUATION (score 10)</span></td><td class="sm-td--left"><span class="sm-pill sm-pill--caution">paper-enter (simulated)</span></td><td class="sm-td--left">—</td><td class="sm-td--left">Operator review (paper-only — never an order)</td>
+                  <td class="sm-td--left"><span title="rehearsal-clean">RHCL</span></td><td class="sm-td--left"><code class="sm-digest" title="US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx">US517G5965ay…</code></td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">pass</span></td><td class="sm-td--left"><span title="advisory risk projection — never a buy signal">PASS_FOR_PAPER_EVALUATION (score 10)</span></td><td class="sm-td--left"><span class="sm-pill sm-pill--caution">paper-enter (simulated)</span></td><td class="sm-td--left"><span class="sm-pill sm-pill--muted">unavailable</span></td><td class="sm-td--left">—</td><td class="sm-td--left">Operator review (paper-only — never an order)</td>
                 </tr><tr>
-                  <td class="sm-td--left"><span title="rehearsal-freeze">RHFZ</span></td><td class="sm-td--left"><code class="sm-digest" title="k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn">k7FaK87WHGVX…</code></td><td class="sm-td--left"><span class="sm-pill sm-pill--caution">warn</span></td><td class="sm-td--left"><span title="advisory risk projection — never a buy signal">PASS_FOR_PAPER_EVALUATION (score 25)</span></td><td class="sm-td--left"><span class="sm-pill sm-pill--info">watch</span></td><td class="sm-td--left">—</td><td class="sm-td--left">Watch only — no entry</td>
+                  <td class="sm-td--left"><span title="rehearsal-freeze">RHFZ</span></td><td class="sm-td--left"><code class="sm-digest" title="k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn">k7FaK87WHGVX…</code></td><td class="sm-td--left"><span class="sm-pill sm-pill--caution">warn</span></td><td class="sm-td--left"><span title="advisory risk projection — never a buy signal">PASS_FOR_PAPER_EVALUATION (score 25)</span></td><td class="sm-td--left"><span class="sm-pill sm-pill--info">watch</span></td><td class="sm-td--left">—</td><td class="sm-td--left">—</td><td class="sm-td--left">Watch only — no entry</td>
                 </tr>
       </tbody>
     </table>
@@ -338,6 +341,8 @@
                   <td class="sm-td--left">Blocking trail consistent</td><td class="sm-td--left"><strong>true</strong></td><td class="sm-td--left">—</td>
                 </tr><tr>
                   <td class="sm-td--left">Route status</td><td class="sm-td--left"><strong>unavailable</strong></td><td class="sm-td--left">Expected — no route resolver exists inside the simulation boundary; nothing was faked.</td>
+                </tr><tr>
+                  <td class="sm-td--left">Route quote</td><td class="sm-td--left"><strong>none — honest boundary (no quote observations supplied)</strong></td><td class="sm-td--left">an observed quote is an observation, never executable — quotes can never unblock a chain</td>
                 </tr><tr>
                   <td class="sm-td--left">Route live-state caveat</td><td class="sm-td--left"><strong>false</strong></td><td class="sm-td--left">a resolved route would still describe a PAST chain state — never an executable promise</td>
                 </tr><tr>

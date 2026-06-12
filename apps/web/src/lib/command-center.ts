@@ -69,10 +69,16 @@ export const SNIPER_CAPABILITIES: readonly SniperCapability[] = [
     note: "13-role integrity bundle with per-file digests (phase6.operator.bundle.v1).",
   },
   {
+    key: "routequote",
+    label: "Read-only route quotes",
+    state: "available",
+    note: "paper:routequote:prepare pairs operator-supplied quote observations to candidates by mint — observation provenance only, never executable.",
+  },
+  {
     key: "route",
     label: "Route resolver",
     state: "boundary-only",
-    note: "Honestly UNAVAILABLE — no resolver capability exists inside the simulation boundary.",
+    note: "No resolver capability exists inside the simulation boundary — read-only quote observations can supply label facts; execution never.",
   },
   {
     key: "live",
@@ -242,9 +248,12 @@ export function buildPipelineStages(index: FolderIndex, overview: DryRunOverview
     );
   }
 
-  // 6. Route boundary — read from the bundle's verbatim route status.
+  // 6. Route boundary — read from the bundle's verbatim route status. Since S91 an attempted
+  //    resolver means READ-ONLY quote facts were recorded (review state, no longer always muted);
+  //    live execution remains impossible either way.
   const route = entryByRole(index, overview, "route-resolution");
   const routeStatus = overview.routeResolutionStatus;
+  const routeAttempted = overview.routeResolverAttempted;
   stages.push({
     key: "route",
     label: "Route boundary",
@@ -255,8 +264,10 @@ export function buildPipelineStages(index: FolderIndex, overview: DryRunOverview
           ? "blocked"
           : routeStatus === "no_entries" || routeStatus === "resolved"
             ? "complete"
-            : "not-run",
-    detail: routeStatusExplanation(routeStatus),
+            : routeStatus === "unresolved" && routeAttempted === true
+              ? "review"
+              : "not-run",
+    detail: routeStatusExplanation(routeStatus, routeAttempted),
     anchor: route?.anchor ?? null,
   });
 
@@ -333,6 +344,9 @@ export interface CandidateRow {
   readonly criticalFlagCount: number | null;
   readonly decision: string | null;
   readonly blockingCodes: readonly string[];
+  /** Per-candidate route quote/resolution state (S91): the prepared routequote's quoteStatus when
+   * present, else the route-resolution entry status, else null — verbatim, never invented. */
+  readonly routeStatus: string | null;
   readonly nextAction: string;
 }
 
@@ -389,6 +403,24 @@ export function buildCandidateRows(index: FolderIndex): CandidateRowsResult {
     if (rec !== null && id !== null && !decisionByCandidate.has(id)) decisionByCandidate.set(id, rec);
   }
 
+  // Per-candidate route state (S91): the prepared routequote's per-entry quoteStatus wins (it is
+  // the finer-grained fact); the route-resolution entry status is the fallback. Verbatim only.
+  const routeStatusByCandidate = new Map<string, string>();
+  const routeEntry = entryBySchema(index, "simulation.route.resolution.v1");
+  for (const row of asArray(asRecord(routeEntry?.raw ?? null)?.["entries"]) ?? []) {
+    const rec = asRecord(row);
+    const id = rec === null ? null : readString(rec, "candidateId");
+    const status = rec === null ? null : readString(rec, "routeResolutionStatus");
+    if (id !== null && status !== null && !routeStatusByCandidate.has(id)) routeStatusByCandidate.set(id, status);
+  }
+  const routequote = entryBySchema(index, "routequote.prepared.v1");
+  for (const row of asArray(asRecord(routequote?.raw ?? null)?.["entries"]) ?? []) {
+    const rec = asRecord(row);
+    const id = rec === null ? null : readString(rec, "candidateId");
+    const status = rec === null ? null : readString(rec, "quoteStatus");
+    if (id !== null && status !== null) routeStatusByCandidate.set(id, status);
+  }
+
   const rows: CandidateRow[] = [];
   for (const row of rowsRaw.slice(0, MAX_CANDIDATE_ROWS)) {
     const rec = asRecord(row);
@@ -410,6 +442,7 @@ export function buildCandidateRows(index: FolderIndex): CandidateRowsResult {
       criticalFlagCount: riskProjection === null ? null : readNumber(riskProjection, "criticalFlagCount"),
       decision: decisionValue,
       blockingCodes: dec === null ? [] : readStringArray(dec, "blockingReasonCodes").items,
+      routeStatus: routeStatusByCandidate.get(candidateId) ?? null,
       nextAction: candidateNextAction(decisionValue, preflightStatus),
     });
   }
@@ -469,7 +502,15 @@ export function buildObservabilityFacts(index: FolderIndex, overview: DryRunOver
     {
       label: "Route status",
       value: overview.routeResolutionStatus ?? "(missing)",
-      note: routeStatusExplanation(overview.routeResolutionStatus),
+      note: routeStatusExplanation(overview.routeResolutionStatus, overview.routeResolverAttempted),
+    },
+    {
+      label: "Route quote",
+      value:
+        overview.routeResolverAttempted === true
+          ? `read-only quote facts via ${route === null ? "(resolver unknown)" : (readString(asRecord(route.raw) ?? {}, "routeResolverId") ?? "(resolver unknown)")}`
+          : "none — honest boundary (no quote observations supplied)",
+      note: "an observed quote is an observation, never executable — quotes can never unblock a chain",
     },
     {
       label: "Route live-state caveat",

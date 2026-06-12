@@ -548,6 +548,16 @@
 
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:routequote:prepare</code>
+    <p class="sm-cmd__summary">The S91 read-only ROUTE QUOTE bridge: pair operator-supplied quote observation files to candidates by mint and emit the routequote.prepared.v1 artifact paper:sniper:dry-run consumes via --routequote. Closed outcome set — an observed quote is an observation with mandatory caveats, never executable.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="One operator-supplied READ-ONLY quote observation for one candidate mint. CLOSED outcome set (quote-observed | unavailable | blocked | error | unsupported — nothing can mean executable); label-only facts; observed-at is an operator LABEL, never system time.">
+    <code>routequote.observation.input.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:sniper:decide</code>
     <p class="sm-cmd__summary">Paper-only decisions per candidate (skip / watch / paper-enter / paper-reject / unknown). Use --schema-version v2 for the reason-coded v2 artifact. Never an order.</p>
     <div class="sm-cmd__artifact">
@@ -589,7 +599,7 @@
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:sniper:dry-run</code>
-    <p class="sm-cmd__summary">The S88 PAPER dry-run ORCHESTRATOR: one command runs the whole chain over an operator-supplied candidate file (19 artifacts + RUN_SUMMARY.md into ONE output directory). A BLOCKED chain still writes the full honest artifact set; route resolution stays honestly UNAVAILABLE. Never an order, never a transaction.</p>
+    <p class="sm-cmd__summary">The S88 PAPER dry-run ORCHESTRATOR: one command runs the whole chain over an operator-supplied candidate file (19 artifacts + RUN_SUMMARY.md into ONE output directory). A BLOCKED chain still writes the full honest artifact set; route resolution stays honestly UNAVAILABLE unless --routequote supplies read-only quote observations (label facts + live-state caveat — never executable). Never an order, never a transaction.</p>
 
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article>
@@ -625,10 +635,10 @@
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:simulation:route</code>
-    <p class="sm-cmd__summary">Route-resolution PROVENANCE over a validated plan (simulation.route.resolution.v1). No resolver exists, so every entry is honestly UNAVAILABLE — never invented.</p>
+    <p class="sm-cmd__summary">Route-resolution PROVENANCE over a validated plan (simulation.route.resolution.v1). Honestly UNAVAILABLE without --quotes; with --quotes read-only quote observations enter as label facts with the live-state caveat — never invented, never executable.</p>
     <div class="sm-cmd__artifact">
             <span class="sm-cmd__artifact-label">artifact</span>
-            <span class="sm-schema sm-schema--stable" title="Per-entry route/destination/fee PROVENANCE over a validated plan. No route resolver exists inside the boundary, so every entry is honestly UNAVAILABLE under the fixed unavailable-no-route-resolver id.">
+            <span class="sm-schema sm-schema--stable" title="Per-entry route/destination/fee PROVENANCE over a validated plan. Honestly UNAVAILABLE without quote observations; with a prepared routequote (S91) observed quotes enter as label facts with provenance and the mandatory live-state caveat — still never executable.">
     <code>simulation.route.resolution.v1</code>
   </span>
           </div>

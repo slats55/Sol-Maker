@@ -157,6 +157,28 @@ function decisionCell(decision: string | null): HtmlValue {
   }
 }
 
+/** Per-candidate route quote/resolution state (S91) — verbatim closed-set values only. */
+function routeCell(status: string | null): HtmlValue {
+  switch (status) {
+    case "quote-observed":
+      return Pill("quote observed (read-only)", "caution");
+    case "resolved":
+      return Pill("resolved (labels; caveat)", "caution");
+    case "unresolved":
+      return Pill("unresolved", "muted");
+    case "unavailable":
+      return Pill("unavailable", "muted");
+    case "blocked":
+      return Pill("blocked", "danger");
+    case "error":
+      return Pill("error", "danger");
+    case "unsupported":
+      return Pill("unsupported", "muted");
+    default:
+      return DASH;
+  }
+}
+
 /** The screener-style candidate table. No prices, no PnL — artifact facts only. */
 export function CandidateIntelTable(result: CandidateRowsResult): RawHtml {
   const rows: readonly (readonly HtmlValue[])[] = result.rows.map((row) => [
@@ -165,6 +187,7 @@ export function CandidateIntelTable(result: CandidateRowsResult): RawHtml {
     preflightCell(row.preflightStatus),
     riskCell(row),
     decisionCell(row.decision),
+    routeCell(row.routeStatus),
     row.blockingCodes.length === 0
       ? DASH
       : html`${row.blockingCodes.map((code, i) => (i > 0 ? html` <code>${code}</code>` : html`<code>${code}</code>`))}`,
@@ -177,6 +200,7 @@ export function CandidateIntelTable(result: CandidateRowsResult): RawHtml {
       { header: "Preflight" },
       { header: "Risk (advisory)" },
       { header: "Decision" },
+      { header: "Route quote" },
       { header: "Blocking codes" },
       { header: "Next action" },
     ],

@@ -366,9 +366,17 @@
     <code>simulation.result.v1</code>
   </span></td><td class="sm-td--left">simulation</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>paper:simulation:result</code></td>
                 </tr><tr>
-                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Per-entry route/destination/fee PROVENANCE over a validated plan. No route resolver exists inside the boundary, so every entry is honestly UNAVAILABLE under the fixed unavailable-no-route-resolver id.">
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Per-entry route/destination/fee PROVENANCE over a validated plan. Honestly UNAVAILABLE without quote observations; with a prepared routequote (S91) observed quotes enter as label facts with provenance and the mandatory live-state caveat — still never executable.">
     <code>simulation.route.resolution.v1</code>
   </span></td><td class="sm-td--left">simulation</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>paper:simulation:route</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="One operator-supplied READ-ONLY quote observation for one candidate mint. CLOSED outcome set (quote-observed | unavailable | blocked | error | unsupported — nothing can mean executable); label-only facts; observed-at is an operator LABEL, never system time.">
+    <code>routequote.observation.input.v1</code>
+  </span></td><td class="sm-td--left">routequote</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>paper:routequote:prepare</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Quote observations paired to candidates BY MINT with deterministic label-only route facts and the mandatory caveat set. The bridge paper:sniper:dry-run consumes via --routequote — observation provenance only, never executable, never an order.">
+    <code>routequote.prepared.v1</code>
+  </span></td><td class="sm-td--left">routequote</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>paper:routequote:prepare</code></td>
                 </tr><tr>
                   <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="Structured-field-only comparison of two simulation intent plans: blocked transitions, reason-code movements, source-ref changes, and per-entry preview changes.">
     <code>simulation.intent.plan.diff.v2</code>
