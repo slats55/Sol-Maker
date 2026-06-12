@@ -1006,6 +1006,36 @@ remaining safe Phase 6 gaps:
 
 ---
 
+## Sprint plan — S94 onward (updated 2026-06-12)
+
+The phase structure above remains the source of truth for *what* is allowed; this is the
+working order for *when*. Rust does not begin until the TypeScript workflow is fully proven
+end-to-end; live trading does not begin until Sprint 104, separately authorized (see
+[`PHASE7_LIVE_SEND_DESIGN_REVIEW.md`](PHASE7_LIVE_SEND_DESIGN_REVIEW.md)).
+
+- **S94-A (this sprint)** — devnet broadcast completion (bounded faucet retries, keypair reuse,
+  honest funding-blocked artifacts) + mainnet dry-run risk-evidence automation
+  (`paper:sniper:rehearse --mode mainnet-dry-run` auto-fetches deep per-candidate risk) +
+  readiness evidence quality + the Phase 7 live-send design review (document only).
+- **S95** — real Jupiter swap build dry-run + simulation hardening (error taxonomy, compute
+  budget facts, retry discipline — still unsigned, still never sent).
+- **S96** — post-trade accounting/reconciliation on DEVNET (confirm → balance read →
+  reconciliation artifact; an unreconciled session refuses new trades).
+- **S97** — Rust sidecar foundation (crate layout, IPC contract, artifact-schema parity tests;
+  no hot path yet).
+- **S98** — Rust realtime ingestion hot path (candidate feed parity against the TS adapter).
+- **S99** — Rust quote/router scorer.
+- **S100** — Rust transaction simulate/devnet execution core.
+- **S101** — Axiom-style command center features; wallet/social monitoring ONLY where
+  legally and API-supported (Axiom Pro stays a UX benchmark, never a dependency).
+- **S102** — full mainnet dry-run release candidate: one command, complete evidence chain,
+  zero manual artifacts.
+- **S103** — final security audit + live authorization review (written sign-off required).
+- **S104** — separately approved controlled mainnet MICRO-trade (burner wallet, micro cap,
+  manual confirmation; see the design review's exact conditions).
+- **S105** — bounded live sniper session (attended, loss-capped, kill-switch rehearsed).
+- **S106+** — production hardening: latency, provider failover, strategy optimization.
+
 ## Definition of done (every phase)
 
 1. `pnpm check` (typecheck + lint + test) is green.
