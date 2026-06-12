@@ -31,6 +31,18 @@ import {
   type DryRunOverview,
   type DryRunRoleStatus,
 } from "../lib/dry-run-overview.js";
+import {
+  buildCandidateRows,
+  buildObservabilityFacts,
+  buildPipelineStages,
+  SNIPER_CAPABILITIES,
+} from "../lib/command-center.js";
+import {
+  CandidateIntelSection,
+  CapabilitySection,
+  ObservabilitySection,
+  PipelineSection,
+} from "../components/command-center.js";
 import { PageHeader } from "../components/layout.js";
 import { EmptyState, Pill, RiskNotice, Section, StatusCard, type Tone } from "../components/ui.js";
 import { DataTable, type TableColumn } from "../components/tables.js";
@@ -365,8 +377,12 @@ function dryRunOverviewBlock(index: FolderIndex): RawHtml | null {
   return html`<div class="sm-dryrun">
     ${paperOnlyBanner()}
     ${dryRunVerdictSection(overview)}
+    ${CapabilitySection(SNIPER_CAPABILITIES)}
+    ${PipelineSection(buildPipelineStages(index, overview))}
     ${dryRunChainSection(overview)}
+    ${CandidateIntelSection(buildCandidateRows(index))}
     ${dryRunBlockingSection(overview)}
+    ${ObservabilitySection(buildObservabilityFacts(index, overview))}
     ${dryRunNextSection(overview)}
   </div>`;
 }

@@ -6,6 +6,7 @@
 import type { RawHtml } from "../lib/html.js";
 import { navItem, type NavItem } from "../lib/nav.js";
 import { renderOverview } from "./overview.js";
+import { renderSniper } from "./sniper.js";
 import { renderResearch } from "./research.js";
 import { renderReports } from "./reports.js";
 import { renderMatrix } from "./matrix.js";
@@ -23,6 +24,7 @@ export interface PageDef {
 
 export const PAGES: readonly PageDef[] = [
   { nav: navItem("overview"), render: renderOverview },
+  { nav: navItem("sniper"), render: renderSniper },
   { nav: navItem("research"), render: renderResearch },
   { nav: navItem("reports"), render: renderReports },
   { nav: navItem("matrix"), render: renderMatrix },

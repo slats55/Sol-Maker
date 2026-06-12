@@ -71,6 +71,16 @@ export const NAV: readonly NavItem[] = [
     description: "Dashboard cockpit — posture, modes, and where to look next.",
   },
   {
+    id: "sniper",
+    label: "Sniper command center",
+    route: "/sniper",
+    file: "sniper.html",
+    group: "Cockpit",
+    icon: "gauge",
+    description:
+      "The PAPER sniper command center — candidate intake to operator verdict. Simulation only; live trading stays disabled.",
+  },
+  {
     id: "research",
     label: "Research",
     route: "/research",
