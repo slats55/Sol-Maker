@@ -367,8 +367,17 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
     family: "txpreview",
     stability: "stable",
     description:
-      "The real simulateTransaction (sigVerify:false, replaceRecentBlockhash:true) over an unsigned envelope. Closed outcomes (simulated-ok | simulated-failed | unavailable | refused); simulated-ok is evidence for review, never readiness.",
+      "The real simulateTransaction (sigVerify:false, replaceRecentBlockhash:true) over an unsigned envelope. Closed outcomes (simulated-ok | simulated-failed | unavailable | refused); S95 adds a deterministic failure classification (slippage/compute/blockhash/account/program) with the exact next safe action; simulated-ok is evidence for review, never readiness.",
     cli: "paper:simulation:tx",
+  },
+  {
+    id: "txbuild.report.v1",
+    title: "Swap build attempt report",
+    family: "txpreview",
+    stability: "stable",
+    description:
+      "The S95 auditable record of ONE unsigned-build attempt — built or refused. Every refusal carries its closed-set code, an operator message, and the exact next safe action; a built attempt carries fresh-quote facts and the decoded transaction SHAPE facts (version, blockhash, programs, address-table lookups). Nothing here signs or sends.",
+    cli: "execution:build",
   },
   {
     id: "execution.status.report.v1",
@@ -405,6 +414,15 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
     description:
       "All fourteen live-gate conditions evaluated against operator-NAMED evidence, each gap named with its exact next safe action. Structurally incapable of reporting armed; the verdict literal is always blocked.",
     cli: "execution:readiness",
+  },
+  {
+    id: "sniper.preflight.input.v1",
+    title: "Sniper preflight input bridge",
+    family: "sniper",
+    stability: "stable",
+    description:
+      "The S90 read-only bridge: token:inspect / token:risk evidence paired to candidates BY MINT for the preflight stage. Cross-kind, unknown-mint, duplicate, and secret-shaped inputs are refused at prepare time. Since S94 the rehearsal's auto-risk writes one automatically.",
+    cli: "paper:sniper:preflight:input:prepare",
   },
   {
     id: "sniper.rehearsal.report.v1",

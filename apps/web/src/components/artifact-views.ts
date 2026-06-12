@@ -2788,6 +2788,96 @@ function renderTxSimulationReportView(rec: Record<string, unknown>): RawHtml {
       { term: "error", detail: text(readString(rec, "errLabel")) },
       { term: "never signs / never sends", detail: text(`${boolText(readBoolean(rec, "neverSigns"))} / ${boolText(readBoolean(rec, "neverSends"))}`) },
     ])}
+    ${(() => {
+      // S95: the deterministic failure classification + operator guidance (absent on pre-S95
+      // reports — the view stays valid without it).
+      const classification = readString(rec, "classification");
+      if (classification === null || classification === "none") return "";
+      return kvSection(
+        "Failure classification (S95)",
+        "Derived deterministically from the program error and bounded logs — a closed set, never a guess.",
+        [
+          { term: "classification", detail: code(classification) },
+          { term: "what it means", detail: text(readString(rec, "classificationMessage")) },
+          { term: "next safe action", detail: text(readString(rec, "classificationNextAction")) },
+        ],
+      );
+    })()}
+    ${partialNotice(missing)}
+  `;
+}
+
+/** `txbuild.report.v1` — the S95 auditable record of one unsigned-build attempt. */
+function renderTxBuildReportView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const outcome = need(missing, "outcome", readString(rec, "outcome"));
+  const request = asRecord(rec["requestSummary"]);
+  const quoteFacts = asRecord(rec["quoteFacts"]);
+  const txFacts = asRecord(rec["txFacts"]);
+  const refusals = asArray(rec["refusals"]) ?? [];
+  const refusalRows: (readonly HtmlValue[])[] = [];
+  for (const row of refusals.slice(0, 16)) {
+    const refusal = asRecord(row);
+    if (refusal === null) continue;
+    refusalRows.push([
+      code(readString(refusal, "code")),
+      text(readString(refusal, "message")),
+      text(readString(refusal, "nextAction")),
+    ]);
+  }
+  return html`
+    ${RiskNotice({
+      tone: outcome === "built" ? "info" : "caution",
+      title:
+        outcome === "built"
+          ? "Swap build attempt — BUILT (an unsigned envelope is simulation material, never an order)"
+          : "Swap build attempt — REFUSED (a refused build is the system working, not a bug)",
+      body: html`One auditable record of one build attempt. Nothing here was signed, nothing was
+        sent, and mainnet live trading remains blocked by policy regardless of this outcome.`,
+    })}
+    ${kvSection("Attempt", undefined, [
+      { term: "outcome", detail: text(outcome) },
+      { term: "builder / endpoint", detail: text(`${readString(rec, "builderId") ?? DASH} @ ${readString(rec, "endpointHost") ?? DASH}`) },
+      { term: "attempted at", detail: text(readString(rec, "attemptedAt")) },
+      { term: "envelope written to", detail: text(readString(rec, "envelopeRef")) },
+      { term: "never signs / never sends", detail: text(`${boolText(readBoolean(rec, "neverSigns"))} / ${boolText(readBoolean(rec, "neverSends"))}`) },
+    ])}
+    ${request === null
+      ? ""
+      : kvSection("Request summary (public facts)", undefined, [
+          { term: "candidate mint", detail: digestCode(readString(request, "candidateMint")) },
+          { term: "input mint", detail: digestCode(readString(request, "inputMint")) },
+          { term: "amount (raw)", detail: text(readString(request, "amountRaw")) },
+          { term: "slippage (bps)", detail: num(readNumber(request, "slippageBps")) },
+          { term: "wallet (public key)", detail: digestCode(readString(request, "walletPublicKey")) },
+          { term: "network / mode", detail: text(`${readString(request, "network") ?? DASH} / ${readString(request, "executionMode") ?? DASH}`) },
+          { term: "program allowlist", detail: text(readBoolean(request, "programAllowlistActive") === true ? "ACTIVE" : "not supplied (no program check)") },
+        ])}
+    ${tableSection({
+      title: "Refusals",
+      description: "Every refusal names its closed-set code, what it means, and the exact next safe action. Deterministic: the same request facts produce the same codes.",
+      columns: [{ header: "Code" }, { header: "What it means" }, { header: "Next safe action" }],
+      rows: refusalRows,
+      empty: outcome === "built" ? "None — every check passed." : "No refusal rows present.",
+    })}
+    ${quoteFacts === null
+      ? ""
+      : kvSection("Fresh-quote facts", "Fetched in-process at build time; quotes expire within seconds.", [
+          { term: "in / out (raw)", detail: text(`${readString(quoteFacts, "inAmountRaw") ?? DASH} → ${readString(quoteFacts, "outAmountRaw") ?? DASH}`) },
+          { term: "price impact (%)", detail: text(readString(quoteFacts, "priceImpactPct")) },
+          { term: "context slot", detail: num(readNumber(quoteFacts, "contextSlot")) },
+          { term: "quoted at", detail: text(readString(quoteFacts, "quotedAt")) },
+        ])}
+    ${txFacts === null
+      ? ""
+      : kvSection("Transaction shape facts (S95)", "Decoded from the strictly-validated UNSIGNED envelope — public structure only, never the transaction body.", [
+          { term: "version / supported", detail: text(`${readString(txFacts, "version") ?? num(readNumber(txFacts, "version"))} / ${boolText(readBoolean(txFacts, "versionSupported"))}`) },
+          { term: "recent blockhash present", detail: text(boolText(readBoolean(txFacts, "blockhashPresent"))) },
+          { term: "instructions", detail: num(readNumber(txFacts, "instructionCount")) },
+          { term: "static programs", detail: num((asArray(txFacts["staticProgramIds"]) ?? []).length) },
+          { term: "address-table lookups", detail: num(readNumber(txFacts, "addressTableLookupCount")) },
+          { term: "unresolvable program ids", detail: num(readNumber(txFacts, "unresolvableProgramIdCount")) },
+        ])}
     ${partialNotice(missing)}
   `;
 }
@@ -2869,6 +2959,8 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderDevnetRehearsalView(rec);
     case "txpreview.simulation.report.v1":
       return renderTxSimulationReportView(rec);
+    case "txbuild.report.v1":
+      return renderTxBuildReportView(rec);
     default:
       return null;
   }

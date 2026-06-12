@@ -545,7 +545,12 @@
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:sniper:preflight:input:prepare</code>
     <p class="sm-cmd__summary">The read-only intelligence BRIDGE: pair standalone token:inspect --json / token:risk --json files to candidates by mint and emit the preflight input artifact paper:sniper:dry-run consumes. Candidates without data stay honestly uncovered — never marked safe.</p>
-
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="The S90 read-only bridge: token:inspect / token:risk evidence paired to candidates BY MINT for the preflight stage. Cross-kind, unknown-mint, duplicate, and secret-shaped inputs are refused at prepare time. Since S94 the rehearsal&#39;s auto-risk writes one automatically.">
+    <code>sniper.preflight.input.v1</code>
+  </span>
+          </div>
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:routequote:prepare</code>
@@ -761,10 +766,10 @@
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:simulation:tx</code>
-    <p class="sm-cmd__summary">The REAL simulateTransaction (sigVerify:false, replaceRecentBlockhash:true) over a strictly-validated UNSIGNED envelope (txpreview.simulation.report.v1). A signed transaction is refused; simulated-ok is evidence for review, never readiness; nothing here can send.</p>
+    <p class="sm-cmd__summary">The REAL simulateTransaction (sigVerify:false, replaceRecentBlockhash:true) over a strictly-validated UNSIGNED envelope (txpreview.simulation.report.v1). A signed transaction is refused; S95 classifies every failure deterministically (slippage/compute/blockhash/account/program) with the exact next safe action; simulated-ok is evidence for review, never readiness; nothing here can send.</p>
     <div class="sm-cmd__artifact">
             <span class="sm-cmd__artifact-label">artifact</span>
-            <span class="sm-schema sm-schema--stable" title="The real simulateTransaction (sigVerify:false, replaceRecentBlockhash:true) over an unsigned envelope. Closed outcomes (simulated-ok | simulated-failed | unavailable | refused); simulated-ok is evidence for review, never readiness.">
+            <span class="sm-schema sm-schema--stable" title="The real simulateTransaction (sigVerify:false, replaceRecentBlockhash:true) over an unsigned envelope. Closed outcomes (simulated-ok | simulated-failed | unavailable | refused); S95 adds a deterministic failure classification (slippage/compute/blockhash/account/program) with the exact next safe action; simulated-ok is evidence for review, never readiness.">
     <code>txpreview.simulation.report.v1</code>
   </span>
           </div>
@@ -796,7 +801,7 @@
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker execution:build</code>
-    <p class="sm-cmd__summary">REFUSAL-FIRST unsigned swap build: every refusal (kill switch, mode, risk, caps, slippage, wallet, mint match) evaluates BEFORE any network call; the only artifact is an UNSIGNED txpreview envelope (S93: stamped with quotedAt freshness provenance; --max-quote-age-ms refuses a build that aged out). Never signs, never sends.</p>
+    <p class="sm-cmd__summary">REFUSAL-FIRST unsigned swap build: every refusal (kill switch, mode, risk, Token-2022 blockers, caps, slippage, wallet, mint match) evaluates BEFORE any network call; the only artifact is an UNSIGNED txpreview envelope (S93: quotedAt freshness provenance; S95: post-build SHAPE gate — version/blockhash + optional --allowed-programs — and --report-out writes txbuild.report.v1 on BOTH outcomes with codes + next safe actions). Never signs, never sends.</p>
     <div class="sm-cmd__artifact">
             <span class="sm-cmd__artifact-label">artifact</span>
             <span class="sm-schema sm-schema--stable" title="A strictly-validated UNSIGNED transaction (every signature slot zero — a signed transaction is refused). Since S93 it carries quotedAt freshness provenance. Simulation material, never an order.">

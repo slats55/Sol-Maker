@@ -414,9 +414,13 @@
     <code>txpreview.envelope.v1</code>
   </span></td><td class="sm-td--left">txpreview</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>execution:build</code></td>
                 </tr><tr>
-                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="The real simulateTransaction (sigVerify:false, replaceRecentBlockhash:true) over an unsigned envelope. Closed outcomes (simulated-ok | simulated-failed | unavailable | refused); simulated-ok is evidence for review, never readiness.">
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="The real simulateTransaction (sigVerify:false, replaceRecentBlockhash:true) over an unsigned envelope. Closed outcomes (simulated-ok | simulated-failed | unavailable | refused); S95 adds a deterministic failure classification (slippage/compute/blockhash/account/program) with the exact next safe action; simulated-ok is evidence for review, never readiness.">
     <code>txpreview.simulation.report.v1</code>
   </span></td><td class="sm-td--left">txpreview</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>paper:simulation:tx</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="The S95 auditable record of ONE unsigned-build attempt — built or refused. Every refusal carries its closed-set code, an operator message, and the exact next safe action; a built attempt carries fresh-quote facts and the decoded transaction SHAPE facts (version, blockhash, programs, address-table lookups). Nothing here signs or sends.">
+    <code>txbuild.report.v1</code>
+  </span></td><td class="sm-td--left">txpreview</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>execution:build</code></td>
                 </tr><tr>
                   <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="The resolved execution mode plus the FULL fourteen-condition mainnet live-gate checklist (default BLOCKED) and the core gate. S93 adds quote-freshness evidence from a live fetch report + explicit age cap. Read-only; can never arm anything.">
     <code>execution.status.report.v1</code>
@@ -433,6 +437,10 @@
                   <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="All fourteen live-gate conditions evaluated against operator-NAMED evidence, each gap named with its exact next safe action. Structurally incapable of reporting armed; the verdict literal is always blocked.">
     <code>execution.readiness.report.v1</code>
   </span></td><td class="sm-td--left">execution</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>execution:readiness</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="The S90 read-only bridge: token:inspect / token:risk evidence paired to candidates BY MINT for the preflight stage. Cross-kind, unknown-mint, duplicate, and secret-shaped inputs are refused at prepare time. Since S94 the rehearsal&#39;s auto-risk writes one automatically.">
+    <code>sniper.preflight.input.v1</code>
+  </span></td><td class="sm-td--left">sniper</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>paper:sniper:preflight:input:prepare</code></td>
                 </tr><tr>
                   <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="The S93 unified rehearsal workflow&#39;s honest per-stage record (candidates → risk bridge → quote fetch/prepare → dry-run → build → simulate → optional devnet broadcast → readiness). Closed mode set paper | devnet | mainnet-dry-run; no mode can send on mainnet.">
     <code>sniper.rehearsal.report.v1</code>

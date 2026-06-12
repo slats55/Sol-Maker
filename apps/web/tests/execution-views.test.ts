@@ -164,6 +164,116 @@ describe("txpreview.simulation.report.v1 typed view", () => {
     expect(html).toContain("evidence for review, never readiness");
     expect(html).toContain("jupiter-swap-api");
   });
+
+  it("S95: renders the failure classification with its next safe action; hidden for none/pre-S95", () => {
+    const failed = typed({
+      schemaVersion: "txpreview.simulation.report.v1",
+      outcome: "simulated-failed",
+      network: "mainnet-beta",
+      endpointHost: "rpc.example.com",
+      builderId: "jupiter-swap-api",
+      feePayerPublicKey: "AHgF6Ayj5CRKfBYTkosWXkYfEiAq9BnEq7WqUJggYkJ3",
+      simulatedAt: "2026-06-12T08:00:00.000Z",
+      slot: 426052463,
+      unitsConsumed: 0,
+      errLabel: '"AccountNotFound"',
+      classification: "account-error",
+      classificationMessage: "An account the transaction needs is missing, invalid, or underfunded.",
+      classificationNextAction: "Check the wallet's balance and the token accounts involved, then rebuild.",
+      neverSigns: true,
+      neverSends: true,
+    });
+    expect(failed).toContain("Failure classification");
+    expect(failed).toContain("account-error");
+    expect(failed).toContain("then rebuild");
+    // A pre-S95 report (no classification field) renders without the section.
+    const preS95 = typed({
+      schemaVersion: "txpreview.simulation.report.v1",
+      outcome: "simulated-failed",
+      errLabel: "x",
+    });
+    expect(preS95).not.toContain("Failure classification");
+  });
+});
+
+describe("txbuild.report.v1 typed view (S95)", () => {
+  it("is in the registry and ships a typed view", () => {
+    expect(isKnownSchema("txbuild.report.v1")).toBe(true);
+    expect(hasTypedView("txbuild.report.v1")).toBe(true);
+  });
+
+  it("REFUSED attempt: refusal table with code, message, and next safe action verbatim", () => {
+    const html = typed({
+      schemaVersion: "txbuild.report.v1",
+      outcome: "refused",
+      builderId: "jupiter-swap-api",
+      endpointHost: "lite-api.jup.ag",
+      attemptedAt: "2026-06-12T08:00:00.000Z",
+      requestSummary: {
+        candidateMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        inputMint: "So11111111111111111111111111111111111111112",
+        amountRaw: "5000000",
+        slippageBps: 50,
+        walletPublicKey: "AHgF6Ayj5CRKfBYTkosWXkYfEiAq9BnEq7WqUJggYkJ3",
+        network: "mainnet-beta",
+        executionMode: "mainnet-dry-run",
+        programAllowlistActive: false,
+      },
+      refusals: [
+        {
+          code: "build-refused-risk-rejected",
+          detail: "the advisory risk decision is REJECT — never built",
+          message: "The advisory risk decision for this candidate is REJECT.",
+          nextAction: "Do not trade this token. A REJECT is never overridable at build time.",
+        },
+      ],
+      quoteFacts: null,
+      txFacts: null,
+      envelopeRef: null,
+      neverSigns: true,
+      neverSends: true,
+      phase7LiveTradingReady: false,
+    });
+    expect(html).toContain("REFUSED");
+    expect(html).toContain("the system working, not a bug");
+    expect(html).toContain("build-refused-risk-rejected");
+    expect(html).toContain("never overridable at build time");
+    expect(html).toContain("not supplied (no program check)");
+  });
+
+  it("BUILT attempt: quote facts + transaction shape facts rendered", () => {
+    const html = typed({
+      schemaVersion: "txbuild.report.v1",
+      outcome: "built",
+      builderId: "jupiter-swap-api",
+      endpointHost: "lite-api.jup.ag",
+      attemptedAt: "2026-06-12T20:20:14.752Z",
+      requestSummary: {
+        candidateMint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+        inputMint: "So11111111111111111111111111111111111111112",
+        amountRaw: "5000000",
+        slippageBps: 50,
+        walletPublicKey: "AHgF6Ayj5CRKfBYTkosWXkYfEiAq9BnEq7WqUJggYkJ3",
+        network: "mainnet-beta",
+        executionMode: "mainnet-dry-run",
+        programAllowlistActive: true,
+      },
+      refusals: [],
+      quoteFacts: { inAmountRaw: "5000000", outAmountRaw: "7541869650", priceImpactPct: "0", contextSlot: 426052463, quotedAt: "2026-06-12T20:20:14.752Z" },
+      txFacts: { version: 0, versionSupported: true, blockhashPresent: true, instructionCount: 7, staticProgramIds: ["11111111111111111111111111111111"], addressTableLookupCount: 1, unresolvableProgramIdCount: 0 },
+      envelopeRef: "envelope.json",
+      neverSigns: true,
+      neverSends: true,
+      phase7LiveTradingReady: false,
+    });
+    expect(html).toContain("BUILT");
+    expect(html).toContain("never an order");
+    expect(html).toContain("7541869650");
+    expect(html).toContain("426052463");
+    expect(html).toContain("Transaction shape facts");
+    expect(html).toContain("ACTIVE");
+    expect(html).toContain("None — every check passed.");
+  });
 });
 
 describe("capability strip — S93 rows", () => {

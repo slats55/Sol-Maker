@@ -457,7 +457,7 @@ export const COMMANDS: readonly CommandRef[] = [
   {
     command: "paper:simulation:tx",
     summary:
-      "The REAL simulateTransaction (sigVerify:false, replaceRecentBlockhash:true) over a strictly-validated UNSIGNED envelope (txpreview.simulation.report.v1). A signed transaction is refused; simulated-ok is evidence for review, never readiness; nothing here can send.",
+      "The REAL simulateTransaction (sigVerify:false, replaceRecentBlockhash:true) over a strictly-validated UNSIGNED envelope (txpreview.simulation.report.v1). A signed transaction is refused; S95 classifies every failure deterministically (slippage/compute/blockhash/account/program) with the exact next safe action; simulated-ok is evidence for review, never readiness; nothing here can send.",
     group: "Phase 6 simulation",
     readsChain: true,
   },
@@ -475,7 +475,7 @@ export const COMMANDS: readonly CommandRef[] = [
   {
     command: "execution:build",
     summary:
-      "REFUSAL-FIRST unsigned swap build: every refusal (kill switch, mode, risk, caps, slippage, wallet, mint match) evaluates BEFORE any network call; the only artifact is an UNSIGNED txpreview envelope (S93: stamped with quotedAt freshness provenance; --max-quote-age-ms refuses a build that aged out). Never signs, never sends.",
+      "REFUSAL-FIRST unsigned swap build: every refusal (kill switch, mode, risk, Token-2022 blockers, caps, slippage, wallet, mint match) evaluates BEFORE any network call; the only artifact is an UNSIGNED txpreview envelope (S93: quotedAt freshness provenance; S95: post-build SHAPE gate — version/blockhash + optional --allowed-programs — and --report-out writes txbuild.report.v1 on BOTH outcomes with codes + next safe actions). Never signs, never sends.",
     group: "Execution (gated)",
     readsChain: true,
   },
