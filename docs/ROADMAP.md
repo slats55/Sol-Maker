@@ -1042,8 +1042,20 @@ end-to-end; live trading does not begin until Sprint 104, separately authorized 
   (The real devnet broadcast itself remains faucet-blocked after bounded attempts — the S94
   key `8FenZasyRe3HeUEm4X8iTAufaamnryU2JB8cRzWyHgwm` stays fundable externally; carried
   forward.)
-- **S97** — Rust sidecar foundation (crate layout, IPC contract, artifact-schema parity tests;
-  no hot path yet).
+- **S97** ✅ (2026-06-12) — Rust sidecar foundation. Actuals: `crates/solmaker-engine`
+  Cargo workspace (deps pinned to `serde` + `serde_json` by a tested allowlist) emitting the
+  deterministic `engine.status.report.v1` artifact over the documented `engine.ipc.v1` stdout
+  contract (the engine reads no clock and no environment — `--created-at` comes from the
+  orchestrator); `packages/engine-bridge` (bounded spawn with argument ARRAYS and `shell:false`,
+  closed argument vocabulary, env NAME allowlist, 1 MiB output cap, timeout, STRICT closed-schema
+  validation — signer/send/mainnet-send must literally be `disabled` or the artifact is refused);
+  CLI `engine:status` (`--json/--out/--force/--fail-on-unavailable`; a machine without a Rust
+  toolchain reports UNAVAILABLE honestly at exit 0); capability scans on BOTH sides (Rust
+  `tests/safety_scan.rs` + a TypeScript mirror that scans the Rust source so the wall holds
+  without cargo); web registry 46 schemas + typed view + command-reference group. REAL evidence:
+  `pnpm soulmaker engine:status` → prebuilt debug binary → validated artifact (spawn ~21ms warm,
+  IPC overhead only — no trading-latency claim). No hot path, no signing, no sending, no network
+  capability in Rust. See [`RUST_ENGINE.md`](RUST_ENGINE.md).
 - **S98** — Rust realtime ingestion hot path (candidate feed parity against the TS adapter).
 - **S99** — Rust quote/router scorer.
 - **S100** — Rust transaction simulate/devnet execution core.
