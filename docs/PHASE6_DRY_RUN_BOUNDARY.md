@@ -218,6 +218,37 @@ no schema, and no validator changed:
 
 The S88 resolver decision record below stands unchanged.
 
+### Sprint 89 assessment — design stub for the read-only quote package (NOT implemented)
+
+S89 re-inspected the S88 decision record with all gates green and confirms: the smallest safe next
+step remains a NEW package, and it is deliberately NOT built in a milestone-polish sprint (a live
+RPC surface, even read-only, deserves its own sprint with the day-one scans below). This stub
+pins the shape so a future authorized session starts from a decided design instead of a blank
+page:
+
+- **Package:** `@soulmaker/routequote` (own folder, own import-allowlist scan; NEVER added to
+  `@soulmaker/simulation`'s allowlist — the boundary package must stay network-incapable).
+- **Single export surface:** `resolveRouteQuote(input: RouteQuoteInput): Promise<RouteQuoteOutcome>`
+  where `RouteQuoteOutcome` is a CLOSED union: `quoted` (route label, venue label, fee label,
+  observed-at LABEL — no system time), `unavailable`, `refused-by-kill-switch`, `rpc-error`
+  (redacted), `unsupported-pair`. No streaming, no caching, no retries in v1.
+- **Capability ceiling, enforced by scans:** read-only quote/route lookup ONLY. No
+  wallet/keypair/signer types, no transaction building, no `sendTransaction`/`simulateTransaction`
+  call, no write RPC method anywhere in the package. The S43-style forbidden-token source scan and
+  a refusal test for write-method-bearing RPC doubles land in the SAME commit as the first source
+  file.
+- **Integration point (already shipped):** output enters the chain ONLY as label-resolved facts
+  through `buildSimulationRouteResolutionV1`'s existing resolved-entry contract — `resolved`
+  entries REQUIRE provenance plus the mandatory `liveStateCaveat` and its warning code. The CLI
+  seam is a new optional `--quotes <path>` input file (operator runs the quote command separately;
+  the simulation boundary still never touches the network), NOT an in-process adapter injection.
+- **Determinism stance:** live quotes are non-deterministic by nature, so quote output is an
+  OPERATOR INPUT FILE (like `token:inspect` output is today) — the dry-run chain stays
+  byte-deterministic for a fixed input set; CI uses fictional fixture quote files only.
+- **Not authorized by this stub:** writing the package, any CLI that reaches RPC for quotes, or
+  any change to the honest all-UNAVAILABLE default. Implementation requires a future session that
+  explicitly takes it on with the "required tests BEFORE any implementation lands" section.
+
 ## Required tests BEFORE any implementation lands
 
 1. Import-allowlist + forbidden-token + determinism scans for the new package (day one).
