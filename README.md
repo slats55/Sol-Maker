@@ -328,7 +328,11 @@ plan with stable reason codes and zero entries. Previews never invent a destinat
 SKIPPED, and the only dry-run adapter honestly reports **UNAVAILABLE** (a real dry-run needs
 transaction material the boundary forbids building — nothing is faked). `paper:simulation:validate`
 strictly validates both artifacts, including their literal safety locks (`neverSigns`, `neverSends`,
-`dryRunOnly`, `neverAuthorizesLiveTrading`). Sprint 67 closes the v2 audit gap:
+`dryRunOnly`, `neverAuthorizesLiveTrading`). Sprint 92 adds `paper:simulation:tx` — the REAL
+`simulateTransaction` preview the dry-run boundary doc designed: a strictly-validated **UNSIGNED**
+envelope (`txpreview.envelope.v1`; any embedded signature is refused) simulated with
+`sigVerify:false` + `replaceRecentBlockhash:true` over a seam with **no send method** — a
+`simulated-ok` is evidence for review, never live-trading readiness. Sprint 67 closes the v2 audit gap:
 `paper:simulation:audit` builds a `phase6.audit.report.v1` over the **ten** chain artifacts
 (Sprint 87 added the route-resolution artifact via `--route`) — each strictly validated in
 place, structured cross-references checked (labels/counts/blocked states, never prose; a route

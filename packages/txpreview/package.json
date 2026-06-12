@@ -1,0 +1,14 @@
+{
+  "name": "@soulmaker/txpreview",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "UNSIGNED transaction PREVIEW boundary (Sprint 92) â€” the separately-reviewed package docs/PHASE6_DRY_RUN_BOUNDARY.md designed. Validates unsigned transaction envelopes (any embedded signature is refused) and runs the real Solana simulateTransaction with sigVerify:false + replaceRecentBlockhash:true over a seam that exposes NO send method. No signer, no secret key, no seed phrase, no sending â€” a successful simulation is evidence, never live-trading readiness.",
+  "exports": { ".": "./src/index.ts" },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@solana/web3.js": "^1.95.0",
+    "@soulmaker/security": "workspace:*"
+  }
+}

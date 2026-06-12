@@ -113,6 +113,15 @@ import {
   type RealtimeCandidatesSnapshot,
 } from "@soulmaker/realtime";
 import {
+  createTxPreviewRpc,
+  simulateUnsignedEnvelope,
+  formatTxSimulationReport,
+  validateUnsignedTxEnvelope,
+  TxPreviewError,
+  type TxPreviewRpc,
+  type TxSimulationReport,
+} from "@soulmaker/txpreview";
+import {
   parseMintAddress,
   normalizeSniperCandidateList,
   formatSniperCandidateList,
@@ -341,6 +350,8 @@ export interface CommandContext {
   createQuoteAdapter?: (options: JupiterQuoteAdapterOptions) => QuoteProviderAdapter;
   /** Factory for the live candidate source; injected in tests to avoid network. */
   createCandidateSource?: (options: JupiterRecentAdapterOptions) => CandidateSourceAdapter;
+  /** Factory for the simulate-only tx preview RPC; injected in tests to avoid network. */
+  createTxPreview?: (rpcUrl: string) => TxPreviewRpc;
   /** Injectable sleep for the bounded realtime watch; injected in tests. */
   sleep?: (ms: number) => Promise<void>;
   /** Injectable clock for deterministic report timestamps. */
@@ -5625,6 +5636,131 @@ export async function paperRealtimeWatchReport(
     "- A watched candidate is an observation — inspect and risk-check before any paper decision.",
   ];
   return { text: redactString(lines.join("\n")), exitCode: 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 92 — paper:simulation:tx
+//   The REAL simulateTransaction preview the dry-run boundary doc designed:
+//   a strictly-validated UNSIGNED envelope simulated with sigVerify:false +
+//   replaceRecentBlockhash:true over a seam with NO send method. Nothing is
+//   signed, nothing is sent; simulated-ok is evidence, never readiness.
+// ---------------------------------------------------------------------------
+
+export interface PaperSimulationTxCommandOptions {
+  /** Unsigned transaction envelope JSON path (txpreview.envelope.v1). Required. */
+  envelopePath?: string;
+  /** RPC endpoint for the simulation (overrides config rpcUrl). */
+  rpcUrl?: string;
+  /** Explicit opt-in to a network read while in PAPER mode. */
+  allowPaperRead?: boolean;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit non-zero unless the outcome is simulated-ok. */
+  failOnNotOk?: boolean;
+}
+
+/**
+ * `soulmaker paper:simulation:tx` — simulate one UNSIGNED transaction envelope against real
+ * chain state. The envelope is validated fail-closed first (a signed transaction, a key-shaped
+ * field, or a fee-payer mismatch refuses before any network I/O); a transport failure becomes an
+ * honest `unavailable` report; a program error stays `simulated-failed`. No signer, no sending.
+ */
+export async function paperSimulationTxReport(
+  ctx: CommandContext = {},
+  opts: PaperSimulationTxCommandOptions = {},
+): Promise<CliReport> {
+  if (!opts.envelopePath) return { text: "Refusing: --envelope <path> is required.", exitCode: 1 };
+
+  // Fail early on a doomed --out before any read or network happens.
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+  }
+
+  // Config honesty gate (network read).
+  let config: Config;
+  try {
+    config = loadConfig(toLoadOptions(ctx));
+  } catch (err) {
+    const msg = err instanceof ConfigError ? err.message : String(err);
+    return { text: redactString(`Refusing: config is invalid.\n\n${msg}`), exitCode: 1 };
+  }
+  const caps = capabilitiesFor(config.mode);
+  if (!caps.canReadChain && !(config.mode === "PAPER" && opts.allowPaperRead === true)) {
+    return {
+      text:
+        `Refusing: mode ${config.mode} does not read the network. ` +
+        "Use WATCH_ONLY/SIMULATION, or pass --allow-paper-read to simulate read-only in PAPER mode.",
+      exitCode: 1,
+    };
+  }
+
+  // Read + validate the envelope FAIL-CLOSED before any network I/O. An invalid envelope is an
+  // input error (refusal), not a simulation outcome.
+  let envelopeValue: unknown;
+  try {
+    envelopeValue = readJsonValue(ctx, opts.envelopePath, "unsigned tx envelope");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  let network: string;
+  try {
+    network = validateUnsignedTxEnvelope(envelopeValue).network;
+  } catch (err) {
+    const msg = err instanceof TxPreviewError ? err.message : (err as Error).message;
+    return { text: redactString(`Refusing: ${msg}`), exitCode: 1 };
+  }
+
+  const rpcUrl = opts.rpcUrl ?? config.rpcUrl;
+  if (!rpcUrl) {
+    return { text: "Refusing: no RPC endpoint. Pass --rpc-url or set rpcUrl in config.", exitCode: 1 };
+  }
+  // Best-effort cluster sanity: an obvious envelope/endpoint mismatch is refused, not simulated.
+  const host = rpcUrl.toLowerCase();
+  if (network === "mainnet-beta" && host.includes("devnet")) {
+    return { text: "Refusing: the envelope targets mainnet-beta but --rpc-url looks like a devnet endpoint.", exitCode: 1 };
+  }
+  if (network === "devnet" && host.includes("mainnet")) {
+    return { text: "Refusing: the envelope targets devnet but --rpc-url looks like a mainnet endpoint.", exitCode: 1 };
+  }
+
+  const makePreview = ctx.createTxPreview ?? createTxPreviewRpc;
+  let report: TxSimulationReport;
+  try {
+    const preview = makePreview(rpcUrl);
+    report = await simulateUnsignedEnvelope(preview, envelopeValue, { clock: ctx.now });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // Optional write: ONLY the report JSON (UTF-8; overwrite refused earlier without --force).
+  let wroteLine = "";
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(report), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write simulation report at ${resolved}`), exitCode: 1 };
+    }
+    wroteLine = `\nwrote ${resolved}`;
+  }
+
+  const exitCode = opts.failOnNotOk && report.outcome !== "simulated-ok" ? 1 : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
+  }
+  const lines = [
+    formatTxSimulationReport(report) + wroteLine,
+    "",
+    "Next:",
+    "- A simulated-ok outcome is evidence for operator review — it does NOT arm anything and is NOT live-trading readiness.",
+    "- Inspect the JSON: re-run with --json (or open the --out file in the web inspector).",
+  ];
+  return { text: redactString(lines.join("\n")), exitCode };
 }
 
 // ---------------------------------------------------------------------------

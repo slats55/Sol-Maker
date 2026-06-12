@@ -8,6 +8,7 @@
     "soulmaker": "./src/index.ts"
   },
   "dependencies": {
+    "@solana/web3.js": "^1.95.0",
     "@soulmaker/backtest": "workspace:*",
     "@soulmaker/core": "workspace:*",
     "@soulmaker/paper": "workspace:*",
@@ -20,6 +21,7 @@
     "@soulmaker/sniper": "workspace:*",
     "@soulmaker/solana": "workspace:*",
     "@soulmaker/strategy": "workspace:*",
+    "@soulmaker/txpreview": "workspace:*",
     "commander": "^12.1.0"
   }
 }

@@ -50,6 +50,7 @@ import {
   paperRouteQuoteFetchReport,
   paperRealtimeSnapshotReport,
   paperRealtimeWatchReport,
+  paperSimulationTxReport,
   paperSniperDecideReport,
   paperSniperWorkflowReport,
   paperSniperReportReport,
@@ -2324,6 +2325,45 @@ program
           force: Boolean(opts.force),
           json: Boolean(opts.json),
           failOnBlocked: Boolean(opts.failOnBlocked),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:simulation:tx")
+  .description(
+    "Simulate ONE strictly-validated UNSIGNED transaction envelope (txpreview.envelope.v1) against real chain state via simulateTransaction with sigVerify:false + replaceRecentBlockhash:true — which is why NO signer, key, or seed phrase exists at this boundary. A signed transaction, key-shaped field, or fee-payer mismatch is REFUSED before any network I/O; transport failure -> honest `unavailable`; program error -> `simulated-failed`. simulated-ok is EVIDENCE for review, never live-trading readiness, and nothing here can send. PAPER mode requires --allow-paper-read",
+  )
+  .option("--envelope <path>", "unsigned transaction envelope JSON (txpreview.envelope.v1; required)")
+  .option("--rpc-url <url>", "RPC endpoint for the simulation (overrides config rpcUrl; obvious cluster mismatches with the envelope are refused)")
+  .option("--allow-paper-read", "explicitly allow this read-only network simulation while in PAPER mode")
+  .option("--json", "emit the simulation report as stable JSON")
+  .option("--out <path>", "write ONLY the simulation report JSON to this path (refused if it exists)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-not-ok", "exit non-zero unless the outcome is simulated-ok")
+  .action(
+    async (opts: {
+      envelope?: string;
+      rpcUrl?: string;
+      allowPaperRead?: boolean;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnNotOk?: boolean;
+    }) => {
+      const { text, exitCode } = await paperSimulationTxReport(
+        {},
+        {
+          envelopePath: opts.envelope,
+          rpcUrl: opts.rpcUrl,
+          allowPaperRead: Boolean(opts.allowPaperRead),
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnNotOk: Boolean(opts.failOnNotOk),
         },
       );
       console.log(text);

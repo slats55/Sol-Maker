@@ -125,6 +125,7 @@ invariants.
 | `paper:simulation:intent:plan` | (none — missing inputs BLOCK honestly) | `--out` only | `simulation.intent.plan.v2` (the first REAL Phase 6 artifact; fail-closed preview) |
 | `paper:simulation:result` | `--plan` | `--out` only | `simulation.result.v1` (dry-run-only; unavailable dry-run reported honestly) |
 | `paper:simulation:route` | `--plan` | `--out` only | `simulation.route.resolution.v1` (route PROVENANCE only; honestly UNAVAILABLE without `--quotes`; with `--quotes` READ-ONLY quote observations enter as label facts + live-state caveat — still never executable) |
+| `paper:simulation:tx` | `--envelope` | `--out` only | `txpreview.simulation.report.v1` (S92 REAL `simulateTransaction` over a strictly-validated UNSIGNED envelope — sigVerify disabled, so no signer/key exists; a signed transaction is REFUSED; simulated-ok is evidence, never readiness; nothing can send) |
 | `paper:simulation:validate` | `--plan` and/or `--result` | never | validates `simulation.intent.plan.v2` / `simulation.result.v1` (literal locks enforced) |
 | `paper:simulation:audit` | (none — missing artifacts reported as warnings) | `--out` only | `phase6.audit.report.v1` (chain audit over the ten v2/simulation artifacts incl. the route-resolution artifact via `--route`; reports, never authorizes) |
 | `paper:simulation:readiness` | (none — anything missing blocks) | `--out` only | `phase6.simulation.readiness.report.v1` (stack readiness; `phase7LiveTradingReady` is a literal false, always) |
