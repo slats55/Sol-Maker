@@ -1,0 +1,9 @@
+# Soulmaker Rust workspace — sidecar foundation only (Sprint 97).
+#
+# The Rust side is a SIDECAR: TypeScript remains the orchestrator and the
+# validation authority. No crate in this workspace may sign, send, load
+# wallets/keys, or talk to the network. See crates/solmaker-engine/SAFETY.md.
+
+[workspace]
+resolver = "2"
+members = ["crates/solmaker-engine"]

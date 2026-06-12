@@ -17,6 +17,12 @@
     "test:watch": "vitest",
     "web:build": "tsx apps/web/src/build.ts",
     "web:inspect": "tsx apps/web/src/inspect.ts",
+    "rust:check": "cargo check --workspace",
+    "rust:build": "cargo build --workspace",
+    "rust:test": "cargo test --workspace",
+    "rust:fmt": "cargo fmt --all",
+    "rust:fmt:check": "cargo fmt --all -- --check",
+    "rust:clippy": "cargo clippy --workspace --all-targets -- -D warnings",
     "check": "pnpm run typecheck && pnpm run lint && pnpm run test"
   },
   "devDependencies": {

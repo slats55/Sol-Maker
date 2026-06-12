@@ -1,0 +1,13 @@
+[package]
+name = "solmaker-engine"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Soulmaker Rust engine sidecar — foundation only: status, JSON IPC, schema parity. No signing, no sending, no wallet/key material, no network capability by construction."
+
+# Dependency policy (enforced by tests/safety_scan.rs): pure-Rust serialization
+# only. No Solana SDK, no HTTP client, no async runtime, no crypto/signing crate
+# may be added without a reviewed safety decision.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

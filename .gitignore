@@ -7,6 +7,9 @@ dist/
 build/
 *.tsbuildinfo
 
+# Rust build output (Cargo.lock IS committed)
+target/
+
 # Local operator run output (paper:sniper:dry-run --out, rehearsal runs)
 runs/
 
