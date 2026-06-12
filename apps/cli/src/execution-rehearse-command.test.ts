@@ -139,7 +139,7 @@ describe("execution:devnet:rehearse — the full chain over injected seams", () 
 
       const outDir = join(tmp, "runs", "rehearsal-1");
       const files = readdirSync(outDir).sort();
-      expect(files).toEqual(["devnet-rehearsal-audit.jsonl", "devnet-rehearsal-report.json", "throwaway.devnet.keypair"]);
+      expect(files).toEqual(["devnet-rehearsal-audit.jsonl", "devnet-rehearsal-report.json", "reconciliation-report.json", "throwaway.devnet.keypair"]);
 
       // The keypair file is the ONLY artifact carrying the secret bytes.
       const keypairBytes = JSON.parse(readFileSync(join(outDir, "throwaway.devnet.keypair"), "utf8")) as number[];
@@ -202,7 +202,7 @@ describe("execution:devnet:rehearse — the full chain over injected seams", () 
       expect(report.throwawayFilePath).toBeNull();
       expect(report.outcome).toBe("rehearsed");
       const files = readdirSync(join(tmp, "elsewhere", "r1")).sort();
-      expect(files).toEqual(["devnet-rehearsal-audit.jsonl", "devnet-rehearsal-report.json"]);
+      expect(files).toEqual(["devnet-rehearsal-audit.jsonl", "devnet-rehearsal-report.json", "reconciliation-report.json"]);
     });
   });
 

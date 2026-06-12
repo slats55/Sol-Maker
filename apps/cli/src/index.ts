@@ -56,6 +56,9 @@ import {
   executionDevnetSendReport,
   executionDevnetRehearseReport,
   executionReadinessReport,
+  executionSessionStatusReport,
+  executionSessionReconcileReport,
+  executionSessionAcknowledgeReport,
   paperSniperRehearseReport,
   paperSniperDecideReport,
   paperSniperWorkflowReport,
@@ -2361,6 +2364,7 @@ program
   .option("--devnet-send", "EXPLICIT opt-in to the devnet broadcast rehearsal (devnet mode only)")
   .option("--acknowledge-devnet-execution", "the explicit devnet acknowledgment flag (with the env flag)")
   .option("--rpc-url <url>", "RPC endpoint for the simulate/devnet stages")
+  .option("--session-ledger <path>", "S96: session ledger path for the devnet stage (default runs/execution-sessions.jsonl)")
   .option("--adopt-specs", "build the dry-run governance specs as ADOPTED (requires --operator)")
   .option("--operator <label>", "operator label echoed through the dry-run chain")
   .option("--allow-paper-read", "explicitly allow network reads while in PAPER mode (quote fetch + simulation)")
@@ -2388,6 +2392,7 @@ program
       devnetSend?: boolean;
       acknowledgeDevnetExecution?: boolean;
       rpcUrl?: string;
+      sessionLedger?: string;
       adoptSpecs?: boolean;
       operator?: string;
       allowPaperRead?: boolean;
@@ -2417,6 +2422,7 @@ program
           devnetSend: Boolean(opts.devnetSend),
           acknowledgeDevnetExecution: Boolean(opts.acknowledgeDevnetExecution),
           rpcUrl: opts.rpcUrl,
+          sessionLedger: opts.sessionLedger,
           adoptSpecs: Boolean(opts.adoptSpecs),
           operatorLabel: opts.operator,
           allowPaperRead: Boolean(opts.allowPaperRead),
@@ -2605,6 +2611,7 @@ program
   .option("--audit-log <path>", "append-only JSONL audit log (required; every attempt is journaled)")
   .option("--risk-score <n>", "explicit advisory risk score for the trade context (required; a self-transfer probe is 0)")
   .option("--max-quote-age-ms <ms>", "tighten the quote-age cap below the 60s devnet-probe ceiling; the envelope's quotedAt provenance is checked against it (a stale/missing/future quote refuses)")
+  .option("--session-ledger <path>", "S96: session ledger path (default runs/execution-sessions.jsonl) — an unaccounted previous session REFUSES a new attempt; a submitted attempt records as pending-confirmation until reconciled")
   .option("--json", "emit the attempt report as stable JSON")
   .action(
     async (opts: {
@@ -2615,6 +2622,7 @@ program
       auditLog?: string;
       riskScore?: string;
       maxQuoteAgeMs?: string;
+      sessionLedger?: string;
       json?: boolean;
     }) => {
       const { text, exitCode } = await executionDevnetSendReport(
@@ -2627,6 +2635,7 @@ program
           auditLog: opts.auditLog,
           riskScore: opts.riskScore,
           maxQuoteAgeMs: opts.maxQuoteAgeMs,
+          sessionLedger: opts.sessionLedger,
           json: Boolean(opts.json),
         },
       );
@@ -2648,6 +2657,7 @@ program
   .option("--slippage-cap-bps <bps>", "the EXPLICIT slippage cap for condition 7 (config has none)")
   .option("--wallet <publicKey>", "the destination wallet PUBLIC key for condition 12 (never a secret)")
   .option("--audit-log <path>", "the audit log path that WOULD be used (condition 14's path half)")
+  .option("--session-ledger <path>", "S96: session ledger path (default runs/execution-sessions.jsonl) — the last session's reconciliation status is reported as evidence")
   .option("--json", "emit the readiness report as stable JSON")
   .option("--out <path>", "write ONLY the readiness report JSON to this path (refused if it exists)")
   .option("--force", "overwrite an existing --out file (refused by default)")
@@ -2661,6 +2671,7 @@ program
       slippageCapBps?: string;
       wallet?: string;
       auditLog?: string;
+      sessionLedger?: string;
       json?: boolean;
       out?: string;
       force?: boolean;
@@ -2676,6 +2687,7 @@ program
           slippageCapBps: opts.slippageCapBps,
           wallet: opts.wallet,
           auditLog: opts.auditLog,
+          sessionLedger: opts.sessionLedger,
           json: Boolean(opts.json),
           outPath: opts.out,
           force: Boolean(opts.force),
@@ -2699,6 +2711,7 @@ program
   .option("--airdrop-attempts <n>", "bounded faucet retries per run (default 3; hard cap 5 — the faucet is never spammed)")
   .option("--skip-airdrop", "do not request an airdrop (the signer must already be funded)")
   .option("--skip-simulation", "skip the pre-send simulateTransaction step (kept on by default)")
+  .option("--session-ledger <path>", "S96: session ledger path (default runs/execution-sessions.jsonl) — an unaccounted previous session REFUSES a new attempt")
   .option("--json", "emit the rehearsal report as stable JSON")
   .option("--force", "overwrite an existing rehearsal report in the output directory")
   .action(
@@ -2711,6 +2724,7 @@ program
       airdropAttempts?: string;
       skipAirdrop?: boolean;
       skipSimulation?: boolean;
+      sessionLedger?: string;
       json?: boolean;
       force?: boolean;
     }) => {
@@ -2725,6 +2739,7 @@ program
           airdropAttempts: opts.airdropAttempts,
           skipAirdrop: Boolean(opts.skipAirdrop),
           skipSimulation: Boolean(opts.skipSimulation),
+          sessionLedger: opts.sessionLedger,
           json: Boolean(opts.json),
           force: Boolean(opts.force),
         },
@@ -2733,6 +2748,81 @@ program
       if (exitCode !== 0) process.exitCode = exitCode;
     },
   );
+
+program
+  .command("execution:session:status")
+  .description(
+    "S96 read-only session accounting status: the latest execution session's ledger entries and the continuation decision a NEW devnet attempt would face (allowed only after reconciled / not-sent / funding-blocked / explicit acknowledgment). Reads the gitignored runs/ ledger; writes nothing unless --out; can never reconcile, acknowledge, or execute anything",
+  )
+  .option("--ledger <path>", "session ledger path (default runs/execution-sessions.jsonl)")
+  .option("--network <network>", "network whose sessions gate continuation (default devnet)")
+  .option("--json", "emit the status report as stable JSON")
+  .option("--out <path>", "write ONLY the status report JSON to this path (refused if it exists)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .action((opts: { ledger?: string; network?: string; json?: boolean; out?: string; force?: boolean }) => {
+    const { text, exitCode } = executionSessionStatusReport(
+      {},
+      { ledger: opts.ledger, network: opts.network, json: Boolean(opts.json), outPath: opts.out, force: Boolean(opts.force) },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("execution:session:reconcile")
+  .description(
+    "S96 post-trade accounting over the LATEST devnet execution session: re-check the signature's confirmation status (bounded polls, transaction-history search), read the CURRENT balance, read the ACTUAL fee from transaction meta, compare expected-vs-actual, write execution.reconciliation.report.v1 into --out, and append the verdict to the session ledger (the continuation wall's input). READ-ONLY RPC — this command can never sign, send, or resend; devnet sessions only; mainnet endpoints refused. Exits 1 when the verdict still blocks a new attempt",
+  )
+  .option("--ledger <path>", "session ledger path (default runs/execution-sessions.jsonl)")
+  .option("--out <dir>", "output DIRECTORY for the reconciliation report (required)")
+  .option("--rpc-url <url>", "devnet RPC endpoint (default https://api.devnet.solana.com; mainnet endpoints refused)")
+  .option("--mint <mint>", "optional token mint to include in the balance reads")
+  .option("--max-fee-lamports <n>", "tighten the acceptable probe fee bound (default 10000; bounds only tighten)")
+  .option("--polls <n>", "bounded confirmation polls (default 5; hard cap 60)")
+  .option("--json", "emit the reconciliation report as stable JSON")
+  .option("--force", "overwrite an existing reconciliation report in the output directory")
+  .action(
+    async (opts: { ledger?: string; out?: string; rpcUrl?: string; mint?: string; maxFeeLamports?: string; polls?: string; json?: boolean; force?: boolean }) => {
+      const { text, exitCode } = await executionSessionReconcileReport(
+        {},
+        {
+          ledger: opts.ledger,
+          outDir: opts.out,
+          rpcUrl: opts.rpcUrl,
+          mint: opts.mint,
+          maxFeeLamports: opts.maxFeeLamports,
+          polls: opts.polls,
+          json: Boolean(opts.json),
+          force: Boolean(opts.force),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("execution:session:acknowledge")
+  .description(
+    "S96: the EXPLICIT, AUDITED manual exit from a blocked session — appends a manual-acknowledgment entry (with your verbatim --reason) to the session ledger so the continuation wall opens. Requires BOTH --reason (>= 10 chars) and --acknowledge-unreconciled-session; refuses when nothing is blocked. This documents a human decision in the permanent accounting trail; it erases nothing and there is no force/bypass variant",
+  )
+  .option("--ledger <path>", "session ledger path (default runs/execution-sessions.jsonl)")
+  .option("--reason <text>", "the REQUIRED explicit reason (at least 10 characters; recorded verbatim)")
+  .option("--acknowledge-unreconciled-session", "the REQUIRED explicit acknowledgment flag")
+  .option("--json", "emit the appended ledger entry as stable JSON")
+  .action((opts: { ledger?: string; reason?: string; acknowledgeUnreconciledSession?: boolean; json?: boolean }) => {
+    const { text, exitCode } = executionSessionAcknowledgeReport(
+      {},
+      {
+        ledger: opts.ledger,
+        reason: opts.reason,
+        acknowledgeUnreconciledSession: Boolean(opts.acknowledgeUnreconciledSession),
+        json: Boolean(opts.json),
+      },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
 
 program
   .command("paper:simulation:validate")

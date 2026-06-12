@@ -19,7 +19,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
-import { basename, isAbsolute, join, normalize } from "node:path";
+import { basename, dirname, isAbsolute, join, normalize } from "node:path";
 import {
   loadConfig,
   evaluateLiveGate,
@@ -146,6 +146,17 @@ import {
   DEVNET_EXECUTION_ENV_FLAG,
   DEVNET_EXECUTION_ENV_VALUE,
   DEVNET_REHEARSAL_MAX_AIRDROP_ATTEMPTS,
+  createReconciliationRpc,
+  readBalanceSnapshot,
+  trackConfirmation,
+  buildReconciliationReport,
+  CONFIRMATION_GUIDANCE,
+  RECONCILIATION_CONTINUATION_SAFE_VERDICTS,
+  SESSION_LEDGER_FILE_NAME,
+  createSessionLedgerEntry,
+  deriveSessionId,
+  parseSessionLedger,
+  evaluateSessionContinuation,
   type ResolvedExecutionMode,
   type OperatorSafetyControls,
   type SendRpc,
@@ -153,6 +164,14 @@ import {
   type RehearsalSignerSource,
   type TransactionSigningBoundary,
   type DevnetRehearsalReport,
+  type ReconciliationRpc,
+  type ReconciliationReport,
+  type ConfirmationTrackResult,
+  type BalanceSnapshot,
+  type ExpectedEffect,
+  type SessionLedgerEntry,
+  type ParsedSessionLedger,
+  type SessionContinuationDecision,
 } from "@soulmaker/execution";
 import {
   parseMintAddress,
@@ -391,6 +410,8 @@ export interface CommandContext {
   createSendRpc?: (rpcUrl: string) => SendRpc;
   /** Factory for the devnet rehearsal RPC (faucet + send seams); injected in tests. */
   createRehearsalRpc?: (rpcUrl: string) => RehearsalRpc;
+  /** Factory for the READ-ONLY reconciliation RPC (balances + status + fee); injected in tests. */
+  createReconciliationRpc?: (rpcUrl: string) => ReconciliationRpc;
   /** Injectable sleep for the bounded realtime watch; injected in tests. */
   sleep?: (ms: number) => Promise<void>;
   /** Injectable clock for deterministic report timestamps. */
@@ -6055,6 +6076,8 @@ export interface ExecutionReadinessCommandOptions {
   wallet?: string;
   /** The audit log path that WOULD be used (condition 14's path half). */
   auditLog?: string;
+  /** S96: session ledger path override (default runs/execution-sessions.jsonl). */
+  sessionLedger?: string;
   json?: boolean;
   outPath?: string;
   force?: boolean;
@@ -6243,6 +6266,24 @@ export function executionReadinessReport(
   }));
   const missing = conditions.filter((c) => !c.satisfied);
 
+  // S96: the last execution session's accounting state. An unreconciled session blocks every
+  // new execution attempt at the execution surfaces themselves — readiness REPORTS that state
+  // here so the gap is named before anyone reaches a wall.
+  const sessionLedgerPath = resolveSessionLedgerPath(ctx, opts.sessionLedger);
+  let sessionDecision: SessionContinuationDecision;
+  try {
+    const ledger = readSessionLedgerFile(sessionLedgerPath);
+    sessionDecision = evaluateSessionContinuation({ entries: ledger.entries, malformedLines: ledger.malformedLines, network: "devnet" });
+  } catch {
+    sessionDecision = {
+      allowed: false,
+      status: "unknown",
+      sessionId: null,
+      blockedReason: "the session ledger could not be read — fail closed",
+      nextSafeAction: "repair or archive the session ledger file by hand",
+    };
+  }
+
   const report = {
     schemaVersion: "execution.readiness.report.v1",
     banner:
@@ -6285,6 +6326,15 @@ export function executionReadinessReport(
       auditLogPath: opts.auditLog ?? null,
       /** Readiness NEVER loads key material; the boundary is an execution-time construct. */
       signerBoundary: "not-loaded — key material loads only at execution time through --signer-env",
+      /** S96: the last execution session's accounting state (the continuation wall's input). */
+      sessionReconciliation: {
+        ledgerPath: sessionLedgerPath,
+        status: sessionDecision.status,
+        sessionId: sessionDecision.sessionId,
+        newExecutionAllowed: sessionDecision.allowed,
+        blockedReason: sessionDecision.blockedReason,
+        nextSafeAction: sessionDecision.nextSafeAction,
+      },
     },
     mainnetDryRunNote:
       "mainnet-dry-run needs NO gate: execution:build --request mainnet-dry-run builds + paper:simulation:tx simulates against real chain state, and neither can send.",
@@ -6338,6 +6388,10 @@ export function executionReadinessReport(
     }
   }
   lines.push(`simulation:      ${simulationOutcome ?? "not supplied"} | signer boundary: never loaded here | audit path: ${opts.auditLog ?? "not supplied"}`);
+  lines.push(
+    `session:         ${sessionDecision.status}${sessionDecision.sessionId !== null ? ` (${sessionDecision.sessionId})` : ""} — new execution ${sessionDecision.allowed ? "allowed" : `BLOCKED: ${sessionDecision.blockedReason ?? "unknown"}`}`,
+  );
+  if (!sessionDecision.allowed) lines.push(`        next: ${sessionDecision.nextSafeAction}`);
   lines.push(`next safe action: ${report.nextSafeAction}`);
   lines.push(report.mainnetDryRunNote);
   lines.push("");
@@ -6612,6 +6666,8 @@ export interface ExecutionDevnetSendCommandOptions {
   riskScore?: string;
   /** Sprint 93: tighten the quote-age cap (ms) below the 60s devnet-probe ceiling. */
   maxQuoteAgeMs?: string;
+  /** S96: session ledger path override (default runs/execution-sessions.jsonl). */
+  sessionLedger?: string;
   json?: boolean;
 }
 
@@ -6663,6 +6719,12 @@ export async function executionDevnetSendReport(
       exitCode: 1,
     };
   }
+
+  // S96: the unreconciled-session refusal wall fires BEFORE any envelope or signer work —
+  // an unaccounted previous session refuses the attempt outright. No bypass exists.
+  const ledgerPath = resolveSessionLedgerPath(ctx, opts.sessionLedger);
+  const wall = sessionWallCheck(ledgerPath, "devnet");
+  if (wall.refusal !== null) return wall.refusal;
 
   let envelopeValue: unknown;
   try {
@@ -6774,6 +6836,32 @@ export async function executionDevnetSendReport(
     return { text: redactString(`Refusing: cannot append the audit log at ${opts.auditLog}`), exitCode: 1 };
   }
 
+  // S96: record the attempt in the session ledger. A SUBMITTED attempt is pending-confirmation
+  // until execution:session:reconcile accounts for it — and the wall blocks new attempts until
+  // then. A refused attempt records as not-sent and never blocks.
+  const sessionId = deriveSessionId({
+    network: "devnet",
+    startedAt: report.attemptedAt,
+    signerPublicKey: report.signerPublicKey,
+  });
+  try {
+    appendSessionLedgerEntryFile(
+      ledgerPath,
+      createSessionLedgerEntry({
+        kind: "execution-attempt",
+        sessionId,
+        recordedAt: report.attemptedAt,
+        network: "devnet",
+        command: "execution:devnet:send",
+        signerPublicKey: report.signerPublicKey,
+        signature: report.signature,
+        executionOutcome: report.outcome,
+      }),
+    );
+  } catch {
+    return { text: redactString(`Refusing: cannot append the session ledger at ${ledgerPath}`), exitCode: 1 };
+  }
+
   const exitCode = report.outcome === "submitted" ? 0 : 1;
   if (opts.json) {
     return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
@@ -6785,6 +6873,12 @@ export async function executionDevnetSendReport(
     report.signature !== null ? `signature:  ${report.signature}` : `refusal:    ${report.refusalCode}: ${report.refusalDetail}`,
     ...report.safetyViolations.map((v) => `  - ${v.code}: ${v.detail}`),
     `audit log:  ${opts.auditLog} (appended)`,
+    `session:    ${sessionId} (ledger: ${ledgerPath})`,
+    ...(report.outcome === "submitted"
+      ? [
+          "NEXT: the session is PENDING-CONFIRMATION until reconciled — run `pnpm soulmaker execution:session:reconcile --out <dir>` before any new attempt.",
+        ]
+      : []),
     "",
     ...report.caveats.map((c) => `CAVEAT: ${c}`),
   ];
@@ -6805,6 +6899,8 @@ export interface ExecutionDevnetRehearseCommandOptions {
   skipAirdrop?: boolean;
   /** Skip the pre-send simulateTransaction step (kept ON by default). */
   skipSimulation?: boolean;
+  /** S96: session ledger path override (default runs/execution-sessions.jsonl). */
+  sessionLedger?: string;
   json?: boolean;
   force?: boolean;
 }
@@ -6812,6 +6908,145 @@ export interface ExecutionDevnetRehearseCommandOptions {
 const REHEARSAL_REPORT_FILE = "devnet-rehearsal-report.json";
 const REHEARSAL_AUDIT_FILE = "devnet-rehearsal-audit.jsonl";
 const REHEARSAL_KEYPAIR_FILE = "throwaway.devnet.keypair";
+
+// --- S96: session ledger + reconciliation plumbing --------------------------------
+
+const RECONCILIATION_REPORT_FILE = "reconciliation-report.json";
+
+/** The expected effect of the devnet self-transfer probe (the only supported shape today). */
+const SELF_TRANSFER_PROBE_EXPECTED: ExpectedEffect = {
+  kind: "self-transfer-probe",
+  summary: "self-transfer probe: SOL decreases by exactly the network fee (bounded); no other balance change",
+  maxFeeLamports: 10_000,
+};
+
+/** Base fee estimate for a single-signature probe (lamports). An estimate, clearly labeled. */
+const PROBE_FEE_ESTIMATE_LAMPORTS = 5000;
+
+function resolveSessionLedgerPath(ctx: CommandContext, override?: string): string {
+  return resolvePath(ctx, override ?? join("runs", SESSION_LEDGER_FILE_NAME));
+}
+
+function readSessionLedgerFile(path: string): ParsedSessionLedger {
+  if (!existsSync(path)) return { entries: [], malformedLines: 0 };
+  return parseSessionLedger(stripJsonBom(readFileSync(path, "utf8")));
+}
+
+function appendSessionLedgerEntryFile(path: string, entry: SessionLedgerEntry): void {
+  mkdirSync(dirname(path), { recursive: true });
+  appendFileSync(path, JSON.stringify(redactValue(entry)) + "\n");
+}
+
+/**
+ * The S96 unreconciled-session refusal wall. Returns the refusal CliReport when the latest
+ * relevant session blocks a new execution attempt, else null plus the parsed ledger. There is
+ * deliberately NO flag that skips this wall — the exits are execution:session:reconcile (real
+ * observed data) or execution:session:acknowledge (explicit, audited, itself a ledger entry).
+ */
+function sessionWallCheck(
+  ledgerPath: string,
+  network: string,
+): { refusal: CliReport | null; decision: SessionContinuationDecision } {
+  let ledger: ParsedSessionLedger;
+  try {
+    ledger = readSessionLedgerFile(ledgerPath);
+  } catch (err) {
+    return {
+      refusal: {
+        text: redactString(
+          `Refusing: the session ledger at ${ledgerPath} could not be read (${(err as Error).message ?? "unknown"}) — an unreadable accounting trail never authorizes execution.`,
+        ),
+        exitCode: 1,
+      },
+      decision: {
+        allowed: false,
+        status: "unknown",
+        sessionId: null,
+        blockedReason: "session ledger unreadable",
+        nextSafeAction: "repair or archive the ledger file",
+      },
+    };
+  }
+  const decision = evaluateSessionContinuation({ entries: ledger.entries, malformedLines: ledger.malformedLines, network });
+  if (!decision.allowed) {
+    return {
+      refusal: {
+        text: redactString(
+          [
+            `Refusing: the previous execution session is not accounted for (${decision.status}).`,
+            `  session: ${decision.sessionId ?? "unknown"}`,
+            `  reason:  ${decision.blockedReason ?? "unknown"}`,
+            `  ledger:  ${ledgerPath}`,
+            `NEXT: ${decision.nextSafeAction}`,
+          ].join("\n"),
+        ),
+        exitCode: 1,
+      },
+      decision,
+    };
+  }
+  return { refusal: null, decision };
+}
+
+/** Map the rehearsal's confirmation facts onto the closed S96 confirmation classification. */
+function confirmationFromRehearsal(report: DevnetRehearsalReport): ConfirmationTrackResult | null {
+  if (report.signature === null || report.confirmation === null) return null;
+  const outcome =
+    report.confirmation.errLabel !== null
+      ? ("signature-error" as const)
+      : report.confirmation.confirmed
+        ? ("confirmed" as const)
+        : ("timeout" as const);
+  return {
+    outcome,
+    signature: report.signature,
+    slot: report.confirmation.slot,
+    errLabel: report.confirmation.errLabel,
+    polls: report.confirmation.polls,
+    guidance: CONFIRMATION_GUIDANCE[outcome],
+  };
+}
+
+/** Build an honest snapshot from a lamports fact the rehearsal actually observed (or did not). */
+function snapshotFromObservedLamports(
+  label: "pre" | "post",
+  ownerPublicKey: string,
+  lamports: number | null,
+  observedAt: string,
+): BalanceSnapshot {
+  return {
+    label,
+    observedAt,
+    ownerPublicKey,
+    sol:
+      lamports === null
+        ? { lamports: null, status: "rpc-unavailable", errLabel: "not observed during the run" }
+        : { lamports, status: "observed", errLabel: null },
+    token: null,
+  };
+}
+
+/** Map one finished devnet rehearsal onto its reconciliation report (a pure projection). */
+function reconciliationFromRehearsal(report: DevnetRehearsalReport, sessionId: string): ReconciliationReport {
+  const owner = report.signerPublicKey ?? "unknown";
+  return buildReconciliationReport({
+    mode: "devnet-execution",
+    network: "devnet",
+    sessionId,
+    command: "execution:devnet:rehearse",
+    signature: report.signature,
+    fundingBlocked: report.outcome === "devnet-funding-blocked",
+    confirmation: confirmationFromRehearsal(report),
+    pre: report.signature === null ? null : snapshotFromObservedLamports("pre", owner, report.balanceLamportsAfter, report.startedAt),
+    post:
+      report.signature === null
+        ? null
+        : snapshotFromObservedLamports("post", owner, report.balanceLamportsAfterSend, report.finishedAt),
+    expected: SELF_TRANSFER_PROBE_EXPECTED,
+    feeEstimatedLamports: report.signature === null ? null : PROBE_FEE_ESTIMATE_LAMPORTS,
+    clock: () => report.finishedAt,
+  });
+}
 
 /**
  * `soulmaker execution:devnet:rehearse` — the DEVNET end-to-end broadcast rehearsal (Sprint 93):
@@ -6861,6 +7096,12 @@ export async function executionDevnetRehearseReport(
   if (rpcUrl.toLowerCase().includes("mainnet")) {
     return { text: "Refusing: execution:devnet:rehearse never talks to a mainnet endpoint.", exitCode: 1 };
   }
+
+  // S96: the unreconciled-session refusal wall — a previous devnet attempt that is not accounted
+  // for blocks every NEW attempt. No bypass flag exists.
+  const ledgerPath = resolveSessionLedgerPath(ctx, opts.sessionLedger);
+  const wall = sessionWallCheck(ledgerPath, "devnet");
+  if (wall.refusal !== null) return wall.refusal;
 
   let airdropLamports: number | undefined;
   if (opts.airdropSol !== undefined) {
@@ -6998,11 +7239,61 @@ export async function executionDevnetRehearseReport(
     return { text: redactString(`Refusing: cannot write rehearsal artifacts under ${outDir}`), exitCode: 1 };
   }
 
+  // S96: account for the attempt — session ledger entries + the reconciliation report. Every
+  // rehearsal (including a funding-blocked one) leaves an auditable accounting trail.
+  const sessionId = deriveSessionId({ network: "devnet", startedAt: report.startedAt, signerPublicKey: report.signerPublicKey });
+  const reconciliation = reconciliationFromRehearsal(report, sessionId);
+  const reconciliationPath = join(outDir, RECONCILIATION_REPORT_FILE);
+  try {
+    writeFileSync(
+      reconciliationPath,
+      JSON.stringify(redactValue({ ...reconciliation, redactionApplied: true }), null, 2) + "\n",
+    );
+    appendSessionLedgerEntryFile(
+      ledgerPath,
+      createSessionLedgerEntry({
+        kind: "execution-attempt",
+        sessionId,
+        recordedAt: report.finishedAt,
+        network: "devnet",
+        command: "execution:devnet:rehearse",
+        signerPublicKey: report.signerPublicKey,
+        signature: report.signature,
+        executionOutcome: report.outcome,
+        balanceLamportsAtAttempt: report.balanceLamportsAfter,
+        reportPath: reportPath,
+      }),
+    );
+    appendSessionLedgerEntryFile(
+      ledgerPath,
+      createSessionLedgerEntry({
+        kind: "reconciliation",
+        sessionId,
+        recordedAt: report.finishedAt,
+        network: "devnet",
+        command: "execution:devnet:rehearse",
+        signerPublicKey: report.signerPublicKey,
+        signature: report.signature,
+        reconciliationVerdict: reconciliation.verdict,
+        reportPath: reconciliationPath,
+      }),
+    );
+  } catch {
+    return { text: redactString(`Refusing: cannot write the reconciliation trail (${reconciliationPath} / ${ledgerPath})`), exitCode: 1 };
+  }
+
   const broadcast = report.outcome === "rehearsed" || report.outcome === "submitted-unconfirmed";
   const exitCode = broadcast ? 0 : 1;
   if (opts.json) {
     return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
   }
+  const reconciliationLines = [
+    `reconciliation: ${reconciliation.verdict}${reconciliation.blockedReason !== null ? ` — ${reconciliation.blockedReason}` : ""}`,
+    `session:    ${sessionId} (ledger: ${ledgerPath})`,
+    ...(RECONCILIATION_CONTINUATION_SAFE_VERDICTS.includes(reconciliation.verdict)
+      ? []
+      : [`NEXT: ${reconciliation.nextSafeAction}`]),
+  ];
   const lines = [
     `DEVNET END-TO-END REHEARSAL: ${report.outcome.toUpperCase()}`,
     `network:    devnet (${report.endpointHost})`,
@@ -7018,12 +7309,368 @@ export async function executionDevnetRehearseReport(
     report.confirmation !== null
       ? `confirmed:  ${report.confirmation.confirmed ? `yes (slot ${report.confirmation.slot ?? "unknown"})` : "no"} after ${report.confirmation.polls} poll(s)`
       : "",
+    ...reconciliationLines,
     `artifacts:  ${reportPath}`,
     ...(report.fundingGuidance !== null ? ["", ...report.fundingGuidance.map((g) => `NEXT: ${g}`)] : []),
     "",
     ...report.caveats.map((c) => `CAVEAT: ${c}`),
   ];
   return { text: redactString(lines.filter((l) => l !== "").join("\n")), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 96 — execution:session:* (post-trade accounting)
+//   status: show the session ledger + the continuation decision (read-only).
+//   reconcile: account for the latest session with REAL observed data (read-only
+//     RPC: confirmation status, balances, actual fee) and append the verdict.
+//   acknowledge: the ONLY non-data exit from a blocked session — explicit,
+//     reasoned, audited as a ledger entry. There is no force/bypass flag.
+// ---------------------------------------------------------------------------
+
+export const EXECUTION_SESSION_STATUS_SCHEMA_VERSION = "execution.session.status.v1";
+
+const SESSION_STATUS_BANNER =
+  "EXECUTION SESSION STATUS — the accounting state of the latest execution session and the continuation decision a new attempt would face. Read-only; nothing here reconciles, acknowledges, or authorizes anything.";
+
+export interface ExecutionSessionStatusCommandOptions {
+  /** Session ledger path override (default runs/execution-sessions.jsonl). */
+  ledger?: string;
+  /** Network whose sessions gate continuation (default devnet — the only execution network). */
+  network?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+}
+
+/** `soulmaker execution:session:status` — read-only ledger + continuation decision. */
+export function executionSessionStatusReport(
+  ctx: CommandContext = {},
+  opts: ExecutionSessionStatusCommandOptions = {},
+): CliReport {
+  const network = opts.network ?? "devnet";
+  const ledgerPath = resolveSessionLedgerPath(ctx, opts.ledger);
+  let ledger: ParsedSessionLedger;
+  try {
+    ledger = readSessionLedgerFile(ledgerPath);
+  } catch (err) {
+    return { text: redactString(`Refusing: the session ledger at ${ledgerPath} could not be read: ${(err as Error).message ?? "unknown"}`), exitCode: 1 };
+  }
+  const decision = evaluateSessionContinuation({ entries: ledger.entries, malformedLines: ledger.malformedLines, network });
+  const sessionEntries =
+    decision.sessionId === null ? [] : ledger.entries.filter((e) => e.sessionId === decision.sessionId);
+  const report = {
+    schemaVersion: EXECUTION_SESSION_STATUS_SCHEMA_VERSION,
+    banner: SESSION_STATUS_BANNER,
+    ledgerPath,
+    ledgerPresent: existsSync(ledgerPath),
+    network,
+    entryCount: ledger.entries.length,
+    malformedLines: ledger.malformedLines,
+    decision,
+    latestSession:
+      decision.sessionId === null
+        ? null
+        : {
+            sessionId: decision.sessionId,
+            entries: sessionEntries.map((e) => ({
+              kind: e.kind,
+              recordedAt: e.recordedAt,
+              command: e.command,
+              signature: e.signature,
+              executionOutcome: e.executionOutcome,
+              reconciliationVerdict: e.reconciliationVerdict,
+              reportPath: e.reportPath,
+              reason: e.reason,
+            })),
+          },
+    createdAt: (ctx.now ?? isoNow)(),
+    caveats: [
+      "The ledger records devnet execution discipline; it is never mainnet readiness and never a profit claim.",
+      "A blocked decision is the system working: unaccounted attempts must be reconciled or explicitly acknowledged first.",
+    ],
+    redactionApplied: true,
+    neverSends: true,
+    phase7LiveTradingReady: false,
+  };
+  let wroteLine = "";
+  if (opts.outPath) {
+    const resolvedPath = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolvedPath)) {
+      return { text: redactString(`Refusing: ${resolvedPath} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolvedPath, JSON.stringify(redactValue(report), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the session status report at ${resolvedPath}`), exitCode: 1 };
+    }
+    wroteLine = `\nwrote ${resolvedPath}`;
+  }
+  if (opts.json) return { text: JSON.stringify(redactValue(report), null, 2) + wroteLine, exitCode: 0 };
+  const lines = [
+    `EXECUTION SESSION STATUS (${network})`,
+    `ledger:     ${ledgerPath}${report.ledgerPresent ? "" : " (absent — no sessions recorded yet)"}`,
+    `entries:    ${report.entryCount}${ledger.malformedLines > 0 ? ` (+${ledger.malformedLines} MALFORMED line(s))` : ""}`,
+    `session:    ${decision.sessionId ?? "none"}`,
+    `status:     ${decision.status}`,
+    `new attempt: ${decision.allowed ? "ALLOWED" : "BLOCKED"}${decision.blockedReason !== null ? ` — ${decision.blockedReason}` : ""}`,
+    ...sessionEntries.map(
+      (e) =>
+        `  - ${e.recordedAt} ${e.kind} (${e.command}): ${e.kind === "reconciliation" ? `verdict ${e.reconciliationVerdict}` : e.kind === "manual-acknowledgment" ? `reason: ${e.reason}` : `outcome ${e.executionOutcome}`}`,
+    ),
+    `NEXT: ${decision.nextSafeAction}`,
+    "",
+    ...report.caveats.map((c) => `CAVEAT: ${c}`),
+  ];
+  return { text: redactString(lines.join("\n")) + wroteLine, exitCode: 0 };
+}
+
+export interface ExecutionSessionReconcileCommandOptions {
+  /** Session ledger path override (default runs/execution-sessions.jsonl). */
+  ledger?: string;
+  /** Output DIRECTORY for the reconciliation report. Required. */
+  outDir?: string;
+  rpcUrl?: string;
+  /** Optional token mint to include in the balance reads. */
+  mint?: string;
+  /** Tighten the acceptable probe fee bound (lamports; default 10000). */
+  maxFeeLamports?: string;
+  /** Bounded confirmation polls (default 5; hard cap 60). */
+  polls?: string;
+  json?: boolean;
+  force?: boolean;
+}
+
+/**
+ * `soulmaker execution:session:reconcile` — account for the LATEST execution session with real
+ * observed data: confirmation status (with transaction-history search), the current balance, and
+ * the actual fee from transaction meta. Read-only RPC; devnet only; appends its verdict to the
+ * ledger so the continuation wall sees it.
+ */
+export async function executionSessionReconcileReport(
+  ctx: CommandContext = {},
+  opts: ExecutionSessionReconcileCommandOptions = {},
+): Promise<CliReport> {
+  if (!opts.outDir) return { text: "Refusing: --out <dir> is required (the reconciliation report lives there).", exitCode: 1 };
+  const ledgerPath = resolveSessionLedgerPath(ctx, opts.ledger);
+  let ledger: ParsedSessionLedger;
+  try {
+    ledger = readSessionLedgerFile(ledgerPath);
+  } catch (err) {
+    return { text: redactString(`Refusing: the session ledger at ${ledgerPath} could not be read: ${(err as Error).message ?? "unknown"}`), exitCode: 1 };
+  }
+  if (ledger.malformedLines > 0) {
+    return {
+      text: redactString(
+        `Refusing: the session ledger at ${ledgerPath} has ${ledger.malformedLines} malformed line(s) — repair or archive it by hand first; reconciliation never writes onto a corrupt trail.`,
+      ),
+      exitCode: 1,
+    };
+  }
+  const relevant = ledger.entries.filter((e) => e.network === "devnet");
+  const lastEntry = relevant[relevant.length - 1];
+  if (lastEntry === undefined) {
+    return { text: redactString(`Refusing: no devnet execution session exists in ${ledgerPath} — nothing to reconcile.`), exitCode: 1 };
+  }
+  const sessionId = lastEntry.sessionId;
+  const attempts = relevant.filter((e) => e.sessionId === sessionId && e.kind === "execution-attempt");
+  const attempt = attempts[attempts.length - 1];
+  if (attempt === undefined) {
+    return { text: redactString(`Refusing: session ${sessionId} has no execution-attempt entry — nothing to reconcile.`), exitCode: 1 };
+  }
+  const rpcUrl = opts.rpcUrl ?? "https://api.devnet.solana.com";
+  if (rpcUrl.toLowerCase().includes("mainnet")) {
+    return { text: "Refusing: execution:session:reconcile reconciles devnet sessions and never talks to a mainnet endpoint.", exitCode: 1 };
+  }
+  let maxFeeLamports = SELF_TRANSFER_PROBE_EXPECTED.maxFeeLamports as number;
+  if (opts.maxFeeLamports !== undefined) {
+    const bound = Number(opts.maxFeeLamports);
+    if (!Number.isInteger(bound) || bound <= 0 || bound > maxFeeLamports) {
+      return { text: `Refusing: --max-fee-lamports must be a positive integer of at most ${maxFeeLamports} (bounds only tighten).`, exitCode: 1 };
+    }
+    maxFeeLamports = bound;
+  }
+  let maxPolls = 5;
+  if (opts.polls !== undefined) {
+    const polls = Number(opts.polls);
+    if (!Number.isInteger(polls) || polls < 1 || polls > 60) {
+      return { text: "Refusing: --polls must be an integer between 1 and 60 (bounded; never a watch loop).", exitCode: 1 };
+    }
+    maxPolls = polls;
+  }
+  const outDir = resolvePath(ctx, opts.outDir);
+  const reportPath = join(outDir, RECONCILIATION_REPORT_FILE);
+  if (!opts.force && existsSync(reportPath)) {
+    return { text: redactString(`Refusing: ${reportPath} already exists (pass --force to overwrite).`), exitCode: 1 };
+  }
+
+  let confirmation: ConfirmationTrackResult | null = null;
+  let pre: BalanceSnapshot | null = null;
+  let post: BalanceSnapshot | null = null;
+  let feeActualLamports: number | null = null;
+  if (attempt.signature !== null) {
+    if (attempt.signerPublicKey === null) {
+      return { text: redactString(`Refusing: session ${sessionId} recorded a signature but no signer PUBLIC key — the balance reads have no anchor.`), exitCode: 1 };
+    }
+    const makeReconciliationRpc = ctx.createReconciliationRpc ?? createReconciliationRpc;
+    let rpc: ReconciliationRpc;
+    try {
+      rpc = makeReconciliationRpc(rpcUrl);
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    confirmation = await trackConfirmation({
+      signature: attempt.signature,
+      rpc: rpc.rpc,
+      maxPolls,
+      sleep: ctx.sleep,
+    });
+    try {
+      feeActualLamports = await rpc.rpc.getTransactionFeeLamports(attempt.signature);
+    } catch {
+      feeActualLamports = null;
+    }
+    pre = snapshotFromObservedLamports("pre", attempt.signerPublicKey, attempt.balanceLamportsAtAttempt, attempt.recordedAt);
+    post = await readBalanceSnapshot({
+      rpc: rpc.rpc,
+      ownerPublicKeyBase58: attempt.signerPublicKey,
+      tokenMint: opts.mint ?? null,
+      label: "post",
+      clock: ctx.now,
+    });
+  }
+  const reconciliation = buildReconciliationReport({
+    mode: "devnet-execution",
+    network: "devnet",
+    sessionId,
+    command: "execution:session:reconcile",
+    signature: attempt.signature,
+    fundingBlocked: attempt.executionOutcome === "devnet-funding-blocked",
+    confirmation,
+    pre,
+    post,
+    expected: { ...SELF_TRANSFER_PROBE_EXPECTED, maxFeeLamports },
+    feeEstimatedLamports: attempt.signature === null ? null : PROBE_FEE_ESTIMATE_LAMPORTS,
+    feeActualLamports,
+    clock: ctx.now,
+  });
+  try {
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(reportPath, JSON.stringify(redactValue({ ...reconciliation, redactionApplied: true }), null, 2) + "\n");
+    appendSessionLedgerEntryFile(
+      ledgerPath,
+      createSessionLedgerEntry({
+        kind: "reconciliation",
+        sessionId,
+        recordedAt: reconciliation.createdAt,
+        network: "devnet",
+        command: "execution:session:reconcile",
+        signerPublicKey: attempt.signerPublicKey,
+        signature: attempt.signature,
+        reconciliationVerdict: reconciliation.verdict,
+        reportPath,
+      }),
+    );
+  } catch {
+    return { text: redactString(`Refusing: cannot write the reconciliation trail (${reportPath} / ${ledgerPath})`), exitCode: 1 };
+  }
+  const cleared = RECONCILIATION_CONTINUATION_SAFE_VERDICTS.includes(reconciliation.verdict);
+  const exitCode = cleared ? 0 : 1;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue({ ...reconciliation, redactionApplied: true }), null, 2), exitCode };
+  }
+  const lines = [
+    `SESSION RECONCILIATION: ${reconciliation.verdict.toUpperCase()}`,
+    `session:    ${sessionId}`,
+    `signature:  ${reconciliation.signature ?? "none (nothing was submitted)"}`,
+    confirmation !== null
+      ? `confirm:    ${confirmation.outcome}${confirmation.slot !== null ? ` (slot ${confirmation.slot})` : ""} after ${confirmation.polls} poll(s)`
+      : "",
+    pre !== null && post !== null
+      ? `balances:   pre ${pre.sol.lamports ?? "unobserved"} -> post ${post.sol.lamports ?? "unobserved"} lamports (${reconciliation.actualSummary})`
+      : "",
+    `fee:        ${reconciliation.fee.actualLamports ?? reconciliation.fee.estimatedLamports ?? "unavailable"} lamports (${reconciliation.fee.source})`,
+    reconciliation.blockedReason !== null ? `reason:     ${reconciliation.blockedReason}` : "",
+    `new attempt: ${cleared ? "ALLOWED" : "still BLOCKED"}`,
+    `artifacts:  ${reportPath}`,
+    `ledger:     ${ledgerPath} (appended)`,
+    `NEXT: ${reconciliation.nextSafeAction}`,
+    "",
+    ...reconciliation.caveats.map((c) => `CAVEAT: ${c}`),
+  ];
+  return { text: redactString(lines.filter((l) => l !== "").join("\n")), exitCode };
+}
+
+export interface ExecutionSessionAcknowledgeCommandOptions {
+  /** Session ledger path override (default runs/execution-sessions.jsonl). */
+  ledger?: string;
+  /** The REQUIRED explicit reason (at least 10 characters; recorded verbatim in the ledger). */
+  reason?: string;
+  /** The REQUIRED explicit acknowledgment flag. */
+  acknowledgeUnreconciledSession?: boolean;
+  json?: boolean;
+}
+
+/**
+ * `soulmaker execution:session:acknowledge` — the explicit, audited manual exit from a blocked
+ * session. Appends a manual-acknowledgment entry (with the operator's reason, verbatim) to the
+ * ledger; refuses when nothing is blocked. This is deliberately NOT named force/override/bypass:
+ * it documents a human decision in the accounting trail, it does not erase anything.
+ */
+export function executionSessionAcknowledgeReport(
+  ctx: CommandContext = {},
+  opts: ExecutionSessionAcknowledgeCommandOptions = {},
+): CliReport {
+  if (opts.acknowledgeUnreconciledSession !== true) {
+    return { text: "Refusing: --acknowledge-unreconciled-session is required (the acknowledgment must be explicit).", exitCode: 1 };
+  }
+  if (typeof opts.reason !== "string" || opts.reason.trim().length < 10) {
+    return { text: "Refusing: --reason <text> is required (at least 10 characters; it is recorded verbatim in the audit trail).", exitCode: 1 };
+  }
+  const ledgerPath = resolveSessionLedgerPath(ctx, opts.ledger);
+  let ledger: ParsedSessionLedger;
+  try {
+    ledger = readSessionLedgerFile(ledgerPath);
+  } catch (err) {
+    return { text: redactString(`Refusing: the session ledger at ${ledgerPath} could not be read: ${(err as Error).message ?? "unknown"}`), exitCode: 1 };
+  }
+  const decision = evaluateSessionContinuation({ entries: ledger.entries, malformedLines: ledger.malformedLines, network: "devnet" });
+  if (decision.allowed) {
+    return {
+      text: redactString(`Refusing: nothing to acknowledge — the latest session state is "${decision.status}" and a new attempt is already allowed.`),
+      exitCode: 1,
+    };
+  }
+  if (decision.sessionId === null) {
+    return {
+      text: redactString(
+        `Refusing: the ledger at ${ledgerPath} blocks for a structural reason (${decision.blockedReason ?? "unknown"}) that an acknowledgment cannot cover — repair or archive the file by hand.`,
+      ),
+      exitCode: 1,
+    };
+  }
+  const entry = createSessionLedgerEntry({
+    kind: "manual-acknowledgment",
+    sessionId: decision.sessionId,
+    recordedAt: (ctx.now ?? isoNow)(),
+    network: "devnet",
+    command: "execution:session:acknowledge",
+    reason: opts.reason.trim(),
+  });
+  try {
+    appendSessionLedgerEntryFile(ledgerPath, entry);
+  } catch {
+    return { text: redactString(`Refusing: cannot append the session ledger at ${ledgerPath}`), exitCode: 1 };
+  }
+  if (opts.json) return { text: JSON.stringify(redactValue(entry), null, 2), exitCode: 0 };
+  const lines = [
+    "SESSION ACKNOWLEDGED (audited)",
+    `session:    ${decision.sessionId}`,
+    `was:        ${decision.status} — ${decision.blockedReason ?? "unknown"}`,
+    `reason:     ${entry.reason}`,
+    `ledger:     ${ledgerPath} (appended)`,
+    "A new devnet execution attempt is now allowed. The acknowledgment is part of the permanent accounting trail.",
+  ];
+  return { text: redactString(lines.join("\n")), exitCode: 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -10282,6 +10929,7 @@ export interface SniperRehearseStage {
     | "tx-build"
     | "tx-simulate"
     | "devnet-rehearse"
+    | "reconciliation"
     | "readiness";
   status: RehearseStageStatus;
   detail: string;
@@ -10323,6 +10971,8 @@ export interface PaperSniperRehearseCommandOptions {
   devnetSend?: boolean;
   acknowledgeDevnetExecution?: boolean;
   rpcUrl?: string;
+  /** S96: session ledger path override for the devnet stage (default runs/execution-sessions.jsonl). */
+  sessionLedger?: string;
   /** Dry-run governance. */
   adoptSpecs?: boolean;
   operatorLabel?: string;
@@ -10343,6 +10993,7 @@ const REHEARSE_NEXT: Readonly<Record<string, string>> = {
   "tx-build": "pnpm soulmaker execution:build --candidate-mint <mint> --wallet <publicKey> --risk <risk.json> --amount-sol <sol> --slippage-bps <bps> --max-spend-sol <sol> --slippage-cap-bps <bps> --risk-score-cap <n> --request mainnet-dry-run --allow-paper-read --out <envelope.json>",
   "tx-simulate": "pnpm soulmaker paper:simulation:tx --envelope <envelope.json> --allow-paper-read --out <sim.json>",
   "devnet-rehearse": "pnpm soulmaker execution:devnet:rehearse --out runs/<dir> --acknowledge-devnet-execution (requires SOLMAKER_ENABLE_DEVNET_EXECUTION=devnet-only)",
+  reconciliation: "pnpm soulmaker execution:session:reconcile --out runs/<dir> (accounts for the latest devnet session with real observed data); status: pnpm soulmaker execution:session:status",
 };
 
 /**
@@ -10757,6 +11408,7 @@ export async function paperSniperRehearseReport(
       outDir: devnetDir,
       rpcUrl: opts.rpcUrl,
       acknowledgeDevnetExecution: opts.acknowledgeDevnetExecution,
+      sessionLedger: opts.sessionLedger,
       force: opts.force,
     });
     let outcome: string | null = null;
@@ -10778,10 +11430,48 @@ export async function paperSniperRehearseReport(
     } else {
       push("devnet-rehearse", "failed", `devnet rehearsal refused: ${rehearse.text.slice(0, 300)}`, [], REHEARSE_NEXT["devnet-rehearse"] ?? null);
     }
+    // --- Stage 8b (S96): reconciliation — the rehearsal writes its accounting trail next to
+    // the rehearsal report; the stage reads the verdict back HONESTLY from the artifact.
+    const reconciliationArtifact = join(devnetDir, "reconciliation-report.json");
+    if (existsSync(reconciliationArtifact)) {
+      let verdict: string | null = null;
+      let nextSafe: string | null = null;
+      try {
+        const parsed = JSON.parse(stripJsonBom(readFileSync(reconciliationArtifact, "utf8"))) as { verdict?: string; nextSafeAction?: string };
+        verdict = typeof parsed.verdict === "string" ? parsed.verdict : null;
+        nextSafe = typeof parsed.nextSafeAction === "string" ? parsed.nextSafeAction : null;
+      } catch {
+        verdict = null;
+      }
+      if (verdict !== null && (RECONCILIATION_CONTINUATION_SAFE_VERDICTS as readonly string[]).includes(verdict)) {
+        push("reconciliation", "executed", `session accounted for: verdict ${verdict}`, ["devnet/reconciliation-report.json"]);
+      } else if (verdict !== null) {
+        push(
+          "reconciliation",
+          "blocked",
+          `reconciliation verdict ${verdict} — new devnet execution attempts are BLOCKED until reconciled or explicitly acknowledged${nextSafe !== null ? `; next: ${nextSafe}` : ""}`,
+          ["devnet/reconciliation-report.json"],
+          REHEARSE_NEXT["reconciliation"] ?? null,
+        );
+      } else {
+        push("reconciliation", "failed", "the reconciliation artifact could not be parsed", ["devnet/reconciliation-report.json"], REHEARSE_NEXT["reconciliation"] ?? null);
+      }
+    } else {
+      push("reconciliation", "failed", "no reconciliation artifact was written for the devnet stage", [], REHEARSE_NEXT["reconciliation"] ?? null);
+    }
   } else if (mode === "devnet") {
     push("devnet-rehearse", "skipped", "devnet broadcast requires the EXPLICIT --devnet-send flag (plus the devnet double opt-in)", [], REHEARSE_NEXT["devnet-rehearse"] ?? null);
+    push("reconciliation", "skipped", "no execution attempt was made — there is nothing to account for", [], REHEARSE_NEXT["reconciliation"] ?? null);
   } else {
     push("devnet-rehearse", "skipped", `mode ${mode} can never send anything — the only send-capable stage is structurally limited to devnet mode`, []);
+    push(
+      "reconciliation",
+      "skipped",
+      mode === "mainnet-dry-run"
+        ? "not applicable: mainnet-dry-run NEVER sends, so no send result exists to reconcile — that absence is the honest record"
+        : "paper mode makes no execution attempt — there is nothing to account for",
+      [],
+    );
   }
 
   // --- Stage 9: readiness (always; read-only) -------------------------------------
