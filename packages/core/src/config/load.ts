@@ -32,7 +32,9 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
   let raw: Record<string, unknown> = {};
   if (existsSync(file)) {
     try {
-      raw = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+      // PowerShell redirection writes a UTF-8/UTF-16 BOM; JSON.parse refuses a leading U+FEFF
+      // with a confusing "Unexpected token" error, so strip it before parsing (S90 bug).
+      raw = JSON.parse(stripBom(readFileSync(file, "utf8"))) as Record<string, unknown>;
     } catch (err) {
       throw new ConfigError(
         `Failed to parse config file at ${file}: ${(err as Error).message}`,
@@ -53,6 +55,10 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
     throw new ConfigError(`Invalid Soulmaker config:\n${issues}`);
   }
   return parsed.data;
+}
+
+function stripBom(text: string): string {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
 
 function stripNulls(value: unknown): unknown {
