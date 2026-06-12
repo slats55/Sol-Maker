@@ -20,7 +20,8 @@ export type CommandGroup =
   | "Backtest research"
   | "Research runs"
   | "Sniper (paper-only)"
-  | "Phase 6 simulation";
+  | "Phase 6 simulation"
+  | "Execution (gated)";
 
 export const COMMAND_GROUP_ORDER: readonly CommandGroup[] = [
   "Diagnostics",
@@ -32,6 +33,7 @@ export const COMMAND_GROUP_ORDER: readonly CommandGroup[] = [
   "Research runs",
   "Sniper (paper-only)",
   "Phase 6 simulation",
+  "Execution (gated)",
 ];
 
 export interface CommandRef {
@@ -352,6 +354,34 @@ export const COMMANDS: readonly CommandRef[] = [
     group: "Sniper (paper-only)",
     readsChain: false,
   },
+  {
+    command: "paper:routequote:fetch",
+    summary:
+      "The S92 LIVE read-only quote fetcher: one quote per candidate from the public Jupiter lite API, written as the SAME observation files an operator would author by hand plus a routequote.fetch.report.v1 with honest freshness provenance (real fetchedAt). Provider failures map onto the closed status set — never upgraded, never faked.",
+    group: "Sniper (paper-only)",
+    readsChain: true,
+  },
+  {
+    command: "paper:realtime:snapshot",
+    summary:
+      "One bounded poll of a public new-token feed (or a local replay file) normalized into the candidate-list contract (realtime.candidates.snapshot.v1). Watch-only observation; market figures are provider-reported HINTS.",
+    group: "Sniper (paper-only)",
+    readsChain: true,
+  },
+  {
+    command: "paper:realtime:watch",
+    summary:
+      "The BOUNDED realtime watch (max 120 polls) with an interrupt-safe append-only JSONL journal and cross-poll mint dedupe. A watched candidate is never an order.",
+    group: "Sniper (paper-only)",
+    readsChain: true,
+  },
+  {
+    command: "paper:sniper:rehearse",
+    summary:
+      "The S93 UNIFIED rehearsal workflow: chain candidates → risk bridge → quote fetch/prepare → dry-run → unsigned build → real simulation → optional devnet broadcast → readiness over ONE output directory with an honest per-stage record (sniper.rehearsal.report.v1). Closed mode set paper (default, offline) | devnet (broadcast only behind --devnet-send + the double opt-in) | mainnet-dry-run (structurally cannot send). NO mainnet-live mode.",
+    group: "Sniper (paper-only)",
+    readsChain: true,
+  },
 
   // Phase 6 simulation — read-only, dry-run-only artifacts over the validated
   // v2 chain. The route resolver and the real dry-run engine do NOT exist:
@@ -422,6 +452,52 @@ export const COMMANDS: readonly CommandRef[] = [
     summary:
       "Archiveable OPERATOR BUNDLE over the thirteen chain roles incl. the handoff pack itself (phase6.operator.bundle.v1). Blocking trail RECOMPUTED and cross-checked against the pack (a stale/tampered pack blocks the bundle); per-file sha256-128 integrity digests; best verdict is reviewable-paper-only.",
     group: "Phase 6 simulation",
+    readsChain: false,
+  },
+  {
+    command: "paper:simulation:tx",
+    summary:
+      "The REAL simulateTransaction (sigVerify:false, replaceRecentBlockhash:true) over a strictly-validated UNSIGNED envelope (txpreview.simulation.report.v1). A signed transaction is refused; simulated-ok is evidence for review, never readiness; nothing here can send.",
+    group: "Phase 6 simulation",
+    readsChain: true,
+  },
+
+  // Execution (gated) — the S92/S93 execution lane. Live trading is DISABLED by
+  // default behind the fourteen-condition mainnet live gate; mainnet sending has
+  // NO CLI surface at all (deliberately). See docs/EXECUTION_SAFETY.md.
+  {
+    command: "execution:status",
+    summary:
+      "Resolve and SHOW the execution mode plus the FULL fourteen-condition mainnet live-gate checklist (default BLOCKED) and the core gate. S93: --quote-report + --max-quote-age-ms evaluate condition 9 from a LIVE fetch report. Read-only; can never arm anything.",
+    group: "Execution (gated)",
+    readsChain: false,
+  },
+  {
+    command: "execution:build",
+    summary:
+      "REFUSAL-FIRST unsigned swap build: every refusal (kill switch, mode, risk, caps, slippage, wallet, mint match) evaluates BEFORE any network call; the only artifact is an UNSIGNED txpreview envelope (S93: stamped with quotedAt freshness provenance; --max-quote-age-ms refuses a build that aged out). Never signs, never sends.",
+    group: "Execution (gated)",
+    readsChain: true,
+  },
+  {
+    command: "execution:devnet:send",
+    summary:
+      "The ONLY send surface, DEVNET-ONLY by construction behind a double opt-in (env flag + CLI flag); every attempt journaled. S93: the REAL quote age is computed from the envelope's quotedAt — stale/missing/future refuses; the quoteless self-transfer probe is the only exception.",
+    group: "Execution (gated)",
+    readsChain: true,
+  },
+  {
+    command: "execution:devnet:rehearse",
+    summary:
+      "The S93 devnet END-TO-END broadcast rehearsal: throwaway gitignored keypair, airdrop, unsigned self-transfer probe, simulation, gated send, confirmation — written as one honest artifact set (an airdrop rate limit is devnet-funding-blocked, never faked success). No mainnet variant exists.",
+    group: "Execution (gated)",
+    readsChain: true,
+  },
+  {
+    command: "execution:readiness",
+    summary:
+      "The HONEST mainnet readiness checklist: all fourteen live-gate conditions evaluated against operator-NAMED evidence, every gap named with its exact next safe action. Structurally incapable of reporting armed; no bypass flag, no force flag.",
+    group: "Execution (gated)",
     readsChain: false,
   },
 ];

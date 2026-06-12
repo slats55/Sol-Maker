@@ -22,7 +22,10 @@ export type SchemaFamily =
   | "sniper"
   | "simulation"
   | "phase6"
-  | "routequote";
+  | "routequote"
+  | "realtime"
+  | "txpreview"
+  | "execution";
 
 export interface ReportSchemaInfo {
   readonly id: string;
@@ -326,6 +329,91 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
     description:
       "Archiveable operator bundle over the THIRTEEN Phase 6 chain roles (the twelve handoff roles plus the handoff pack itself): per-role state + file integrity refs, a blocking trail recomputed and cross-checked against the pack, and a closed-set operator verdict never better than reviewable-paper-only.",
     cli: "paper:simulation:bundle",
+  },
+
+  // --- Real-time / execution lane (S92–S93; verified against the registered CLI) ----
+  // Read-only feeds, unsigned-transaction material, and GATED execution evidence. Nothing in
+  // this family is live readiness; mainnet sending has no CLI surface at all.
+  {
+    id: "realtime.candidates.snapshot.v1",
+    title: "Realtime candidates snapshot",
+    family: "realtime",
+    stability: "stable",
+    description:
+      "One bounded poll of a public new-token feed (or a local replay file), normalized into the candidate-list contract. Watch-only observation with provider-reported HINTS; sourceKind is live or replay, labeled verbatim.",
+    cli: "paper:realtime:snapshot",
+  },
+  {
+    id: "routequote.fetch.report.v1",
+    title: "Route quote fetch report",
+    family: "routequote",
+    stability: "stable",
+    description:
+      "One live read-only quote fetch per candidate with honest freshness provenance (real fetchedAt timestamp, provider id, HTTP status, context slot, price impact). Provider failures map onto the closed status set — never upgraded, never faked.",
+    cli: "paper:routequote:fetch",
+  },
+  {
+    id: "txpreview.envelope.v1",
+    title: "Unsigned transaction envelope",
+    family: "txpreview",
+    stability: "stable",
+    description:
+      "A strictly-validated UNSIGNED transaction (every signature slot zero — a signed transaction is refused). Since S93 it carries quotedAt freshness provenance. Simulation material, never an order.",
+    cli: "execution:build",
+  },
+  {
+    id: "txpreview.simulation.report.v1",
+    title: "Unsigned tx simulation report",
+    family: "txpreview",
+    stability: "stable",
+    description:
+      "The real simulateTransaction (sigVerify:false, replaceRecentBlockhash:true) over an unsigned envelope. Closed outcomes (simulated-ok | simulated-failed | unavailable | refused); simulated-ok is evidence for review, never readiness.",
+    cli: "paper:simulation:tx",
+  },
+  {
+    id: "execution.status.report.v1",
+    title: "Execution status report",
+    family: "execution",
+    stability: "stable",
+    description:
+      "The resolved execution mode plus the FULL fourteen-condition mainnet live-gate checklist (default BLOCKED) and the core gate. S93 adds quote-freshness evidence from a live fetch report + explicit age cap. Read-only; can never arm anything.",
+    cli: "execution:status",
+  },
+  {
+    id: "execution.attempt.report.v1",
+    title: "Execution attempt report",
+    family: "execution",
+    stability: "stable",
+    description:
+      "One journaled gated execution attempt (refused or submitted) from the refusal-first send path — devnet-only in the shipped CLI. Submission is not confirmation, and the report says so.",
+    cli: "execution:devnet:send",
+  },
+  {
+    id: "execution.devnet.rehearsal.report.v1",
+    title: "Devnet rehearsal report",
+    family: "execution",
+    stability: "stable",
+    description:
+      "The S93 devnet end-to-end broadcast rehearsal: throwaway gitignored keypair, airdrop, unsigned self-transfer probe, simulation, gated send, confirmation — every step honest (an airdrop rate limit is devnet-funding-blocked, never faked success). Devnet only by construction.",
+    cli: "execution:devnet:rehearse",
+  },
+  {
+    id: "execution.readiness.report.v1",
+    title: "Mainnet readiness checklist",
+    family: "execution",
+    stability: "stable",
+    description:
+      "All fourteen live-gate conditions evaluated against operator-NAMED evidence, each gap named with its exact next safe action. Structurally incapable of reporting armed; the verdict literal is always blocked.",
+    cli: "execution:readiness",
+  },
+  {
+    id: "sniper.rehearsal.report.v1",
+    title: "Sniper rehearsal stage record",
+    family: "sniper",
+    stability: "stable",
+    description:
+      "The S93 unified rehearsal workflow's honest per-stage record (candidates → risk bridge → quote fetch/prepare → dry-run → build → simulate → optional devnet broadcast → readiness). Closed mode set paper | devnet | mainnet-dry-run; no mode can send on mainnet.",
+    cli: "paper:sniper:rehearse",
   },
 ];
 

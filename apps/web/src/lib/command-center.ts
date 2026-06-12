@@ -48,7 +48,7 @@ export const SNIPER_CAPABILITIES: readonly SniperCapability[] = [
     key: "intel",
     label: "Read-only inspect / risk",
     state: "available",
-    note: "token:inspect / token:risk — read-only RPC, advisory only, never a buy signal.",
+    note: "token:inspect / token:risk --deep — read-only RPC incl. Token-2022 extension checks (transfer hooks, permanent delegates, transfer fees, default-frozen state). Advisory only, never a buy signal.",
   },
   {
     key: "bridge",
@@ -90,7 +90,19 @@ export const SNIPER_CAPABILITIES: readonly SniperCapability[] = [
     key: "tx-build",
     label: "Unsigned tx builder",
     state: "boundary-only",
-    note: "execution:build constructs UNSIGNED swap envelopes refusal-first — it never signs and never sends; an envelope is simulation material, never an order.",
+    note: "execution:build constructs UNSIGNED swap envelopes refusal-first — it never signs and never sends; since S93 every envelope carries quotedAt freshness provenance and an explicit --max-quote-age-ms cap can refuse a build that aged out.",
+  },
+  {
+    key: "freshness",
+    label: "Quote freshness gates",
+    state: "available",
+    note: "ONE fail-closed evaluator everywhere (S93): stale, missing, malformed, and FUTURE timestamps all block; there is no default age cap by design, and a missing quote can never make anything executable.",
+  },
+  {
+    key: "rehearse",
+    label: "Unified rehearsal workflow",
+    state: "available",
+    note: "paper:sniper:rehearse chains candidates → risk → quotes → dry-run → build → simulate → readiness with an honest per-stage record. Closed mode set; no mode can send on mainnet.",
   },
   {
     key: "route",
@@ -102,7 +114,13 @@ export const SNIPER_CAPABILITIES: readonly SniperCapability[] = [
     key: "devnet-exec",
     label: "Devnet execution",
     state: "boundary-only",
-    note: "execution:devnet:send sends ONLY on devnet behind a double opt-in (env flag + CLI flag), journaled — no mainnet path exists here.",
+    note: "execution:devnet:send + execution:devnet:rehearse (S93 end-to-end broadcast rehearsal with a throwaway gitignored keypair) act ONLY on devnet behind a double opt-in, journaled — no mainnet path exists here.",
+  },
+  {
+    key: "readiness",
+    label: "Mainnet readiness checklist",
+    state: "available",
+    note: "execution:readiness evaluates all fourteen live-gate conditions against operator-named evidence and names every gap's next safe action — structurally incapable of reporting armed.",
   },
   {
     key: "live",

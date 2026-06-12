@@ -2543,6 +2543,192 @@ function renderSniperRunReportDiffV2View(rec: Record<string, unknown>): RawHtml 
 }
 
 /* ------------------------------------------------------------------ *
+ * S93 — execution-lane views (rehearsal, readiness, tx simulation).
+ * ------------------------------------------------------------------ */
+
+/** Map a rehearsal/readiness stage or step status to a chip tone word (text only). */
+function statusWord(status: string | null): string {
+  return status ?? "unknown";
+}
+
+function renderSniperRehearsalView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const mode = need(missing, "mode", readString(rec, "mode"));
+  const outcome = need(missing, "outcome", readString(rec, "outcome"));
+  const stages = asArray(rec["stages"]) ?? [];
+  const stageRows: (readonly HtmlValue[])[] = [];
+  for (const row of stages.slice(0, 12)) {
+    const stage = asRecord(row);
+    if (stage === null) continue;
+    stageRows.push([
+      code(readString(stage, "stage")),
+      text(statusWord(readString(stage, "status"))),
+      text(readString(stage, "detail")),
+      text(readString(stage, "nextCommand")),
+    ]);
+  }
+  return html`
+    ${RiskNotice({
+      tone: "info",
+      title: "Unified rehearsal stage record — no mode of this workflow can send on mainnet",
+      body: html`Every stage is the existing production command, recorded honestly: a skipped stage
+        names its exact standalone command, and a blocked stage is the system working. Closed mode
+        set <code>paper | devnet | mainnet-dry-run</code>; the only send-capable stage is
+        structurally limited to devnet mode behind its own double opt-in.`,
+    })}
+    ${kvSection("Rehearsal run", undefined, [
+      { term: "mode", detail: code(mode) },
+      { term: "outcome", detail: text(outcome) },
+      { term: "generated at", detail: text(readString(rec, "generatedAt")) },
+      { term: "executed / skipped / blocked", detail: text(`${num(readNumber(rec, "executedCount"))} / ${num(readNumber(rec, "skippedCount"))} / ${num(readNumber(rec, "blockedCount"))}`) },
+      { term: "never sends on mainnet", detail: text(boolText(readBoolean(rec, "neverSendsOnMainnet"))) },
+    ])}
+    ${tableSection({
+      title: "Stages",
+      description: "Statuses verbatim from the run; next commands are the standalone production commands.",
+      columns: [{ header: "Stage" }, { header: "Status" }, { header: "Detail" }, { header: "Next command" }],
+      rows: stageRows,
+      empty: "No stages recorded.",
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderExecutionReadinessView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const verdict = need(missing, "verdict", readString(rec, "verdict"));
+  const conditions = asArray(rec["conditions"]) ?? [];
+  const conditionRows: (readonly HtmlValue[])[] = [];
+  for (const row of conditions.slice(0, 20)) {
+    const condition = asRecord(row);
+    if (condition === null) continue;
+    const satisfied = readBoolean(condition, "satisfied");
+    conditionRows.push([
+      text(satisfied === true ? "[x]" : "[ ]"),
+      code(readString(condition, "gate")),
+      text(readString(condition, "detail")),
+      text(satisfied === true ? DASH : (readString(condition, "nextAction") ?? DASH)),
+    ]);
+  }
+  const evidence = asRecord(rec["evidence"]);
+  const freshness = evidence === null ? null : asRecord(evidence["quoteFreshness"]);
+  return html`
+    ${RiskNotice({
+      tone: "caution",
+      title: "Mainnet readiness checklist — structurally incapable of reporting armed",
+      body: html`The CLI acknowledgment, the signer boundary, and the redaction findings evaluate
+        only at execution time, so at least three conditions always remain unsatisfied here. The
+        verdict literal is always <code>blocked</code>; nothing on this page is an authorization,
+        and mainnet sending has no CLI surface at all.`,
+    })}
+    ${kvSection("Verdict", undefined, [
+      { term: "verdict", detail: text(verdict) },
+      { term: "conditions satisfied", detail: text(`${num(readNumber(rec, "satisfiedCount"))} / ${num(readNumber(rec, "totalChecks"))}`) },
+      { term: "blocked reason", detail: text(readString(rec, "blockedReason")) },
+      { term: "next safe action", detail: text(readString(rec, "nextSafeAction")) },
+    ])}
+    ${freshness === null
+      ? ""
+      : kvSection("Quote freshness evidence (condition 9)", "Evaluated from a LIVE fetch report against the explicit operator cap — operator-supplied quote artifacts are refused as a freshness source.", [
+          { term: "verdict", detail: text(readString(freshness, "verdict")) },
+          { term: "fetched at", detail: text(readString(freshness, "fetchedAt")) },
+          { term: "age (ms)", detail: num(readNumber(freshness, "ageMs")) },
+          { term: "cap (ms)", detail: num(readNumber(freshness, "capMs")) },
+          { term: "detail", detail: text(readString(freshness, "detail")) },
+        ])}
+    ${tableSection({
+      title: "The fourteen live-gate conditions",
+      description: "Each gap names its exact next safe action — evidence collection, never authorization.",
+      columns: [{ header: "" }, { header: "Condition" }, { header: "Detail" }, { header: "Next safe action" }],
+      rows: conditionRows,
+      empty: "No conditions present (not a valid readiness artifact).",
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderDevnetRehearsalView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const outcome = need(missing, "outcome", readString(rec, "outcome"));
+  const steps = asArray(rec["steps"]) ?? [];
+  const stepRows: (readonly HtmlValue[])[] = [];
+  for (const row of steps.slice(0, 10)) {
+    const step = asRecord(row);
+    if (step === null) continue;
+    stepRows.push([code(readString(step, "step")), text(statusWord(readString(step, "status"))), text(readString(step, "detail"))]);
+  }
+  const airdrop = asRecord(rec["airdrop"]);
+  const confirmation = asRecord(rec["confirmation"]);
+  return html`
+    ${RiskNotice({
+      tone: "info",
+      title: "Devnet end-to-end rehearsal — execution-discipline evidence, never mainnet readiness",
+      body: html`A throwaway-funded self-transfer probe driven through the full execution chain on
+        DEVNET ONLY (devnet SOL is valueless; sender == recipient, so no value moved). An airdrop
+        rate limit becomes an honest <code>devnet-funding-blocked</code> artifact, never a faked
+        success. Nothing here arms or substitutes for the fourteen-condition mainnet live gate.`,
+    })}
+    ${kvSection("Rehearsal", undefined, [
+      { term: "outcome", detail: text(outcome) },
+      { term: "network", detail: code(readString(rec, "network")) },
+      { term: "endpoint", detail: code(readString(rec, "endpointHost")) },
+      { term: "signer (public key)", detail: digestCode(readString(rec, "signerPublicKey")) },
+      { term: "signer source", detail: text(readString(rec, "signerSource")) },
+      { term: "signature", detail: digestCode(readString(rec, "signature")) },
+      {
+        term: "confirmed",
+        detail: text(
+          confirmation === null
+            ? DASH
+            : `${boolText(readBoolean(confirmation, "confirmed"))} (slot ${num(readNumber(confirmation, "slot"))}, ${num(readNumber(confirmation, "polls"))} poll(s))`,
+        ),
+      },
+      {
+        term: "airdrop",
+        detail: text(
+          airdrop === null ? DASH : `${readString(airdrop, "status") ?? "unknown"} (${num(readNumber(airdrop, "lamports"))} lamports requested)`,
+        ),
+      },
+      { term: "never mainnet", detail: text(boolText(readBoolean(rec, "neverMainnet"))) },
+    ])}
+    ${tableSection({
+      title: "Steps",
+      columns: [{ header: "Step" }, { header: "Status" }, { header: "Detail" }],
+      rows: stepRows,
+      empty: "No steps recorded.",
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderTxSimulationReportView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const outcome = need(missing, "outcome", readString(rec, "outcome"));
+  return html`
+    ${RiskNotice({
+      tone: "info",
+      title: "Unsigned transaction simulation — evidence for review, never readiness",
+      body: html`The real <code>simulateTransaction</code> with signature verification DISABLED over
+        a strictly-validated UNSIGNED envelope — no signer or key exists at this boundary, and
+        chain state moves every slot: a simulation that succeeded now can fail at execution time.`,
+    })}
+    ${kvSection("Simulation", undefined, [
+      { term: "outcome", detail: text(outcome) },
+      { term: "network", detail: code(readString(rec, "network")) },
+      { term: "endpoint", detail: code(readString(rec, "endpointHost")) },
+      { term: "builder", detail: code(readString(rec, "builderId")) },
+      { term: "fee payer (public key)", detail: digestCode(readString(rec, "feePayerPublicKey")) },
+      { term: "simulated at", detail: text(readString(rec, "simulatedAt")) },
+      { term: "slot", detail: num(readNumber(rec, "slot")) },
+      { term: "compute units", detail: num(readNumber(rec, "unitsConsumed")) },
+      { term: "error", detail: text(readString(rec, "errLabel")) },
+      { term: "never signs / never sends", detail: text(`${boolText(readBoolean(rec, "neverSigns"))} / ${boolText(readBoolean(rec, "neverSends"))}`) },
+    ])}
+    ${partialNotice(missing)}
+  `;
+}
+
+/* ------------------------------------------------------------------ *
  * Dispatch.
  * ------------------------------------------------------------------ */
 
@@ -2611,6 +2797,14 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderPhase6HandoffView(rec);
     case "phase6.operator.bundle.v1":
       return renderPhase6OperatorBundleView(rec);
+    case "sniper.rehearsal.report.v1":
+      return renderSniperRehearsalView(rec);
+    case "execution.readiness.report.v1":
+      return renderExecutionReadinessView(rec);
+    case "execution.devnet.rehearsal.report.v1":
+      return renderDevnetRehearsalView(rec);
+    case "txpreview.simulation.report.v1":
+      return renderTxSimulationReportView(rec);
     default:
       return null;
   }
