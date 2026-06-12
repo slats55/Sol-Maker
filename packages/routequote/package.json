@@ -1,0 +1,14 @@
+{
+  "name": "@soulmaker/routequote",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only route-quote OBSERVATION layer (Sprint 91): validates operator-supplied quote observation files and prepares label-only route provenance for the PAPER dry-run chain. No wallet, key, signer, transaction build/sign/send, swap execution, or live trading anywhere — structurally incapable of executing a route.",
+  "exports": { ".": "./src/index.ts" },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@soulmaker/security": "workspace:*",
+    "@soulmaker/sniper": "workspace:*"
+  }
+}

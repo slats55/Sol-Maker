@@ -44,6 +44,9 @@ importers:
       '@soulmaker/risk':
         specifier: workspace:*
         version: link:../../packages/risk
+      '@soulmaker/routequote':
+        specifier: workspace:*
+        version: link:../../packages/routequote
       '@soulmaker/security':
         specifier: workspace:*
         version: link:../../packages/security
@@ -101,6 +104,15 @@ importers:
       '@soulmaker/security':
         specifier: workspace:*
         version: link:../security
+
+  packages/routequote:
+    dependencies:
+      '@soulmaker/security':
+        specifier: workspace:*
+        version: link:../security
+      '@soulmaker/sniper':
+        specifier: workspace:*
+        version: link:../sniper
 
   packages/security: {}
 
