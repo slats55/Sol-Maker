@@ -893,18 +893,41 @@ remaining safe Phase 6 gaps:
   INVALID — conscious fail-closed bumps, same shape as S80/S86. Still no resolver, no dry-run
   engine, no Phase 7: the audited/handed-off route is the honest all-UNAVAILABLE record.
 
+- ✅ **(S88) Operator bundle + PAPER dry-run orchestrator + UI merge** — the operator layer over
+  the whole chain. `phase6.operator.bundle.v1` (`paper:simulation:bundle`) collects THIRTEEN
+  roles (the twelve handoff roles plus the handoff pack itself) with per-file truncated
+  `sha256-128` integrity digests, a blocking trail RECOMPUTED from the bundled artifacts and
+  cross-checked against the handoff pack's verbatim trail (`blockingTrailConsistent`; a stale or
+  tampered pack is a blocked bundle), and a CLOSED operator verdict whose best value is
+  `reviewable-paper-only` (deliberately no "ready") — verdicts, tallies, mirrors, and the
+  whatHappened/whyBlocked/whatToInspectNext operator text are all recomputed by the validator.
+  `paper:sniper:dry-run` is the one-command orchestrator: an operator candidate file in (plus
+  optional `sniper.preflight.input.v1` inspection/risk data), the complete validated artifact
+  directory out (19 artifacts + `RUN_SUMMARY.md`) through the EXISTING production builders and
+  command functions — specs DRAFT by default (`--adopt-specs` is the explicit operator decision),
+  route honestly all-UNAVAILABLE, a blocked chain written as the honest record, byte-deterministic
+  re-runs. The web UI lane (typed Phase 6 views, folder inspector, command reference) was rebased
+  and MERGED to master, then extended with the operator-bundle typed view (29-schema registry).
+  Resolver assessment renewed: Option 1 declined with reasons recorded in the boundary doc;
+  nothing faked.
+
 **Still honestly missing from Phase 6 (future, in order):**
 
-- ⬜ A real `simulateTransaction` dry-run — the boundary is now DESIGNED
+- ⬜ A real route-resolution capability: per the S88 decision record in
+  [`PHASE6_DRY_RUN_BOUNDARY.md`](PHASE6_DRY_RUN_BOUNDARY.md), a NEW separately-scanned read-only
+  quote package (no wallet/signer/transaction/send) whose facts enter the chain ONLY through the
+  S85 resolved-entry contract + `liveStateCaveat`. Until then every route artifact is honestly
+  all-UNAVAILABLE.
+- ⬜ A real `simulateTransaction` dry-run — the boundary is DESIGNED
   ([`PHASE6_DRY_RUN_BOUNDARY.md`](PHASE6_DRY_RUN_BOUNDARY.md)) and its route-resolution input
-  artifact now EXISTS (S85, `simulation.route.resolution.v1` — today honestly all-UNAVAILABLE),
-  but implementation remains unauthorized and still requires: an actual route-resolution
-  capability plus a new separately-reviewed transaction-construction package behind the existing
-  adapter contract, and a fresh explicit authorization. Until then the adapter reports
+  artifact EXISTS, but implementation remains unauthorized and still requires: the route
+  capability above plus a new separately-reviewed transaction-construction package behind the
+  existing adapter contract, and a fresh explicit authorization. Until then the adapter reports
   UNAVAILABLE, honestly.
-- ⬜ Real (non-fixture) operator dress rehearsals: the chain is exercised end-to-end by fixtures;
-  an operator-driven session over real candidate intake (still paper-only, still read-only RPC for
-  inspection) would evidence the workflow beyond CI.
+- ⬜ Real (non-fixture) operator dress rehearsals: `paper:sniper:dry-run` consumes real operator
+  input TODAY (candidate list + read-only `token:inspect`/`token:risk` output as the preflight
+  input); what's missing is an operator-driven session over real candidates (still paper-only,
+  still read-only RPC for inspection) to evidence the workflow beyond CI.
 
 ## Phase 7 — Burner-wallet live mode ⬜ (NOT started)
 
@@ -914,10 +937,15 @@ remaining safe Phase 6 gaps:
 - ⬜ Enforce caps **before** building/sending.
 - ⬜ Simulate before send; log signatures + risk flags (redacted).
 
-## Phase 8 — Web dashboard ⬜
+## Phase 8 — Web dashboard 🟡 (local static inspector merged; no wallet surface, deliberately)
 
-- ⬜ Local web UI (`apps/web`).
-- ⬜ Phantom via Solana Wallet Adapter — **watch-only** first.
+- ✅ Local web UI (`apps/web`) — zero-dependency static dashboard, MERGED to master in S88:
+  29-schema registry with typed artifact views (the full sniper/simulation/phase6 families incl.
+  the S88 operator bundle), a local artifact FOLDER inspector (`pnpm web:inspect --dir <dir>` —
+  point it at a `paper:sniper:dry-run` output directory), schema-aware diff verdicts, command
+  reference, safety-lock tamper warnings. Build is byte-deterministic (`pnpm web:build`).
+- ⬜ Phantom via Solana Wallet Adapter — **watch-only** first (NOT started; the current UI holds
+  no wallet surface at all, deliberately).
 - ⬜ Balances, positions, logs, risk flags, transaction preview.
 - ⬜ **Manual approve** flow preferred over raw key custody.
 

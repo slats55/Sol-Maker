@@ -169,6 +169,40 @@ all-UNAVAILABLE record until a separately-authorized resolver exists:
   the strictly re-validated route artifact that the audit and handoff already carry — never a
   side channel.
 
+### Sprint 88 — operator orchestration over the boundary; resolver assessment renewed
+
+S88 added the operator layer ON TOP of the boundary without changing the boundary itself:
+
+- **`paper:sniper:dry-run`** orchestrates the whole chain (candidate file → 19 artifacts +
+  `RUN_SUMMARY.md`) through the existing command functions. The route step is the S85/S86
+  canonical builder, so every orchestrated run records the honest all-UNAVAILABLE route artifact.
+- **`phase6.operator.bundle.v1`** archives the chain (13 roles incl. the handoff pack) with the
+  route status carried VERBATIM and per-file truncated `sha256-128` integrity digests.
+
+**Resolver assessment (the S88 decision record):** Option 1 (a real read-only route/quote
+resolver) was assessed and DECLINED for this sprint, on evidence:
+
+- `@soulmaker/simulation`'s import allowlist (enforced by `no-forbidden-imports.test.ts`) admits
+  only `@soulmaker/sniper` + `@soulmaker/security` — no network module can exist inside the
+  boundary, by design. A resolver therefore requires a NEW, separately-scanned package and an
+  explicit decision about its read-only RPC/quote surface.
+- Live quotes are inherently non-deterministic; the byte-determinism bar that every simulation
+  artifact and the new orchestrator meet today would need the S85 `liveStateCaveat` path
+  (label-resolved facts + mandatory caveat + warning code), which EXISTS and is validated but has
+  never been exercised by a real producer. That producer deserves its own sprint with the
+  "required tests BEFORE any implementation lands" below, not a corner of this one.
+- Option 2 is already fully real here: the adapter seam (`SimulationDryRunAdapter`,
+  `UNAVAILABLE_DRY_RUN_ADAPTER`), the route artifact contract (resolved entries REQUIRE
+  provenance and the caveat; nothing inventable), the operator CLI, audit/handoff/bundle
+  carriage, and the orchestrator integration. The chain is resolver-ready; the route status stays
+  honestly UNAVAILABLE rather than faked.
+
+The smallest honest next step for a future authorized session: a separate read-only quote
+package (no wallet, no signer, no transaction building, no send/swap/write) whose output enters
+the chain ONLY as label-resolved route facts through `buildSimulationRouteResolutionV1`'s
+existing resolved-entry contract, with the caveat machinery and the scans below in place on day
+one.
+
 ## Required tests BEFORE any implementation lands
 
 1. Import-allowlist + forbidden-token + determinism scans for the new package (day one).

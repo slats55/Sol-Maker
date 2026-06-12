@@ -1,7 +1,53 @@
-# Phase 6 Continuation Pack (continuation run 2026-06-10 #2, Sprints 73–82; addenda: S85, S86, S87)
+# Phase 6 Continuation Pack (continuation run 2026-06-10 #2, Sprints 73–82; addenda: S85, S86, S87, S88)
 
 The precise hand-off for the next session. Everything below is verifiable from the repo —
 no claim here rests on memory.
+
+## Addendum — Sprint 88 (operator bundle + PAPER dry-run orchestrator + UI merge; 2026-06-11) — COMPLETED
+
+S88 closed the gap between "validated artifact system" and "operator-runnable PAPER dry run".
+No live capability was added; the route remains honestly all-UNAVAILABLE, the real dry-run
+remains unauthorized and unbuilt, and Phase 7 remains unauthorized.
+
+- **UI lane MERGED:** `sprint-aux-web-ui-phase6-artifact-views` (28 commits) rebased cleanly onto
+  the S87 master and fast-forward-merged. The web dashboard (apps/web) is now on master:
+  29-schema registry, typed Phase 6 views, local folder inspector (`pnpm web:inspect --dir`),
+  command reference. The UI lane is no longer a parallel-branch risk.
+- **`phase6.operator.bundle.v1`** (`packages/simulation/src/operator-bundle.ts`): THIRTEEN roles —
+  the twelve handoff roles plus the handoff pack itself — each strictly validated in place with
+  verbatim structured summaries. New machinery beyond the handoff pack: per-role FILE REFERENCES
+  with truncated `sha256-128` digests (truncated ON PURPOSE — the shared redactor treats 64-hex
+  blobs as key-shaped); the blocking trail RECOMPUTED from the bundled artifacts and cross-checked
+  against the handoff pack's verbatim trail (`blockingTrailConsistent`; a stale/tampered pack is a
+  blocked bundle); a CLOSED operator verdict (`blocked` / `incomplete` / `attention` /
+  `reviewable-paper-only` — deliberately no "ready") with deterministic
+  whatHappened/whyBlocked/whatToInspectNext text, ALL recomputed by the validator (even
+  downgrading the verdict is refused). CLI: `paper:simulation:bundle` (flags pinned).
+- **`paper:sniper:dry-run`** — the operator orchestrator: candidate file in → 19 artifacts +
+  `RUN_SUMMARY.md` out, all through the EXISTING production builders and command functions
+  (fixtures.ts's exact recipe for the sniper side; the e2e pipeline's exact steps for the
+  simulation side). Honest behaviors pinned by test: specs are DRAFT by default (`--adopt-specs`
+  + `--operator` is the explicit adoption decision); candidates without preflight data stay
+  `unknown` and the fail-closed default policy keeps them out of paper-enter; a clean paper-enter
+  run is HONESTLY `blocked` on the verbatim `simulation-blocked-prereqs-not-ready` condition
+  (paper-enters always demand review); a watch-only run reaches `reviewable-paper-only` — the
+  best verdict that exists; a blocked chain still writes the full artifact set (exit 0;
+  `--fail-on-blocked` gates); two runs are byte-identical.
+- **Resolver assessment renewed (S88 decision record, in PHASE6_DRY_RUN_BOUNDARY.md):** Option 1
+  (real read-only resolver) declined — it needs a NEW separately-scanned package outside the
+  simulation import allowlist and its own sprint; Option 2 is fully real (adapter seam + route
+  contract + CLI + orchestrator + bundle carriage). Nothing was faked to move percentages.
+- **Honest catch worth knowing:** the canonical "ready chain" dress rehearsal ends `blocked`, not
+  green — that is the system telling the truth (prereqs' NO_OPERATOR_BLOCKING stays unmet while
+  paper-enters await review; the plan-level acknowledgment unblocks the PLAN but the condition is
+  still carried verbatim through audit/handoff/bundle). Do not "fix" this; it is the designed
+  behavior, now documented in the runbook's dry-run section.
+
+Updated next slices: (1) the separate read-only quote package per the S88 decision record
+(route facts enter ONLY through the existing resolved-entry contract + liveStateCaveat);
+(2) operator dress rehearsal with REAL read-only `token:inspect`/`token:risk` output as the
+preflight input (the dry-run command consumes it today); (3) handoff-pack/bundle diff if
+session-over-session comparison proves useful.
 
 ## Addendum — Sprint 87 (route artifact audited and handed off; 2026-06-10) — COMPLETED
 
