@@ -434,9 +434,17 @@
     <code>execution.devnet.rehearsal.report.v1</code>
   </span></td><td class="sm-td--left">execution</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>execution:devnet:rehearse</code></td>
                 </tr><tr>
-                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="All fourteen live-gate conditions evaluated against operator-NAMED evidence, each gap named with its exact next safe action. Structurally incapable of reporting armed; the verdict literal is always blocked.">
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="All fourteen live-gate conditions evaluated against operator-NAMED evidence, each gap named with its exact next safe action. Structurally incapable of reporting armed; the verdict literal is always blocked. S96 adds the last session&#39;s reconciliation status as evidence.">
     <code>execution.readiness.report.v1</code>
   </span></td><td class="sm-td--left">execution</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>execution:readiness</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="The S96 post-trade accounting record over ONE execution session: signature, closed confirmation classification (confirmed/finalized/timeout/dropped/rpc-unavailable/signature-error/unknown), pre/post balance facts from ACTUAL reads, the lamport/token deltas, the real fee when transaction meta supplies it, and a closed expected-vs-actual verdict. Unavailable data says unavailable — nothing is estimated and no P/L is ever invented.">
+    <code>execution.reconciliation.report.v1</code>
+  </span></td><td class="sm-td--left">execution</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>execution:session:reconcile</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="The S96 read-only accounting state of the latest execution session and the continuation decision a NEW devnet attempt would face: allowed only after reconciled / not-sent / funding-blocked / an explicit audited acknowledgment. A blocked decision is the refusal wall working, not a bug.">
+    <code>execution.session.status.v1</code>
+  </span></td><td class="sm-td--left">execution</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>execution:session:status</code></td>
                 </tr><tr>
                   <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="The S90 read-only bridge: token:inspect / token:risk evidence paired to candidates BY MINT for the preflight stage. Cross-kind, unknown-mint, duplicate, and secret-shaped inputs are refused at prepare time. Since S94 the rehearsal&#39;s auto-risk writes one automatically.">
     <code>sniper.preflight.input.v1</code>

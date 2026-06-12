@@ -2687,6 +2687,23 @@ function renderExecutionReadinessView(rec: Record<string, unknown>): RawHtml {
           { term: "cap (ms)", detail: num(readNumber(freshness, "capMs")) },
           { term: "detail", detail: text(readString(freshness, "detail")) },
         ])}
+    ${(() => {
+      const session = evidence === null ? null : asRecord(evidence["sessionReconciliation"]);
+      if (session === null) return "";
+      const allowed = readBoolean(session, "newExecutionAllowed");
+      return kvSection(
+        "Session reconciliation evidence (S96)",
+        "The last execution session's accounting state — an unaccounted session refuses new devnet execution attempts at the execution surfaces themselves.",
+        [
+          { term: "status", detail: code(readString(session, "status")) },
+          { term: "new execution allowed", detail: text(allowed === true ? "yes" : allowed === false ? "NO — blocked by the refusal wall" : DASH) },
+          { term: "session id", detail: text(readString(session, "sessionId") ?? "none") },
+          { term: "blocked reason", detail: text(readString(session, "blockedReason") ?? "none") },
+          { term: "next safe action", detail: text(readString(session, "nextSafeAction")) },
+          { term: "ledger", detail: text(readString(session, "ledgerPath")) },
+        ],
+      );
+    })()}
     ${tableSection({
       title: "The fourteen live-gate conditions",
       description: "Each gap names its exact next safe action — evidence collection, never authorization.",
@@ -2882,6 +2899,152 @@ function renderTxBuildReportView(rec: Record<string, unknown>): RawHtml {
   `;
 }
 
+function renderReconciliationReportView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const verdict = need(missing, "verdict", readString(rec, "verdict"));
+  const cleared = verdict === "reconciled" || verdict === "not-sent" || verdict === "funding-blocked";
+  const confirmation = asRecord(rec["confirmation"]);
+  const pre = asRecord(rec["pre"]);
+  const post = asRecord(rec["post"]);
+  const delta = asRecord(rec["delta"]);
+  const tokenDelta = delta === null ? null : asRecord(delta["token"]);
+  const fee = asRecord(rec["fee"]);
+  const expected = asRecord(rec["expected"]);
+  const solOf = (snapshot: Record<string, unknown> | null): string => {
+    const sol = snapshot === null ? null : asRecord(snapshot["sol"]);
+    if (sol === null) return DASH;
+    const status = readString(sol, "status");
+    return status === "observed" ? `${readNumber(sol, "lamports") ?? DASH} lamports` : `${status ?? DASH} (not observed)`;
+  };
+  return html`
+    ${RiskNotice({
+      tone: cleared ? "info" : "caution",
+      title: cleared
+        ? `Reconciliation — ${(verdict ?? "").toUpperCase()} (this session is accounted for)`
+        : `Reconciliation — ${(verdict ?? "unknown").toUpperCase()} (new execution attempts stay BLOCKED until this session is accounted for)`,
+      body: html`Post-trade accounting over one execution session. Every balance fact is an actual
+        RPC observation or an honest unavailable — nothing is estimated, no P/L is invented, and an
+        unconfirmed submission is never upgraded. Mainnet live trading remains disabled regardless
+        of this verdict.`,
+    })}
+    ${kvSection("Session", undefined, [
+      { term: "verdict", detail: code(verdict) },
+      { term: "session id", detail: text(readString(rec, "sessionId")) },
+      { term: "mode / network", detail: text(`${readString(rec, "mode") ?? DASH} / ${readString(rec, "network") ?? DASH}`) },
+      { term: "recorded by", detail: text(readString(rec, "command")) },
+      { term: "signature", detail: digestCode(readString(rec, "signature") ?? "none (nothing was submitted)") },
+      { term: "created at", detail: text(readString(rec, "createdAt")) },
+      { term: "redaction applied", detail: text(boolText(readBoolean(rec, "redactionApplied"))) },
+    ])}
+    ${confirmation === null
+      ? ""
+      : kvSection("Confirmation classification", "Closed set: confirmed | finalized | timeout | dropped | rpc-unavailable | signature-error | unknown. None of the guidance ever says resend.", [
+          { term: "outcome", detail: code(readString(confirmation, "outcome")) },
+          { term: "slot", detail: num(readNumber(confirmation, "slot")) },
+          { term: "polls (bounded)", detail: num(readNumber(confirmation, "polls")) },
+          { term: "error label", detail: text(readString(confirmation, "errLabel") ?? "none") },
+          { term: "guidance", detail: text(readString(confirmation, "guidance")) },
+        ])}
+    ${kvSection("Balance facts (actual observations only)", undefined, [
+      { term: "pre", detail: text(solOf(pre)) },
+      { term: "post", detail: text(solOf(post)) },
+      {
+        term: "SOL delta",
+        detail:
+          delta !== null && readString(delta, "solStatus") === "computed"
+            ? text(`${readNumber(delta, "solLamports") ?? DASH} lamports`)
+            : text("unavailable (pre/post not both observed)"),
+      },
+      {
+        term: "token delta",
+        detail:
+          tokenDelta === null
+            ? text("not applicable (no token mint in the reads)")
+            : readString(tokenDelta, "status") === "computed"
+              ? text(`${readString(tokenDelta, "amountRawDelta") ?? DASH} raw (${readString(tokenDelta, "mint") ?? DASH})`)
+              : text("unavailable"),
+      },
+      {
+        term: "fee",
+        detail:
+          fee === null
+            ? text(DASH)
+            : text(
+                `${readNumber(fee, "actualLamports") ?? readNumber(fee, "estimatedLamports") ?? "unavailable"} lamports (${readString(fee, "source") ?? DASH})`,
+              ),
+      },
+    ])}
+    ${kvSection("Expected vs actual", undefined, [
+      { term: "expected", detail: text(expected === null ? DASH : readString(expected, "summary")) },
+      { term: "actual", detail: text(readString(rec, "actualSummary")) },
+      { term: "blocked reason", detail: text(readString(rec, "blockedReason") ?? "none") },
+      { term: "next safe action", detail: text(readString(rec, "nextSafeAction")) },
+    ])}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderSessionStatusView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const decision = asRecord(rec["decision"]);
+  const allowed = decision === null ? null : readBoolean(decision, "allowed");
+  const latestSession = asRecord(rec["latestSession"]);
+  const entryRows: (readonly HtmlValue[])[] = [];
+  for (const row of (latestSession === null ? [] : (asArray(latestSession["entries"]) ?? [])).slice(0, 16)) {
+    const entry = asRecord(row);
+    if (entry === null) continue;
+    const kind = readString(entry, "kind");
+    entryRows.push([
+      text(readString(entry, "recordedAt")),
+      code(kind),
+      text(readString(entry, "command")),
+      text(
+        kind === "reconciliation"
+          ? `verdict ${readString(entry, "reconciliationVerdict") ?? DASH}`
+          : kind === "manual-acknowledgment"
+            ? `reason: ${readString(entry, "reason") ?? DASH}`
+            : `outcome ${readString(entry, "executionOutcome") ?? DASH}`,
+      ),
+    ]);
+  }
+  need(missing, "decision", decision === null ? null : "present");
+  return html`
+    ${RiskNotice({
+      tone: allowed === true ? "info" : "caution",
+      title:
+        allowed === true
+          ? "Session accounting — a new devnet execution attempt is ALLOWED"
+          : "Session accounting — new devnet execution attempts are BLOCKED (the refusal wall is working)",
+      body: html`The read-only accounting state of the latest execution session. A new attempt
+        proceeds only after the previous one is reconciled, was never sent, was funding-blocked, or
+        was explicitly acknowledged with an audited reason. There is no bypass flag. Mainnet live
+        trading remains disabled regardless.`,
+    })}
+    ${kvSection("Continuation decision", undefined, [
+      { term: "status", detail: code(decision === null ? null : readString(decision, "status")) },
+      { term: "new attempt allowed", detail: text(boolText(allowed)) },
+      { term: "session id", detail: text(decision === null ? DASH : readString(decision, "sessionId") ?? "none") },
+      { term: "blocked reason", detail: text(decision === null ? DASH : readString(decision, "blockedReason") ?? "none") },
+      { term: "next safe action", detail: text(decision === null ? DASH : readString(decision, "nextSafeAction")) },
+    ])}
+    ${kvSection("Ledger", undefined, [
+      { term: "path", detail: text(readString(rec, "ledgerPath")) },
+      { term: "present", detail: text(boolText(readBoolean(rec, "ledgerPresent"))) },
+      { term: "entries / network", detail: text(`${num(readNumber(rec, "entryCount"))} / ${readString(rec, "network") ?? DASH}`) },
+      { term: "malformed lines", detail: num(readNumber(rec, "malformedLines")) },
+      { term: "created at", detail: text(readString(rec, "createdAt")) },
+    ])}
+    ${tableSection({
+      title: "Latest session entries",
+      description: "The append-only trail for the latest session: attempts, reconciliations, acknowledgments.",
+      columns: [{ header: "Recorded at" }, { header: "Kind" }, { header: "Command" }, { header: "Detail" }],
+      rows: entryRows,
+      empty: "No session entries — no execution attempt has been recorded on this network.",
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
 /* ------------------------------------------------------------------ *
  * Dispatch.
  * ------------------------------------------------------------------ */
@@ -2961,6 +3124,10 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderTxSimulationReportView(rec);
     case "txbuild.report.v1":
       return renderTxBuildReportView(rec);
+    case "execution.reconciliation.report.v1":
+      return renderReconciliationReportView(rec);
+    case "execution.session.status.v1":
+      return renderSessionStatusView(rec);
     default:
       return null;
   }

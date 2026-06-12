@@ -482,21 +482,42 @@ export const COMMANDS: readonly CommandRef[] = [
   {
     command: "execution:devnet:send",
     summary:
-      "The ONLY send surface, DEVNET-ONLY by construction behind a double opt-in (env flag + CLI flag); every attempt journaled. S93: the REAL quote age is computed from the envelope's quotedAt — stale/missing/future refuses; the quoteless self-transfer probe is the only exception.",
+      "The ONLY send surface, DEVNET-ONLY by construction behind a double opt-in (env flag + CLI flag); every attempt journaled. S93: the REAL quote age is computed from the envelope's quotedAt — stale/missing/future refuses; the quoteless self-transfer probe is the only exception. S96: an unaccounted previous session refuses a new send; a submitted attempt stays pending-confirmation until reconciled.",
     group: "Execution (gated)",
     readsChain: true,
   },
   {
     command: "execution:devnet:rehearse",
     summary:
-      "The S93 devnet END-TO-END broadcast rehearsal: throwaway gitignored keypair, airdrop, unsigned self-transfer probe, simulation, gated send, confirmation — written as one honest artifact set (an airdrop rate limit is devnet-funding-blocked, never faked success). No mainnet variant exists.",
+      "The S93 devnet END-TO-END broadcast rehearsal: throwaway gitignored keypair, airdrop, unsigned self-transfer probe, simulation, gated send, confirmation — written as one honest artifact set (an airdrop rate limit is devnet-funding-blocked, never faked success). No mainnet variant exists. S96: every run leaves a reconciliation report + session ledger entries; an unaccounted previous session refuses a new run.",
     group: "Execution (gated)",
     readsChain: true,
   },
   {
     command: "execution:readiness",
     summary:
-      "The HONEST mainnet readiness checklist: all fourteen live-gate conditions evaluated against operator-NAMED evidence, every gap named with its exact next safe action. Structurally incapable of reporting armed; no bypass flag, no force flag.",
+      "The HONEST mainnet readiness checklist: all fourteen live-gate conditions evaluated against operator-NAMED evidence, every gap named with its exact next safe action. Structurally incapable of reporting armed; no bypass flag, no force flag. S96: reports the last session's reconciliation status as evidence.",
+    group: "Execution (gated)",
+    readsChain: false,
+  },
+  {
+    command: "execution:session:status",
+    summary:
+      "S96 read-only session accounting status: the latest execution session's ledger entries and the continuation decision a NEW devnet attempt would face (allowed only after reconciled / not-sent / funding-blocked / an explicit audited acknowledgment). Writes nothing unless --out.",
+    group: "Execution (gated)",
+    readsChain: false,
+  },
+  {
+    command: "execution:session:reconcile",
+    summary:
+      "S96 post-trade accounting over the LATEST devnet session: bounded confirmation re-check (transaction-history search), CURRENT balance read, ACTUAL fee from transaction meta, expected-vs-actual verdict (execution.reconciliation.report.v1), appended to the session ledger. READ-ONLY RPC — can never sign, send, or resend; exits 1 while the wall stays closed.",
+    group: "Execution (gated)",
+    readsChain: true,
+  },
+  {
+    command: "execution:session:acknowledge",
+    summary:
+      "S96: the EXPLICIT, AUDITED manual exit from a blocked session — appends a manual-acknowledgment ledger entry with your verbatim --reason (>= 10 chars) plus the required --acknowledge-unreconciled-session flag. Refuses when nothing is blocked; erases nothing; no force/bypass variant exists.",
     group: "Execution (gated)",
     readsChain: false,
   },

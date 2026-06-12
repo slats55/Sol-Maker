@@ -815,7 +815,7 @@
           >
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker execution:devnet:send</code>
-    <p class="sm-cmd__summary">The ONLY send surface, DEVNET-ONLY by construction behind a double opt-in (env flag + CLI flag); every attempt journaled. S93: the REAL quote age is computed from the envelope&#39;s quotedAt — stale/missing/future refuses; the quoteless self-transfer probe is the only exception.</p>
+    <p class="sm-cmd__summary">The ONLY send surface, DEVNET-ONLY by construction behind a double opt-in (env flag + CLI flag); every attempt journaled. S93: the REAL quote age is computed from the envelope&#39;s quotedAt — stale/missing/future refuses; the quoteless self-transfer probe is the only exception. S96: an unaccounted previous session refuses a new send; a submitted attempt stays pending-confirmation until reconciled.</p>
     <div class="sm-cmd__artifact">
             <span class="sm-cmd__artifact-label">artifact</span>
             <span class="sm-schema sm-schema--stable" title="One journaled gated execution attempt (refused or submitted) from the refusal-first send path — devnet-only in the shipped CLI. Submission is not confirmation, and the report says so.">
@@ -829,7 +829,7 @@
           >
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker execution:devnet:rehearse</code>
-    <p class="sm-cmd__summary">The S93 devnet END-TO-END broadcast rehearsal: throwaway gitignored keypair, airdrop, unsigned self-transfer probe, simulation, gated send, confirmation — written as one honest artifact set (an airdrop rate limit is devnet-funding-blocked, never faked success). No mainnet variant exists.</p>
+    <p class="sm-cmd__summary">The S93 devnet END-TO-END broadcast rehearsal: throwaway gitignored keypair, airdrop, unsigned self-transfer probe, simulation, gated send, confirmation — written as one honest artifact set (an airdrop rate limit is devnet-funding-blocked, never faked success). No mainnet variant exists. S96: every run leaves a reconciliation report + session ledger entries; an unaccounted previous session refuses a new run.</p>
     <div class="sm-cmd__artifact">
             <span class="sm-cmd__artifact-label">artifact</span>
             <span class="sm-schema sm-schema--stable" title="The S93 devnet end-to-end broadcast rehearsal: throwaway gitignored keypair, airdrop, unsigned self-transfer probe, simulation, gated send, confirmation — every step honest (an airdrop rate limit is devnet-funding-blocked, never faked success). Devnet only by construction.">
@@ -843,13 +843,42 @@
           >
   </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker execution:readiness</code>
-    <p class="sm-cmd__summary">The HONEST mainnet readiness checklist: all fourteen live-gate conditions evaluated against operator-NAMED evidence, every gap named with its exact next safe action. Structurally incapable of reporting armed; no bypass flag, no force flag.</p>
+    <p class="sm-cmd__summary">The HONEST mainnet readiness checklist: all fourteen live-gate conditions evaluated against operator-NAMED evidence, every gap named with its exact next safe action. Structurally incapable of reporting armed; no bypass flag, no force flag. S96: reports the last session&#39;s reconciliation status as evidence.</p>
     <div class="sm-cmd__artifact">
             <span class="sm-cmd__artifact-label">artifact</span>
-            <span class="sm-schema sm-schema--stable" title="All fourteen live-gate conditions evaluated against operator-NAMED evidence, each gap named with its exact next safe action. Structurally incapable of reporting armed; the verdict literal is always blocked.">
+            <span class="sm-schema sm-schema--stable" title="All fourteen live-gate conditions evaluated against operator-NAMED evidence, each gap named with its exact next safe action. Structurally incapable of reporting armed; the verdict literal is always blocked. S96 adds the last session&#39;s reconciliation status as evidence.">
     <code>execution.readiness.report.v1</code>
   </span>
           </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker execution:session:status</code>
+    <p class="sm-cmd__summary">S96 read-only session accounting status: the latest execution session&#39;s ledger entries and the continuation decision a NEW devnet attempt would face (allowed only after reconciled / not-sent / funding-blocked / an explicit audited acknowledgment). Writes nothing unless --out.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="The S96 read-only accounting state of the latest execution session and the continuation decision a NEW devnet attempt would face: allowed only after reconciled / not-sent / funding-blocked / an explicit audited acknowledgment. A blocked decision is the refusal wall working, not a bug.">
+    <code>execution.session.status.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker execution:session:reconcile</code>
+    <p class="sm-cmd__summary">S96 post-trade accounting over the LATEST devnet session: bounded confirmation re-check (transaction-history search), CURRENT balance read, ACTUAL fee from transaction meta, expected-vs-actual verdict (execution.reconciliation.report.v1), appended to the session ledger. READ-ONLY RPC — can never sign, send, or resend; exits 1 while the wall stays closed.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="The S96 post-trade accounting record over ONE execution session: signature, closed confirmation classification (confirmed/finalized/timeout/dropped/rpc-unavailable/signature-error/unknown), pre/post balance facts from ACTUAL reads, the lamport/token deltas, the real fee when transaction meta supplies it, and a closed expected-vs-actual verdict. Unavailable data says unavailable — nothing is estimated and no P/L is ever invented.">
+    <code>execution.reconciliation.report.v1</code>
+  </span>
+          </div>
+    <span
+            class="sm-pill sm-pill--caution"
+            title="Reads public chain state; in PAPER mode requires --allow-paper-read and accepts public keys only"
+            >reads chain · public keys only</span
+          >
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker execution:session:acknowledge</code>
+    <p class="sm-cmd__summary">S96: the EXPLICIT, AUDITED manual exit from a blocked session — appends a manual-acknowledgment ledger entry with your verbatim --reason (&gt;= 10 chars) plus the required --acknowledge-unreconciled-session flag. Refuses when nothing is blocked; erases nothing; no force/bypass variant exists.</p>
+
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article>
         </div></div>

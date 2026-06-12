@@ -412,8 +412,26 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
     family: "execution",
     stability: "stable",
     description:
-      "All fourteen live-gate conditions evaluated against operator-NAMED evidence, each gap named with its exact next safe action. Structurally incapable of reporting armed; the verdict literal is always blocked.",
+      "All fourteen live-gate conditions evaluated against operator-NAMED evidence, each gap named with its exact next safe action. Structurally incapable of reporting armed; the verdict literal is always blocked. S96 adds the last session's reconciliation status as evidence.",
     cli: "execution:readiness",
+  },
+  {
+    id: "execution.reconciliation.report.v1",
+    title: "Execution reconciliation report",
+    family: "execution",
+    stability: "stable",
+    description:
+      "The S96 post-trade accounting record over ONE execution session: signature, closed confirmation classification (confirmed/finalized/timeout/dropped/rpc-unavailable/signature-error/unknown), pre/post balance facts from ACTUAL reads, the lamport/token deltas, the real fee when transaction meta supplies it, and a closed expected-vs-actual verdict. Unavailable data says unavailable — nothing is estimated and no P/L is ever invented.",
+    cli: "execution:session:reconcile",
+  },
+  {
+    id: "execution.session.status.v1",
+    title: "Execution session status",
+    family: "execution",
+    stability: "stable",
+    description:
+      "The S96 read-only accounting state of the latest execution session and the continuation decision a NEW devnet attempt would face: allowed only after reconciled / not-sent / funding-blocked / an explicit audited acknowledgment. A blocked decision is the refusal wall working, not a bug.",
+    cli: "execution:session:status",
   },
   {
     id: "sniper.preflight.input.v1",
