@@ -911,6 +911,17 @@ remaining safe Phase 6 gaps:
   Resolver assessment renewed: Option 1 declined with reasons recorded in the boundary doc;
   nothing faked.
 
+- ✅ **(S89) Operator dress rehearsal + dry-run UX + UI landing overview** — the product polish
+  pass over the S88 orchestrator. Shipped, test-pinned walkthrough examples
+  (`examples/sniper/operator-dress-rehearsal/` — minimal / rich / watch-only / blocked-risk,
+  covering every operator verdict with exact commands and expected blocking codes); the dry-run
+  terminal summary + `RUN_SUMMARY.md` now carry the blocking codes verbatim, a per-status route
+  explanation, and the exact web-inspect follow-up command; the web folder inspector recognizes a
+  dry-run output folder by its valid operator bundle and leads with a landing overview (verdict
+  card, clickable 13-role chain strip, route status, blocking codes, SIMULATION-ONLY banner) over
+  a real committed fixture byte-pinned against a fresh orchestrator run. No new capability;
+  honest semantics unchanged.
+
 **Still honestly missing from Phase 6 (future, in order):**
 
 - ⬜ A real route-resolution capability: per the S88 decision record in

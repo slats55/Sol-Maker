@@ -1,7 +1,45 @@
-# Phase 6 Continuation Pack (continuation run 2026-06-10 #2, Sprints 73–82; addenda: S85, S86, S87, S88)
+# Phase 6 Continuation Pack (continuation run 2026-06-10 #2, Sprints 73–82; addenda: S85, S86, S87, S88, S89)
 
 The precise hand-off for the next session. Everything below is verifiable from the repo —
 no claim here rests on memory.
+
+## Addendum — Sprint 89 (operator dress rehearsal + dry-run UX + UI landing overview; 2026-06-11) — COMPLETED
+
+S89 made the S88 orchestrator feel like a product workflow. No capability was added: the route
+remains honestly all-UNAVAILABLE, no resolver/wallet/signing/network entered the codebase, and
+Phase 7 remains unauthorized.
+
+- **Shipped dress rehearsal examples** (`examples/sniper/operator-dress-rehearsal/`): four
+  ready-to-run fictional candidate files — minimal (draft specs → `blocked`, 6 codes), rich
+  (clean paper-enter path → `blocked` on `simulation-blocked-prereqs-not-ready`, route
+  `unavailable`), watch-only (→ `reviewable-paper-only`, route `no_entries`), blocked-risk
+  (critical REJECT → `blocked`, route `blocked`) — plus a README with exact commands, the
+  20-file output tree, the closed verdict set, and the route-status semantics.
+  `apps/cli/src/dress-rehearsal-examples.test.ts` runs the REAL orchestrator over each and pins
+  the documented verdicts/codes/route statuses, input validity, determinism, and README/code
+  agreement.
+- **Dry-run CLI UX** (`paper:sniper:dry-run`): the terminal summary and `RUN_SUMMARY.md` now list
+  the chain blocking codes VERBATIM (previously only a count + narrative); the route line carries
+  a per-status explanation (`unavailable` = expected boundary / `blocked` = blocked plan /
+  `no_entries` = watch-only); the terminal ends with the exact `pnpm web:inspect --dir … --force`
+  command. `resolvePath()` now normalizes absolute paths (Windows shell wrappers inject doubled
+  backslashes into displayed paths). All output still derives only from the bundle's structured
+  state — byte-deterministic.
+- **Web dry-run landing overview** (`apps/web/src/lib/dry-run-overview.ts` + folder page): the
+  folder inspector recognizes a dry-run output folder by its VALID `phase6.operator.bundle.v1`
+  and renders a landing block first — SIMULATION-ONLY banner, operator-verdict card (honest tone
+  mapping; the best verdict explicitly stays paper-only), route-status card with the per-status
+  explanation, blocking codes verbatim, a clickable 13-role artifact-chain strip
+  (valid/invalid/missing states, anchors into the per-artifact sections), bundle
+  completeness/trail-consistency cards, and a `RUN_SUMMARY.md` pointer. Everything is read
+  VERBATIM from the bundle through the defensive accessors — nothing recomputed or invented;
+  non-dry-run folders render exactly as before. `apps/web/fixtures/dry-run-sample/` is a real
+  committed orchestrator output (over the rich rehearsal) byte-pinned by the CLI suite against a
+  fresh run, so it can never drift. Browser-verified: 10 pages HTTP 200, 0 console
+  errors/warnings.
+- **Honest semantics unchanged:** the clean dress rehearsal still ends `blocked` (paper-enters
+  demand review); the watch-only chain is still the only `reviewable-paper-only` state. Do not
+  "fix" either.
 
 ## Addendum — Sprint 88 (operator bundle + PAPER dry-run orchestrator + UI merge; 2026-06-11) — COMPLETED
 

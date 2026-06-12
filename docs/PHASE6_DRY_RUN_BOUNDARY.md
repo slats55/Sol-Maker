@@ -203,6 +203,21 @@ the chain ONLY as label-resolved route facts through `buildSimulationRouteResolu
 existing resolved-entry contract, with the caveat machinery and the scans below in place on day
 one.
 
+### Sprint 89 — presentation only; the boundary is unchanged
+
+S89 touched only how the boundary's honest states are EXPLAINED to the operator — no capability,
+no schema, and no validator changed:
+
+- The dry-run CLI and `RUN_SUMMARY.md` now phrase the route status per state: `unavailable` is
+  the expected boundary outcome ("nothing was faked"), `blocked` means the plan blocked before
+  resolution was attempted, `no_entries` means a watch-only plan had nothing to resolve.
+- The web folder inspector renders the same per-status explanations on its dry-run landing
+  overview, reading the status VERBATIM from the operator bundle.
+- The shipped dress-rehearsal examples (`examples/sniper/operator-dress-rehearsal/`) document and
+  test-pin all three statuses over the honest all-UNAVAILABLE builder.
+
+The S88 resolver decision record below stands unchanged.
+
 ## Required tests BEFORE any implementation lands
 
 1. Import-allowlist + forbidden-token + determinism scans for the new package (day one).

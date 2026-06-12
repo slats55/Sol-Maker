@@ -9,6 +9,33 @@ practical "how do I run this" companion to [`SNIPER_MODEL.md`](SNIPER_MODEL.md) 
 > planning/simulation) and Phase 7 (burner/live trading) are **NOT started** — see the prerequisites at
 > the end of this doc.
 
+## Quick start — run the whole thing right now
+
+One command runs the entire PAPER pipeline over a candidate file and writes a validated artifact
+folder. Four ready-to-run fictional examples (with the exact commands and what each verdict means)
+live in [`examples/sniper/operator-dress-rehearsal/`](../examples/sniper/operator-dress-rehearsal/README.md):
+
+```bash
+# The full clean path over the shipped fictional example:
+pnpm soulmaker paper:sniper:dry-run \
+  --candidates examples/sniper/operator-dress-rehearsal/candidates.rich.json \
+  --preflight-input examples/sniper/operator-dress-rehearsal/preflight-input.rich.json \
+  --adopt-specs --operator "you" --acknowledge-paper-enter-review \
+  --run-label my-first-rehearsal \
+  --out runs/my-first-rehearsal
+
+# Read runs/my-first-rehearsal/RUN_SUMMARY.md, then open the folder in the web inspector:
+pnpm web:inspect --dir runs/my-first-rehearsal --force
+# → open apps/web/public/research-folder.html in a browser: the page leads with the operator
+#   verdict, the 13-role artifact chain, route status, and the blocking codes (PAPER-only banner
+#   included). `pnpm web:build` restores the empty-state page afterwards.
+```
+
+A clean run ends `blocked` on `simulation-blocked-prereqs-not-ready` — paper-enters always demand
+operator review; that is the honest end state, not a failure. See
+[the orchestrator section](#the-paper-dry-run-orchestrator-s88--one-command-the-whole-chain) for
+the full semantics.
+
 ## What exists now
 
 | Stage | Command | Artifact schema | What it does |
@@ -250,7 +277,17 @@ What to expect, honestly:
   whole chain with the kill-switch code carried verbatim.
 - **Re-runs are byte-deterministic** for the same inputs; diffs are not applicable to a single
   run — compare two runs with the diff commands.
-- Inspect the folder in the local web inspector: `pnpm web:inspect --dir runs/session-01`.
+- **The terminal summary and `RUN_SUMMARY.md` list the chain blocking codes verbatim** (S89), the
+  route line explains its status per state (`unavailable` = the expected boundary; `blocked` =
+  blocked plan; `no_entries` = watch-only plan), and the output ends with the exact web-inspect
+  command for the folder.
+- Inspect the folder in the local web inspector: `pnpm web:inspect --dir runs/session-01 --force`.
+  Since S89 the folder page recognizes a dry-run output (by its valid operator bundle) and leads
+  with a landing overview — operator verdict, the clickable 13-role artifact chain, route status,
+  blocking codes, and a SIMULATION-ONLY banner — before the generic artifact index.
+- The shipped, tested walkthrough examples (every verdict category, exact commands, expected
+  outputs) are in
+  [`examples/sniper/operator-dress-rehearsal/`](../examples/sniper/operator-dress-rehearsal/README.md).
 - It creates no live order, builds no transaction, touches no wallet, reaches no network, and
   cannot authorize Phase 7.
 
