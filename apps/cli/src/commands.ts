@@ -737,6 +737,19 @@ export interface RiskCommandOptions extends ChainReadOptions {
   outPath?: string;
   /** Overwrite an existing --out file (refused by default). */
   force?: boolean;
+  /**
+   * Sprint 92: ALSO run the deep read-only checks (holder concentration via
+   * getTokenLargestAccounts + Metaplex metadata mutability). A deep check that fails or is
+   * unsupported by the RPC seam is reported as an explicit unknown caution — never skipped
+   * silently, never assumed safe. Without this flag the report is byte-identical to before.
+   */
+  deep?: boolean;
+  /**
+   * Sprint 92: provider-reported price impact percent from a small quote probe
+   * (`paper:routequote:fetch` report → `entries[].metadata.priceImpactPct`). Feeds the
+   * liquidity-depth flags. Operator-supplied provenance — quoted, never fetched here.
+   */
+  priceImpactPct?: string;
 }
 
 /** Read + parse one operator list file. Throws a clear (non-secret) error. */
@@ -804,6 +817,16 @@ export async function tokenRiskReport(
     return redactString(`Refusing: ${(err as Error).message}`);
   }
 
+  // --price-impact-pct: operator-supplied from a quote probe; must parse as a non-negative number.
+  let quotePriceImpactPct: number | undefined;
+  if (opts.priceImpactPct !== undefined) {
+    const parsed = Number(opts.priceImpactPct);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return "Refusing: --price-impact-pct must be a non-negative number (from a quote probe's priceImpactPct).";
+    }
+    quotePriceImpactPct = parsed;
+  }
+
   try {
     const inspection = await buildTokenInspectReport(gate.client, mint, {
       now: ctx.now,
@@ -821,6 +844,42 @@ export async function tokenRiskReport(
       denylist,
       previouslyTradedMints,
     };
+
+    // Sprint 92 deep checks: per-check isolation — one failing read becomes an explicit
+    // unknown caution (the *Available:false form), never an abort and never a silent pass.
+    if (opts.deep) {
+      if (typeof gate.client.getTokenHolderConcentration === "function") {
+        try {
+          const holders = await gate.client.getTokenHolderConcentration(mint);
+          input.holderDataAvailable = true;
+          input.topHolderPct = holders.top1Pct;
+          input.top5HolderPct = holders.top5Pct;
+        } catch {
+          input.holderDataAvailable = false;
+        }
+      } else {
+        input.holderDataAvailable = false;
+      }
+      if (typeof gate.client.getTokenMetadataInfo === "function") {
+        try {
+          const metadata = await gate.client.getTokenMetadataInfo(mint);
+          if (metadata.metadataAccountFound && metadata.isMutable !== null) {
+            input.metadataAvailable = true;
+            input.metadataMutable = metadata.isMutable;
+          } else {
+            input.metadataAvailable = false;
+          }
+        } catch {
+          input.metadataAvailable = false;
+        }
+      } else {
+        input.metadataAvailable = false;
+      }
+    }
+    if (quotePriceImpactPct !== undefined) {
+      input.quotePriceImpactPct = quotePriceImpactPct;
+    }
+
     const report = buildTokenRiskReport(input, { now: ctx.now });
     // Optional write: ONLY the risk report JSON, UTF-8 (shell redirection on Windows
     // PowerShell writes UTF-16, which downstream JSON readers refuse).

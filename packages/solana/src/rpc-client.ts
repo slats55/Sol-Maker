@@ -16,6 +16,7 @@ import {
 import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
 import { redactString } from "@soulmaker/security";
 import { parsePublicKey } from "./public-key.js";
+import { buildTokenHolderConcentration, buildTokenMetadataInfo } from "./deep-inspect.js";
 import type {
   ReadOnlyClientConfig,
   ReadOnlySolanaClient,
@@ -82,6 +83,9 @@ function adaptConnection(conn: Connection): SolanaRpcLike {
     getParsedAccountInfo: (pk, c) => conn.getParsedAccountInfo(pk, c),
     getParsedTokenAccountsByOwner: (o, f, c) =>
       conn.getParsedTokenAccountsByOwner(o, f, c),
+    // Sprint 92 deep reads (still reads only — no send/sign/airdrop on this seam).
+    getTokenLargestAccounts: (pk, c) => conn.getTokenLargestAccounts(pk, c),
+    getAccountInfo: (pk, c) => conn.getAccountInfo(pk, c),
   };
 }
 
@@ -191,6 +195,16 @@ export function createClientFromRpc(
     };
   }
 
+  // Sprint 92 deep reads — exposed only when the seam supports them; an absent
+  // method is the honest "check unavailable" signal for callers.
+  async function getTokenHolderConcentration(mint: PublicKeyInput) {
+    const info = await getTokenMintInfo(mint);
+    return buildTokenHolderConcentration(rpc, info);
+  }
+  async function getTokenMetadataInfo(mint: PublicKeyInput) {
+    return buildTokenMetadataInfo(rpc, mint);
+  }
+
   // Note: the returned object is a FROZEN literal of read-only methods. There is
   // no signer, no secret, and no send/sign/airdrop method to find.
   return Object.freeze({
@@ -200,6 +214,8 @@ export function createClientFromRpc(
     getSolBalance,
     getTokenAccounts,
     getTokenMintInfo,
+    ...(typeof rpc.getTokenLargestAccounts === "function" ? { getTokenHolderConcentration } : {}),
+    ...(typeof rpc.getAccountInfo === "function" ? { getTokenMetadataInfo } : {}),
   });
 }
 

@@ -18,6 +18,17 @@ import type { RiskFlag, TokenRiskInput } from "./types.js";
  */
 export const SUSPICIOUS_DECIMALS_THRESHOLD = 18;
 
+/**
+ * Sprint 92 deep-check thresholds. Holder figures count token ACCOUNTS (which include AMM
+ * pools/vaults — the flags say so); price impact is from a small quote probe, so even a few
+ * percent on a small size means a very thin pool.
+ */
+export const HOLDER_TOP1_EXTREME_PCT = 50;
+export const HOLDER_TOP1_ELEVATED_PCT = 25;
+export const HOLDER_TOP5_ELEVATED_PCT = 70;
+export const QUOTE_IMPACT_VERY_THIN_PCT = 10;
+export const QUOTE_IMPACT_THIN_PCT = 3;
+
 /** Token program labels we recognize as standard. Anything else is "unknown". */
 const STANDARD_PROGRAM = "spl-token";
 const TOKEN_2022_PROGRAM = "spl-token-2022";
@@ -253,6 +264,142 @@ export function evaluateRiskFlags(input: TokenRiskInput): RiskFlag[] {
         `[0, ${SUSPICIOUS_DECIMALS_THRESHOLD}] — clearly abnormal for an SPL mint.`,
       evidence: { decimals: input.decimals },
     });
+  }
+
+  // --- Sprint 92 deep checks --------------------------------------------------
+  // Each block fires ONLY when its input was supplied (absence = "not checked",
+  // never "passed"); an explicit *Available:false is an honest unknown caution.
+
+  // Holder concentration (token accounts — includes pools/vaults; flags say so).
+  const holderSupplied =
+    input.holderDataAvailable !== undefined ||
+    input.topHolderPct !== undefined ||
+    input.top5HolderPct !== undefined;
+  if (holderSupplied) {
+    const top1 = typeof input.topHolderPct === "number" && Number.isFinite(input.topHolderPct) ? input.topHolderPct : null;
+    const top5 = typeof input.top5HolderPct === "number" && Number.isFinite(input.top5HolderPct) ? input.top5HolderPct : null;
+    if (input.holderDataAvailable === false || (top1 === null && top5 === null)) {
+      flags.push({
+        id: "holder-concentration-unknown",
+        severity: "low",
+        title: "Holder concentration unknown",
+        detail:
+          "A holder scan was attempted but the data could not be read; treated " +
+          "as a caution, not assumed dispersed.",
+        evidence: { holderDataAvailable: false },
+      });
+    } else if (top1 !== null && top1 >= HOLDER_TOP1_EXTREME_PCT) {
+      flags.push({
+        id: "holder-concentration-extreme",
+        severity: "high",
+        title: "Extreme holder concentration",
+        detail:
+          `The single largest token account holds ${top1}% of supply ` +
+          `(≥ ${HOLDER_TOP1_EXTREME_PCT}%). Largest accounts can be pools/vaults — ` +
+          "verify before treating this as one wallet, but a dump/rug from one account is possible.",
+        evidence: { topHolderPct: top1, top5HolderPct: top5 },
+      });
+    } else if ((top1 !== null && top1 >= HOLDER_TOP1_ELEVATED_PCT) || (top5 !== null && top5 >= HOLDER_TOP5_ELEVATED_PCT)) {
+      flags.push({
+        id: "holder-concentration-elevated",
+        severity: "medium",
+        title: "Elevated holder concentration",
+        detail:
+          `Top token accounts hold a large share of supply (top1 ${top1 ?? "?"}%, ` +
+          `top5 ${top5 ?? "?"}%). Largest accounts can be pools/vaults — flagged for review.`,
+        evidence: { topHolderPct: top1, top5HolderPct: top5 },
+      });
+    } else {
+      flags.push({
+        id: "holder-concentration-modest",
+        severity: "info",
+        title: "Holder concentration below thresholds",
+        detail:
+          `Top token accounts are below the concentration thresholds (top1 ${top1 ?? "?"}%, ` +
+          `top5 ${top5 ?? "?"}%). Informational — accounts include pools/vaults.`,
+        evidence: { topHolderPct: top1, top5HolderPct: top5 },
+      });
+    }
+  }
+
+  // Metadata mutability (Metaplex token-metadata).
+  const metadataSupplied = input.metadataAvailable !== undefined || input.metadataMutable !== undefined;
+  if (metadataSupplied) {
+    if (input.metadataAvailable === false || input.metadataMutable === undefined) {
+      flags.push({
+        id: "metadata-unavailable",
+        severity: "low",
+        title: "Token metadata unavailable",
+        detail:
+          "A metadata read was attempted but no readable Metaplex metadata was " +
+          "found; treated as a caution, not assumed immutable.",
+        evidence: { metadataAvailable: false },
+      });
+    } else if (input.metadataMutable === true) {
+      flags.push({
+        id: "metadata-mutable",
+        severity: "medium",
+        title: "Token metadata is mutable",
+        detail:
+          "The update authority can still change the token's name/symbol/URI — " +
+          "a common impersonation/bait-and-switch vector.",
+        evidence: { metadataMutable: true },
+      });
+    } else {
+      flags.push({
+        id: "metadata-immutable",
+        severity: "info",
+        title: "Token metadata is immutable",
+        detail: "The Metaplex metadata can no longer be changed.",
+        evidence: { metadataMutable: false },
+      });
+    }
+  }
+
+  // Liquidity depth from a small quote probe's price impact.
+  if (input.quotePriceImpactPct !== undefined) {
+    const impact = input.quotePriceImpactPct;
+    if (!Number.isFinite(impact) || impact < 0) {
+      flags.push({
+        id: "liquidity-impact-unknown",
+        severity: "low",
+        title: "Quote price impact unparsable",
+        detail:
+          "A quote probe was supplied but its price impact could not be read; " +
+          "treated as a caution, not assumed deep.",
+        evidence: { quotePriceImpactPct: null },
+      });
+    } else if (impact >= QUOTE_IMPACT_VERY_THIN_PCT) {
+      flags.push({
+        id: "liquidity-very-thin",
+        severity: "high",
+        title: "Very thin liquidity",
+        detail:
+          `A small quote probe moved the price ${impact}% ` +
+          `(≥ ${QUOTE_IMPACT_VERY_THIN_PCT}%). Exiting a position could be much worse.`,
+        evidence: { quotePriceImpactPct: impact },
+      });
+    } else if (impact >= QUOTE_IMPACT_THIN_PCT) {
+      flags.push({
+        id: "liquidity-thin",
+        severity: "medium",
+        title: "Thin liquidity",
+        detail:
+          `A small quote probe moved the price ${impact}% ` +
+          `(≥ ${QUOTE_IMPACT_THIN_PCT}%). Slippage on exit may be significant.`,
+        evidence: { quotePriceImpactPct: impact },
+      });
+    } else {
+      flags.push({
+        id: "liquidity-impact-modest",
+        severity: "info",
+        title: "Quote probe impact below thresholds",
+        detail:
+          `A small quote probe moved the price ${impact}% — below the thin-liquidity ` +
+          "thresholds. Informational; depth at LARGER sizes was not probed.",
+        evidence: { quotePriceImpactPct: impact },
+      });
+    }
   }
 
   return flags;

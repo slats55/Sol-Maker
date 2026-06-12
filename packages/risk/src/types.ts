@@ -65,6 +65,25 @@ export interface TokenRiskInput {
   denylist?: string[];
   /** Mints the operator has previously traded (local state concept). */
   previouslyTradedMints?: string[];
+
+  // --- Sprint 92 DEEP checks (all optional). HONESTY CONTRACT: when a field is
+  // ABSENT the deep check was not run and NO flag fires (existing reports stay
+  // byte-identical); when it is SUPPLIED — including the explicit *Available:
+  // false failure forms — the corresponding flags always fire. Absence is "not
+  // checked", never "passed".
+
+  /** False when a holder scan was ATTEMPTED but the data could not be read. */
+  holderDataAvailable?: boolean;
+  /** Percent of supply held by the largest token account (0–100). */
+  topHolderPct?: number;
+  /** Percent of supply held by the five largest token accounts (0–100). */
+  top5HolderPct?: number;
+  /** False when a metadata read was ATTEMPTED but no account was found / read failed. */
+  metadataAvailable?: boolean;
+  /** True when the Metaplex metadata is still mutable (name/symbol/URI can change). */
+  metadataMutable?: boolean;
+  /** Provider-reported price impact percent of a small quote probe (liquidity depth). */
+  quotePriceImpactPct?: number;
 }
 
 /** The full advisory risk report for one mint. */

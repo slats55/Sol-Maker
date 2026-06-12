@@ -14,7 +14,15 @@
 
 export const RISK_PACKAGE_PHASE = 3 as const;
 
-export { evaluateRiskFlags, SUSPICIOUS_DECIMALS_THRESHOLD } from "./risk-flags.js";
+export {
+  evaluateRiskFlags,
+  SUSPICIOUS_DECIMALS_THRESHOLD,
+  HOLDER_TOP1_EXTREME_PCT,
+  HOLDER_TOP1_ELEVATED_PCT,
+  HOLDER_TOP5_ELEVATED_PCT,
+  QUOTE_IMPACT_VERY_THIN_PCT,
+  QUOTE_IMPACT_THIN_PCT,
+} from "./risk-flags.js";
 
 export {
   scoreRiskFlags,

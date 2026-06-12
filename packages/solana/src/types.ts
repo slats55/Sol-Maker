@@ -80,6 +80,50 @@ export interface TokenMintInfo {
   source: string;
 }
 
+/**
+ * Holder concentration for one mint, computed from the chain's largest token accounts
+ * (Sprint 92 deep read). HONESTY NOTE carried on the result: the largest accounts routinely
+ * include AMM pools, vaults, and lockers — a high figure is a *prompt to look*, not proof of a
+ * single controlling wallet.
+ */
+export interface TokenHolderConcentration {
+  mint: string;
+  /** Raw supply used as the denominator (authoritative integer string). */
+  supplyRaw: string;
+  /** How many largest accounts the RPC returned (chain caps this at 20). */
+  accountsReturned: number;
+  /** Largest token accounts, bounded to the top 10 for display. */
+  topAccounts: Array<{ address: string; amountRaw: string; pctOfSupply: number }>;
+  /** Percent of supply held by the single largest token account (2 dp). */
+  top1Pct: number;
+  /** Percent of supply held by the five largest token accounts (2 dp). */
+  top5Pct: number;
+  /** How this was read, for auditability. */
+  source: string;
+  /** The honesty caveat above, carried verbatim on every result. */
+  caveat: string;
+}
+
+/**
+ * Metaplex token-metadata facts for one mint (Sprint 92 deep read). Every field that cannot be
+ * determined is null — never assumed. `isMutable` true means the metadata (name/symbol/URI) can
+ * still be changed by the update authority.
+ */
+export interface TokenMetadataInfo {
+  mint: string;
+  /** True when a Metaplex metadata account exists for this mint. */
+  metadataAccountFound: boolean;
+  /** True/false when parsed; null when the account is missing or unparsable. */
+  isMutable: boolean | null;
+  /** The update authority (base58) when parsed; null otherwise. Public data. */
+  updateAuthority: string | null;
+  /** Bounded, redaction-stable display labels; null when missing/unsafe. */
+  nameLabel: string | null;
+  symbolLabel: string | null;
+  /** How this was read, for auditability. */
+  source: string;
+}
+
 /** A read-only Solana client. Exposes ONLY read methods — no send/sign/airdrop. */
 export interface ReadOnlySolanaClient {
   /** Host only (never the full URL / api-key). */
@@ -89,6 +133,12 @@ export interface ReadOnlySolanaClient {
   getSolBalance(owner: PublicKeyInput): Promise<SolBalance>;
   getTokenAccounts(owner: PublicKeyInput): Promise<TokenAccountSummary[]>;
   getTokenMintInfo(mint: PublicKeyInput): Promise<TokenMintInfo>;
+  /**
+   * Sprint 92 deep reads — OPTIONAL so older fakes/seams stay valid: callers must treat an
+   * absent method as "check unavailable" (honest), never as a pass.
+   */
+  getTokenHolderConcentration?(mint: PublicKeyInput): Promise<TokenHolderConcentration>;
+  getTokenMetadataInfo?(mint: PublicKeyInput): Promise<TokenMetadataInfo>;
 }
 
 export interface ParsedTokenAccount {
@@ -116,6 +166,18 @@ export interface SolanaRpcLike {
     filter: { programId: PublicKey },
     commitment?: Commitment,
   ): Promise<RpcResponseAndContext<ParsedTokenAccount[]>>;
+  /**
+   * Sprint 92 deep reads — OPTIONAL on the seam (a real `Connection` always has them; older
+   * fakes simply don't, and the client then reports the deep checks as unavailable).
+   */
+  getTokenLargestAccounts?(
+    mint: PublicKey,
+    commitment?: Commitment,
+  ): Promise<RpcResponseAndContext<Array<{ address: PublicKey; amount: string; decimals: number }>>>;
+  getAccountInfo?(
+    publicKey: PublicKey,
+    commitment?: Commitment,
+  ): Promise<AccountInfo<Buffer> | null>;
 }
 
 export interface WalletWatchReport {

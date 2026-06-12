@@ -36,6 +36,15 @@ export {
 } from "./token-inspect.js";
 export type { TokenInspectOptions } from "./token-inspect.js";
 
+export {
+  METAPLEX_TOKEN_METADATA_PROGRAM_ID,
+  HOLDER_CONCENTRATION_CAVEAT,
+  buildTokenHolderConcentration,
+  buildTokenMetadataInfo,
+  metadataAddressForMint,
+  parseMetadataAccount,
+} from "./deep-inspect.js";
+
 export type {
   PublicKeyInput,
   ReadOnlyClientConfig,
@@ -48,6 +57,8 @@ export type {
   TokenAccountSummary,
   TokenProgramLabel,
   TokenMintInfo,
+  TokenHolderConcentration,
+  TokenMetadataInfo,
   WalletWatchReport,
   TokenInspectReport,
 } from "./types.js";

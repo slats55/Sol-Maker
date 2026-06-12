@@ -262,12 +262,14 @@ program
 program
   .command("token:risk <mint>")
   .description(
-    "Read-only ADVISORY token risk report (flags + score). Not a buy recommendation.",
+    "Read-only ADVISORY token risk report (flags + score). Not a buy recommendation. --deep adds holder-concentration + metadata-mutability reads (S92); --price-impact-pct feeds the liquidity-depth flags from a quote probe.",
   )
   .option("--allow-paper-read", "permit chain reads while in PAPER mode")
   .option("--allowlist <path>", "newline-separated allowlist file")
   .option("--denylist <path>", "newline-separated denylist file")
   .option("--previously-traded <path>", "newline-separated previously-traded mints file")
+  .option("--deep", "ALSO run the deep read-only checks: holder concentration (getTokenLargestAccounts) + Metaplex metadata mutability; a failed deep read is an explicit unknown caution, never a silent pass")
+  .option("--price-impact-pct <pct>", "provider-reported price impact percent from a small quote probe (paper:routequote:fetch report) — feeds the liquidity-depth flags")
   .option("--json", "emit the report as stable JSON")
   .option("--out <path>", "write ONLY the risk report JSON to this path (UTF-8; refused if it exists)")
   .option("--force", "overwrite an existing --out file (refused by default)")
@@ -279,6 +281,8 @@ program
         allowlist?: string;
         denylist?: string;
         previouslyTraded?: string;
+        deep?: boolean;
+        priceImpactPct?: string;
         json?: boolean;
         out?: string;
         force?: boolean;
@@ -293,6 +297,8 @@ program
             allowlistPath: opts.allowlist,
             denylistPath: opts.denylist,
             previouslyTradedPath: opts.previouslyTraded,
+            deep: Boolean(opts.deep),
+            priceImpactPct: opts.priceImpactPct,
             json: Boolean(opts.json),
             outPath: opts.out,
             force: Boolean(opts.force),
