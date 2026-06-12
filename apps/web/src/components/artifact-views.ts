@@ -1919,6 +1919,198 @@ function renderPhase6HandoffView(rec: Record<string, unknown>): RawHtml {
   `;
 }
 
+function renderPhase6OperatorBundleView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const verdict = need(missing, "operatorVerdict", readString(rec, "operatorVerdict"));
+  const complete = need(missing, "complete", readBoolean(rec, "complete"));
+  const whatHappened = need(missing, "whatHappened", readString(rec, "whatHappened", 600));
+  const trailConsistent = readBoolean(rec, "blockingTrailConsistent");
+  const routeStatus = readString(rec, "routeResolutionStatus");
+  const routeAttempted = readBoolean(rec, "routeResolverAttempted");
+  const routeCaveat = readBoolean(rec, "routeLiveStateCaveat");
+  const readiness = readBoolean(rec, "simulationReadyPerReadiness");
+  const artifacts = readArray(rec, "artifacts") ?? [];
+  const files = readArray(rec, "files") ?? [];
+  const whyBlocked = readStringArray(rec, "whyBlocked");
+  const inspectNext = readStringArray(rec, "whatToInspectNext");
+  const operatorReasons = readStringArray(rec, "operatorBlockingReasons");
+
+  // The closed-set operator verdict, rendered prominently and honestly. The BEST
+  // possible verdict is reviewable-paper-only — there is deliberately no "ready"
+  // and no live wording anywhere in this view.
+  const verdictNotice =
+    verdict === "blocked"
+      ? RiskNotice({
+          tone: "caution",
+          title: "Operator verdict: BLOCKED — the bundled chain carries blocking state",
+          body: html`Invalid artifacts, recomputed chain blocking conditions, or an inconsistent
+            handoff trail block this bundle. The why-blocked lines below are deterministic and
+            carried from the artifact itself.`,
+        })
+      : verdict === "incomplete"
+        ? RiskNotice({
+            tone: "caution",
+            title: "Operator verdict: INCOMPLETE — missing artifacts are classified, never invented",
+            body: html`At least one of the thirteen bundle roles was not supplied. An incomplete
+              chain is reported honestly; nothing is assumed for the missing roles.`,
+          })
+        : verdict === "attention"
+          ? RiskNotice({
+              tone: "caution",
+              title: "Operator verdict: ATTENTION — review before trusting this bundle",
+              body: html`The chain is complete and carries no blocking condition, but the readiness
+                verdict is not green or a route fact carries the live-state caveat.`,
+            })
+          : verdict === "reviewable-paper-only"
+            ? RiskNotice({
+                tone: "info",
+                title: "Operator verdict: reviewable-paper-only — the BEST verdict this artifact can carry",
+                body: html`The bundled chain is complete, strictly valid, and condition-free — and still
+                  SIMULATION ONLY. An operator bundle is structurally incapable of claiming live-trading
+                  readiness; nothing here is, or can become, a live action.`,
+              })
+            : RiskNotice({
+                tone: "caution",
+                title: "Operator verdict missing or unrecognized",
+                body: html`The closed-set <code>operatorVerdict</code> field was absent or not one of the
+                  known verdicts — treat this bundle's standing as unknown, never as reviewable.`,
+              });
+
+  // The trail-consistency verdict. A false here is the loudest state this view has:
+  // the handoff pack's verbatim codes disagree with the codes recomputed from the
+  // bundled artifacts — a stale or tampered pack, never papered over.
+  const trailNotice =
+    trailConsistent === false
+      ? RiskNotice({
+          tone: "caution",
+          title: "Blocking trail INCONSISTENT — possible stale or TAMPERED handoff pack",
+          body: html`The handoff pack's verbatim <code>chainBlockingCodes</code> disagree with the codes
+            recomputed from the bundled artifacts, so the pack was not built from THIS artifact set.
+            Do not trust the pack; rebuild it over these artifacts and rebuild this bundle.`,
+        })
+      : null;
+
+  // Pair the per-role file refs (fileName + truncated sha256-128 digest) by role.
+  const fileByRole = new Map<string, Record<string, unknown>>();
+  for (const entry of files) {
+    const f = asRecord(entry);
+    if (f === null) continue;
+    const role = readString(f, "role");
+    if (role !== null && !fileByRole.has(role)) fileByRole.set(role, f);
+  }
+
+  const artifactCap = capRows(artifacts, TYPED_VIEW_LIMITS.maxRows);
+  const artifactRows = artifactCap.shown.map((entry) => {
+    const a = asRecord(entry) ?? {};
+    const present = readBoolean(a, "present");
+    const valid = readBoolean(a, "valid");
+    const role = readString(a, "role");
+    const file = role !== null ? (fileByRole.get(role) ?? null) : null;
+    return [
+      text(role),
+      present === false ? "MISSING (classified, not invented)" : valid === true ? "present, valid" : valid === false ? "present, INVALID" : DASH,
+      text(readString(a, "label")),
+      code(file ? readString(file, "fileName") : null),
+      digestCode(file ? readString(file, "digest") : null),
+    ];
+  });
+
+  const bulletList = (list: StringListRead, deny: boolean): RawHtml => html`<ul
+    class="sm-bullets${deny ? " sm-bullets--deny" : ""}">
+    ${list.items.map((line) => html`<li>${line}</li>`)}
+    ${list.hidden > 0 ? html`<li>+${list.hidden} more not shown.</li>` : null}
+  </ul>`;
+
+  return html`
+    ${verdictNotice}
+    ${trailNotice}
+    ${kvSection("Phase 6 operator bundle (archive/review only — never signs, never sends, never authorizes live trading)", "The thirteen-role PAPER dry-run chain collected into one artifact: per-role state, file integrity refs, and a recomputed blocking trail.", [
+      { term: "bundleLabel", detail: text(readString(rec, "bundleLabel")) },
+      { term: "operatorLabel", detail: text(readString(rec, "operatorLabel")) },
+      { term: "operator verdict", detail: text(verdict) },
+      { term: "complete", detail: complete === true ? "yes — every bundled artifact present and strictly valid" : complete === false ? "no (missing/invalid artifacts classified honestly)" : DASH },
+      { term: "present / valid", detail: `${num(readNumber(rec, "presentCount"))} / ${num(readNumber(rec, "validCount"))}` },
+      { term: "missing / invalid", detail: `${num(readNumber(rec, "missingCount"))} / ${num(readNumber(rec, "invalidCount"))}` },
+      {
+        term: "blocking trail vs handoff pack",
+        detail:
+          trailConsistent === true
+            ? "CONSISTENT — the pack's verbatim codes equal the recomputed trail"
+            : trailConsistent === false
+              ? "INCONSISTENT — stale or tampered pack (see warning above)"
+              : "not fully recomputable (handoff pack or a trail source missing/invalid — reported honestly, never guessed)",
+      },
+      {
+        term: "route resolution (verbatim)",
+        detail:
+          routeStatus === "unavailable"
+            ? "UNAVAILABLE — the honest capability boundary (no route resolver exists); the expected Phase 6 state, not an error"
+            : routeStatus === null
+              ? "unknown — no valid route artifact bundled (never guessed)"
+              : text(routeStatus.toUpperCase()),
+      },
+      { term: "route resolver attempted", detail: routeAttempted === false ? "no — no resolver capability exists inside the boundary" : boolText(routeAttempted) },
+      { term: "route live-state caveat", detail: routeCaveat === true ? "YES — label-resolved facts come from live chain state; review before trusting comparisons" : boolText(routeCaveat) },
+      {
+        term: "readiness verdict (verbatim)",
+        detail:
+          readiness === true
+            ? "phase 6 SIMULATION ready (never live readiness)"
+            : readiness === false
+              ? "NOT ready"
+              : "unknown — no valid readiness report supplied (never guessed)",
+      },
+    ])}
+    ${
+      whatHappened !== null
+        ? Section({
+            title: "What happened (deterministic, from the artifact)",
+            body: html`<p class="sm-muted-line">${whatHappened}</p>`,
+          })
+        : null
+    }
+    ${safetyLocksSection(rec)}
+    ${tableSection({
+      title: "Bundled roles",
+      description:
+        "The thirteen bundle roles — the twelve handoff roles plus the handoff pack itself (Sprint 88). File name + truncated sha256-128 digest are caller-supplied integrity refs carried verbatim.",
+      columns: [{ header: "Role" }, { header: "State" }, { header: "Label" }, { header: "File" }, { header: "Digest" }],
+      rows: artifactRows,
+      empty: "No artifact states present.",
+      caption: capCaption(artifactCap, "roles"),
+    })}
+    ${reasonCodesSection(rec, [
+      { key: "chainBlockingCodes", label: "Chain blocking conditions (recomputed — never waived)" },
+      { key: "handoffChainBlockingCodes", label: "Handoff pack's verbatim trail" },
+    ]) ?? ""}
+    ${
+      whyBlocked.total > 0
+        ? Section({
+            title: `Why blocked (${whyBlocked.total}; deterministic operator lines — codes verbatim, never re-judged)`,
+            body: bulletList(whyBlocked, true),
+          })
+        : null
+    }
+    ${
+      operatorReasons.total > 0
+        ? Section({
+            title: `Operator-blocking reasons (${operatorReasons.total}; verbatim from the run report)`,
+            body: bulletList(operatorReasons, false),
+          })
+        : null
+    }
+    ${
+      inspectNext.total > 0
+        ? Section({
+            title: "What to inspect next (from the artifact)",
+            body: bulletList(inspectNext, false),
+          })
+        : null
+    }
+    ${partialNotice(missing)}
+  `;
+}
+
 function renderSimulationPlanDiffView(rec: Record<string, unknown>): RawHtml {
   const missing: string[] = [];
   const hasChange = need(missing, "hasChange", readBoolean(rec, "hasChange"));
@@ -2298,6 +2490,8 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderPhase6ReadinessView(rec);
     case "phase6.simulation.handoff.pack.v1":
       return renderPhase6HandoffView(rec);
+    case "phase6.operator.bundle.v1":
+      return renderPhase6OperatorBundleView(rec);
     default:
       return null;
   }

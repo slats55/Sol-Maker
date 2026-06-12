@@ -200,6 +200,33 @@ describe("Sprint 19 research diffs are now shipped (merged to origin/master)", (
   });
 });
 
+describe("Sprint 88 — operator bundle + paper dry-run orchestrator commands", () => {
+  it("lists both S88 commands on the reference page", () => {
+    expect(commandStrings.has("paper:simulation:bundle")).toBe(true);
+    expect(commandStrings.has("paper:sniper:dry-run")).toBe(true);
+  });
+
+  it("maps paper:simulation:bundle to the stable phase6.operator.bundle.v1 schema", () => {
+    const info = schemaForCli("paper:simulation:bundle");
+    expect(info?.id).toBe("phase6.operator.bundle.v1");
+    expect(info?.stability).toBe("stable");
+  });
+
+  it("paper:sniper:dry-run maps to no single schema (it writes a whole directory)", () => {
+    expect(schemaForCli("paper:sniper:dry-run")).toBeUndefined();
+  });
+
+  it("renders both S88 commands with honest paper-only summaries", () => {
+    const out = render(renderCommands());
+    expect(out).toContain("pnpm soulmaker paper:simulation:bundle");
+    expect(out).toContain("pnpm soulmaker paper:sniper:dry-run");
+    expect(out).toContain("phase6.operator.bundle.v1");
+    expect(out).toContain("reviewable-paper-only");
+    expect(out).toContain("RUN_SUMMARY.md");
+    expect(out.toLowerCase()).not.toContain("live-ready");
+  });
+});
+
 describe("forward-compat: a truly hypothetical, not-yet-shipped schema", () => {
   // Guards the honest-degradation contract for ANY future schema not yet on master:
   // the registry does not invent it, schemaForCli returns undefined, and a command

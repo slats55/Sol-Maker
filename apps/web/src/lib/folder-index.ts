@@ -68,7 +68,11 @@ interface VerdictCapability {
  *     carries `hasAnyChange` (v1 core OR v2 layer change) and its
  *     regression-grade verdict is `hasNewOperatorBlocking`.
  * Any schema NOT listed here carries neither field, so its verdicts are
- * `not-applicable` — never inferred.
+ * `not-applicable` — never inferred. That deliberately includes the recognized
+ * NON-diff artifacts: e.g. `phase6.operator.bundle.v1` (S88) carries its own
+ * `operatorVerdict` / `hasBlockingConditions` state, but it is a point-in-time
+ * bundle, not a base→next comparison, so it gets NO diff verdict here — its
+ * blocked/attention standing is rendered by its typed view instead.
  */
 const VERDICT_CAPABILITIES: Readonly<Record<string, VerdictCapability>> = {
   "backtest.suite.diff.v1": { regression: true, change: false },

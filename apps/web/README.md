@@ -94,7 +94,9 @@ the parsed JSON defensively (no backend import) and escapes/caps everything.
 Recognized schemas cover the backtest research families AND the paper-only
 sniper / Phase 6 simulation chain (decision v2, run report v2 + diff, intent plan
 v2, result v1, route resolution v1, plan/result diffs, phase6 audit, readiness,
-handoff pack). The simulation views keep the backend's honesty rules visible:
+handoff pack, and the S88 operator bundle — thirteen roles, recomputed blocking
+trail, closed-set verdict never better than reviewable-paper-only). The
+simulation views keep the backend's honesty rules visible:
 UNRESOLVED/UNAVAILABLE/BLOCKED render as the truthful capability boundary (no
 route resolver and no dry-run engine exist), safety locks are echoed from the
 artifact's own data with a loud tamper warning if one reads unsafe, and nothing

@@ -331,6 +331,13 @@ export const COMMANDS: readonly CommandRef[] = [
     group: "Sniper (paper-only)",
     readsChain: false,
   },
+  {
+    command: "paper:sniper:dry-run",
+    summary:
+      "The S88 PAPER dry-run ORCHESTRATOR: one command runs the whole chain over an operator-supplied candidate file (19 artifacts + RUN_SUMMARY.md into ONE output directory). A BLOCKED chain still writes the full honest artifact set; route resolution stays honestly UNAVAILABLE. Never an order, never a transaction.",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
 
   // Phase 6 simulation — read-only, dry-run-only artifacts over the validated
   // v2 chain. The route resolver and the real dry-run engine do NOT exist:
@@ -393,6 +400,13 @@ export const COMMANDS: readonly CommandRef[] = [
     command: "paper:simulation:handoff",
     summary:
       "Session handoff over the twelve Phase 6 chain artifacts incl. the route-resolution role via --route (phase6.simulation.handoff.pack.v1). Missing artifacts classified, never invented.",
+    group: "Phase 6 simulation",
+    readsChain: false,
+  },
+  {
+    command: "paper:simulation:bundle",
+    summary:
+      "Archiveable OPERATOR BUNDLE over the thirteen chain roles incl. the handoff pack itself (phase6.operator.bundle.v1). Blocking trail RECOMPUTED and cross-checked against the pack (a stale/tampered pack blocks the bundle); per-file sha256-128 integrity digests; best verdict is reviewable-paper-only.",
     group: "Phase 6 simulation",
     readsChain: false,
   },

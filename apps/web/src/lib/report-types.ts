@@ -299,6 +299,15 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
       "Session handoff over the twelve Phase 6 chain artifacts (incl. the S87 route-resolution role), each strictly validated and summarized from verbatim structured fields; missing artifacts classified, never invented.",
     cli: "paper:simulation:handoff",
   },
+  {
+    id: "phase6.operator.bundle.v1",
+    title: "Phase 6 operator bundle",
+    family: "phase6",
+    stability: "stable",
+    description:
+      "Archiveable operator bundle over the THIRTEEN Phase 6 chain roles (the twelve handoff roles plus the handoff pack itself): per-role state + file integrity refs, a blocking trail recomputed and cross-checked against the pack, and a closed-set operator verdict never better than reviewable-paper-only.",
+    cli: "paper:simulation:bundle",
+  },
 ];
 
 /** Look up schema metadata by id, or `undefined` for an unknown schema. */
