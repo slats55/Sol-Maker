@@ -130,8 +130,11 @@ import {
   resolveExecutionMode,
   evaluateMainnetLiveGate,
   loadLocalSignerBoundary,
+  createThrowawayDevnetSigner,
   attemptExecution,
   createSendRpc,
+  createRehearsalRpc,
+  runDevnetRehearsal,
   SignerBoundaryError,
   LIVE_TRADING_ENV_FLAG,
   DEVNET_EXECUTION_ENV_FLAG,
@@ -139,6 +142,9 @@ import {
   type ResolvedExecutionMode,
   type OperatorSafetyControls,
   type SendRpc,
+  type RehearsalRpc,
+  type TransactionSigningBoundary,
+  type DevnetRehearsalReport,
 } from "@soulmaker/execution";
 import {
   parseMintAddress,
@@ -375,6 +381,8 @@ export interface CommandContext {
   createSwapBuilder?: (options: JupiterSwapBuilderOptions) => SwapTransactionBuilder;
   /** Factory for the send-path RPC; injected in tests to avoid network. */
   createSendRpc?: (rpcUrl: string) => SendRpc;
+  /** Factory for the devnet rehearsal RPC (faucet + send seams); injected in tests. */
+  createRehearsalRpc?: (rpcUrl: string) => RehearsalRpc;
   /** Injectable sleep for the bounded realtime watch; injected in tests. */
   sleep?: (ms: number) => Promise<void>;
   /** Injectable clock for deterministic report timestamps. */
@@ -6257,6 +6265,210 @@ export async function executionDevnetSendReport(
     ...report.caveats.map((c) => `CAVEAT: ${c}`),
   ];
   return { text: redactString(lines.join("\n")), exitCode };
+}
+
+export interface ExecutionDevnetRehearseCommandOptions {
+  /** Output DIRECTORY for the rehearsal artifacts (+ the throwaway keypair). Required. */
+  outDir?: string;
+  rpcUrl?: string;
+  acknowledgeDevnetExecution?: boolean;
+  /** Reuse an existing devnet keypair via env var NAME instead of generating a throwaway. */
+  signerEnvVar?: string;
+  /** Airdrop request in SOL (devnet faucet; valueless). Default 1. */
+  airdropSol?: string;
+  skipAirdrop?: boolean;
+  /** Skip the pre-send simulateTransaction step (kept ON by default). */
+  skipSimulation?: boolean;
+  json?: boolean;
+  force?: boolean;
+}
+
+const REHEARSAL_REPORT_FILE = "devnet-rehearsal-report.json";
+const REHEARSAL_AUDIT_FILE = "devnet-rehearsal-audit.jsonl";
+const REHEARSAL_KEYPAIR_FILE = "throwaway.devnet.keypair";
+
+/**
+ * `soulmaker execution:devnet:rehearse` — the DEVNET end-to-end broadcast rehearsal (Sprint 93):
+ * generate (or load) a devnet-only signer, airdrop devnet SOL, build the unsigned self-transfer
+ * probe, simulate it, submit it through the refusal-first send path, confirm it, and write the
+ * full honest artifact set into ONE output directory. DEVNET ONLY by construction — same double
+ * opt-in as execution:devnet:send; there is NO mainnet variant. A generated throwaway keypair is
+ * written ONLY under a `runs/` directory (gitignored) with the gitignored `.keypair` suffix, and
+ * its secret bytes never reach a log, report, or terminal. An airdrop rate-limit or faucet
+ * outage produces an honest `devnet-funding-blocked` artifact — never a faked success.
+ */
+export async function executionDevnetRehearseReport(
+  ctx: CommandContext = {},
+  opts: ExecutionDevnetRehearseCommandOptions = {},
+): Promise<CliReport> {
+  if (!opts.outDir) return { text: "Refusing: --out <dir> is required (rehearsal artifacts + the throwaway keypair live there).", exitCode: 1 };
+
+  let config: Config;
+  try {
+    config = loadConfig(toLoadOptions(ctx));
+  } catch (err) {
+    const msg = err instanceof ConfigError ? err.message : String(err);
+    return { text: redactString(`Refusing: config is invalid.\n\n${msg}`), exitCode: 1 };
+  }
+  const env = (ctx.env ?? process.env) as Record<string, string | undefined>;
+  const stop = emergencyStopPresent(ctx);
+
+  const resolved = resolveExecutionMode({
+    requested: "devnet",
+    env,
+    devnetCliAcknowledged: Boolean(opts.acknowledgeDevnetExecution),
+  });
+  if (resolved.mode !== "devnet-execution") {
+    return {
+      text: redactString(
+        [
+          "Refusing: devnet execution is NOT enabled.",
+          ...resolved.reasons.map((r) => `  - ${r}`),
+          `Enable it explicitly: set ${DEVNET_EXECUTION_ENV_FLAG}=${DEVNET_EXECUTION_ENV_VALUE} and pass --acknowledge-devnet-execution.`,
+        ].join("\n"),
+      ),
+      exitCode: 1,
+    };
+  }
+
+  const rpcUrl = opts.rpcUrl ?? "https://api.devnet.solana.com";
+  if (rpcUrl.toLowerCase().includes("mainnet")) {
+    return { text: "Refusing: execution:devnet:rehearse never talks to a mainnet endpoint.", exitCode: 1 };
+  }
+
+  let airdropLamports: number | undefined;
+  if (opts.airdropSol !== undefined) {
+    const sol = Number(opts.airdropSol);
+    if (!Number.isFinite(sol) || sol <= 0 || sol > 2) {
+      return { text: "Refusing: --airdrop-sol must be a positive number of devnet SOL (at most 2).", exitCode: 1 };
+    }
+    airdropLamports = Math.round(sol * 1_000_000_000);
+  }
+
+  const outDir = resolvePath(ctx, opts.outDir);
+  const reportPath = join(outDir, REHEARSAL_REPORT_FILE);
+  if (!opts.force && existsSync(reportPath)) {
+    return { text: redactString(`Refusing: ${reportPath} already exists (pass --force to overwrite).`), exitCode: 1 };
+  }
+
+  // Signer: operator-supplied devnet keypair (env var NAME), or a generated throwaway. A
+  // throwaway is only ever written under a `runs/` path segment (gitignored) AND with the
+  // gitignored `.keypair` suffix — two independent rules must both fail before a secret could
+  // become committable.
+  let signer: TransactionSigningBoundary;
+  let signerSource: "generated-throwaway" | "operator-env";
+  let keypairPath: string | null = null;
+  if (opts.signerEnvVar) {
+    try {
+      signer = loadLocalSignerBoundary({
+        envVarName: opts.signerEnvVar,
+        env,
+        readFile: (path: string) => readFileSync(path, "utf8"),
+        network: "devnet",
+      });
+    } catch (err) {
+      const msg = err instanceof SignerBoundaryError ? err.message : "signer boundary failed";
+      return { text: redactString(`Refusing: ${msg}`), exitCode: 1 };
+    }
+    signerSource = "operator-env";
+  } else {
+    const segments = normalize(outDir).split(/[\\/]/);
+    if (!segments.includes("runs")) {
+      return {
+        text: "Refusing: a generated throwaway keypair is only written under a runs/ directory (gitignored). Point --out inside runs/ or pass --signer-env to reuse an existing devnet keypair.",
+        exitCode: 1,
+      };
+    }
+    try {
+      mkdirSync(outDir, { recursive: true });
+    } catch {
+      return { text: redactString(`Refusing: cannot create output directory at ${outDir}`), exitCode: 1 };
+    }
+    try {
+      const throwaway = createThrowawayDevnetSigner({
+        keypairPath: join(outDir, REHEARSAL_KEYPAIR_FILE),
+        writeFile: (path: string, contents: string) => writeFileSync(path, contents),
+      });
+      signer = throwaway.boundary;
+      keypairPath = throwaway.keypairPath;
+    } catch (err) {
+      const msg = err instanceof SignerBoundaryError ? err.message : "throwaway signer generation failed";
+      return { text: redactString(`Refusing: ${msg}`), exitCode: 1 };
+    }
+    signerSource = "generated-throwaway";
+  }
+  try {
+    mkdirSync(outDir, { recursive: true });
+  } catch {
+    return { text: redactString(`Refusing: cannot create output directory at ${outDir}`), exitCode: 1 };
+  }
+
+  const makeRehearsalRpc = ctx.createRehearsalRpc ?? createRehearsalRpc;
+  let rpc: RehearsalRpc;
+  try {
+    rpc = makeRehearsalRpc(rpcUrl);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // Simulation seam backed by the real txpreview boundary (sigVerify:false; cannot send).
+  const makePreview = ctx.createTxPreview ?? createTxPreviewRpc;
+  const simulate = opts.skipSimulation
+    ? undefined
+    : async (envelopeValue: unknown): Promise<{ outcome: string; errLabel: string | null }> => {
+        const report = await simulateUnsignedEnvelope(makePreview(rpcUrl), envelopeValue, { clock: ctx.now });
+        return { outcome: report.outcome, errLabel: report.errLabel };
+      };
+
+  const report: DevnetRehearsalReport = await runDevnetRehearsal({
+    mode: resolved.mode,
+    signer,
+    rpc,
+    signerSource,
+    throwawayFilePath: keypairPath,
+    simulate,
+    killSwitchActive: config.killSwitch,
+    emergencyStopFilePresent: stop,
+    skipAirdrop: Boolean(opts.skipAirdrop),
+    airdropLamports,
+    clock: ctx.now,
+    sleep: ctx.sleep,
+  });
+
+  // Journal + write the report. The attempt (when one was made) is appended to the audit log
+  // exactly like execution:devnet:send journals its attempts.
+  try {
+    if (report.attempt !== null) {
+      appendFileSync(join(outDir, REHEARSAL_AUDIT_FILE), JSON.stringify(redactValue(report.attempt)) + "\n");
+    }
+    writeFileSync(reportPath, JSON.stringify(redactValue(report), null, 2) + "\n");
+  } catch {
+    return { text: redactString(`Refusing: cannot write rehearsal artifacts under ${outDir}`), exitCode: 1 };
+  }
+
+  const broadcast = report.outcome === "rehearsed" || report.outcome === "submitted-unconfirmed";
+  const exitCode = broadcast ? 0 : 1;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
+  }
+  const lines = [
+    `DEVNET END-TO-END REHEARSAL: ${report.outcome.toUpperCase()}`,
+    `network:    devnet (${report.endpointHost})`,
+    `signer:     ${report.signerPublicKey ?? "none"} (${report.signerSource}; public key)`,
+    keypairPath !== null ? `keypair:    ${keypairPath} (throwaway; gitignored; delete after use)` : "",
+    "",
+    "steps:",
+    ...report.steps.map((s) => `  [${s.status === "ok" ? "x" : " "}] ${s.step}: ${s.detail}`),
+    "",
+    report.signature !== null ? `signature:  ${report.signature}` : "signature:  none (nothing was submitted)",
+    report.confirmation !== null
+      ? `confirmed:  ${report.confirmation.confirmed ? `yes (slot ${report.confirmation.slot ?? "unknown"})` : "no"} after ${report.confirmation.polls} poll(s)`
+      : "",
+    `artifacts:  ${reportPath}`,
+    "",
+    ...report.caveats.map((c) => `CAVEAT: ${c}`),
+  ];
+  return { text: redactString(lines.filter((l) => l !== "").join("\n")), exitCode };
 }
 
 // ---------------------------------------------------------------------------

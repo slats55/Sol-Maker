@@ -54,6 +54,7 @@ import {
   executionStatusReport,
   executionBuildReport,
   executionDevnetSendReport,
+  executionDevnetRehearseReport,
   paperSniperDecideReport,
   paperSniperWorkflowReport,
   paperSniperReportReport,
@@ -2514,6 +2515,51 @@ program
           auditLog: opts.auditLog,
           riskScore: opts.riskScore,
           json: Boolean(opts.json),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("execution:devnet:rehearse")
+  .description(
+    "DEVNET end-to-end broadcast rehearsal (Sprint 93): generate a THROWAWAY devnet keypair (written ONLY under runs/ with the gitignored .keypair suffix; secret bytes never logged) or reuse one via --signer-env, airdrop devnet SOL, build the unsigned self-transfer probe, simulate it, submit it through the refusal-first send path, confirm it, and write the honest artifact set into --out. Same double opt-in as execution:devnet:send (env flag + --acknowledge-devnet-execution); mainnet endpoints are refused; an airdrop rate limit becomes an honest devnet-funding-blocked artifact, never a faked success. There is NO mainnet variant — deliberately",
+  )
+  .option("--out <dir>", "output DIRECTORY for the rehearsal artifacts + throwaway keypair (required; must be under runs/ unless --signer-env)")
+  .option("--rpc-url <url>", "devnet RPC endpoint (default https://api.devnet.solana.com; mainnet endpoints refused)")
+  .option("--acknowledge-devnet-execution", "the explicit devnet acknowledgment flag (required with the env flag)")
+  .option("--signer-env <ENV_VAR_NAME>", "reuse an existing devnet keypair: the NAME of the env var holding its file PATH")
+  .option("--airdrop-sol <sol>", "devnet airdrop request in SOL (default 1; at most 2; valueless devnet SOL)")
+  .option("--skip-airdrop", "do not request an airdrop (the signer must already be funded)")
+  .option("--skip-simulation", "skip the pre-send simulateTransaction step (kept on by default)")
+  .option("--json", "emit the rehearsal report as stable JSON")
+  .option("--force", "overwrite an existing rehearsal report in the output directory")
+  .action(
+    async (opts: {
+      out?: string;
+      rpcUrl?: string;
+      acknowledgeDevnetExecution?: boolean;
+      signerEnv?: string;
+      airdropSol?: string;
+      skipAirdrop?: boolean;
+      skipSimulation?: boolean;
+      json?: boolean;
+      force?: boolean;
+    }) => {
+      const { text, exitCode } = await executionDevnetRehearseReport(
+        {},
+        {
+          outDir: opts.out,
+          rpcUrl: opts.rpcUrl,
+          acknowledgeDevnetExecution: Boolean(opts.acknowledgeDevnetExecution),
+          signerEnvVar: opts.signerEnv,
+          airdropSol: opts.airdropSol,
+          skipAirdrop: Boolean(opts.skipAirdrop),
+          skipSimulation: Boolean(opts.skipSimulation),
+          json: Boolean(opts.json),
+          force: Boolean(opts.force),
         },
       );
       console.log(text);

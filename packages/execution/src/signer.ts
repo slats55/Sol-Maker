@@ -104,4 +104,59 @@ export function loadLocalSignerBoundary(input: LoadLocalSignerInput): Transactio
   return Object.freeze(boundary);
 }
 
+export interface CreateThrowawayDevnetSignerInput {
+  /**
+   * Where to write the generated keypair file. MUST end with ".keypair" — that suffix is
+   * covered by the repository's `*.keypair` gitignore rule, so a throwaway key can never be
+   * committed by accident even if the caller picks a tracked directory.
+   */
+  keypairPath: string;
+  /** Injected file writer (CLI passes writeFileSync; tests capture). Never receives logs. */
+  writeFile: (path: string, contents: string) => void;
+}
+
+export interface ThrowawayDevnetSigner {
+  /** A DEVNET-ONLY boundary over the generated key. */
+  boundary: TransactionSigningBoundary;
+  /** Where the keypair file was written (path only — the bytes never leave this module). */
+  keypairPath: string;
+}
+
+/**
+ * Generate a THROWAWAY devnet keypair (Sprint 93 rehearsal): the key is created here, written
+ * ONCE to a `.keypair`-suffixed file (gitignored by the repo's `*.keypair` rule), and returned
+ * only as a devnet signing boundary. The secret bytes are never returned, logged, or serialized;
+ * there is no mainnet variant of this function — deliberately.
+ */
+export function createThrowawayDevnetSigner(input: CreateThrowawayDevnetSignerInput): ThrowawayDevnetSigner {
+  if (typeof input.keypairPath !== "string" || input.keypairPath.trim().length === 0) {
+    throw new SignerBoundaryError("a keypairPath is required for a throwaway devnet signer");
+  }
+  if (!input.keypairPath.endsWith(".keypair")) {
+    throw new SignerBoundaryError(
+      'REFUSED: a throwaway keypair file must end with ".keypair" (the gitignored suffix) — never write key material to a committable name',
+    );
+  }
+  const keypair = Keypair.generate();
+  try {
+    input.writeFile(input.keypairPath, JSON.stringify(Array.from(keypair.secretKey)) + "\n");
+  } catch {
+    throw new SignerBoundaryError("the throwaway keypair file could not be written (the key was discarded)");
+  }
+
+  const boundary: TransactionSigningBoundary = {
+    kind: "local-file",
+    network: "devnet",
+    publicKeyBase58: keypair.publicKey.toBase58(),
+    signTransactionInPlace(transaction: VersionedTransaction): VersionedTransaction {
+      transaction.sign([keypair]);
+      return transaction;
+    },
+    toJSON(): string {
+      return REDACTION_MARKER;
+    },
+  };
+  return { boundary: Object.freeze(boundary), keypairPath: input.keypairPath };
+}
+
 export { REDACTION_MARKER as SIGNER_REDACTION_MARKER };

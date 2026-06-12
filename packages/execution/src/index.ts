@@ -36,8 +36,18 @@ export type {
   SafetyEvaluation,
 } from "./safety-controls.js";
 
-export { loadLocalSignerBoundary, SignerBoundaryError, SIGNER_REDACTION_MARKER } from "./signer.js";
-export type { TransactionSigningBoundary, LoadLocalSignerInput } from "./signer.js";
+export {
+  loadLocalSignerBoundary,
+  createThrowawayDevnetSigner,
+  SignerBoundaryError,
+  SIGNER_REDACTION_MARKER,
+} from "./signer.js";
+export type {
+  TransactionSigningBoundary,
+  LoadLocalSignerInput,
+  CreateThrowawayDevnetSignerInput,
+  ThrowawayDevnetSigner,
+} from "./signer.js";
 
 export {
   EXECUTION_ATTEMPT_REPORT_SCHEMA_VERSION,
@@ -52,3 +62,23 @@ export type {
   ExecutionAttemptInput,
   ExecutionAttemptReport,
 } from "./send.js";
+
+export {
+  DEVNET_REHEARSAL_REPORT_SCHEMA_VERSION,
+  DEVNET_REHEARSAL_BANNER,
+  DEVNET_REHEARSAL_DEFAULT_AIRDROP_LAMPORTS,
+  DEVNET_REHEARSAL_MIN_BALANCE_LAMPORTS,
+  DEVNET_REHEARSAL_OUTCOMES,
+  createRehearsalRpc,
+  runDevnetRehearsal,
+} from "./rehearsal.js";
+export type {
+  DevnetRehearsalOutcome,
+  RehearsalStepId,
+  RehearsalStepStatus,
+  RehearsalStep,
+  RehearsalFaucetRpcLike,
+  RehearsalRpc,
+  DevnetRehearsalReport,
+  RunDevnetRehearsalInput,
+} from "./rehearsal.js";
