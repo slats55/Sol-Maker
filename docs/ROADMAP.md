@@ -1027,8 +1027,21 @@ end-to-end; live trading does not begin until Sprint 104, separately authorized 
   BONK built (v0 tx, 7 instructions, ALT lookup) + classified `account-error` simulation;
   USDC refused pre-network on auto-risk REJECT. Still unsigned, still never sent.
   See [`MAINNET_DRY_RUN.md`](MAINNET_DRY_RUN.md).
-- **S96** — post-trade accounting/reconciliation on DEVNET (confirm → balance read →
-  reconciliation artifact; an unreconciled session refuses new trades).
+- **S96** ✅ (2026-06-12) — post-trade accounting/reconciliation on DEVNET. Actuals:
+  `execution.reconciliation.report.v1` (closed 8-verdict set) + append-only session ledger
+  (`execution.session.ledger.entry.v1` under gitignored `runs/`) + `execution.session.status.v1`;
+  balance snapshots/deltas from ACTUAL reads only (unobservable = unavailable, never zero);
+  bounded confirmation tracking with a closed 7-outcome classification (no guidance ever says
+  resend; the tracker's seam cannot submit); the unreconciled-session REFUSAL WALL on
+  `execution:devnet:rehearse` / `execution:devnet:send` (fail-closed, NO bypass flag — the only
+  exits are `execution:session:reconcile` with real observed data or the audited
+  `execution:session:acknowledge` with a verbatim reason); a `reconciliation` stage in
+  `paper:sniper:rehearse` (honest not-applicable in mainnet-dry-run); session evidence on
+  `execution:readiness`; 2 typed web views (registry 45 schemas). REAL evidence: a live
+  funding-blocked rehearsal left the full accounting trail and correctly allowed the retry.
+  (The real devnet broadcast itself remains faucet-blocked after bounded attempts — the S94
+  key `8FenZasyRe3HeUEm4X8iTAufaamnryU2JB8cRzWyHgwm` stays fundable externally; carried
+  forward.)
 - **S97** — Rust sidecar foundation (crate layout, IPC contract, artifact-schema parity tests;
   no hot path yet).
 - **S98** — Rust realtime ingestion hot path (candidate feed parity against the TS adapter).

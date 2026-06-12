@@ -41,6 +41,7 @@ stages honestly (each skip names the exact standalone command).
 | 6 | `tx-build` | the REAL Jupiter swap build (fresh quote → `POST /swap`) gated by every refusal check; output is a strictly UNSIGNED envelope | `envelope.json`, **`txbuild-report.json`** (S95 — written on BOTH outcomes) |
 | 7 | `tx-simulate` | the REAL `simulateTransaction` (sigVerify:false) over the exact envelope; every failure deterministically classified | `tx-simulation.json` |
 | 8 | `devnet-rehearse` | always SKIPPED in this mode — the only send-capable stage is structurally limited to devnet mode | — |
+| 8b | `reconciliation` (S96) | always SKIPPED in this mode — see below | — |
 | 9 | `readiness` | the fourteen-condition checklist against the evidence above; verdict literally always `blocked` | `readiness.json` |
 
 Plus the stage record itself: `rehearsal-report.json` (`sniper.rehearsal.report.v1`).
@@ -108,3 +109,24 @@ Run against live mainnet with a throwaway PUBLIC key as the build wallet:
 
 A `simulated-ok` on this path requires a funded fee-payer public key; that evidence belongs to
 the devnet/post-trade lane (S96), never to an unfunded throwaway.
+
+## Why there is no reconciliation send result in a dry-run (S96)
+
+The S96 reconciliation layer accounts for **what a send actually did**: signature confirmation,
+pre/post balance deltas, the real fee. A mainnet dry-run never sends, so there is no send result
+to reconcile — and faking one would be exactly the kind of false evidence this repository
+refuses to produce. The `reconciliation` stage therefore reports `skipped` with the honest
+detail ("mainnet-dry-run NEVER sends, so no send result exists to reconcile"), and a
+reconciliation report built in this mode records the verdict `not-sent` with the same caveat.
+**That absence is the record, not a gap.**
+
+What still matters as dry-run evidence:
+
+- the build/refusal record (`txbuild.report.v1`) and the simulation classification — they prove
+  the decision chain against real mainnet state;
+- read-only balance evidence is allowed (the reconciliation RPC seam can read mainnet balances)
+  — reads prove observability, never execution;
+- the accounting discipline itself is proven on the devnet lane, where every attempt leaves an
+  `execution.reconciliation.report.v1` and an unaccounted session refuses the next attempt
+  (see [`EXECUTION_SAFETY.md`](EXECUTION_SAFETY.md), "Post-trade reconciliation and the session
+  wall").

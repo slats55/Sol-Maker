@@ -1,4 +1,4 @@
-# Execution Safety Model (Sprints 92–95)
+# Execution Safety Model (Sprints 92–96)
 
 This document is the operator's map of the **gated execution lane**: what each mode can do, where
 the boundaries are, and exactly why live mainnet trading cannot happen from this codebase today.
@@ -108,6 +108,46 @@ path → bounded confirmation polling — all recorded in one honest artifact
 - Devnet SOL is valueless: a confirmed rehearsal proves execution **discipline** (boundaries,
   gates, journaling), never mainnet readiness.
 
+## Post-trade reconciliation and the session wall (Sprint 96)
+
+Every execution attempt must be **accounted for afterward** — that is the reconciliation
+requirement, and it is enforced, not advisory:
+
+1. **Every attempt leaves a trail.** `execution:devnet:rehearse` and `execution:devnet:send`
+   append `execution.session.ledger.entry.v1` lines to the session ledger
+   (`runs/execution-sessions.jsonl`, gitignored), and the rehearsal additionally writes
+   `execution.reconciliation.report.v1` next to its report — even a funding-blocked run is
+   recorded.
+2. **The unreconciled-session refusal rule.** A NEW devnet execution attempt is refused while
+   the latest session is sent-but-unconfirmed, confirmed-but-unreconciled, pending-confirmation,
+   unknown, or in error. Continuation is allowed ONLY after `reconciled`, `not-sent`,
+   `funding-blocked`, or an explicit audited acknowledgment. The wall fails CLOSED: a ledger
+   that cannot be fully parsed blocks too. **There is no bypass flag.** The only exits are:
+   - `execution:session:reconcile` — accounts for the session with REAL observed data: a
+     bounded confirmation re-check (with transaction-history search), the CURRENT balance, and
+     the ACTUAL fee from transaction meta, compared expected-vs-actual into a closed verdict
+     set (`reconciled | unreconciled | pending-confirmation | not-sent | funding-blocked |
+     rpc-unavailable | unsupported | error`);
+   - `execution:session:acknowledge` — the explicit, audited human exit: requires the
+     `--acknowledge-unreconciled-session` flag AND a verbatim `--reason` (≥ 10 chars), appends
+     a `manual-acknowledgment` ledger entry, and refuses when nothing is blocked.
+3. **Confirmation tracking is bounded and classified.** `trackConfirmation` polls a hard-capped
+   number of times and classifies into a CLOSED set — `confirmed | finalized | timeout |
+   dropped | rpc-unavailable | signature-error | unknown` — each with exact operator guidance.
+   No guidance ever says "resend"; the tracker's RPC seam has no send method, so it
+   structurally cannot resubmit. `dropped` is claimed only with explicit blockhash-expiry
+   facts, never guessed.
+4. **Balance facts are observations or honestly unavailable.** Deltas (SOL lamports; token raw
+   amounts via BigInt) are computed only when both sides were actually read; an unobservable
+   side yields `unavailable`, never zero. No P/L is estimated anywhere.
+5. **Readiness reports the accounting state.** `execution:readiness` includes the last
+   session's reconciliation status as evidence (`evidence.sessionReconciliation`) and names the
+   exact next safe action when the wall is closed.
+
+`execution:session:status` shows the ledger and the continuation decision read-only.
+Mainnet-dry-run reconciliation reports record `not-sent` with the explicit caveat that no send
+result exists to reconcile — that absence is the honest record, not a gap.
+
 ## The unified rehearsal workflow (Sprint 93)
 
 `paper:sniper:rehearse` chains the existing production commands over one output directory with an
@@ -198,3 +238,5 @@ redaction-safe, and every CLI output passes through the redaction backstop.
 - Treat a missing fact as safe (unknowns block or caution — everywhere).
 - Fake a success (failed airdrops, failed simulations, stale quotes, and blocked chains are all
   first-class honest artifacts).
+- Start a new execution attempt on top of an unaccounted one (the S96 session wall refuses; the
+  only exits are a real reconciliation or an explicit audited acknowledgment).

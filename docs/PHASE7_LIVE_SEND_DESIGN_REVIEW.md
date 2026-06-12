@@ -43,7 +43,7 @@ loss, no surprise capability.**
 | 9 | **Session loss cap** — running realized-loss accounting; breaching the cap kills the session (no new trades, ever, until a new session is explicitly opened) | Control exists (S92); live accounting is Sprint 96 |
 | 10 | **Kill switch** — config kill switch + emergency-stop file both clear at every step (checked before build, before sign, before send) | Built |
 | 11 | **Audit artifact required** — every attempt (refused or submitted) appends to the audit journal BEFORE the result is reported; a journal write failure refuses the trade | Built (S92 send path) |
-| 12 | **Post-trade reconciliation required** — after any submitted trade: confirm the signature, read the resulting balances, and write a reconciliation artifact; an unreconciled session cannot open new trades | Sprint 96 (devnet first) |
+| 12 | **Post-trade reconciliation required** — after any submitted trade: confirm the signature, read the resulting balances, and write a reconciliation artifact; an unreconciled session cannot open new trades | **Built (S96, devnet-proven)**: `execution.reconciliation.report.v1`, the append-only session ledger, and the fail-closed unreconciled-session refusal wall (no bypass flag) on every devnet execution surface — the live path MUST integrate the same wall |
 
 ## Operating constraints at first opening
 

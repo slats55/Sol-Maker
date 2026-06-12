@@ -1,4 +1,4 @@
-# Devnet end-to-end broadcast rehearsal (Sprint 93/94)
+# Devnet end-to-end broadcast rehearsal (Sprint 93/94/96)
 
 A walkthrough of `execution:devnet:rehearse` — the first path that exercises the FULL execution
 chain against a real cluster, on **devnet only**: fund a throwaway key, build the unsigned
@@ -60,7 +60,17 @@ carried across runs.
 |---|---|
 | `devnet-rehearsal-report.json` | `execution.devnet.rehearsal.report.v1` — every step (mode, signer, funding, build-probe, simulate, send, confirm) with its honest status, the airdrop record, the signature, and the confirmation slot |
 | `devnet-rehearsal-audit.jsonl` | append-only journal of the send attempt (refused or submitted), exactly like `execution:devnet:send` journals |
+| `reconciliation-report.json` | S96: `execution.reconciliation.report.v1` — the post-trade accounting record (confirmation classification, pre/post balance facts, deltas, fee facts, expected-vs-actual verdict). Written for EVERY run, including funding-blocked ones |
 | `throwaway.devnet.keypair` | the generated throwaway devnet keypair (only when `--signer-env` was not used) — see below |
+
+The rehearsal also appends `execution.session.ledger.entry.v1` lines (one `execution-attempt`,
+one `reconciliation`) to the session ledger (default `runs/execution-sessions.jsonl`,
+gitignored). **A new rehearsal is refused while the previous session is unaccounted for** —
+check the state with `pnpm soulmaker execution:session:status`; account for a stuck session
+with `pnpm soulmaker execution:session:reconcile --out runs/<dir>` (real observed data) or, as
+the explicit audited exception, `pnpm soulmaker execution:session:acknowledge --reason "..."
+--acknowledge-unreconciled-session`. A `funding-blocked` or `not-sent` session never blocks a
+retry.
 
 Outcomes are a closed set: `rehearsed` (confirmed on devnet), `submitted-unconfirmed`
 (submission is not confirmation — verify the signature independently), `devnet-funding-blocked`
