@@ -1,0 +1,17 @@
+{
+  "sourceLabel": "real-input-rehearsal-fictional-clean",
+  "candidates": [
+    {
+      "candidateId": "fica",
+      "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+      "symbol": "FICA",
+      "name": "Fictional Token A",
+      "sourceTag": "rehearsal-fixture",
+      "sourceNote": "FICTIONAL fixture mint — does not exist on-chain; clean invented facts",
+      "observedLiquidityUsd": 50000,
+      "observedAtLabel": "rehearsal-session",
+      "tags": ["fictional", "rehearsal"],
+      "operatorNotes": ["Invented data only. Not live, not a trade signal."]
+    }
+  ]
+}

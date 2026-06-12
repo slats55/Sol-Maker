@@ -1,0 +1,41 @@
+{
+  "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+  "score": 0,
+  "decision": "PASS_FOR_PAPER_EVALUATION",
+  "flags": [
+    {
+      "id": "freeze-authority-renounced",
+      "severity": "info",
+      "title": "Freeze authority renounced",
+      "detail": "No freeze authority is set — the mint cannot freeze your tokens.",
+      "evidence": {
+        "freezeAuthorityPresent": false
+      }
+    },
+    {
+      "id": "mint-authority-renounced",
+      "severity": "info",
+      "title": "Mint authority renounced",
+      "detail": "No mint authority is set — supply cannot be inflated.",
+      "evidence": {
+        "mintAuthorityPresent": false
+      }
+    },
+    {
+      "id": "standard-spl-token-program",
+      "severity": "info",
+      "title": "Standard SPL token program",
+      "detail": "Owned by the standard SPL token program.",
+      "evidence": {
+        "programLabel": "spl-token"
+      }
+    }
+  ],
+  "summary": [
+    "This is an advisory READ-ONLY risk report — not a buy recommendation.",
+    "Decision PASS_FOR_PAPER_EVALUATION: may proceed to paper-trading evaluation later only. This is NOT a live-trading safety judgment.",
+    "No transaction was built, signed, simulated, or sent."
+  ],
+  "generatedAt": "2026-06-11T00:00:00.000Z",
+  "disclaimer": "Advisory READ-ONLY risk report. This is not a buy recommendation. PASS_FOR_PAPER_EVALUATION does not mean safe to live-trade. No transaction was built, signed, simulated, or sent."
+}

@@ -1,0 +1,29 @@
+{
+  "sourceLabel": "real-input-rehearsal-fictional",
+  "candidates": [
+    {
+      "candidateId": "fica",
+      "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+      "symbol": "FICA",
+      "name": "Fictional Token A",
+      "sourceTag": "rehearsal-fixture",
+      "sourceNote": "FICTIONAL fixture mint — does not exist on-chain; clean invented facts",
+      "observedLiquidityUsd": 50000,
+      "observedAtLabel": "rehearsal-session",
+      "tags": ["fictional", "rehearsal"],
+      "operatorNotes": ["Invented data only. Not live, not a trade signal."]
+    },
+    {
+      "candidateId": "ficb",
+      "mint": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+      "symbol": "FICB",
+      "name": "Fictional Token B",
+      "sourceTag": "rehearsal-fixture",
+      "sourceNote": "FICTIONAL fixture mint — invented freeze authority makes the risk engine flag it",
+      "observedLiquidityUsd": 45000,
+      "observedAtLabel": "rehearsal-session",
+      "tags": ["fictional", "rehearsal"],
+      "operatorNotes": ["Invented data only. Not live, not a trade signal."]
+    }
+  ]
+}

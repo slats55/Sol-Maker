@@ -1,0 +1,14 @@
+{
+  "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+  "decimals": 6,
+  "supplyRaw": "1000000000000",
+  "uiSupply": 1000000,
+  "mintAuthorityPresent": false,
+  "freezeAuthorityPresent": false,
+  "isInitialized": true,
+  "programLabel": "spl-token",
+  "source": "fictional-fixture",
+  "endpointHost": "fictional.rpc.invalid",
+  "timestamp": "2026-06-11T00:00:00.000Z",
+  "note": "Inspection only — NOT a risk score (Phase 3) and NOT a buy recommendation."
+}
