@@ -55,6 +55,7 @@ import {
   executionBuildReport,
   executionDevnetSendReport,
   executionDevnetRehearseReport,
+  executionReadinessReport,
   paperSniperDecideReport,
   paperSniperWorkflowReport,
   paperSniperReportReport,
@@ -2527,6 +2528,57 @@ program
           riskScore: opts.riskScore,
           maxQuoteAgeMs: opts.maxQuoteAgeMs,
           json: Boolean(opts.json),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("execution:readiness")
+  .description(
+    "The HONEST mainnet readiness checklist (Sprint 93): evaluate ALL fourteen live-gate conditions against operator-NAMED evidence (a LIVE quote fetch report + explicit age cap, a token:risk report + explicit cap, a txpreview simulation report, a wallet public key, an audit path) and name every missing condition with its exact next safe action. STRUCTURALLY incapable of reporting armed: the CLI acknowledgment, the signer boundary, and the redaction findings evaluate only at execution time. No bypass flag, no force flag, no env-only enable. Read-only; mainnet sending has NO CLI surface",
+  )
+  .option("--quote-report <path>", "a LIVE routequote.fetch.report.v1 for condition 9 (operator-supplied quote artifacts refused)")
+  .option("--max-quote-age-ms <ms>", "the EXPLICIT quote age cap for condition 9 (no default by design)")
+  .option("--risk <path>", "a token:risk --json report for condition 11")
+  .option("--risk-score-cap <n>", "the EXPLICIT advisory risk score cap for condition 11")
+  .option("--simulation <path>", "a txpreview.simulation.report.v1 for condition 10")
+  .option("--slippage-cap-bps <bps>", "the EXPLICIT slippage cap for condition 7 (config has none)")
+  .option("--wallet <publicKey>", "the destination wallet PUBLIC key for condition 12 (never a secret)")
+  .option("--audit-log <path>", "the audit log path that WOULD be used (condition 14's path half)")
+  .option("--json", "emit the readiness report as stable JSON")
+  .option("--out <path>", "write ONLY the readiness report JSON to this path (refused if it exists)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .action(
+    (opts: {
+      quoteReport?: string;
+      maxQuoteAgeMs?: string;
+      risk?: string;
+      riskScoreCap?: string;
+      simulation?: string;
+      slippageCapBps?: string;
+      wallet?: string;
+      auditLog?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+    }) => {
+      const { text, exitCode } = executionReadinessReport(
+        {},
+        {
+          quoteReportPath: opts.quoteReport,
+          maxQuoteAgeMs: opts.maxQuoteAgeMs,
+          riskPath: opts.risk,
+          riskScoreCap: opts.riskScoreCap,
+          simulationPath: opts.simulation,
+          slippageCapBps: opts.slippageCapBps,
+          wallet: opts.wallet,
+          auditLog: opts.auditLog,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
         },
       );
       console.log(text);

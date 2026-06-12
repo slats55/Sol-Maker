@@ -6032,6 +6032,240 @@ export function executionStatusReport(
   return { text: redactString(lines.join("\n")) + wroteLine, exitCode: 0 };
 }
 
+export interface ExecutionReadinessCommandOptions {
+  /** A LIVE routequote.fetch.report.v1 for condition 9 (operator-supplied artifacts refused). */
+  quoteReportPath?: string;
+  /** The EXPLICIT quote age cap in ms for condition 9. */
+  maxQuoteAgeMs?: string;
+  /** A token:risk --json report for condition 11. */
+  riskPath?: string;
+  /** The EXPLICIT advisory risk score cap for condition 11. */
+  riskScoreCap?: string;
+  /** A txpreview.simulation.report.v1 for condition 10. */
+  simulationPath?: string;
+  /** The EXPLICIT slippage cap in bps for condition 7 (config has none yet). */
+  slippageCapBps?: string;
+  /** The destination wallet PUBLIC key for condition 12. */
+  wallet?: string;
+  /** The audit log path that WOULD be used (condition 14's path half). */
+  auditLog?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+}
+
+const READINESS_NEXT_ACTIONS: Readonly<Record<string, string>> = {
+  "env-acknowledgment":
+    "remains unset until a FUTURE sprint explicitly authorizes live trading — there is no readiness shortcut",
+  "config-phase7-ready":
+    "config phase7LiveTradingReady stays false until Phase 7 is explicitly authorized and implemented",
+  "cli-acknowledgment":
+    "the --i-understand-this-can-lose-real-money flag exists only at execution time; readiness never accepts it",
+  "network-mainnet-beta": "evaluated against mainnet-beta",
+  "max-spend-cap": "set an explicit per-trade cap via config caps.maxTradeSizeSol",
+  "session-loss-cap": "set an explicit session loss cap via config caps.maxDailyLossSol",
+  "slippage-cap": "pass --slippage-cap-bps <bps> (no default exists by design)",
+  "kill-switch-clear": "clear config killSwitch and remove any emergency-stop file/env",
+  "quote-fresh":
+    "fetch a LIVE quote (paper:routequote:fetch --json --out quotes.json) then pass --quote-report quotes.json --max-quote-age-ms <ms>",
+  "simulation-ok":
+    "build an unsigned envelope (execution:build --request mainnet-dry-run ... --out envelope.json), simulate it (paper:simulation:tx --envelope envelope.json --out sim.json), then pass --simulation sim.json",
+  "risk-under-threshold": "run token:risk <mint> --deep --json --out risk.json, then pass --risk risk.json --risk-score-cap <n>",
+  "wallet-validated": "pass --wallet <publicKey> (a PUBLIC key; never a secret)",
+  "signer-boundary":
+    "the signer boundary loads ONLY at execution time through --signer-env; readiness never loads key material",
+  "audit-and-redaction":
+    "pass --audit-log <path>; redaction findings finalize at execution time over the attempt's artifacts",
+};
+
+/**
+ * `soulmaker execution:readiness` — the HONEST mainnet readiness checklist (Sprint 93): every
+ * one of the fourteen live-gate conditions evaluated against operator-NAMED evidence (live
+ * quote report + explicit age cap, risk report + explicit cap, simulation report, wallet,
+ * audit path), each failure named with its exact next safe action. STRUCTURALLY incapable of
+ * reporting "armed": the CLI acknowledgment, the signer boundary, and the redaction findings
+ * evaluate only at execution time, so at least three conditions always remain unsatisfied
+ * here. No bypass flag, no force-arm flag, no env-only enable — deliberately. Read-only.
+ */
+export function executionReadinessReport(
+  ctx: CommandContext = {},
+  opts: ExecutionReadinessCommandOptions = {},
+): CliReport {
+  let config: Config;
+  try {
+    config = loadConfig(toLoadOptions(ctx));
+  } catch (err) {
+    const msg = err instanceof ConfigError ? err.message : String(err);
+    return { text: redactString(`Refusing: config is invalid.\n\n${msg}`), exitCode: 1 };
+  }
+  const env = (ctx.env ?? process.env) as Record<string, string | undefined>;
+  const stop = emergencyStopPresent(ctx);
+
+  if (opts.outPath) {
+    const resolvedPath = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolvedPath)) {
+      return { text: redactString(`Refusing: ${resolvedPath} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+  }
+
+  // Condition 9 evidence: a LIVE quote fetch report + the explicit cap.
+  let quoteFreshness: StatusQuoteFreshness | null = null;
+  let quoteFresh: boolean | null = null;
+  if (opts.quoteReportPath) {
+    const resolvedQuote = resolveStatusQuoteFreshness(ctx, opts.quoteReportPath, opts.maxQuoteAgeMs);
+    if (!resolvedQuote.ok) {
+      return { text: redactString(`Refusing: ${resolvedQuote.message}`), exitCode: 1 };
+    }
+    quoteFreshness = resolvedQuote.freshness;
+    quoteFresh = resolvedQuote.quoteFresh;
+  } else if (opts.maxQuoteAgeMs !== undefined) {
+    return { text: "Refusing: --max-quote-age-ms requires --quote-report (a cap without a quote evaluates nothing).", exitCode: 1 };
+  }
+
+  // Condition 11 evidence: a token:risk report + the explicit cap.
+  let riskScore: number | null = null;
+  let riskMint: string | null = null;
+  if (opts.riskPath) {
+    let riskValue: unknown;
+    try {
+      riskValue = readJsonValue(ctx, opts.riskPath, "token risk report");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (!isPlainObject(riskValue) || typeof riskValue.score !== "number" || typeof riskValue.decision !== "string") {
+      return { text: "Refusing: --risk file is not a token:risk --json report (score/decision missing).", exitCode: 1 };
+    }
+    riskScore = riskValue.score;
+    riskMint = typeof riskValue.mint === "string" ? riskValue.mint : null;
+  }
+  const riskScoreCap = opts.riskScoreCap === undefined ? null : Number(opts.riskScoreCap);
+
+  // Condition 10 evidence: a txpreview simulation report.
+  let simulationOutcome: string | null = null;
+  let simulationDetail: { endpointHost: string | null; simulatedAt: string | null } | null = null;
+  if (opts.simulationPath) {
+    let simValue: unknown;
+    try {
+      simValue = readJsonValue(ctx, opts.simulationPath, "simulation report");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (!isPlainObject(simValue) || simValue.schemaVersion !== "txpreview.simulation.report.v1" || typeof simValue.outcome !== "string") {
+      return { text: "Refusing: --simulation is not a txpreview.simulation.report.v1 artifact.", exitCode: 1 };
+    }
+    simulationOutcome = simValue.outcome;
+    simulationDetail = {
+      endpointHost: typeof simValue.endpointHost === "string" ? simValue.endpointHost : null,
+      simulatedAt: typeof simValue.simulatedAt === "string" ? simValue.simulatedAt : null,
+    };
+  }
+
+  // Condition 12 evidence: the destination wallet PUBLIC key.
+  let walletPublicKeyValid = false;
+  if (opts.wallet) {
+    try {
+      parsePublicKey(opts.wallet);
+      walletPublicKeyValid = true;
+    } catch {
+      return { text: "Refusing: --wallet is not a valid base58 PUBLIC key (never paste secret key material).", exitCode: 1 };
+    }
+  }
+
+  const slippageCapBps = opts.slippageCapBps === undefined ? null : Number(opts.slippageCapBps);
+
+  const gate = evaluateMainnetLiveGate({
+    env,
+    configPhase7LiveTradingReady: config.phase7LiveTradingReady,
+    cliAcknowledged: false, // NEVER accepted here — execution-time only
+    network: "mainnet-beta",
+    maxSpendLamports: solFlagToLamports(String(config.caps.maxTradeSizeSol), "caps.maxTradeSizeSol"),
+    sessionLossCapSol: config.caps.maxDailyLossSol,
+    slippageCapBps: Number.isInteger(slippageCapBps) ? slippageCapBps : null,
+    killSwitchActive: config.killSwitch || stop ? true : false,
+    quoteFresh,
+    simulationOutcome,
+    riskScore,
+    riskScoreCap: Number.isFinite(riskScoreCap as number) ? riskScoreCap : null,
+    walletPublicKeyValid,
+    signerBoundaryKind: null, // NEVER loaded here — readiness never touches key material
+    auditLogPathProvided: typeof opts.auditLog === "string" && opts.auditLog.trim().length > 0,
+    redactionFindings: null, // finalize at execution time over the attempt's artifacts
+  });
+
+  const conditions = gate.checks.map((check) => ({
+    gate: check.gate,
+    satisfied: check.satisfied,
+    detail: check.detail,
+    nextAction: READINESS_NEXT_ACTIONS[check.gate] ?? "no shortcut exists",
+  }));
+  const missing = conditions.filter((c) => !c.satisfied);
+
+  const report = {
+    schemaVersion: "execution.readiness.report.v1",
+    banner:
+      "MAINNET READINESS CHECKLIST — an honest, read-only evaluation of the fourteen live-gate conditions against operator-named evidence. This command can NEVER report armed (the CLI acknowledgment, the signer boundary, and the redaction findings evaluate only at execution time), it has no bypass or force flag, and nothing it prints is an authorization.",
+    generatedAt: (ctx.now ?? isoNow)(),
+    network: "mainnet-beta",
+    mode: { killSwitch: config.killSwitch, emergencyStopPresent: stop, configPhase7LiveTradingReady: config.phase7LiveTradingReady },
+    verdict: "blocked" as const,
+    satisfiedCount: conditions.filter((c) => c.satisfied).length,
+    totalChecks: conditions.length,
+    conditions,
+    blockedReason: `${missing.length} of ${conditions.length} live-gate condition(s) unsatisfied: ${missing.map((c) => c.gate).join(", ")}`,
+    evidence: {
+      quoteFreshness,
+      risk: riskScore === null ? null : { score: riskScore, mint: riskMint, cap: Number.isFinite(riskScoreCap as number) ? riskScoreCap : null },
+      simulation: simulationOutcome === null ? null : { outcome: simulationOutcome, ...simulationDetail },
+      wallet: walletPublicKeyValid ? opts.wallet : null,
+      auditLogPath: opts.auditLog ?? null,
+    },
+    mainnetDryRunNote:
+      "mainnet-dry-run needs NO gate: execution:build --request mainnet-dry-run builds + paper:simulation:tx simulates against real chain state, and neither can send.",
+    nextSafeAction:
+      missing.length > 0
+        ? `${missing[0]?.gate}: ${READINESS_NEXT_ACTIONS[missing[0]?.gate ?? ""] ?? "no shortcut exists"}`
+        : "none — and even a fully-evidenced checklist arms nothing from this command",
+    phase7LiveTradingReady: false,
+    neverSends: true,
+    caveats: [
+      "Readiness is evidence collection, not authorization — the send path re-verifies every condition itself.",
+      "Mainnet sending has NO CLI surface; opening one requires a separate explicitly-authorized future sprint.",
+    ],
+  };
+
+  let wroteLine = "";
+  if (opts.outPath) {
+    const resolvedPath = resolvePath(ctx, opts.outPath);
+    try {
+      writeFileSync(resolvedPath, JSON.stringify(redactValue(report), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write readiness report at ${resolvedPath}`), exitCode: 1 };
+    }
+    wroteLine = `\nwrote ${resolvedPath}`;
+  }
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(report), null, 2) + wroteLine, exitCode: 0 };
+  }
+  const lines: string[] = [];
+  lines.push("MAINNET READINESS CHECKLIST (read-only; can never arm anything)");
+  lines.push("================================================================");
+  lines.push(`verdict:     BLOCKED — ${report.satisfiedCount}/${report.totalChecks} conditions satisfied`);
+  lines.push(`kill switch: ${config.killSwitch ? "ENGAGED" : "off"} | emergency stop: ${stop ? "PRESENT" : "absent"}`);
+  lines.push("");
+  for (const c of conditions) {
+    lines.push(`  [${c.satisfied ? "x" : " "}] ${c.gate}: ${c.detail}`);
+    if (!c.satisfied) lines.push(`        next: ${c.nextAction}`);
+  }
+  lines.push("");
+  if (quoteFreshness !== null) {
+    lines.push(`quote freshness: ${quoteFreshness.verdict.toUpperCase()} (age ${quoteFreshness.ageMs ?? "n/a"}ms, cap ${quoteFreshness.capMs ?? "MISSING"}ms)`);
+  }
+  lines.push(report.mainnetDryRunNote);
+  lines.push("");
+  for (const caveat of report.caveats) lines.push(`CAVEAT: ${caveat}`);
+  return { text: redactString(lines.join("\n")) + wroteLine, exitCode: 0 };
+}
+
 export interface ExecutionBuildCommandOptions {
   candidateMint?: string;
   inputMint?: string;
