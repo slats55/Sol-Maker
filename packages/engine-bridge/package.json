@@ -1,0 +1,13 @@
+{
+  "name": "@soulmaker/engine-bridge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "TypeScript ↔ Rust sidecar IPC bridge (Sprint 97). Invokes the solmaker-engine binary with an argument ARRAY (never a shell string), bounds stdout/stderr and execution time, parses JSON only, and STRICTLY validates every artifact against a CLOSED schema before anything reads it. A missing Rust toolchain is reported honestly as unavailable, never faked and never treated as a project failure. No signer, key, wallet, or send capability — the bridge can only ask the engine to describe itself.",
+  "exports": { ".": "./src/index.ts" },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@soulmaker/security": "workspace:*"
+  }
+}

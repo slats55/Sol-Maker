@@ -11,6 +11,7 @@
     "@solana/web3.js": "^1.95.0",
     "@soulmaker/backtest": "workspace:*",
     "@soulmaker/core": "workspace:*",
+    "@soulmaker/engine-bridge": "workspace:*",
     "@soulmaker/execution": "workspace:*",
     "@soulmaker/paper": "workspace:*",
     "@soulmaker/quotefetch": "workspace:*",

@@ -51,6 +51,7 @@ import {
   paperRealtimeSnapshotReport,
   paperRealtimeWatchReport,
   paperSimulationTxReport,
+  engineStatusReport,
   executionStatusReport,
   executionBuildReport,
   executionDevnetSendReport,
@@ -2748,6 +2749,24 @@ program
       if (exitCode !== 0) process.exitCode = exitCode;
     },
   );
+
+program
+  .command("engine:status")
+  .description(
+    "S97 Rust sidecar foundation: invoke the solmaker-engine binary's status command over JSON IPC and STRICTLY validate the engine.status.report.v1 artifact (closed schema; signer/send/mainnet-send must literally be disabled). A machine without a Rust toolchain reports UNAVAILABLE honestly (exit 0 unless --fail-on-unavailable). The engine cannot sign, send, or load keys by construction",
+  )
+  .option("--json", "emit the validated engine artifact as stable JSON")
+  .option("--out <path>", "write ONLY the validated artifact JSON to this path (refused if it exists)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-unavailable", "exit 1 when no Rust engine is available (default: honest report, exit 0)")
+  .action(async (opts: { json?: boolean; out?: string; force?: boolean; failOnUnavailable?: boolean }) => {
+    const { text, exitCode } = await engineStatusReport(
+      {},
+      { json: Boolean(opts.json), outPath: opts.out, force: Boolean(opts.force), failOnUnavailable: Boolean(opts.failOnUnavailable) },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
 
 program
   .command("execution:session:status")

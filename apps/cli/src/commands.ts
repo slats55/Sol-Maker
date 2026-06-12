@@ -124,6 +124,12 @@ import {
   type TxSimulationReport,
 } from "@soulmaker/txpreview";
 import {
+  fetchEngineStatus,
+  ENGINE_STATUS_SCHEMA_VERSION,
+  type EngineProcessRunner,
+  type EngineStatusBridgeResult,
+} from "@soulmaker/engine-bridge";
+import {
   createJupiterSwapBuilder,
   composeTxBuildReport,
   type SwapTransactionBuilder,
@@ -416,6 +422,10 @@ export interface CommandContext {
   sleep?: (ms: number) => Promise<void>;
   /** Injectable clock for deterministic report timestamps. */
   now?: () => string;
+  /** Factory for the Rust engine sidecar process runner; injected in tests so the suite never spawns. */
+  createEngineRunner?: () => EngineProcessRunner;
+  /** Injectable existence check for engine binary discovery; injected in tests. */
+  engineBinaryExists?: (path: string) => boolean;
 }
 
 export interface ChainReadOptions {
@@ -11550,4 +11560,94 @@ export async function paperSniperRehearseReport(
     for (const caveat of report.caveats) lines.push(`CAVEAT: ${caveat}`);
     return { text: redactString(lines.join("\n")), exitCode };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 97 — engine:status (Rust sidecar foundation)
+//   The FIRST TypeScript ↔ Rust IPC command: invoke the solmaker-engine
+//   sidecar's `status --json`, strictly validate the artifact, and report it.
+//   A machine without a Rust toolchain gets an honest `unavailable` — never a
+//   fake artifact and never a project failure. The engine cannot sign, send,
+//   or load keys by construction (see crates/solmaker-engine/SAFETY.md).
+// ---------------------------------------------------------------------------
+
+export interface EngineStatusCommandOptions {
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit 1 when the Rust engine is unavailable (CI gating; default exit 0). */
+  failOnUnavailable?: boolean;
+}
+
+/** `soulmaker engine:status` — fetch + validate the Rust sidecar status artifact. */
+export async function engineStatusReport(
+  ctx: CommandContext = {},
+  opts: EngineStatusCommandOptions = {},
+): Promise<CliReport> {
+  const result: EngineStatusBridgeResult = await fetchEngineStatus({
+    cwd: ctx.cwd ?? process.cwd(),
+    createdAt: (ctx.now ?? isoNow)(),
+    runner: ctx.createEngineRunner?.(),
+    exists: ctx.engineBinaryExists,
+    env: ctx.env,
+  });
+
+  if (result.kind !== "ok") {
+    const exitCode = result.kind === "refused" || opts.failOnUnavailable ? 1 : 0;
+    if (opts.json) {
+      const payload = {
+        engineStatus: result.kind,
+        reason: result.reason,
+        detail: result.detail,
+        nextSafeAction:
+          result.kind === "unavailable"
+            ? "install Rust via https://rustup.rs and run pnpm rust:build — or treat the engine as absent; TypeScript remains fully functional without it"
+            : "inspect the engine output/exit detail above; the artifact was refused, never trusted",
+      };
+      return { text: redactString(JSON.stringify(payload, null, 2)), exitCode };
+    }
+    const lines = [
+      "RUST ENGINE STATUS",
+      result.kind === "unavailable"
+        ? `engine: UNAVAILABLE — ${result.reason}`
+        : `engine: REFUSED — ${result.reason}`,
+      `detail: ${result.detail}`,
+      result.kind === "unavailable"
+        ? "NEXT: install Rust via https://rustup.rs and run pnpm rust:build — or treat the engine as absent; TypeScript remains fully functional without it."
+        : "NEXT: the engine answered but the artifact was refused (never trusted); inspect the detail above.",
+    ];
+    return { text: redactString(lines.join("\n")), exitCode };
+  }
+
+  const report = result.report;
+  let wroteLine = "";
+  if (opts.outPath) {
+    const resolvedPath = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolvedPath)) {
+      return { text: redactString(`Refusing: ${resolvedPath} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolvedPath, JSON.stringify(report, null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the engine status artifact at ${resolvedPath}`), exitCode: 1 };
+    }
+    wroteLine = `\nwrote ${resolvedPath}`;
+  }
+  if (opts.json) {
+    // The artifact is printed VERBATIM as validated — schemaVersion engine.status.report.v1.
+    return { text: JSON.stringify(report, null, 2) + wroteLine, exitCode: 0 };
+  }
+  const lines = [
+    "RUST ENGINE STATUS",
+    `schema:      ${ENGINE_STATUS_SCHEMA_VERSION}`,
+    `engine:      ${report.engineName} ${report.engineVersion} (${report.buildProfile}; ${report.rustcVersion ?? "rustc version unavailable"}) via ${result.via}`,
+    `ipc:         ${report.ipcVersion} — spawn ${result.timing.spawnMs}ms, parse ${result.timing.parseMs}ms, validate ${result.timing.validateMs}ms (IPC overhead only, never a trading-latency claim)`,
+    `safety mode: ${report.safetyMode}`,
+    `signer: ${report.signerSupport} | send: ${report.sendSupport} | mainnet send: ${report.mainnetSendSupport}`,
+    `supported:   ${report.supportedCapabilities.join(", ")}`,
+    `disabled:    ${report.disabledCapabilities.join(", ")}`,
+    "",
+    ...report.caveats.map((c) => `CAVEAT: ${c}`),
+  ];
+  return { text: redactString(lines.join("\n")) + wroteLine, exitCode: 0 };
 }

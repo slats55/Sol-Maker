@@ -41,6 +41,9 @@ importers:
       '@soulmaker/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@soulmaker/engine-bridge':
+        specifier: workspace:*
+        version: link:../../packages/engine-bridge
       '@soulmaker/execution':
         specifier: workspace:*
         version: link:../../packages/execution
@@ -104,6 +107,12 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
+      '@soulmaker/security':
+        specifier: workspace:*
+        version: link:../security
+
+  packages/engine-bridge:
+    dependencies:
       '@soulmaker/security':
         specifier: workspace:*
         version: link:../security
