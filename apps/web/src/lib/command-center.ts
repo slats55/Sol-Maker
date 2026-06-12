@@ -72,7 +72,25 @@ export const SNIPER_CAPABILITIES: readonly SniperCapability[] = [
     key: "routequote",
     label: "Read-only route quotes",
     state: "available",
-    note: "paper:routequote:prepare pairs operator-supplied quote observations to candidates by mint — observation provenance only, never executable.",
+    note: "paper:routequote:prepare pairs quote observations to candidates by mint; paper:routequote:fetch fetches REAL quotes from the public Jupiter lite API — observation provenance only, never executable.",
+  },
+  {
+    key: "realtime",
+    label: "Real-time candidate feed",
+    state: "available",
+    note: "paper:realtime:snapshot / :watch read public new-token feeds (read-only observation) — a watched candidate is never an order.",
+  },
+  {
+    key: "tx-simulate",
+    label: "Unsigned tx simulation",
+    state: "available",
+    note: "paper:simulation:tx runs the real simulateTransaction (sigVerify:false) over UNSIGNED envelopes — no signer, no key; simulated-ok is evidence, never readiness.",
+  },
+  {
+    key: "tx-build",
+    label: "Unsigned tx builder",
+    state: "boundary-only",
+    note: "execution:build constructs UNSIGNED swap envelopes refusal-first — it never signs and never sends; an envelope is simulation material, never an order.",
   },
   {
     key: "route",
@@ -81,10 +99,16 @@ export const SNIPER_CAPABILITIES: readonly SniperCapability[] = [
     note: "No resolver capability exists inside the simulation boundary — read-only quote observations can supply label facts; execution never.",
   },
   {
+    key: "devnet-exec",
+    label: "Devnet execution",
+    state: "boundary-only",
+    note: "execution:devnet:send sends ONLY on devnet behind a double opt-in (env flag + CLI flag), journaled — no mainnet path exists here.",
+  },
+  {
     key: "live",
-    label: "Live trading",
+    label: "Mainnet live trading",
     state: "disabled",
-    note: "Phase 7 is unauthorized: no wallet, no keys, no signing, no orders — by construction.",
+    note: "Disabled by default: the fourteen-condition mainnet live gate is BLOCKED and mainnet sending has no CLI surface — no wallet, no keys, no orders by construction.",
   },
 ];
 

@@ -157,17 +157,23 @@ describe("buildObservabilityFacts over the committed dry-run sample", () => {
 });
 
 describe("capability strip — the safe truth", () => {
-  it("route is boundary-only and live trading is disabled", () => {
+  it("route + tx-build + devnet are boundary-only, mainnet live trading is disabled (S92)", () => {
     const byKey = new Map(SNIPER_CAPABILITIES.map((cap) => [cap.key, cap]));
     expect(byKey.get("route")?.state).toBe("boundary-only");
+    expect(byKey.get("tx-build")?.state).toBe("boundary-only");
+    expect(byKey.get("devnet-exec")?.state).toBe("boundary-only");
     expect(byKey.get("live")?.state).toBe("disabled");
-    expect(byKey.get("live")?.note).toContain("unauthorized");
+    expect(byKey.get("live")?.note).toContain("Disabled by default");
+    expect(byKey.get("live")?.note).toContain("no CLI surface");
+    // The real-time feed and unsigned simulation are read-only available capabilities now.
+    expect(byKey.get("realtime")?.state).toBe("available");
+    expect(byKey.get("tx-simulate")?.state).toBe("available");
   });
 
   it("renders every capability with its state pill", () => {
     const html = CapabilityStrip(SNIPER_CAPABILITIES).__html;
     expect(html).toContain("Candidate intake");
-    expect(html).toContain("Live trading");
+    expect(html).toContain("Mainnet live trading");
     expect(html).toContain("disabled / unauthorized");
     expect(html).toContain("boundary only");
   });

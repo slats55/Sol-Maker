@@ -190,14 +190,26 @@
       </div><div class="sm-capstrip__item sm-capstrip__item--available" title="13-role integrity bundle with per-file digests (phase6.operator.bundle.v1).">
         <span class="sm-capstrip__label">Operator bundle</span>
         <span class="sm-pill sm-pill--safe">available</span>
-      </div><div class="sm-capstrip__item sm-capstrip__item--available" title="paper:routequote:prepare pairs operator-supplied quote observations to candidates by mint — observation provenance only, never executable.">
+      </div><div class="sm-capstrip__item sm-capstrip__item--available" title="paper:routequote:prepare pairs quote observations to candidates by mint; paper:routequote:fetch fetches REAL quotes from the public Jupiter lite API — observation provenance only, never executable.">
         <span class="sm-capstrip__label">Read-only route quotes</span>
         <span class="sm-pill sm-pill--safe">available</span>
+      </div><div class="sm-capstrip__item sm-capstrip__item--available" title="paper:realtime:snapshot / :watch read public new-token feeds (read-only observation) — a watched candidate is never an order.">
+        <span class="sm-capstrip__label">Real-time candidate feed</span>
+        <span class="sm-pill sm-pill--safe">available</span>
+      </div><div class="sm-capstrip__item sm-capstrip__item--available" title="paper:simulation:tx runs the real simulateTransaction (sigVerify:false) over UNSIGNED envelopes — no signer, no key; simulated-ok is evidence, never readiness.">
+        <span class="sm-capstrip__label">Unsigned tx simulation</span>
+        <span class="sm-pill sm-pill--safe">available</span>
+      </div><div class="sm-capstrip__item sm-capstrip__item--boundary-only" title="execution:build constructs UNSIGNED swap envelopes refusal-first — it never signs and never sends; an envelope is simulation material, never an order.">
+        <span class="sm-capstrip__label">Unsigned tx builder</span>
+        <span class="sm-pill sm-pill--caution">boundary only</span>
       </div><div class="sm-capstrip__item sm-capstrip__item--boundary-only" title="No resolver capability exists inside the simulation boundary — read-only quote observations can supply label facts; execution never.">
         <span class="sm-capstrip__label">Route resolver</span>
         <span class="sm-pill sm-pill--caution">boundary only</span>
-      </div><div class="sm-capstrip__item sm-capstrip__item--disabled" title="Phase 7 is unauthorized: no wallet, no keys, no signing, no orders — by construction.">
-        <span class="sm-capstrip__label">Live trading</span>
+      </div><div class="sm-capstrip__item sm-capstrip__item--boundary-only" title="execution:devnet:send sends ONLY on devnet behind a double opt-in (env flag + CLI flag), journaled — no mainnet path exists here.">
+        <span class="sm-capstrip__label">Devnet execution</span>
+        <span class="sm-pill sm-pill--caution">boundary only</span>
+      </div><div class="sm-capstrip__item sm-capstrip__item--disabled" title="Disabled by default: the fourteen-condition mainnet live gate is BLOCKED and mainnet sending has no CLI surface — no wallet, no keys, no orders by construction.">
+        <span class="sm-capstrip__label">Mainnet live trading</span>
         <span class="sm-pill sm-pill--muted">disabled / unauthorized</span>
       </div>
   </div></div>

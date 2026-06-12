@@ -223,6 +223,6 @@ describe("capability strip — live trading stays disabled (S91)", () => {
     expect(byKey.get("routequote")?.state).toBe("available");
     expect(byKey.get("route")?.state).toBe("boundary-only");
     expect(byKey.get("live")?.state).toBe("disabled");
-    expect(byKey.get("live")?.note).toContain("no wallet, no keys, no signing");
+    expect(byKey.get("live")?.note).toContain("no wallet, no keys, no orders");
   });
 });
