@@ -295,7 +295,7 @@ describe("fetchEngineStatus — IPC bridge", () => {
   it("refuses unsafe args before any process could run", async () => {
     const result = await fetchEngineStatus({
       ...base,
-      createdAt: "2026-06-12T00:00:00.000Z ",
+      createdAt: "2026-06-12T00:00:00.000Z ",
       runner: fakeRunner({}),
     });
     expect(result.kind).toBe("refused");
