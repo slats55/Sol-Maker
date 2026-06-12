@@ -218,6 +218,20 @@ no schema, and no validator changed:
 
 The S88 resolver decision record below stands unchanged.
 
+### Sprint 90 — input side only; the boundary is unchanged
+
+S90 built the READ-ONLY INTELLIGENCE BRIDGE (`paper:sniper:preflight:input:prepare`) and the
+Sniper Command Center UI. Both sit strictly on the INPUT and PRESENTATION sides of the boundary:
+
+- The bridge converts already-captured `token:inspect` / `token:risk` JSON into the existing
+  `sniper.preflight.input.v1` artifact — LOCAL file processing only; it adds no RPC surface, and
+  the simulation boundary package still never touches a network.
+- The command center renders the boundary's honest states (route boundary-only, live trading
+  disabled/unauthorized) — it reads artifacts verbatim and invents nothing, including timing.
+- No schema, validator, route builder, or capability changed. The route remains honestly
+  all-UNAVAILABLE; the S88 resolver decision record and the S89 quote-package design stub below
+  stand unchanged.
+
 ### Sprint 89 assessment — design stub for the read-only quote package (NOT implemented)
 
 S89 re-inspected the S88 decision record with all gates green and confirms: the smallest safe next

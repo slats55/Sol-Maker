@@ -36,7 +36,31 @@ pnpm web:inspect --dir runs/my-first-rehearsal --force
 A clean run ends `blocked` on `simulation-blocked-prereqs-not-ready` — paper-enters always demand
 operator review; that is the honest end state, not a failure. See
 [the orchestrator section](#the-paper-dry-run-orchestrator-s88--one-command-the-whole-chain) for
-the full semantics.
+the full semantics. The committed `apps/web/public/sniper.html` page (the **Sniper Command
+Center**, S90) shows the same capability strip / pipeline / candidate table / observability
+blocks over the committed sample run.
+
+## The current operator workflow (S90, end to end)
+
+1. **Create a candidates file** — your own labels; see
+   [`examples/sniper/real-input-rehearsal/`](../examples/sniper/real-input-rehearsal/README.md)
+   for the shape. `observed*` numbers are operator labels, never verified.
+2. **Run read-only inspect/risk** (needs `soulmaker.config.json` with an `rpcUrl`; WATCH_ONLY, or
+   PAPER + `--allow-paper-read`):
+   `token:inspect <MINT> --json --out inspect.json` · `token:risk <MINT> --json --out risk.json`.
+3. **Prepare the preflight input** with the bridge:
+   `paper:sniper:preflight:input:prepare --candidates … --inspect … --risk … --out pf-input.json`.
+4. **Run the PAPER dry-run**: `paper:sniper:dry-run --candidates … --preflight-input pf-input.json
+   --out runs/<label> --adopt-specs --operator <you> --acknowledge-paper-enter-review`.
+5. **Inspect the output in the UI**: `pnpm web:inspect --dir runs/<label> --force` — the folder
+   page leads with the command center (verdict, pipeline, candidates, observability).
+6. **Interpret the verdict**: `reviewable-paper-only` is the best possible state (watch-only
+   chain); a clean paper-enter run ends `blocked` on prereqs review — by design; one risk-rejected
+   candidate honestly blocks the whole batch.
+7. **Route `unavailable` is expected** — no resolver capability exists inside the simulation
+   boundary; nothing is faked.
+8. **Live trading remains disabled** — Phase 7 is unauthorized; no wallet, key, signing, or
+   transaction exists anywhere in this workflow.
 
 ## What exists now
 

@@ -16,7 +16,7 @@ all pass.
 
 ---
 
-## ⚠️ Status: Phases 0–5 complete (read-only watcher, advisory risk, simulated paper engine, paper strategy/backtest research lab through Sprint 24); the PAPER sniper pipeline is operator-runnable end to end (Sprints 25–89: intake → preflight → policy → decisions → audit → governance specs → safety gates → Phase 6 prereqs → simulation intent plan → result → route resolution → chain audit → readiness → handoff → operator bundle, all through one `paper:sniper:dry-run` command with a local web inspector). Route resolution is honestly UNAVAILABLE (no resolver capability exists), the real `simulateTransaction` dry-run is designed but unbuilt, and Phase 7 (live trading) is NOT started. No live trading. By design.
+## ⚠️ Status: Phases 0–5 complete (read-only watcher, advisory risk, simulated paper engine, paper strategy/backtest research lab through Sprint 24); the PAPER sniper pipeline is operator-runnable end to end (Sprints 25–90: intake → read-only inspect/risk → the S90 preflight **bridge** → preflight → policy → decisions → audit → governance specs → safety gates → Phase 6 prereqs → simulation intent plan → result → route resolution → chain audit → readiness → handoff → operator bundle, all through one `paper:sniper:dry-run` command with a local web inspector and a Sniper Command Center page). Route resolution is honestly UNAVAILABLE (no resolver capability exists), the real `simulateTransaction` dry-run is designed but unbuilt, and Phase 7 (live trading) is NOT started. No live trading. By design.
 
 ### Run the PAPER sniper right now
 
@@ -31,10 +31,13 @@ pnpm web:inspect --dir runs/first-rehearsal --force   # → apps/web/public/rese
 ```
 
 Start with [`examples/sniper/operator-dress-rehearsal/`](examples/sniper/operator-dress-rehearsal/README.md)
-(four ready-to-run fictional examples covering every verdict) and
+(four ready-to-run fictional examples covering every verdict),
+[`examples/sniper/real-input-rehearsal/`](examples/sniper/real-input-rehearsal/README.md) (the S90
+real-input workflow: read-only inspect/risk → preflight bridge → dry-run → web UI) and
 [`docs/SNIPER_RUNBOOK.md`](docs/SNIPER_RUNBOOK.md) (the full operator runbook). A clean run ends
 **`blocked` on `simulation-blocked-prereqs-not-ready`** — simulated paper-enters always demand
-operator review; that is the honest designed end state, not a bug.
+operator review; that is the honest designed end state, not a bug. The committed
+`apps/web/public/sniper.html` page is the **Sniper Command Center** over the shipped sample run.
 
 Nothing in this repository can move funds. There is **no transaction signing or
 sending code anywhere in it yet** — the read-only Solana watcher (Phase 2) and

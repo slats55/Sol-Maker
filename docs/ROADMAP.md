@@ -922,6 +922,25 @@ remaining safe Phase 6 gaps:
   a real committed fixture byte-pinned against a fresh orchestrator run. No new capability;
   honest semantics unchanged.
 
+- ✅ **(S90) Real-input bridge + Sniper Command Center + competitive mapping** — the bridge from
+  real read-only intelligence into the dry-run plus the unified product surface.
+  `paper:sniper:preflight:input:prepare` pairs standalone `token:inspect --json` /
+  `token:risk --json` output files to a candidate list BY MINT and emits the canonical
+  `sniper.preflight.input.v1` the dry-run consumes (verbatim carry; uncovered candidates warned,
+  never marked safe; malformed/cross-kind/unknown-mint/duplicate/secret-shaped files refused);
+  `token:inspect` gained `--json`/`--out` and `token:risk` gained `--out` (UTF-8 capture — the
+  PowerShell `>` UTF-16 footgun is documented). `examples/sniper/real-input-rehearsal/` ships the
+  end-to-end workflow with production-generated fictional fixtures (pin-tested: a single critical
+  REJECT honestly blocks the whole mixed batch; the clean remedy run reaches the canonical
+  blocked-on-prereqs-review end state). The web app gained the `/sniper` **Sniper Command Center**
+  page (capability strip with route = boundary-only and live trading = disabled/unauthorized,
+  dashboard cards, the safe pipeline visualization, the screener-style candidate intelligence
+  table, the artifact-derived observability panel — timing honestly "unavailable"), and the same
+  blocks render on every `web:inspect --dir` dry-run folder. Competitive lessons (RPC Fast /
+  Dysnix / GoodCrypto) mapped safely in
+  [`research/COMPETITIVE_SNIPER_REFERENCE.md`](research/COMPETITIVE_SNIPER_REFERENCE.md) — the
+  execute/exit layers are recorded as Phase 7 future-only topics, not built.
+
 **Still honestly missing from Phase 6 (future, in order):**
 
 - ⬜ A real route-resolution capability: per the S88 decision record in

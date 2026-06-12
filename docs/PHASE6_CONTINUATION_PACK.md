@@ -1,7 +1,49 @@
-# Phase 6 Continuation Pack (continuation run 2026-06-10 #2, Sprints 73–82; addenda: S85, S86, S87, S88, S89)
+# Phase 6 Continuation Pack (continuation run 2026-06-10 #2, Sprints 73–82; addenda: S85–S90)
 
 The precise hand-off for the next session. Everything below is verifiable from the repo —
 no claim here rests on memory.
+
+## Addendum — Sprint 90 (real-input bridge + Sniper Command Center + competitive mapping; 2026-06-11) — COMPLETED
+
+S90 built the missing bridge from real read-only token intelligence into the PAPER dry-run, plus
+the unified command-center UI. No capability changed at the boundary: the route remains honestly
+all-UNAVAILABLE, no resolver/wallet/signing entered the codebase, Phase 7 remains unauthorized.
+
+- **The bridge** — `paper:sniper:preflight:input:prepare` (`apps/cli/src/commands.ts`): pairs
+  standalone `token:inspect --json` / `token:risk --json` output files to a candidate list BY
+  MINT and emits the canonical `sniper.preflight.input.v1` that `paper:sniper:dry-run
+  --preflight-input` consumes. Values carried VERBATIM via `normalizeSniperPreflightInput`
+  (candidate-list cross-check included); uncovered candidates stay warned, never marked safe;
+  refusals: malformed JSON, cross-kind files (named explicitly), a mint matching no candidate,
+  duplicate files per mint, secret-shaped key names anywhere (key path named, value never
+  echoed), secret-length mints (never echoed). `--out` refuse-overwrite-without-`--force`,
+  no mkdir. The human output ends with the exact next dry-run + web-inspect commands.
+- **Capture flags** — `token:inspect` gained `--json` / `--out` / `--force`; `token:risk` gained
+  `--out` / `--force`. `--out` writes UTF-8 (PowerShell `>` writes UTF-16, which the downstream
+  JSON readers refuse — documented in the runbook/README).
+- **Real-input rehearsal** — `examples/sniper/real-input-rehearsal/`: README with the real-path
+  command chain (operator-supplied mints/RPC) and an offline fictional path runnable now.
+  Fixtures generated THROUGH PRODUCTION CODE by the committed
+  `scripts/gen-real-input-rehearsal-fixtures.ts` (fixed clock; FICB carries a freeze authority so
+  the REAL risk engine emits a critical REJECT). Pinned by
+  `apps/cli/src/real-input-rehearsal-example.test.ts`: fixture fidelity vs regeneration; the
+  MIXED run (paper-enter + paper-reject → ONE rejected candidate honestly blocks the whole
+  chain: verdict `blocked`, route `blocked`, 3 codes, plan blocked 0 entries); the CLEAN remedy
+  run (`blocked` on `simulation-blocked-prereqs-not-ready` alone, route `unavailable`, plan
+  unblocked 1 entry); byte determinism; README/code agreement.
+- **Sniper Command Center** — new `/sniper` page (`apps/web/src/pages/sniper.ts`) over the
+  committed `dry-run-sample` fixture (SAMPLE-labelled), and the SAME blocks now render on every
+  `web:inspect --dir` dry-run folder: honest capability strip (route = boundary only; live
+  trading = disabled/unauthorized), dashboard cards, pipeline visualization (Candidate → Inspect
+  → Risk → Decision → Plan → Route boundary → Audit → Handoff → Bundle; states derived from the
+  folder's own artifacts), candidate intelligence table (no prices/PnL/fake liquidity),
+  observability panel (timing honestly "unavailable" — artifacts carry no wall-clock by design).
+  Pure model in `apps/web/src/lib/command-center.ts`; sample loader in `lib/sample-run.ts`.
+- **Competitive mapping** — `docs/research/COMPETITIVE_SNIPER_REFERENCE.md`: detect→analyze→
+  execute→exit mapped to the safe PAPER chain; risk-check gap list (metadata mutability,
+  liquidity depth, owner concentration, transfer hooks, honeypot simulation — all future
+  READ-ONLY work); execute/exit topics recorded as Phase 7 future-only, not designed, not built.
+- **Hygiene** — `runs/` is now gitignored (every doc points operators there).
 
 ## Addendum — Sprint 89 (operator dress rehearsal + dry-run UX + UI landing overview; 2026-06-11) — COMPLETED
 
