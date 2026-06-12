@@ -206,6 +206,67 @@ describe("execution:devnet:rehearse — the full chain over injected seams", () 
     });
   });
 
+  it("S94: a SECOND run in the same out dir REUSES the existing throwaway keypair (same public key; funding sticks)", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeConfig(tmp);
+      const outDir = join("runs", "reuse-1");
+      const first = await executionDevnetRehearseReport(
+        { cwd: tmp, env: FULL_ENV, createRehearsalRpc: () => fakeRehearsalRpc(), sleep: async () => {} },
+        { outDir, acknowledgeDevnetExecution: true, skipSimulation: true, json: true },
+      );
+      expect(first.exitCode, first.text.slice(0, 400)).toBe(0);
+      const firstReport = JSON.parse(first.text) as { signerSource: string; signerPublicKey: string };
+      expect(firstReport.signerSource).toBe("generated-throwaway");
+      const keypairBytesBefore = readFileSync(join(tmp, outDir, "throwaway.devnet.keypair"), "utf8");
+
+      const second = await executionDevnetRehearseReport(
+        { cwd: tmp, env: FULL_ENV, createRehearsalRpc: () => fakeRehearsalRpc(), sleep: async () => {} },
+        { outDir, acknowledgeDevnetExecution: true, skipSimulation: true, json: true, force: true },
+      );
+      expect(second.exitCode, second.text.slice(0, 400)).toBe(0);
+      const secondReport = JSON.parse(second.text) as { signerSource: string; signerPublicKey: string };
+      expect(secondReport.signerSource).toBe("reused-throwaway");
+      expect(secondReport.signerPublicKey).toBe(firstReport.signerPublicKey);
+      // The keypair file was NOT regenerated — external funding would have stayed on this key.
+      expect(readFileSync(join(tmp, outDir, "throwaway.devnet.keypair"), "utf8")).toBe(keypairBytesBefore);
+    });
+  });
+
+  it("S94: --airdrop-attempts is validated (integer 1..5; the faucet is never spammed)", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeConfig(tmp);
+      for (const bad of ["0", "6", "2.5", "nope"]) {
+        const r = await executionDevnetRehearseReport(
+          { cwd: tmp, env: FULL_ENV, createRehearsalRpc: () => fakeRehearsalRpc(), sleep: async () => {} },
+          { outDir: join("runs", "attempts"), acknowledgeDevnetExecution: true, airdropAttempts: bad },
+        );
+        expect(r.exitCode, bad).toBe(1);
+        expect(r.text).toContain("--airdrop-attempts");
+      }
+    });
+  });
+
+  it("S94: a funding-blocked run carries the attempts count and the exact funding guidance", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeConfig(tmp);
+      const r = await executionDevnetRehearseReport(
+        { cwd: tmp, env: FULL_ENV, createRehearsalRpc: () => fakeRehearsalRpc({ airdropError: "429 rate limited" }), sleep: async () => {} },
+        { outDir: join("runs", "blocked-2"), acknowledgeDevnetExecution: true, skipSimulation: true, airdropAttempts: "2" },
+      );
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toContain("NEXT: Fund the rehearsal public key");
+      expect(r.text).toContain("faucet.solana.com");
+      const report = JSON.parse(readFileSync(join(tmp, "runs", "blocked-2", "devnet-rehearsal-report.json"), "utf8")) as {
+        airdrop: { attempts: number; maxAttempts: number };
+        fundingGuidance: string[] | null;
+        signerPublicKey: string;
+      };
+      expect(report.airdrop.attempts).toBe(2);
+      expect(report.airdrop.maxAttempts).toBe(2);
+      expect(report.fundingGuidance?.join("\n")).toContain(report.signerPublicKey);
+    });
+  });
+
   it("refuses to overwrite an existing rehearsal report without --force", async () => {
     await withTmpAsync(async (tmp) => {
       writeConfig(tmp);

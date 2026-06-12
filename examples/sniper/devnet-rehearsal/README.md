@@ -1,4 +1,4 @@
-# Devnet end-to-end broadcast rehearsal (Sprint 93)
+# Devnet end-to-end broadcast rehearsal (Sprint 93/94)
 
 A walkthrough of `execution:devnet:rehearse` — the first path that exercises the FULL execution
 chain against a real cluster, on **devnet only**: fund a throwaway key, build the unsigned
@@ -28,9 +28,31 @@ $env:SOLMAKER_ENABLE_DEVNET_EXECUTION = 'devnet-only'
 pnpm soulmaker execution:devnet:rehearse --out runs/devnet-rehearsal/today --acknowledge-devnet-execution
 ```
 
-Useful flags: `--airdrop-sol 0.5` (devnet faucet request, max 2), `--skip-airdrop` (the signer is
-already funded), `--signer-env MY_DEVNET_KEY` (reuse an existing devnet keypair via the env var
-NAME holding its file path), `--rpc-url` (mainnet endpoints are refused), `--json`, `--force`.
+Useful flags: `--airdrop-sol 0.5` (devnet faucet request, max 2), `--airdrop-attempts 3`
+(bounded faucet retries, hard cap 5 — the faucet is never spammed), `--skip-airdrop` (the signer
+is already funded), `--signer-env MY_DEVNET_KEY` (reuse an existing devnet keypair via the env
+var NAME holding its file path), `--rpc-url` (mainnet endpoints are refused), `--json`, `--force`.
+
+## When the faucet is rate-limited (the common case)
+
+A faucet 429 / daily limit produces an honest `devnet-funding-blocked` artifact (exit 1) with the
+attempt count and a `fundingGuidance` block — never a faked success. The recovery loop is built
+in (Sprint 94): **the throwaway keypair in the output directory is REUSED on rerun**, so you can
+fund the printed public key externally and the funding sticks to the same key.
+
+1. Read the public key from the blocked report (`signerPublicKey`) or the CLI output.
+2. Fund it with valueless DEVNET SOL — never mainnet SOL:
+   - <https://faucet.solana.com> (select **devnet**), or
+   - `solana airdrop 1 <publicKey> --url devnet` from any machine with the Solana CLI.
+3. Rerun the exact same command with `--force` (and `--skip-airdrop` if you funded it yourself):
+
+```powershell
+$env:SOLMAKER_ENABLE_DEVNET_EXECUTION = 'devnet-only'
+pnpm soulmaker execution:devnet:rehearse --out runs/devnet-rehearsal/today --acknowledge-devnet-execution --skip-airdrop --force
+```
+
+The report's `signerSource` records `reused-throwaway` so the artifact chain shows the same key
+carried across runs.
 
 ## What to expect in the output directory
 

@@ -23,6 +23,7 @@ import { Keypair, PublicKey, SystemProgram, TransactionMessage, VersionedTransac
 import { createJupiterQuoteAdapter, type FetchLike } from "@soulmaker/quotefetch";
 import { createJupiterSwapBuilder, type FetchLike as BuilderFetchLike } from "@soulmaker/txbuilder";
 import type { RehearsalRpc, SendRpcLike } from "@soulmaker/execution";
+import type { ReadOnlySolanaClient } from "@soulmaker/solana";
 import { paperSniperRehearseReport } from "./commands.js";
 
 const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -55,6 +56,34 @@ function writeCandidates(tmp: string): string {
 function writeRisk(tmp: string, decision: string, score: number): string {
   writeFileSync(join(tmp, "risk.json"), JSON.stringify({ mint: USDC, score, decision, flags: [], summary: [], generatedAt: "t", disclaimer: "x" }));
   return "risk.json";
+}
+
+/** Fake read-only chain client for the S94 auto-risk path (deep token:risk per candidate). */
+function fakeRiskChainClient(opts: { freeze?: boolean; token2022Hook?: boolean; throwOnRead?: boolean } = {}): ReadOnlySolanaClient {
+  return {
+    endpointHost: "rpc.example.com",
+    getRpcHealth: async () => ({ ok: true, endpointHost: "rpc.example.com" }),
+    getVersion: async () => ({ solanaCore: "test" }),
+    getSolBalance: async () => ({ ownerBase58: USDC, lamports: 0, sol: 0 }),
+    getTokenAccounts: async () => [],
+    getTokenMintInfo: async (mint) => {
+      if (opts.throwOnRead === true) throw new Error("rpc unreachable");
+      return {
+        mint: typeof mint === "string" ? mint : mint.toBase58(),
+        decimals: 6,
+        supplyRaw: "1000000000",
+        uiSupply: 1000,
+        mintAuthorityPresent: false,
+        freezeAuthorityPresent: opts.freeze === true,
+        isInitialized: true,
+        programLabel: opts.token2022Hook === true ? "spl-token-2022" : "spl-token",
+        source: "test",
+        ...(opts.token2022Hook === true
+          ? { token2022Extensions: { status: "parsed", extensionNames: ["transferHook"], transferHookPresent: true } }
+          : {}),
+      } as Awaited<ReturnType<ReadOnlySolanaClient["getTokenMintInfo"]>>;
+    },
+  };
 }
 
 function quoteBody(): string {
@@ -229,6 +258,8 @@ describe("paper:sniper:rehearse — mainnet-dry-run (build + simulate; can NEVER
         cwd: tmp,
         env: {},
         now: FIXED_CLOCK,
+        // S94: auto-risk needs a chain client when no --risk/--preflight-input is supplied.
+        createClient: () => fakeRiskChainClient(),
         createQuoteAdapter: () => createJupiterQuoteAdapter({ fetchLike: providerFetch as unknown as FetchLike, clock: FIXED_CLOCK }),
         createSwapBuilder: () => createJupiterSwapBuilder({ fetchLike: providerFetch, clock: buildClock }),
         createTxPreview: () => ({
@@ -402,6 +433,180 @@ describe("paper:sniper:rehearse — mainnet-dry-run (build + simulate; can NEVER
       const stages = stageMap(JSON.parse(r.text) as RehearseJson);
       expect(stages["tx-build"]?.status).toBe("skipped");
       expect(stages["tx-build"]?.detail).toContain("--risk-score-cap");
+    });
+  });
+});
+
+describe("paper:sniper:rehearse — S94 AUTO-RISK in mainnet-dry-run (operator no longer hand-feeds risk)", () => {
+  const riskClient = fakeRiskChainClient;
+
+  function autoRiskCtx(tmp: string, client: ReadOnlySolanaClient) {
+    let sendSeamTouched = 0;
+    return {
+      ctx: {
+        cwd: tmp,
+        env: {},
+        now: FIXED_CLOCK,
+        createClient: () => client,
+        createQuoteAdapter: () => createJupiterQuoteAdapter({ fetchLike: happyProviderFetch() as unknown as FetchLike, clock: FIXED_CLOCK }),
+        createSwapBuilder: () => createJupiterSwapBuilder({ fetchLike: happyProviderFetch(), clock: FIXED_CLOCK }),
+        createTxPreview: () => ({
+          endpointHost: "rpc.example.com",
+          rpc: {
+            simulateTransaction: async () => ({ context: { slot: 1, apiVersion: "1.18" }, value: { err: null, logs: ["ok"], unitsConsumed: 100 } }),
+          },
+        }),
+        createSendRpc: () => {
+          sendSeamTouched += 1;
+          throw new Error("never");
+        },
+        createRehearsalRpc: () => {
+          sendSeamTouched += 1;
+          throw new Error("never");
+        },
+      },
+      sendSeamTouched: () => sendSeamTouched,
+    };
+  }
+
+  const BUILD_FLAGS = { amountSol: "0.01", slippageBps: "50", maxSpendSol: "0.02", slippageCapBps: "100", riskScoreCap: "30" } as const;
+
+  it("DEFAULT: fetches a deep risk report per candidate, bridges the preflight input, and feeds the build — no --risk needed; send seams never touched", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeConfig(tmp);
+      const { ctx, sendSeamTouched } = autoRiskCtx(tmp, riskClient());
+      const r = await paperSniperRehearseReport(ctx, {
+        mode: "mainnet-dry-run",
+        candidatesPath: writeCandidates(tmp),
+        outDir: "out",
+        wallet: WALLET.publicKey.toBase58(),
+        ...BUILD_FLAGS,
+        json: true,
+      });
+      expect(r.exitCode, r.text.slice(0, 800)).toBe(0);
+      const report = JSON.parse(r.text) as RehearseJson & { riskSource: string };
+      expect(report.riskSource).toBe("automatic");
+      const stages = stageMap(report);
+      expect(stages.risk?.status).toBe("executed");
+      expect(stages.risk?.detail).toContain("AUTO risk");
+      expect(stages.risk?.detail).toContain("Token-2022");
+      // The artifacts an operator would have produced by hand exist on disk.
+      expect(existsSync(join(tmp, "out", "risk", `risk.${USDC}.json`))).toBe(true);
+      expect(existsSync(join(tmp, "out", "preflight-input.json"))).toBe(true);
+      const riskReport = JSON.parse(readFileSync(join(tmp, "out", "risk", `risk.${USDC}.json`), "utf8")) as { mint: string; score: number };
+      expect(riskReport.mint).toBe(USDC);
+      // The build consumed the AUTO risk file (no --risk was passed).
+      expect(stages["tx-build"]?.status).toBe("executed");
+      expect(stages["tx-simulate"]?.status).toBe("executed");
+      expect(sendSeamTouched()).toBe(0);
+    });
+  });
+
+  it("a high-risk token (freeze authority) auto-REJECTS: the build blocks on the auto-fetched evidence", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeConfig(tmp);
+      const { ctx, sendSeamTouched } = autoRiskCtx(tmp, riskClient({ freeze: true }));
+      const r = await paperSniperRehearseReport(ctx, {
+        mode: "mainnet-dry-run",
+        candidatesPath: writeCandidates(tmp),
+        outDir: "out",
+        wallet: WALLET.publicKey.toBase58(),
+        ...BUILD_FLAGS,
+        json: true,
+      });
+      const report = JSON.parse(r.text) as RehearseJson & { riskSource: string };
+      expect(report.riskSource).toBe("automatic");
+      const stages = stageMap(report);
+      expect(stages.risk?.status).toBe("executed");
+      expect(stages["tx-build"]?.status).toBe("blocked");
+      expect(stages["tx-build"]?.detail).toContain("build-refused-risk-rejected");
+      expect(report.outcome).toBe("blocked");
+      expect(sendSeamTouched()).toBe(0);
+    });
+  });
+
+  it("a Token-2022 transfer-hook mint auto-REJECTS through the deep extension checks", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeConfig(tmp);
+      const { ctx } = autoRiskCtx(tmp, riskClient({ token2022Hook: true }));
+      const r = await paperSniperRehearseReport(ctx, {
+        mode: "mainnet-dry-run",
+        candidatesPath: writeCandidates(tmp),
+        outDir: "out",
+        wallet: WALLET.publicKey.toBase58(),
+        ...BUILD_FLAGS,
+        json: true,
+      });
+      const report = JSON.parse(r.text) as RehearseJson & { riskSource: string };
+      const stages = stageMap(report);
+      expect(stages.risk?.status).toBe("executed");
+      const riskReport = JSON.parse(readFileSync(join(tmp, "out", "risk", `risk.${USDC}.json`), "utf8")) as {
+        decision: string;
+        flags: Array<{ id: string }>;
+      };
+      expect(riskReport.flags.some((f) => f.id === "transfer-hook-present")).toBe(true);
+      expect(riskReport.decision).toBe("REJECT");
+      expect(stages["tx-build"]?.status).toBe("blocked");
+      expect(report.outcome).toBe("blocked");
+    });
+  });
+
+  it("chain read unavailable => the risk stage is honestly UNAVAILABLE (never assumed safe) and the run blocks", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeConfig(tmp);
+      const { ctx } = autoRiskCtx(tmp, riskClient({ throwOnRead: true }));
+      const r = await paperSniperRehearseReport(ctx, {
+        mode: "mainnet-dry-run",
+        candidatesPath: writeCandidates(tmp),
+        outDir: "out",
+        json: true,
+      });
+      expect(r.exitCode).toBe(0);
+      const report = JSON.parse(r.text) as RehearseJson & { riskSource: string };
+      expect(report.riskSource).toBe("none");
+      const stages = stageMap(report);
+      expect(stages.risk?.status).toBe("unavailable");
+      expect(stages.risk?.detail).toContain("auto-risk could not fetch");
+      expect(report.outcome).toBe("blocked");
+    });
+  });
+
+  it("--skip-auto-risk opts out; operator-supplied --risk still wins over auto-risk", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeConfig(tmp);
+      let clientCalls = 0;
+      const countingClient = riskClient();
+      const counted: ReadOnlySolanaClient = {
+        ...countingClient,
+        getTokenMintInfo: async (mint) => {
+          clientCalls += 1;
+          return countingClient.getTokenMintInfo(mint);
+        },
+      };
+      const { ctx } = autoRiskCtx(tmp, counted);
+      const skipped = await paperSniperRehearseReport(ctx, {
+        mode: "mainnet-dry-run",
+        candidatesPath: writeCandidates(tmp),
+        outDir: "out-skip",
+        skipAutoRisk: true,
+        json: true,
+      });
+      const skippedReport = JSON.parse(skipped.text) as RehearseJson & { riskSource: string };
+      expect(stageMap(skippedReport).risk?.status).toBe("skipped");
+      expect(skippedReport.riskSource).toBe("none");
+
+      const operator = await paperSniperRehearseReport(ctx, {
+        mode: "mainnet-dry-run",
+        candidatesPath: writeCandidates(tmp),
+        outDir: "out-op",
+        riskPath: writeRisk(tmp, "PASS_FOR_PAPER_EVALUATION", 5),
+        json: true,
+      });
+      const operatorReport = JSON.parse(operator.text) as RehearseJson & { riskSource: string };
+      expect(stageMap(operatorReport).risk?.status).toBe("executed");
+      expect(operatorReport.riskSource).toBe("operator");
+      // Neither run auto-fetched anything from the chain.
+      expect(clientCalls).toBe(0);
     });
   });
 });

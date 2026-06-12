@@ -133,6 +133,7 @@ import {
   evaluateMainnetLiveGate,
   loadLocalSignerBoundary,
   createThrowawayDevnetSigner,
+  loadThrowawayDevnetSigner,
   attemptExecution,
   createSendRpc,
   createRehearsalRpc,
@@ -141,10 +142,12 @@ import {
   LIVE_TRADING_ENV_FLAG,
   DEVNET_EXECUTION_ENV_FLAG,
   DEVNET_EXECUTION_ENV_VALUE,
+  DEVNET_REHEARSAL_MAX_AIRDROP_ATTEMPTS,
   type ResolvedExecutionMode,
   type OperatorSafetyControls,
   type SendRpc,
   type RehearsalRpc,
+  type RehearsalSignerSource,
   type TransactionSigningBoundary,
   type DevnetRehearsalReport,
 } from "@soulmaker/execution";
@@ -6079,6 +6082,31 @@ const READINESS_NEXT_ACTIONS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Risk-flag ids produced by the S93 Token-2022 extension checks. Readiness surfaces these
+ * individually so an operator sees EXACTLY which extension facts ride on the risk evidence —
+ * critical/high entries are the blockers (transfer hooks, permanent delegates, frozen-by-default
+ * accounts, pausable tokens, transfer fees, mint close authority).
+ */
+const TOKEN2022_RISK_FLAG_IDS: ReadonlySet<string> = new Set([
+  "token-2022-program",
+  "token-2022-extensions-unknown",
+  "transfer-hook-present",
+  "permanent-delegate-present",
+  "non-transferable-token",
+  "default-account-state-frozen",
+  "pausable-token",
+  "transfer-fee-present",
+  "transfer-fee-extreme",
+  "mint-close-authority-present",
+  "confidential-transfers-enabled",
+  "scaled-ui-amount-present",
+  "interest-bearing-token",
+  "metadata-pointer-present",
+  "token-2022-unexamined-extension",
+  "token-2022-no-risky-extensions",
+]);
+
+/**
  * `soulmaker execution:readiness` — the HONEST mainnet readiness checklist (Sprint 93): every
  * one of the fourteen live-gate conditions evaluated against operator-NAMED evidence (live
  * quote report + explicit age cap, risk report + explicit cap, simulation report, wallet,
@@ -6122,9 +6150,13 @@ export function executionReadinessReport(
     return { text: "Refusing: --max-quote-age-ms requires --quote-report (a cap without a quote evaluates nothing).", exitCode: 1 };
   }
 
-  // Condition 11 evidence: a token:risk report + the explicit cap.
+  // Condition 11 evidence: a token:risk report + the explicit cap. S94: the Token-2022
+  // extension flags riding on the report are surfaced individually (the critical/high ones are
+  // the extension blockers).
   let riskScore: number | null = null;
   let riskMint: string | null = null;
+  let riskDecision: string | null = null;
+  const riskToken2022Flags: Array<{ id: string; severity: string }> = [];
   if (opts.riskPath) {
     let riskValue: unknown;
     try {
@@ -6137,6 +6169,14 @@ export function executionReadinessReport(
     }
     riskScore = riskValue.score;
     riskMint = typeof riskValue.mint === "string" ? riskValue.mint : null;
+    riskDecision = riskValue.decision;
+    if (Array.isArray(riskValue.flags)) {
+      for (const flag of riskValue.flags) {
+        if (isPlainObject(flag) && typeof flag.id === "string" && TOKEN2022_RISK_FLAG_IDS.has(flag.id)) {
+          riskToken2022Flags.push({ id: flag.id, severity: typeof flag.severity === "string" ? flag.severity : "unknown" });
+        }
+      }
+    }
   }
   const riskScoreCap = opts.riskScoreCap === undefined ? null : Number(opts.riskScoreCap);
 
@@ -6206,18 +6246,42 @@ export function executionReadinessReport(
       "MAINNET READINESS CHECKLIST — an honest, read-only evaluation of the fourteen live-gate conditions against operator-named evidence. This command can NEVER report armed (the CLI acknowledgment, the signer boundary, and the redaction findings evaluate only at execution time), it has no bypass or force flag, and nothing it prints is an authorization.",
     generatedAt: (ctx.now ?? isoNow)(),
     network: "mainnet-beta",
+    /** What this checklist evaluates AGAINST — never what it can do. Readiness cannot execute. */
+    requestedMode: "mainnet-live (evaluation only — this command can never execute or arm)",
     mode: { killSwitch: config.killSwitch, emergencyStopPresent: stop, configPhase7LiveTradingReady: config.phase7LiveTradingReady },
     verdict: "blocked" as const,
     satisfiedCount: conditions.filter((c) => c.satisfied).length,
     totalChecks: conditions.length,
     conditions,
     blockedReason: `${missing.length} of ${conditions.length} live-gate condition(s) unsatisfied: ${missing.map((c) => c.gate).join(", ")}`,
+    /** S94: the explicit operator caps this evaluation ran with (null = not supplied; no defaults exist). */
+    caps: {
+      maxSpendPerTradeSol: config.caps.maxTradeSizeSol,
+      sessionLossCapSol: config.caps.maxDailyLossSol,
+      slippageCapBps: Number.isInteger(slippageCapBps) ? slippageCapBps : null,
+      riskScoreCap: Number.isFinite(riskScoreCap as number) ? riskScoreCap : null,
+      quoteAgeCapMs: quoteFreshness?.capMs ?? null,
+    },
     evidence: {
       quoteFreshness,
-      risk: riskScore === null ? null : { score: riskScore, mint: riskMint, cap: Number.isFinite(riskScoreCap as number) ? riskScoreCap : null },
+      risk:
+        riskScore === null
+          ? null
+          : {
+              score: riskScore,
+              mint: riskMint,
+              decision: riskDecision,
+              cap: Number.isFinite(riskScoreCap as number) ? riskScoreCap : null,
+              /** Where the risk evidence came from — readiness only ever accepts a named file. */
+              source: `operator-named file: ${opts.riskPath ?? ""}`,
+              /** S94: Token-2022 extension flags riding on the report (critical/high = blockers). */
+              token2022Flags: riskToken2022Flags,
+            },
       simulation: simulationOutcome === null ? null : { outcome: simulationOutcome, ...simulationDetail },
       wallet: walletPublicKeyValid ? opts.wallet : null,
       auditLogPath: opts.auditLog ?? null,
+      /** Readiness NEVER loads key material; the boundary is an execution-time construct. */
+      signerBoundary: "not-loaded — key material loads only at execution time through --signer-env",
     },
     mainnetDryRunNote:
       "mainnet-dry-run needs NO gate: execution:build --request mainnet-dry-run builds + paper:simulation:tx simulates against real chain state, and neither can send.",
@@ -6249,8 +6313,12 @@ export function executionReadinessReport(
   const lines: string[] = [];
   lines.push("MAINNET READINESS CHECKLIST (read-only; can never arm anything)");
   lines.push("================================================================");
+  lines.push(`network:     mainnet-beta | evaluated for: mainnet-live (evaluation only)`);
   lines.push(`verdict:     BLOCKED — ${report.satisfiedCount}/${report.totalChecks} conditions satisfied`);
   lines.push(`kill switch: ${config.killSwitch ? "ENGAGED" : "off"} | emergency stop: ${stop ? "PRESENT" : "absent"}`);
+  lines.push(
+    `caps:        spend/trade ${report.caps.maxSpendPerTradeSol} SOL | session loss ${report.caps.sessionLossCapSol} SOL | slippage ${report.caps.slippageCapBps ?? "UNSET"} bps | risk score ${report.caps.riskScoreCap ?? "UNSET"} | quote age ${report.caps.quoteAgeCapMs ?? "UNSET"} ms`,
+  );
   lines.push("");
   for (const c of conditions) {
     lines.push(`  [${c.satisfied ? "x" : " "}] ${c.gate}: ${c.detail}`);
@@ -6260,6 +6328,14 @@ export function executionReadinessReport(
   if (quoteFreshness !== null) {
     lines.push(`quote freshness: ${quoteFreshness.verdict.toUpperCase()} (age ${quoteFreshness.ageMs ?? "n/a"}ms, cap ${quoteFreshness.capMs ?? "MISSING"}ms)`);
   }
+  if (riskScore !== null) {
+    lines.push(`risk evidence:   score ${riskScore} (cap ${report.caps.riskScoreCap ?? "UNSET"}; decision ${riskDecision ?? "unknown"}; source: operator-named file)`);
+    if (riskToken2022Flags.length > 0) {
+      lines.push(`token-2022:      ${riskToken2022Flags.map((f) => `${f.id} [${f.severity}]`).join(", ")}`);
+    }
+  }
+  lines.push(`simulation:      ${simulationOutcome ?? "not supplied"} | signer boundary: never loaded here | audit path: ${opts.auditLog ?? "not supplied"}`);
+  lines.push(`next safe action: ${report.nextSafeAction}`);
   lines.push(report.mainnetDryRunNote);
   lines.push("");
   for (const caveat of report.caveats) lines.push(`CAVEAT: ${caveat}`);
@@ -6655,6 +6731,8 @@ export interface ExecutionDevnetRehearseCommandOptions {
   signerEnvVar?: string;
   /** Airdrop request in SOL (devnet faucet; valueless). Default 1. */
   airdropSol?: string;
+  /** Bounded faucet retries (default 3, hard cap 5 — the faucet is never spammed). */
+  airdropAttempts?: string;
   skipAirdrop?: boolean;
   /** Skip the pre-send simulateTransaction step (kept ON by default). */
   skipSimulation?: boolean;
@@ -6724,6 +6802,18 @@ export async function executionDevnetRehearseReport(
     airdropLamports = Math.round(sol * 1_000_000_000);
   }
 
+  let airdropAttempts: number | undefined;
+  if (opts.airdropAttempts !== undefined) {
+    const n = Number(opts.airdropAttempts);
+    if (!Number.isInteger(n) || n < 1 || n > DEVNET_REHEARSAL_MAX_AIRDROP_ATTEMPTS) {
+      return {
+        text: `Refusing: --airdrop-attempts must be an integer between 1 and ${DEVNET_REHEARSAL_MAX_AIRDROP_ATTEMPTS} (the faucet is never spammed).`,
+        exitCode: 1,
+      };
+    }
+    airdropAttempts = n;
+  }
+
   const outDir = resolvePath(ctx, opts.outDir);
   const reportPath = join(outDir, REHEARSAL_REPORT_FILE);
   if (!opts.force && existsSync(reportPath)) {
@@ -6735,7 +6825,7 @@ export async function executionDevnetRehearseReport(
   // gitignored `.keypair` suffix — two independent rules must both fail before a secret could
   // become committable.
   let signer: TransactionSigningBoundary;
-  let signerSource: "generated-throwaway" | "operator-env";
+  let signerSource: RehearsalSignerSource;
   let keypairPath: string | null = null;
   if (opts.signerEnvVar) {
     try {
@@ -6763,18 +6853,31 @@ export async function executionDevnetRehearseReport(
     } catch {
       return { text: redactString(`Refusing: cannot create output directory at ${outDir}`), exitCode: 1 };
     }
+    // S94: an existing throwaway keypair in the output directory is REUSED, never overwritten —
+    // a faucet-blocked run can be funded externally and rerun against the SAME key.
+    const throwawayPath = join(outDir, REHEARSAL_KEYPAIR_FILE);
     try {
-      const throwaway = createThrowawayDevnetSigner({
-        keypairPath: join(outDir, REHEARSAL_KEYPAIR_FILE),
-        writeFile: (path: string, contents: string) => writeFileSync(path, contents),
-      });
-      signer = throwaway.boundary;
-      keypairPath = throwaway.keypairPath;
+      if (existsSync(throwawayPath)) {
+        const reused = loadThrowawayDevnetSigner({
+          keypairPath: throwawayPath,
+          readFile: (path: string) => readFileSync(path, "utf8"),
+        });
+        signer = reused.boundary;
+        keypairPath = reused.keypairPath;
+        signerSource = "reused-throwaway";
+      } else {
+        const throwaway = createThrowawayDevnetSigner({
+          keypairPath: throwawayPath,
+          writeFile: (path: string, contents: string) => writeFileSync(path, contents),
+        });
+        signer = throwaway.boundary;
+        keypairPath = throwaway.keypairPath;
+        signerSource = "generated-throwaway";
+      }
     } catch (err) {
-      const msg = err instanceof SignerBoundaryError ? err.message : "throwaway signer generation failed";
+      const msg = err instanceof SignerBoundaryError ? err.message : "throwaway signer load/generation failed";
       return { text: redactString(`Refusing: ${msg}`), exitCode: 1 };
     }
-    signerSource = "generated-throwaway";
   }
   try {
     mkdirSync(outDir, { recursive: true });
@@ -6810,6 +6913,7 @@ export async function executionDevnetRehearseReport(
     emergencyStopFilePresent: stop,
     skipAirdrop: Boolean(opts.skipAirdrop),
     airdropLamports,
+    airdropAttempts,
     clock: ctx.now,
     sleep: ctx.sleep,
   });
@@ -6834,7 +6938,9 @@ export async function executionDevnetRehearseReport(
     `DEVNET END-TO-END REHEARSAL: ${report.outcome.toUpperCase()}`,
     `network:    devnet (${report.endpointHost})`,
     `signer:     ${report.signerPublicKey ?? "none"} (${report.signerSource}; public key)`,
-    keypairPath !== null ? `keypair:    ${keypairPath} (throwaway; gitignored; delete after use)` : "",
+    keypairPath !== null
+      ? `keypair:    ${keypairPath} (throwaway; gitignored; ${signerSource === "reused-throwaway" ? "REUSED from a prior run" : "delete after use"})`
+      : "",
     "",
     "steps:",
     ...report.steps.map((s) => `  [${s.status === "ok" ? "x" : " "}] ${s.step}: ${s.detail}`),
@@ -6844,6 +6950,7 @@ export async function executionDevnetRehearseReport(
       ? `confirmed:  ${report.confirmation.confirmed ? `yes (slot ${report.confirmation.slot ?? "unknown"})` : "no"} after ${report.confirmation.polls} poll(s)`
       : "",
     `artifacts:  ${reportPath}`,
+    ...(report.fundingGuidance !== null ? ["", ...report.fundingGuidance.map((g) => `NEXT: ${g}`)] : []),
     "",
     ...report.caveats.map((c) => `CAVEAT: ${c}`),
   ];
@@ -10124,6 +10231,12 @@ export interface PaperSniperRehearseCommandOptions {
   replayFile?: string;
   /** Optional preflight input (sniper.preflight.input.v1) with per-candidate inspection/risk. */
   preflightInputPath?: string;
+  /**
+   * S94: opt OUT of automatic risk evidence. In mainnet-dry-run mode WITHOUT --preflight-input,
+   * the rehearsal fetches a deep token:risk report per candidate automatically (the operator no
+   * longer has to hand-supply risk evidence). Other modes never auto-fetch (paper is offline).
+   */
+  skipAutoRisk?: boolean;
   /** Optional already-prepared routequote artifact (skips the fetch/prepare stages). */
   routequotePath?: string;
   /** Quote fetch inputs (mainnet-dry-run mode). */
@@ -10151,8 +10264,11 @@ export interface PaperSniperRehearseCommandOptions {
   failOnBlocked?: boolean;
 }
 
+/** S94: auto-risk fetches at most this many candidate risk reports per rehearsal (recorded honestly when truncated). */
+export const REHEARSE_AUTO_RISK_MAX_CANDIDATES = 10;
+
 const REHEARSE_NEXT: Readonly<Record<string, string>> = {
-  risk: "pnpm soulmaker token:risk <mint> --deep --json --out <risk.json> per candidate, then paper:sniper:preflight:input:prepare to bridge them",
+  risk: "automatic in mainnet-dry-run mode (deep token:risk per candidate); or manually: pnpm soulmaker token:risk <mint> --deep --json --out <risk.json> per candidate, then paper:sniper:preflight:input:prepare to bridge them",
   "quote-fetch": "pnpm soulmaker paper:routequote:fetch --candidates <candidates.json> --amount-sol <sol> --out <dir> --allow-paper-read",
   "quote-prepare": "pnpm soulmaker paper:routequote:prepare --candidates <candidates.json> --quote <quote.*.json> --out <prepared.json>",
   "tx-build": "pnpm soulmaker execution:build --candidate-mint <mint> --wallet <publicKey> --risk <risk.json> --amount-sol <sol> --slippage-bps <bps> --max-spend-sol <sol> --slippage-cap-bps <bps> --risk-score-cap <n> --request mainnet-dry-run --allow-paper-read --out <envelope.json>",
@@ -10239,11 +10355,110 @@ export async function paperSniperRehearseReport(
     push("candidates", "executed", `candidates from operator file ${candidatesPath}`, [candidatesPath]);
   }
 
-  // --- Stage 2: risk bridge ----------------------------------------------------
-  if (opts.preflightInputPath) {
-    push("risk", "executed", `operator-supplied preflight input (inspection/risk per candidate): ${opts.preflightInputPath}`, [opts.preflightInputPath]);
+  // --- Stage 2: risk evidence ----------------------------------------------------
+  // S94: in mainnet-dry-run mode the rehearsal fetches the risk evidence ITSELF by default — a
+  // deep token:risk report per candidate (Token-2022 extensions included), bridged through the
+  // canonical preflight-input prepare command. Operator-supplied --preflight-input always wins;
+  // --skip-auto-risk opts out; other modes never reach the network for risk (paper is offline).
+  let preflightInputPath: string | null = opts.preflightInputPath ?? null;
+  let riskSource: "operator" | "automatic" | "none" = preflightInputPath !== null ? "operator" : "none";
+  let autoRiskBuildTargetPath: string | null = null;
+  if (preflightInputPath !== null) {
+    push("risk", "executed", `operator-supplied preflight input (inspection/risk per candidate): ${preflightInputPath}`, [preflightInputPath]);
+  } else if (opts.riskPath !== undefined) {
+    riskSource = "operator";
+    push(
+      "risk",
+      "executed",
+      `operator-supplied token:risk report for the build target: ${opts.riskPath} (no per-candidate preflight input — pass nothing to let auto-risk fetch one per candidate)`,
+      [opts.riskPath],
+    );
+  } else if (mode === "mainnet-dry-run" && opts.skipAutoRisk !== true) {
+    const mints: string[] = [];
+    try {
+      const rawList = readJsonValue(ctx, candidatesPath, "sniper candidate list");
+      if (isPlainObject(rawList) && Array.isArray(rawList.candidates)) {
+        for (const entry of rawList.candidates) {
+          if (isPlainObject(entry) && typeof entry.mint === "string" && entry.mint.length > 0 && !mints.includes(entry.mint)) {
+            mints.push(entry.mint);
+          }
+        }
+      }
+    } catch {
+      // No readable mints — recorded honestly below.
+    }
+    if (mints.length === 0) {
+      push("risk", "failed", "auto-risk could not read any candidate mint from the candidate list", [], REHEARSE_NEXT.risk ?? null);
+    } else {
+      const riskDir = join(outDir, "risk");
+      try {
+        mkdirSync(riskDir, { recursive: true });
+      } catch {
+        return { text: redactString(`Refusing: cannot create ${riskDir}`), exitCode: 1 };
+      }
+      const cappedMints = mints.slice(0, REHEARSE_AUTO_RISK_MAX_CANDIDATES);
+      const truncatedNote =
+        mints.length > cappedMints.length ? ` (first ${cappedMints.length} of ${mints.length} candidates — run token:risk manually for the rest)` : "";
+      const riskPaths: string[] = [];
+      const riskArtifacts: string[] = [];
+      let firstFailure: string | null = null;
+      for (const mint of cappedMints) {
+        const riskOut = join(riskDir, `risk.${mint}.json`);
+        const text = await tokenRiskReport(mint, ctx, {
+          deep: true,
+          outPath: riskOut,
+          force: opts.force,
+          allowPaperRead: opts.allowPaperRead,
+        });
+        if (existsSync(riskOut)) {
+          riskPaths.push(riskOut);
+          riskArtifacts.push(`risk/risk.${mint}.json`);
+          if (mint === mints[0]) autoRiskBuildTargetPath = riskOut;
+        } else if (firstFailure === null) {
+          firstFailure = text.slice(0, 200);
+        }
+      }
+      if (riskPaths.length === 0) {
+        push(
+          "risk",
+          "unavailable",
+          `auto-risk could not fetch any deep risk report (chain read unavailable or refused): ${firstFailure ?? "no detail"}`,
+          [],
+          REHEARSE_NEXT.risk ?? null,
+        );
+      } else {
+        const preparedPath = join(outDir, "preflight-input.json");
+        const prepare = paperSniperPreflightInputPrepareReport(ctx, {
+          candidatesPath,
+          riskPaths,
+          sourceLabel: "paper:sniper:rehearse auto-risk",
+          outPath: preparedPath,
+          force: opts.force,
+        });
+        if (prepare.exitCode === 0 && existsSync(preparedPath)) {
+          preflightInputPath = preparedPath;
+          riskSource = "automatic";
+          push(
+            "risk",
+            "executed",
+            `AUTO risk: deep token:risk (Token-2022 extensions included) fetched for ${riskPaths.length}/${mints.length} candidate(s) and bridged into the preflight input${truncatedNote}${firstFailure !== null ? `; first failure: ${firstFailure}` : ""}`,
+            ["preflight-input.json", ...riskArtifacts],
+          );
+        } else {
+          push("risk", "failed", `auto-risk bridge refused: ${prepare.text.slice(0, 200)}`, riskArtifacts, REHEARSE_NEXT.risk ?? null);
+        }
+      }
+    }
+  } else if (mode === "mainnet-dry-run") {
+    push("risk", "skipped", "--skip-auto-risk: the dry-run preflight stage stays honestly unknown per candidate", [], REHEARSE_NEXT.risk ?? null);
   } else {
-    push("risk", "skipped", "no --preflight-input supplied — the dry-run preflight stage stays honestly unknown per candidate", [], REHEARSE_NEXT.risk ?? null);
+    push(
+      "risk",
+      "skipped",
+      `no --preflight-input supplied and mode ${mode} never auto-fetches risk (no network) — the dry-run preflight stage stays honestly unknown per candidate`,
+      [],
+      REHEARSE_NEXT.risk ?? null,
+    );
   }
 
   // --- Stages 3+4: quote fetch + prepare (mainnet-dry-run only) ----------------
@@ -10312,7 +10527,7 @@ export async function paperSniperRehearseReport(
   const dryRunDir = join(outDir, "dry-run");
   const dryRun = paperSniperDryRunReport(ctx, {
     candidatesPath,
-    preflightInputPath: opts.preflightInputPath,
+    preflightInputPath: preflightInputPath ?? undefined,
     routequotePath: routequotePath ?? undefined,
     adoptSpecs: opts.adoptSpecs,
     operatorLabel: opts.operatorLabel,
@@ -10342,17 +10557,20 @@ export async function paperSniperRehearseReport(
   }
 
   // --- Stages 6+7: unsigned build + real simulation (mainnet-dry-run only) -------
+  // S94: the build's risk evidence comes from --risk when supplied, otherwise from the auto-risk
+  // report of the build target (the FIRST candidate) — the operator no longer has to hand-feed it.
+  const effectiveRiskPath = opts.riskPath ?? autoRiskBuildTargetPath ?? undefined;
   let envelopePath: string | null = null;
   let simulationPath: string | null = null;
   if (mode !== "mainnet-dry-run") {
     const why = mode === "devnet" ? "the swap builder serves mainnet only; the devnet stage uses the self-transfer probe instead" : "paper mode builds nothing";
     push("tx-build", "skipped", why, [], REHEARSE_NEXT["tx-build"] ?? null);
     push("tx-simulate", "skipped", "nothing to simulate without a build", [], REHEARSE_NEXT["tx-simulate"] ?? null);
-  } else if (!opts.wallet || !opts.riskPath || !opts.maxSpendSol || !opts.slippageCapBps || !opts.riskScoreCap || !opts.slippageBps) {
+  } else if (!opts.wallet || !effectiveRiskPath || !opts.maxSpendSol || !opts.slippageCapBps || !opts.riskScoreCap || !opts.slippageBps) {
     push(
       "tx-build",
       "skipped",
-      "tx build needs ALL of --wallet --risk --amount-sol --slippage-bps --max-spend-sol --slippage-cap-bps --risk-score-cap (explicit caps; nothing is defaulted)",
+      "tx build needs ALL of --wallet --risk (or auto-risk) --amount-sol --slippage-bps --max-spend-sol --slippage-cap-bps --risk-score-cap (explicit caps; nothing is defaulted)",
       [],
       REHEARSE_NEXT["tx-build"] ?? null,
     );
@@ -10379,7 +10597,7 @@ export async function paperSniperRehearseReport(
         amountSol: opts.amountSol ?? "0.01",
         slippageBps: opts.slippageBps,
         wallet: opts.wallet,
-        riskPath: opts.riskPath,
+        riskPath: effectiveRiskPath,
         request: "mainnet-dry-run",
         maxSpendSol: opts.maxSpendSol,
         slippageCapBps: opts.slippageCapBps,
@@ -10463,7 +10681,7 @@ export async function paperSniperRehearseReport(
   const readiness = executionReadinessReport(ctx, {
     quoteReportPath: fetchReportPath ?? undefined,
     maxQuoteAgeMs: fetchReportPath !== null ? opts.maxQuoteAgeMs : undefined,
-    riskPath: opts.riskPath,
+    riskPath: effectiveRiskPath,
     riskScoreCap: opts.riskScoreCap,
     simulationPath: simulationPath ?? undefined,
     slippageCapBps: opts.slippageCapBps,
@@ -10496,6 +10714,8 @@ export async function paperSniperRehearseReport(
       mode,
       outcome: cleanRun ? "rehearsed" : "blocked",
       generatedAt: (ctx.now ?? isoNow)(),
+      /** S94: where the per-candidate risk evidence came from — automatic | operator | none. */
+      riskSource,
       stages,
       executedCount: stages.filter((s) => s.status === "executed").length,
       skippedCount: stages.filter((s) => s.status === "skipped").length,
@@ -10520,6 +10740,7 @@ export async function paperSniperRehearseReport(
     const lines: string[] = [];
     lines.push(`SNIPER REHEARSAL (${mode}): ${report.outcome.toUpperCase()}`);
     lines.push("=".repeat(40));
+    lines.push(`risk evidence: ${riskSource === "automatic" ? "AUTOMATIC (deep token:risk per candidate)" : riskSource === "operator" ? "operator-supplied" : "none"}`);
     for (const s of stages) {
       lines.push(`  [${s.status === "executed" ? "x" : s.status === "skipped" ? "-" : " "}] ${s.stage} (${s.status}): ${s.detail}`);
       if (s.nextCommand !== null && s.status !== "executed") lines.push(`        next: ${s.nextCommand}`);

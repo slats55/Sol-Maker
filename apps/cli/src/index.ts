@@ -2347,6 +2347,7 @@ program
   .option("--candidates <path>", "candidate list JSON (exactly one of --candidates / --replay-file)")
   .option("--replay-file <path>", "realtime replay events JSON — candidates come from a replay snapshot")
   .option("--preflight-input <path>", "preflight input JSON with per-candidate inspection/risk (sniper.preflight.input.v1)")
+  .option("--skip-auto-risk", "opt OUT of S94 automatic risk evidence (mainnet-dry-run fetches deep token:risk per candidate by default)")
   .option("--routequote <path>", "already-prepared routequote artifact (skips the fetch/prepare stages)")
   .option("--amount-sol <sol>", "quote/build input amount in SOL (default 0.01 for the quote probe)")
   .option("--slippage-bps <bps>", "explicit slippage tolerance for quote fetch + build")
@@ -2373,6 +2374,7 @@ program
       candidates?: string;
       replayFile?: string;
       preflightInput?: string;
+      skipAutoRisk?: boolean;
       routequote?: string;
       amountSol?: string;
       slippageBps?: string;
@@ -2401,6 +2403,7 @@ program
           candidatesPath: opts.candidates,
           replayFile: opts.replayFile,
           preflightInputPath: opts.preflightInput,
+          skipAutoRisk: Boolean(opts.skipAutoRisk),
           routequotePath: opts.routequote,
           amountSol: opts.amountSol,
           slippageBps: opts.slippageBps,
@@ -2680,13 +2683,14 @@ program
 program
   .command("execution:devnet:rehearse")
   .description(
-    "DEVNET end-to-end broadcast rehearsal (Sprint 93): generate a THROWAWAY devnet keypair (written ONLY under runs/ with the gitignored .keypair suffix; secret bytes never logged) or reuse one via --signer-env, airdrop devnet SOL, build the unsigned self-transfer probe, simulate it, submit it through the refusal-first send path, confirm it, and write the honest artifact set into --out. Same double opt-in as execution:devnet:send (env flag + --acknowledge-devnet-execution); mainnet endpoints are refused; an airdrop rate limit becomes an honest devnet-funding-blocked artifact, never a faked success. There is NO mainnet variant — deliberately",
+    "DEVNET end-to-end broadcast rehearsal (Sprint 93/94): generate a THROWAWAY devnet keypair (written ONLY under runs/ with the gitignored .keypair suffix; secret bytes never logged), REUSE an existing throwaway in the output directory automatically (external funding sticks to the same key), or load an operator devnet keypair via --signer-env, airdrop devnet SOL with bounded retries, build the unsigned self-transfer probe, simulate it, submit it through the refusal-first send path, confirm it, and write the honest artifact set into --out. Same double opt-in as execution:devnet:send (env flag + --acknowledge-devnet-execution); mainnet endpoints are refused; an airdrop rate limit becomes an honest devnet-funding-blocked artifact, never a faked success. There is NO mainnet variant — deliberately",
   )
   .option("--out <dir>", "output DIRECTORY for the rehearsal artifacts + throwaway keypair (required; must be under runs/ unless --signer-env)")
   .option("--rpc-url <url>", "devnet RPC endpoint (default https://api.devnet.solana.com; mainnet endpoints refused)")
   .option("--acknowledge-devnet-execution", "the explicit devnet acknowledgment flag (required with the env flag)")
   .option("--signer-env <ENV_VAR_NAME>", "reuse an existing devnet keypair: the NAME of the env var holding its file PATH")
   .option("--airdrop-sol <sol>", "devnet airdrop request in SOL (default 1; at most 2; valueless devnet SOL)")
+  .option("--airdrop-attempts <n>", "bounded faucet retries per run (default 3; hard cap 5 — the faucet is never spammed)")
   .option("--skip-airdrop", "do not request an airdrop (the signer must already be funded)")
   .option("--skip-simulation", "skip the pre-send simulateTransaction step (kept on by default)")
   .option("--json", "emit the rehearsal report as stable JSON")
@@ -2698,6 +2702,7 @@ program
       acknowledgeDevnetExecution?: boolean;
       signerEnv?: string;
       airdropSol?: string;
+      airdropAttempts?: string;
       skipAirdrop?: boolean;
       skipSimulation?: boolean;
       json?: boolean;
@@ -2711,6 +2716,7 @@ program
           acknowledgeDevnetExecution: Boolean(opts.acknowledgeDevnetExecution),
           signerEnvVar: opts.signerEnv,
           airdropSol: opts.airdropSol,
+          airdropAttempts: opts.airdropAttempts,
           skipAirdrop: Boolean(opts.skipAirdrop),
           skipSimulation: Boolean(opts.skipSimulation),
           json: Boolean(opts.json),

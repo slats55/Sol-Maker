@@ -152,6 +152,65 @@ describe("execution:readiness — default blocked, every gap named", () => {
   });
 });
 
+describe("execution:readiness — S94 evidence quality", () => {
+  it("echoes the caps in effect, the requested-mode label, and the never-loaded signer boundary", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeFileSync(join(tmp, "soulmaker.config.json"), JSON.stringify({ mode: "PAPER" }));
+      const report = run(tmp, {}, { slippageCapBps: "100", riskScoreCap: "30" }) as ReadinessJson & {
+        requestedMode: string;
+        caps: Record<string, unknown>;
+        evidence: { signerBoundary?: string };
+      };
+      expect(report.requestedMode).toContain("evaluation only");
+      expect(report.caps.slippageCapBps).toBe(100);
+      expect(report.caps.riskScoreCap).toBe(30); // echoed even without a risk report (the cap the run was configured with)
+      expect(report.evidence.signerBoundary).toContain("not-loaded");
+    });
+  });
+
+  it("surfaces the Token-2022 extension flags riding on the risk evidence, severities verbatim", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeFileSync(join(tmp, "soulmaker.config.json"), JSON.stringify({ mode: "PAPER" }));
+      writeFileSync(
+        join(tmp, "risk.json"),
+        JSON.stringify({
+          mint: "So11111111111111111111111111111111111111112",
+          score: 100,
+          decision: "REJECT",
+          flags: [
+            { id: "transfer-hook-present", severity: "critical" },
+            { id: "permanent-delegate-present", severity: "critical" },
+            { id: "freeze-authority-present", severity: "high" }, // NOT a token-2022 flag — must not appear
+          ],
+        }),
+      );
+      const report = run(tmp, {}, { riskPath: "risk.json", riskScoreCap: "30" }) as ReadinessJson & {
+        evidence: { risk: { decision: string; source: string; token2022Flags: Array<{ id: string; severity: string }> } };
+      };
+      expect(report.evidence.risk.decision).toBe("REJECT");
+      expect(report.evidence.risk.source).toContain("operator-named file");
+      expect(report.evidence.risk.token2022Flags).toEqual([
+        { id: "transfer-hook-present", severity: "critical" },
+        { id: "permanent-delegate-present", severity: "critical" },
+      ]);
+      const byGate = Object.fromEntries(report.conditions.map((c) => [c.gate, c.satisfied]));
+      expect(byGate["risk-under-threshold"]).toBe(false);
+    });
+  });
+
+  it("the human output names network, caps, evidence, signer boundary, and the exact next safe action", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeFileSync(join(tmp, "soulmaker.config.json"), JSON.stringify({ mode: "PAPER" }));
+      const r = executionReadinessReport({ cwd: tmp, env: {}, now: () => NOW_ISO }, {});
+      expect(r.exitCode).toBe(0);
+      expect(r.text).toContain("network:     mainnet-beta");
+      expect(r.text).toContain("caps:");
+      expect(r.text).toContain("signer boundary: never loaded here");
+      expect(r.text).toContain("next safe action:");
+    });
+  });
+});
+
 describe("execution:readiness — no bypass surface", () => {
   it("the registered flag set carries no bypass/force-arm/enable-live flag, and no readiness flag can arm", () => {
     const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "index.ts"), "utf8");
