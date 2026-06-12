@@ -29,6 +29,8 @@ const EXPECTED_COMMANDS: readonly string[] = [
   "paper:sniper:preflight:input:prepare",
   "paper:routequote:prepare",
   "paper:routequote:fetch",
+  "paper:realtime:snapshot",
+  "paper:realtime:watch",
   "paper:sniper:decide",
   "paper:sniper:workflow",
   "paper:sniper:report",
@@ -63,8 +65,8 @@ const REQUIRED_DOCS = ["docs/SNIPER_RUNBOOK.md", "README.md"] as const;
 const SCANNED_DOCS = [...REQUIRED_DOCS, "docs/SNIPER_MODEL.md", "examples/sniper/README.md"] as const;
 
 /** A command-shaped token: paper:sniper:… / paper:phase6:… / paper:simulation:… /
- * paper:routequote:… (colon/hyphen segments). */
-const COMMAND_TOKEN = /paper:(?:sniper|phase6|simulation|routequote):[a-z0-9-]+(?::[a-z0-9-]+)*/g;
+ * paper:routequote:… / paper:realtime:… (colon/hyphen segments). */
+const COMMAND_TOKEN = /paper:(?:sniper|phase6|simulation|routequote|realtime):[a-z0-9-]+(?::[a-z0-9-]+)*/g;
 
 function registeredCommands(): string[] {
   const source = readFileSync(CLI_INDEX, "utf8");
@@ -75,7 +77,8 @@ function registeredCommands(): string[] {
         n.startsWith("paper:sniper:") ||
         n.startsWith("paper:phase6:") ||
         n.startsWith("paper:simulation:") ||
-        n.startsWith("paper:routequote:"),
+        n.startsWith("paper:routequote:") ||
+        n.startsWith("paper:realtime:"),
     )
     .sort();
 }

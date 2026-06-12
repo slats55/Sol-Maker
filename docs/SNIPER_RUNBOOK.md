@@ -106,6 +106,8 @@ invariants.
 | `paper:sniper:preflight:input:prepare` | `--candidates` + at least one `--inspect`/`--risk` | `--out` only | `sniper.preflight.input.v1` (the real-input bridge) |
 | `paper:routequote:prepare` | `--candidates` | `--out` only | `routequote.prepared.v1` (S91 read-only quote bridge: operator-supplied `routequote.observation.input.v1` files paired by mint; CLOSED outcome set — nothing can mean "executable") |
 | `paper:routequote:fetch` | `--candidates` + one of `--amount-raw`/`--amount-sol` | `--out-dir` only | `routequote.fetch.report.v1` + per-mint `routequote.observation.input.v1` files (S92 REAL read-only fetcher over the free Jupiter lite quote API; network READ only — no wallet/keys/signing/sending; PAPER mode requires `--allow-paper-read`; a fetched quote can never unblock a blocked chain) |
+| `paper:realtime:snapshot` | (none — defaults to the live Jupiter recent-tokens feed) | `--out-dir` only | `realtime.candidates.snapshot.v1` + a canonical `sniper.candidate.list.v1` (S92 real-time ingestion: ONE poll of a public new-token feed or a `--replay-file`; observations only — no order, no trade; replay data is always labeled replay) |
+| `paper:realtime:watch` | `--polls`, `--journal` | journal only (JSONL, appended per poll) | `realtime.watch.summary.v1` (S92 BOUNDED watch — never an infinite loop; interrupt-safe append-only journal; deduplicates new mints across polls; watching can never trigger an order) |
 | `paper:sniper:decide` | `--candidates` | `--out` only | `sniper.paper.decision.report.v1` (or `.v2` via `--schema-version v2`) |
 | `paper:sniper:policy:validate` | `--input` | never | `sniper.policy.config.v1` (or `.v2` via `--schema-version v2`) |
 | `paper:sniper:workflow` | (none) | never | `sniper.workflow.plan.v1` |

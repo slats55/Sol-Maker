@@ -12,6 +12,7 @@
     "@soulmaker/core": "workspace:*",
     "@soulmaker/paper": "workspace:*",
     "@soulmaker/quotefetch": "workspace:*",
+    "@soulmaker/realtime": "workspace:*",
     "@soulmaker/risk": "workspace:*",
     "@soulmaker/routequote": "workspace:*",
     "@soulmaker/security": "workspace:*",

@@ -1,0 +1,14 @@
+{
+  "name": "@soulmaker/realtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "REAL-TIME candidate INGESTION layer (Sprint 92): watches public new-token feeds (Jupiter recent-tokens API first) and replay files, and normalizes observations into the EXISTING sniper candidate-list contract. Watching is READ-ONLY observation: no wallet, no keys, no signing, no sending, no transaction construction, no order placement â€” a watched candidate is an observation that feeds the PAPER pipeline, never a trade.",
+  "exports": { ".": "./src/index.ts" },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@soulmaker/security": "workspace:*",
+    "@soulmaker/sniper": "workspace:*"
+  }
+}

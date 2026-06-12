@@ -104,6 +104,15 @@ import {
   type RouteQuoteFetchReport,
 } from "@soulmaker/quotefetch";
 import {
+  createJupiterRecentAdapter,
+  createReplayCandidateAdapter,
+  buildRealtimeCandidatesSnapshot,
+  formatRealtimeCandidatesSnapshot,
+  type CandidateSourceAdapter,
+  type JupiterRecentAdapterOptions,
+  type RealtimeCandidatesSnapshot,
+} from "@soulmaker/realtime";
+import {
   parseMintAddress,
   normalizeSniperCandidateList,
   formatSniperCandidateList,
@@ -330,6 +339,10 @@ export interface CommandContext {
   createClient?: (config: ReadOnlyClientConfig) => ReadOnlySolanaClient;
   /** Factory for the read-only quote adapter; injected in tests to avoid network. */
   createQuoteAdapter?: (options: JupiterQuoteAdapterOptions) => QuoteProviderAdapter;
+  /** Factory for the live candidate source; injected in tests to avoid network. */
+  createCandidateSource?: (options: JupiterRecentAdapterOptions) => CandidateSourceAdapter;
+  /** Injectable sleep for the bounded realtime watch; injected in tests. */
+  sleep?: (ms: number) => Promise<void>;
   /** Injectable clock for deterministic report timestamps. */
   now?: () => string;
 }
@@ -5266,6 +5279,352 @@ export async function paperRouteQuoteFetchReport(
     );
   }
   return { text: redactString(lines.join("\n")), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 92 — paper:realtime:snapshot / paper:realtime:watch
+//   Real-time candidate INGESTION: poll a public new-token feed (Jupiter
+//   recent-tokens) or a local replay file, normalize observations into the
+//   EXISTING sniper candidate-list contract, and write honest artifacts.
+//   Watching is read-only observation — it can never place an order.
+// ---------------------------------------------------------------------------
+
+const REALTIME_SOURCES = ["jupiter-recent", "replay"] as const;
+type RealtimeSourceId = (typeof REALTIME_SOURCES)[number];
+
+export interface PaperRealtimeSnapshotCommandOptions {
+  /** Which source to poll: "jupiter-recent" (live) or "replay" (local file). */
+  source?: string;
+  /** Replay events JSON path (required when source is "replay"). */
+  replayFile?: string;
+  /** Keep at most this many observations (default 25, max 50). */
+  limit?: string;
+  /** Drop observations whose liquidity hint is missing or below this (USD). */
+  minLiquidityUsd?: string;
+  /** Override the live feed base URL. */
+  endpoint?: string;
+  timeoutMs?: string;
+  /** Explicit opt-in to a network read while in PAPER mode (live source only). */
+  allowPaperRead?: boolean;
+  /** Directory to write snapshot.json + candidates.json into (must exist). */
+  outDir?: string;
+  force?: boolean;
+  json?: boolean;
+  /** Exit non-zero when the poll did not observe (unavailable/blocked/error/unsupported). */
+  failOnNotObserved?: boolean;
+}
+
+interface RealtimeSourceGate {
+  ok: boolean;
+  message?: string;
+  adapter?: CandidateSourceAdapter;
+  sourceKind?: "live" | "replay";
+}
+
+/** Resolve + gate the requested candidate source (config honesty gate for live reads). */
+function openRealtimeSource(
+  ctx: CommandContext,
+  opts: { source?: string; replayFile?: string; endpoint?: string; timeoutMs?: number; allowPaperRead?: boolean },
+): RealtimeSourceGate {
+  const source = (opts.source ?? "jupiter-recent") as RealtimeSourceId;
+  if (!REALTIME_SOURCES.includes(source)) {
+    return { ok: false, message: `Refusing: --source must be one of ${REALTIME_SOURCES.join("|")}.` };
+  }
+
+  if (source === "replay") {
+    if (!opts.replayFile) {
+      return { ok: false, message: 'Refusing: --replay-file <path> is required when --source is "replay".' };
+    }
+    let eventsValue: unknown;
+    try {
+      eventsValue = readJsonValue(ctx, opts.replayFile, "replay events file");
+    } catch (err) {
+      return { ok: false, message: redactString(`Refusing: ${(err as Error).message}`) };
+    }
+    try {
+      return { ok: true, adapter: createReplayCandidateAdapter(eventsValue), sourceKind: "replay" };
+    } catch (err) {
+      return { ok: false, message: redactString(`Refusing: ${(err as Error).message}`) };
+    }
+  }
+
+  // Live source: same honesty gate as every network-reading command.
+  let config: Config;
+  try {
+    config = loadConfig(toLoadOptions(ctx));
+  } catch (err) {
+    const msg = err instanceof ConfigError ? err.message : String(err);
+    return { ok: false, message: redactString(`Refusing: config is invalid.\n\n${msg}`) };
+  }
+  const caps = capabilitiesFor(config.mode);
+  if (!caps.canReadChain && !(config.mode === "PAPER" && opts.allowPaperRead === true)) {
+    return {
+      ok: false,
+      message:
+        `Refusing: mode ${config.mode} does not read the network. ` +
+        "Use WATCH_ONLY/SIMULATION, or pass --allow-paper-read to watch the feed in PAPER mode.",
+    };
+  }
+  const makeSource = ctx.createCandidateSource ?? createJupiterRecentAdapter;
+  try {
+    return {
+      ok: true,
+      adapter: makeSource({ baseUrl: opts.endpoint, timeoutMs: opts.timeoutMs, clock: ctx.now }),
+      sourceKind: "live",
+    };
+  } catch (err) {
+    return { ok: false, message: redactString(`Refusing: ${(err as Error).message}`) };
+  }
+}
+
+/**
+ * `soulmaker paper:realtime:snapshot` — ONE poll of a candidate source folded into a
+ * `realtime.candidates.snapshot.v1` artifact plus a ready-to-use canonical candidate list.
+ * Watching is read-only observation: no wallet, no keys, no order — the output feeds the
+ * existing PAPER intake (`paper:sniper:dry-run --candidates`).
+ */
+export async function paperRealtimeSnapshotReport(
+  ctx: CommandContext = {},
+  opts: PaperRealtimeSnapshotCommandOptions = {},
+): Promise<CliReport> {
+  const limit = opts.limit === undefined ? 25 : Number(opts.limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+    return { text: "Refusing: --limit must be an integer between 1 and 50.", exitCode: 1 };
+  }
+  let minLiquidityUsdHint: number | undefined;
+  if (opts.minLiquidityUsd !== undefined) {
+    minLiquidityUsdHint = Number(opts.minLiquidityUsd);
+    if (!Number.isFinite(minLiquidityUsdHint) || minLiquidityUsdHint < 0) {
+      return { text: "Refusing: --min-liquidity-usd must be a non-negative number.", exitCode: 1 };
+    }
+  }
+  const timeoutMs = opts.timeoutMs === undefined ? 10_000 : Number(opts.timeoutMs);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 120_000) {
+    return { text: "Refusing: --timeout-ms must be an integer between 100 and 120000.", exitCode: 1 };
+  }
+
+  // Refuse a doomed --out-dir before any network read happens.
+  let plannedSnapshotPath: string | null = null;
+  let plannedCandidatesPath: string | null = null;
+  if (opts.outDir) {
+    const dir = resolvePath(ctx, opts.outDir);
+    if (!existsSync(dir)) {
+      return { text: redactString(`Refusing: --out-dir ${dir} does not exist (create it first; this command never mkdirs).`), exitCode: 1 };
+    }
+    plannedSnapshotPath = join(dir, "snapshot.json");
+    plannedCandidatesPath = join(dir, "candidates.json");
+    if (!opts.force) {
+      for (const p of [plannedSnapshotPath, plannedCandidatesPath]) {
+        if (existsSync(p)) {
+          return { text: redactString(`Refusing: ${p} already exists (pass --force to overwrite).`), exitCode: 1 };
+        }
+      }
+    }
+  }
+
+  const gate = openRealtimeSource(ctx, {
+    source: opts.source,
+    replayFile: opts.replayFile,
+    endpoint: opts.endpoint,
+    timeoutMs,
+    allowPaperRead: opts.allowPaperRead,
+  });
+  if (!gate.ok || !gate.adapter || !gate.sourceKind) {
+    return { text: gate.message ?? "Refusing: candidate source unavailable.", exitCode: 1 };
+  }
+
+  let snapshot: RealtimeCandidatesSnapshot;
+  try {
+    const result = await gate.adapter.fetchOnce();
+    snapshot = buildRealtimeCandidatesSnapshot(result, gate.sourceKind, { limit, minLiquidityUsdHint });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const wrotePaths: string[] = [];
+  if (plannedSnapshotPath !== null) {
+    try {
+      writeFileSync(plannedSnapshotPath, JSON.stringify(redactValue(snapshot), null, 2) + "\n");
+      wrotePaths.push(plannedSnapshotPath);
+      if (snapshot.candidateList !== null && plannedCandidatesPath !== null) {
+        writeFileSync(plannedCandidatesPath, JSON.stringify(redactValue(snapshot.candidateList), null, 2) + "\n");
+        wrotePaths.push(plannedCandidatesPath);
+      }
+    } catch {
+      return { text: redactString(`Refusing: cannot write snapshot artifacts under ${opts.outDir}`), exitCode: 1 };
+    }
+  }
+
+  const exitCode = opts.failOnNotObserved && snapshot.status !== "observed" ? 1 : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(snapshot), null, 2), exitCode };
+  }
+
+  const lines = [formatRealtimeCandidatesSnapshot(snapshot), ""];
+  if (wrotePaths.length > 0) {
+    lines.push(`wrote ${wrotePaths.length} file(s):`);
+    for (const p of wrotePaths) lines.push(`  - ${p}`);
+    lines.push("", "Next:");
+    if (snapshot.candidateList !== null && plannedCandidatesPath !== null) {
+      lines.push(
+        `- Inspect + risk-check the candidates read-only, then bridge them: pnpm soulmaker paper:sniper:preflight:input:prepare --candidates "${plannedCandidatesPath}" --inspect <mint.inspect.json> --risk <mint.risk.json> --out pf-input.json`,
+        `- Fetch read-only route quotes for them: pnpm soulmaker paper:routequote:fetch --candidates "${plannedCandidatesPath}" --amount-sol 0.01 --out-dir <quotes-dir>`,
+        `- Run the PAPER dry-run: pnpm soulmaker paper:sniper:dry-run --candidates "${plannedCandidatesPath}" --out <run-dir>`,
+        "- A watched candidate is an observation — inspect and risk-check before any paper decision; nothing here is an order.",
+      );
+    } else {
+      lines.push("- The poll observed no usable candidates; nothing to feed the pipeline.");
+    }
+  } else {
+    lines.push("Next:", "- Nothing was written (no --out-dir). Re-run with --out-dir <dir> to emit snapshot.json + candidates.json.");
+  }
+  return { text: redactString(lines.join("\n")), exitCode };
+}
+
+export interface PaperRealtimeWatchCommandOptions {
+  source?: string;
+  replayFile?: string;
+  /** Number of polls to run (REQUIRED; 1..120 — the watch is always bounded). */
+  polls?: string;
+  /** Milliseconds between polls (default 5000, min 1000). */
+  intervalMs?: string;
+  /** JSONL journal path (REQUIRED; appended per poll — interrupt-safe). */
+  journal?: string;
+  limit?: string;
+  minLiquidityUsd?: string;
+  endpoint?: string;
+  timeoutMs?: string;
+  allowPaperRead?: boolean;
+  json?: boolean;
+}
+
+/**
+ * `soulmaker paper:realtime:watch` — a BOUNDED sequence of polls (never an infinite loop)
+ * appending one JSONL line per poll to a journal (interrupt-safe: every line is flushed as it
+ * happens; killing the watch loses at most the in-flight poll). New mints are deduplicated
+ * across the whole watch. Watching can never trigger an order — there is nothing here that
+ * builds, signs, or sends.
+ */
+export async function paperRealtimeWatchReport(
+  ctx: CommandContext = {},
+  opts: PaperRealtimeWatchCommandOptions = {},
+): Promise<CliReport> {
+  const polls = Number(opts.polls);
+  if (!Number.isInteger(polls) || polls < 1 || polls > 120) {
+    return { text: "Refusing: --polls <n> is required (an integer between 1 and 120 — the watch is always bounded).", exitCode: 1 };
+  }
+  const intervalMs = opts.intervalMs === undefined ? 5_000 : Number(opts.intervalMs);
+  if (!Number.isInteger(intervalMs) || intervalMs < 1_000 || intervalMs > 300_000) {
+    return { text: "Refusing: --interval-ms must be an integer between 1000 and 300000.", exitCode: 1 };
+  }
+  if (!opts.journal) {
+    return { text: "Refusing: --journal <path> is required (the watch must leave an explicit, append-only record).", exitCode: 1 };
+  }
+  const timeoutMs = opts.timeoutMs === undefined ? 10_000 : Number(opts.timeoutMs);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 120_000) {
+    return { text: "Refusing: --timeout-ms must be an integer between 100 and 120000.", exitCode: 1 };
+  }
+  const limit = opts.limit === undefined ? 25 : Number(opts.limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+    return { text: "Refusing: --limit must be an integer between 1 and 50.", exitCode: 1 };
+  }
+  let minLiquidityUsdHint: number | undefined;
+  if (opts.minLiquidityUsd !== undefined) {
+    minLiquidityUsdHint = Number(opts.minLiquidityUsd);
+    if (!Number.isFinite(minLiquidityUsdHint) || minLiquidityUsdHint < 0) {
+      return { text: "Refusing: --min-liquidity-usd must be a non-negative number.", exitCode: 1 };
+    }
+  }
+
+  const journalPath = resolvePath(ctx, opts.journal);
+
+  const gate = openRealtimeSource(ctx, {
+    source: opts.source,
+    replayFile: opts.replayFile,
+    endpoint: opts.endpoint,
+    timeoutMs,
+    allowPaperRead: opts.allowPaperRead,
+  });
+  if (!gate.ok || !gate.adapter || !gate.sourceKind) {
+    return { text: gate.message ?? "Refusing: candidate source unavailable.", exitCode: 1 };
+  }
+
+  const sleep = ctx.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const seenMints = new Set<string>();
+  const statusTally: Record<string, number> = {};
+  let newMintTotal = 0;
+
+  for (let poll = 1; poll <= polls; poll += 1) {
+    let line: Record<string, unknown>;
+    try {
+      const result = await gate.adapter.fetchOnce();
+      const snapshot = buildRealtimeCandidatesSnapshot(result, gate.sourceKind, { limit, minLiquidityUsdHint });
+      const newObservations = snapshot.observations.filter((o) => !seenMints.has(o.mint));
+      for (const o of newObservations) seenMints.add(o.mint);
+      newMintTotal += newObservations.length;
+      statusTally[snapshot.status] = (statusTally[snapshot.status] ?? 0) + 1;
+      line = {
+        poll,
+        fetchedAt: snapshot.fetchedAt,
+        status: snapshot.status,
+        statusDetail: snapshot.statusDetail,
+        keptCount: snapshot.keptCount,
+        newMintCount: newObservations.length,
+        newCandidates: newObservations.map((o) => ({
+          candidateId: o.candidateId,
+          mint: o.mint,
+          symbol: o.symbol,
+          launchpadLabel: o.launchpadLabel,
+          liquidityUsdHint: o.liquidityUsdHint,
+          sourceKind: o.sourceKind,
+        })),
+        watchOnly: true,
+        neverTrades: true,
+      };
+    } catch (err) {
+      statusTally["error"] = (statusTally["error"] ?? 0) + 1;
+      line = { poll, status: "error", statusDetail: redactString((err as Error).message).slice(0, 200), watchOnly: true, neverTrades: true };
+    }
+    // Append-per-poll: the journal survives an interrupt at any point.
+    try {
+      appendFileSync(journalPath, JSON.stringify(redactValue(line)) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot append watch journal at ${journalPath}`), exitCode: 1 };
+    }
+    if (poll < polls) await sleep(intervalMs);
+  }
+
+  const summary = {
+    schemaVersion: "realtime.watch.summary.v1",
+    watchOnly: true,
+    neverTrades: true,
+    phase7LiveTradingReady: false,
+    providerId: gate.adapter.providerId,
+    sourceKind: gate.sourceKind,
+    polls,
+    intervalMs,
+    distinctMintsObserved: seenMints.size,
+    newMintTotal,
+    statusTally,
+    journal: journalPath,
+  };
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(summary), null, 2), exitCode: 0 };
+  }
+  const lines = [
+    "REAL-TIME WATCH COMPLETE (bounded; read-only observation — nothing was traded)",
+    `provider:        ${summary.providerId} (${summary.sourceKind})`,
+    `polls:           ${polls} @ ${intervalMs}ms`,
+    `distinct mints:  ${seenMints.size}`,
+    `journal:         ${journalPath}`,
+    "",
+    "Next:",
+    `- Snapshot the current feed into a candidate list: pnpm soulmaker paper:realtime:snapshot --source ${opts.source ?? "jupiter-recent"} --out-dir <dir>`,
+    "- A watched candidate is an observation — inspect and risk-check before any paper decision.",
+  ];
+  return { text: redactString(lines.join("\n")), exitCode: 0 };
 }
 
 // ---------------------------------------------------------------------------

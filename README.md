@@ -751,6 +751,15 @@ pnpm soulmaker paper:routequote:prepare --candidates <candidates.json> --quote c
 # fetched quote can never unblock a blocked chain. PAPER mode requires --allow-paper-read:
 pnpm soulmaker paper:routequote:fetch --candidates <candidates.json> --amount-sol 0.01 --allow-paper-read --out-dir runs/quotes
 
+# Sprint 92 — REAL-TIME CANDIDATE INGESTION: poll a public new-token feed (Jupiter recent-tokens,
+# incl. pump.fun launches) or a local replay file, normalize observations into the EXISTING
+# candidate-list contract, and write snapshot.json + candidates.json the PAPER pipeline consumes.
+# Watching is READ-ONLY observation — no wallet, no keys, no order; market figures are
+# provider-reported HINTS; replay data is always labeled replay; the watch is always BOUNDED
+# (--polls max 120) with an interrupt-safe append-only JSONL journal:
+pnpm soulmaker paper:realtime:snapshot --allow-paper-read --min-liquidity-usd 1000 --out-dir runs/feed
+pnpm soulmaker paper:realtime:watch --polls 10 --interval-ms 5000 --journal runs/watch.jsonl --allow-paper-read
+
 # Sprint 27 — PAPER SNIPER DECISIONS: fold the candidate list + preflight + optional operator rules
 # into a per-candidate SIMULATED decision — skip / watch / paper-enter / paper-reject / unknown — with
 # reasons. A paper-enter is a PAPER-ONLY decision, NOT a buy/sell order, NOT a transaction, NOT live

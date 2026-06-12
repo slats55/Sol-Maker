@@ -48,6 +48,8 @@ import {
   paperSniperPreflightInputPrepareReport,
   paperRouteQuotePrepareReport,
   paperRouteQuoteFetchReport,
+  paperRealtimeSnapshotReport,
+  paperRealtimeWatchReport,
   paperSniperDecideReport,
   paperSniperWorkflowReport,
   paperSniperReportReport,
@@ -1381,6 +1383,108 @@ program
           force: Boolean(opts.force),
           json: Boolean(opts.json),
           failOnNotObserved: Boolean(opts.failOnNotObserved),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:realtime:snapshot")
+  .description(
+    "ONE poll of a real-time candidate source — the public Jupiter recent-tokens feed (live) or a local replay file — folded into a realtime.candidates.snapshot.v1 artifact plus a ready-to-use canonical sniper.candidate.list.v1. Watching is READ-ONLY observation: no wallet, no keys, no signing, no sending, no order — market figures are provider-reported HINTS, replay data is always labeled replay, and the output feeds the existing PAPER intake. PAPER mode requires --allow-paper-read for the live source",
+  )
+  .option("--source <id>", 'candidate source: "jupiter-recent" (live, default) or "replay" (local file)')
+  .option("--replay-file <path>", 'replay events JSON ({ events: [{ mint, ... }] }; required for --source replay)')
+  .option("--limit <n>", "keep at most this many observations (default 25, max 50)")
+  .option("--min-liquidity-usd <usd>", "drop observations whose liquidity HINT is missing or below this")
+  .option("--endpoint <url>", "override the live feed base URL")
+  .option("--timeout-ms <ms>", "per-request timeout in milliseconds (default 10000)")
+  .option("--allow-paper-read", "explicitly allow the live network read while in PAPER mode")
+  .option("--out-dir <dir>", "write snapshot.json + candidates.json into this EXISTING directory (existing files refused)")
+  .option("--force", "overwrite existing output files (refused by default)")
+  .option("--json", "emit the snapshot artifact as stable JSON")
+  .option("--fail-on-not-observed", "exit non-zero when the poll did not observe")
+  .action(
+    async (opts: {
+      source?: string;
+      replayFile?: string;
+      limit?: string;
+      minLiquidityUsd?: string;
+      endpoint?: string;
+      timeoutMs?: string;
+      allowPaperRead?: boolean;
+      outDir?: string;
+      force?: boolean;
+      json?: boolean;
+      failOnNotObserved?: boolean;
+    }) => {
+      const { text, exitCode } = await paperRealtimeSnapshotReport(
+        {},
+        {
+          source: opts.source,
+          replayFile: opts.replayFile,
+          limit: opts.limit,
+          minLiquidityUsd: opts.minLiquidityUsd,
+          endpoint: opts.endpoint,
+          timeoutMs: opts.timeoutMs,
+          allowPaperRead: Boolean(opts.allowPaperRead),
+          outDir: opts.outDir,
+          force: Boolean(opts.force),
+          json: Boolean(opts.json),
+          failOnNotObserved: Boolean(opts.failOnNotObserved),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:realtime:watch")
+  .description(
+    "A BOUNDED sequence of real-time candidate polls (never an infinite loop; --polls is required, max 120) appending one JSONL line per poll to an explicit journal — interrupt-safe: every line is flushed as it happens. New mints are deduplicated across the watch. Watching is READ-ONLY observation and can never trigger an order: no wallet, no keys, no signing, no sending. PAPER mode requires --allow-paper-read for the live source",
+  )
+  .option("--source <id>", 'candidate source: "jupiter-recent" (live, default) or "replay" (local file)')
+  .option("--replay-file <path>", "replay events JSON (required for --source replay)")
+  .option("--polls <n>", "REQUIRED number of polls (1..120 — the watch is always bounded)")
+  .option("--interval-ms <ms>", "milliseconds between polls (default 5000, min 1000)")
+  .option("--journal <path>", "REQUIRED JSONL journal path (appended per poll)")
+  .option("--limit <n>", "keep at most this many observations per poll (default 25, max 50)")
+  .option("--min-liquidity-usd <usd>", "drop observations whose liquidity HINT is missing or below this")
+  .option("--endpoint <url>", "override the live feed base URL")
+  .option("--timeout-ms <ms>", "per-request timeout in milliseconds (default 10000)")
+  .option("--allow-paper-read", "explicitly allow the live network read while in PAPER mode")
+  .option("--json", "emit the watch summary as stable JSON")
+  .action(
+    async (opts: {
+      source?: string;
+      replayFile?: string;
+      polls?: string;
+      intervalMs?: string;
+      journal?: string;
+      limit?: string;
+      minLiquidityUsd?: string;
+      endpoint?: string;
+      timeoutMs?: string;
+      allowPaperRead?: boolean;
+      json?: boolean;
+    }) => {
+      const { text, exitCode } = await paperRealtimeWatchReport(
+        {},
+        {
+          source: opts.source,
+          replayFile: opts.replayFile,
+          polls: opts.polls,
+          intervalMs: opts.intervalMs,
+          journal: opts.journal,
+          limit: opts.limit,
+          minLiquidityUsd: opts.minLiquidityUsd,
+          endpoint: opts.endpoint,
+          timeoutMs: opts.timeoutMs,
+          allowPaperRead: Boolean(opts.allowPaperRead),
+          json: Boolean(opts.json),
         },
       );
       console.log(text);
