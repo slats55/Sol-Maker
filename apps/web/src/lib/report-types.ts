@@ -25,7 +25,8 @@ export type SchemaFamily =
   | "routequote"
   | "realtime"
   | "txpreview"
-  | "execution";
+  | "execution"
+  | "engine";
 
 export interface ReportSchemaInfo {
   readonly id: string;
@@ -432,6 +433,15 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
     description:
       "The S96 read-only accounting state of the latest execution session and the continuation decision a NEW devnet attempt would face: allowed only after reconciled / not-sent / funding-blocked / an explicit audited acknowledgment. A blocked decision is the refusal wall working, not a bug.",
     cli: "execution:session:status",
+  },
+  {
+    id: "engine.status.report.v1",
+    title: "Rust engine status",
+    family: "engine",
+    stability: "stable",
+    description:
+      "The S97 Rust sidecar foundation's self-description over JSON IPC: capabilities (CLOSED allowlist — status, json-ipc, schema-parity), explicit disabled list, and signer/send/mainnet-send markers that must all literally be disabled or the TypeScript validator refuses the artifact. Deterministic — the engine reads no clock; the orchestrator supplies createdAt.",
+    cli: "engine:status",
   },
   {
     id: "sniper.preflight.input.v1",

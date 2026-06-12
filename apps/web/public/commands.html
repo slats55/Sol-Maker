@@ -882,6 +882,27 @@
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article>
         </div></div>
+  </section><section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Rust engine (sidecar)</h2>
+
+            </div>
+
+          </div>
+    <div class="sm-section__body"><div class="sm-cmdgrid">
+          <article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker engine:status</code>
+    <p class="sm-cmd__summary">S97 Rust sidecar foundation: invoke the solmaker-engine binary over JSON IPC and STRICTLY validate engine.status.report.v1 (CLOSED schema; signer/send/mainnet-send must literally be disabled). No Rust toolchain reports UNAVAILABLE honestly (exit 0 unless --fail-on-unavailable). The engine cannot sign, send, or touch the network by construction.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="The S97 Rust sidecar foundation&#39;s self-description over JSON IPC: capabilities (CLOSED allowlist — status, json-ipc, schema-parity), explicit disabled list, and signer/send/mainnet-send markers that must all literally be disabled or the TypeScript validator refuses the artifact. Deterministic — the engine reads no clock; the orchestrator supplies createdAt.">
+    <code>engine.status.report.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article>
+        </div></div>
   </section>
 
     <section class="sm-section">

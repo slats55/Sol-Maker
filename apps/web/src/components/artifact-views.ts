@@ -3045,6 +3045,66 @@ function renderSessionStatusView(rec: Record<string, unknown>): RawHtml {
   `;
 }
 
+function renderEngineStatusView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const signer = need(missing, "signerSupport", readString(rec, "signerSupport"));
+  const send = need(missing, "sendSupport", readString(rec, "sendSupport"));
+  const mainnetSend = need(missing, "mainnetSendSupport", readString(rec, "mainnetSendSupport"));
+  const allDisabled = signer === "disabled" && send === "disabled" && mainnetSend === "disabled";
+  const supported = readStringArray(rec, "supportedCapabilities");
+  const disabled = readStringArray(rec, "disabledCapabilities");
+  const caveats = readStringArray(rec, "caveats");
+  return html`
+    ${RiskNotice({
+      tone: allDisabled ? "info" : "danger",
+      title: allDisabled
+        ? "Rust engine sidecar — foundation only, every execution capability disabled"
+        : "Rust engine artifact claims a capability the foundation forbids — do NOT trust this artifact",
+      body: html`The S97 Rust sidecar's self-description. TypeScript is the validation authority:
+        the CLI refuses this artifact unless signer, send, and mainnet-send support are all
+        literally <code>disabled</code>. The engine has no signing, sending, wallet, key, or
+        network code path by construction.`,
+    })}
+    ${kvSection("Engine", undefined, [
+      { term: "engine", detail: text(`${readString(rec, "engineName") ?? DASH} ${readString(rec, "engineVersion") ?? ""}`) },
+      { term: "build profile", detail: code(readString(rec, "buildProfile")) },
+      { term: "rustc", detail: text(readString(rec, "rustcVersion") ?? "unavailable") },
+      { term: "ipc version", detail: code(readString(rec, "ipcVersion")) },
+      { term: "safety mode", detail: code(readString(rec, "safetyMode")) },
+      { term: "created at", detail: text(readString(rec, "createdAt") ?? "none (orchestrator supplied none)") },
+    ])}
+    ${kvSection("Safety markers (must all be disabled)", undefined, [
+      { term: "signer support", detail: code(signer) },
+      { term: "send support", detail: code(send) },
+      { term: "mainnet send support", detail: code(mainnetSend) },
+      { term: "never sends", detail: boolText(readBoolean(rec, "neverSends")) },
+      { term: "phase7LiveTradingReady", detail: boolText(readBoolean(rec, "phase7LiveTradingReady")) },
+    ])}
+    ${tableSection({
+      title: "Capabilities",
+      description: "Supported is a CLOSED allowlist (status, JSON IPC, schema parity); disabled names what the engine structurally cannot do.",
+      columns: [{ header: "Kind" }, { header: "Capabilities" }],
+      rows: [
+        ["supported", text(supported.items.join(", "))],
+        ["disabled", text(disabled.items.join(", "))],
+      ],
+      empty: "No capability lists present.",
+    })}
+    ${
+      caveats.total > 0
+        ? Section({
+            title: `Caveats (${String(caveats.total)})`,
+            description: "Carried by every engine status artifact.",
+            body: html`<ul class="sm-bullets sm-bullets--plain">
+              ${caveats.items.map((c) => html`<li>${c}</li>`)}
+            </ul>`,
+          })
+        : ""
+    }
+    ${partialNotice(missing)}
+  `;
+}
+
 /* ------------------------------------------------------------------ *
  * Dispatch.
  * ------------------------------------------------------------------ */
@@ -3128,6 +3188,8 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderReconciliationReportView(rec);
     case "execution.session.status.v1":
       return renderSessionStatusView(rec);
+    case "engine.status.report.v1":
+      return renderEngineStatusView(rec);
     default:
       return null;
   }

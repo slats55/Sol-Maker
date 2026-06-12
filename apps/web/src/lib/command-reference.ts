@@ -21,7 +21,8 @@ export type CommandGroup =
   | "Research runs"
   | "Sniper (paper-only)"
   | "Phase 6 simulation"
-  | "Execution (gated)";
+  | "Execution (gated)"
+  | "Rust engine (sidecar)";
 
 export const COMMAND_GROUP_ORDER: readonly CommandGroup[] = [
   "Diagnostics",
@@ -34,6 +35,7 @@ export const COMMAND_GROUP_ORDER: readonly CommandGroup[] = [
   "Sniper (paper-only)",
   "Phase 6 simulation",
   "Execution (gated)",
+  "Rust engine (sidecar)",
 ];
 
 export interface CommandRef {
@@ -519,6 +521,14 @@ export const COMMANDS: readonly CommandRef[] = [
     summary:
       "S96: the EXPLICIT, AUDITED manual exit from a blocked session — appends a manual-acknowledgment ledger entry with your verbatim --reason (>= 10 chars) plus the required --acknowledge-unreconciled-session flag. Refuses when nothing is blocked; erases nothing; no force/bypass variant exists.",
     group: "Execution (gated)",
+    readsChain: false,
+  },
+  // Rust engine (sidecar)
+  {
+    command: "engine:status",
+    summary:
+      "S97 Rust sidecar foundation: invoke the solmaker-engine binary over JSON IPC and STRICTLY validate engine.status.report.v1 (CLOSED schema; signer/send/mainnet-send must literally be disabled). No Rust toolchain reports UNAVAILABLE honestly (exit 0 unless --fail-on-unavailable). The engine cannot sign, send, or touch the network by construction.",
+    group: "Rust engine (sidecar)",
     readsChain: false,
   },
 ];
