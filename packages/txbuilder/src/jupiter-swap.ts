@@ -20,6 +20,7 @@ import { redactString } from "@soulmaker/security";
 import { validateUnsignedTxEnvelope, TX_ENVELOPE_SCHEMA_VERSION } from "@soulmaker/txpreview";
 import type { UnsignedTxEnvelope } from "@soulmaker/txpreview";
 import { evaluateBuildRefusals, type BuildRefusal, type BuildSwapRequest } from "./refusals.js";
+import { evaluateTxShapeRefusals, inspectUnsignedTransactionShape, type TxShapeFacts } from "./inspect.js";
 
 export const JUPITER_SWAP_BUILDER_ID = "jupiter-swap-api";
 export const JUPITER_SWAP_BASE_URL = "https://lite-api.jup.ag/swap/v1";
@@ -43,8 +44,8 @@ export interface JupiterSwapBuilderOptions {
 }
 
 export type BuildSwapResult =
-  | { built: true; envelope: UnsignedTxEnvelope; quoteFacts: BuiltQuoteFacts }
-  | { built: false; refusals: BuildRefusal[] };
+  | { built: true; envelope: UnsignedTxEnvelope; quoteFacts: BuiltQuoteFacts; txFacts: TxShapeFacts }
+  | { built: false; refusals: BuildRefusal[]; quoteFacts?: BuiltQuoteFacts | null; txFacts?: TxShapeFacts | null };
 
 export interface BuiltQuoteFacts {
   inAmountRaw: string;
@@ -193,6 +194,11 @@ export function createJupiterSwapBuilder(options: JupiterSwapBuilderOptions = {}
     if (maxQuoteAgeMs !== undefined && maxQuoteAgeMs !== null) {
       const freshness = evaluateQuoteFreshness({ fetchedAt: quotedAt, nowMs: Date.parse(clock()), maxAgeMs: maxQuoteAgeMs });
       if (!freshness.fresh) {
+        // S95: a FUTURE quote timestamp gets its own code — a clock that disagrees with the
+        // evidence is a different operator problem than a slow provider round-trip.
+        if (freshness.verdict === "future-timestamp") {
+          return { built: false, refusals: [refusal("build-refused-quote-future", `the fresh quote's timestamp is in the FUTURE: ${freshness.detail}`)] };
+        }
         return { built: false, refusals: [refusal("build-refused-quote-stale", `the fresh quote aged out before the build completed: ${freshness.detail}`)] };
       }
     }
@@ -225,17 +231,29 @@ export function createJupiterSwapBuilder(options: JupiterSwapBuilderOptions = {}
       return { built: false, refusals: [refusal("build-refused-provider-response-unsupported", `swap transaction failed strict validation: ${(err as Error).message}`)] };
     }
 
-    return {
-      built: true,
-      envelope,
-      quoteFacts: {
-        inAmountRaw: quote.inAmount,
-        outAmountRaw: quote.outAmount,
-        priceImpactPct,
-        contextSlot,
-        quotedAt,
-      },
+    const quoteFacts: BuiltQuoteFacts = {
+      inAmountRaw: quote.inAmount,
+      outAmountRaw: quote.outAmount,
+      priceImpactPct,
+      contextSlot,
+      quotedAt,
     };
+
+    // 4) S95 shape gate: the validated envelope's transaction must ALSO pass version/blockhash
+    //    checks, and — when the operator supplied a program allowlist — every invoked program
+    //    must be verifiable against it. A failed shape check refuses the whole build.
+    let txFacts: TxShapeFacts;
+    try {
+      txFacts = inspectUnsignedTransactionShape(envelope);
+    } catch (err) {
+      return { built: false, refusals: [refusal("build-refused-unsupported-transaction", `the built transaction could not be inspected: ${(err as Error).message}`)], quoteFacts };
+    }
+    const shapeRefusals = evaluateTxShapeRefusals(txFacts, request.controls?.allowedPrograms);
+    if (shapeRefusals.length > 0) {
+      return { built: false, refusals: shapeRefusals, quoteFacts, txFacts };
+    }
+
+    return { built: true, envelope, quoteFacts, txFacts };
   }
 
   return Object.freeze({ builderId: JUPITER_SWAP_BUILDER_ID, endpointHost, build });

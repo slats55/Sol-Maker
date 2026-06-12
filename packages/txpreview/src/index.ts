@@ -22,12 +22,16 @@ export {
   TX_SIMULATION_REPORT_BANNER,
   TX_SIMULATION_OUTCOMES,
   TX_SIMULATION_CAVEATS,
+  TX_SIMULATION_CLASSIFICATIONS,
+  TX_SIMULATION_CLASSIFICATION_GUIDANCE,
+  classifySimulationFailure,
   createTxPreviewRpc,
   simulateUnsignedEnvelope,
   formatTxSimulationReport,
 } from "./simulate.js";
 export type {
   TxSimulationOutcome,
+  TxSimulationClassification,
   TxSimulationReport,
   TxSimulateRpcLike,
   TxPreviewRpc,

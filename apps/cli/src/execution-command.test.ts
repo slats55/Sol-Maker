@@ -18,7 +18,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Keypair, PublicKey, SystemProgram, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import { validateUnsignedTxEnvelope } from "@soulmaker/txpreview";
-import { evaluateBuildRefusals, type SwapTransactionBuilder } from "@soulmaker/txbuilder";
+import { evaluateBuildRefusals, inspectUnsignedTransactionShape, type SwapTransactionBuilder } from "@soulmaker/txbuilder";
 import type { SendRpc } from "@soulmaker/execution";
 import { executionStatusReport, executionBuildReport, executionDevnetSendReport } from "./commands.js";
 
@@ -124,22 +124,24 @@ function fakeBuilder(): SwapTransactionBuilder {
         recentBlockhash: BLOCKHASH,
         instructions: [SystemProgram.transfer({ fromPubkey: payer, toPubkey: payer, lamports: 1 })],
       }).compileToV0Message();
+      const envelope = validateUnsignedTxEnvelope({
+        schemaVersion: "txpreview.envelope.v1",
+        network: "mainnet-beta",
+        feePayerPublicKey: payer.toBase58(),
+        txBase64: Buffer.from(new VersionedTransaction(message).serialize()).toString("base64"),
+        builderId: "jupiter-swap-api",
+        candidateMint: request.candidateMint,
+        routeCaveats: ["test"],
+        constraints: { maxSpendLamports: request.controls?.maxSpendLamports ?? null, slippageBps: request.slippageBps ?? null },
+        unsigned: true,
+        neverSigned: true,
+        phase7LiveTradingReady: false,
+      });
       return {
         built: true,
-        envelope: validateUnsignedTxEnvelope({
-          schemaVersion: "txpreview.envelope.v1",
-          network: "mainnet-beta",
-          feePayerPublicKey: payer.toBase58(),
-          txBase64: Buffer.from(new VersionedTransaction(message).serialize()).toString("base64"),
-          builderId: "jupiter-swap-api",
-          candidateMint: request.candidateMint,
-          routeCaveats: ["test"],
-          constraints: { maxSpendLamports: request.controls?.maxSpendLamports ?? null, slippageBps: request.slippageBps ?? null },
-          unsigned: true,
-          neverSigned: true,
-          phase7LiveTradingReady: false,
-        }),
+        envelope,
         quoteFacts: { inAmountRaw: "10000000", outAmountRaw: "42", priceImpactPct: "0.1", contextSlot: 1, quotedAt: "t" },
+        txFacts: inspectUnsignedTransactionShape(envelope),
       };
     },
   };
