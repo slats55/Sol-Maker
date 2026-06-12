@@ -66,6 +66,65 @@ export type {
 } from "./send.js";
 
 export {
+  EXECUTION_RECONCILIATION_REPORT_SCHEMA_VERSION,
+  RECONCILIATION_BANNER,
+  RECONCILIATION_VERDICTS,
+  RECONCILIATION_CONTINUATION_SAFE_VERDICTS,
+  RECONCILIATION_DEFAULT_MAX_FEE_LAMPORTS,
+  CONFIRMATION_OUTCOMES,
+  CONFIRMATION_GUIDANCE,
+  CONFIRMATION_DEFAULT_MAX_POLLS,
+  CONFIRMATION_HARD_MAX_POLLS,
+  EXPECTED_EFFECT_KINDS,
+  createReconciliationRpc,
+  readBalanceSnapshot,
+  computeBalanceDelta,
+  trackConfirmation,
+  buildReconciliationReport,
+} from "./reconciliation.js";
+export type {
+  ReconciliationVerdict,
+  ReconciliationRpcLike,
+  ReconciliationRpc,
+  BalanceFactStatus,
+  TokenBalanceFactStatus,
+  SolBalanceFact,
+  TokenBalanceFact,
+  BalanceSnapshot,
+  ReadBalanceSnapshotInput,
+  BalanceDelta,
+  ConfirmationOutcome,
+  ConfirmationTrackResult,
+  TrackConfirmationInput,
+  ExpectedEffectKind,
+  ExpectedEffect,
+  ReconciliationFeeFacts,
+  ReconciliationReport,
+  BuildReconciliationReportInput,
+} from "./reconciliation.js";
+
+export {
+  SESSION_LEDGER_ENTRY_SCHEMA_VERSION,
+  SESSION_LEDGER_FILE_NAME,
+  SESSION_LEDGER_ENTRY_KINDS,
+  SESSION_CONTINUATION_STATUSES,
+  SESSION_CONTINUATION_ALLOWED_STATUSES,
+  createSessionLedgerEntry,
+  deriveSessionId,
+  parseSessionLedger,
+  evaluateSessionContinuation,
+} from "./session.js";
+export type {
+  SessionLedgerEntryKind,
+  SessionLedgerEntry,
+  CreateSessionLedgerEntryInput,
+  ParsedSessionLedger,
+  SessionContinuationStatus,
+  SessionContinuationDecision,
+  EvaluateSessionContinuationInput,
+} from "./session.js";
+
+export {
   DEVNET_REHEARSAL_REPORT_SCHEMA_VERSION,
   DEVNET_REHEARSAL_BANNER,
   DEVNET_REHEARSAL_DEFAULT_AIRDROP_LAMPORTS,

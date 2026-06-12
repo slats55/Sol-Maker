@@ -135,6 +135,8 @@ export interface DevnetRehearsalReport {
   };
   balanceLamportsBefore: number | null;
   balanceLamportsAfter: number | null;
+  /** Balance re-read AFTER the confirmation step (S96; additive) — the reconciliation "post" anchor. */
+  balanceLamportsAfterSend: number | null;
   simulation: { outcome: string; errLabel: string | null } | null;
   /** The FULL send-path attempt report (refused or submitted), verbatim. */
   attempt: ExecutionAttemptReport | null;
@@ -220,6 +222,7 @@ export async function runDevnetRehearsal(input: RunDevnetRehearsalInput): Promis
     },
     balanceLamportsBefore: null as number | null,
     balanceLamportsAfter: null as number | null,
+    balanceLamportsAfterSend: null as number | null,
     simulation: null as { outcome: string; errLabel: string | null } | null,
     attempt: null as ExecutionAttemptReport | null,
     signature: null as string | null,
@@ -445,6 +448,13 @@ export async function runDevnetRehearsal(input: RunDevnetRehearsalInput): Promis
     if (i < polls) await sleep(delay);
   }
   base.confirmation = confirmation;
+  // Post-send balance re-read (S96): the reconciliation layer anchors its "post" snapshot here.
+  // Unobservable stays null — never substituted with the pre-send value.
+  try {
+    base.balanceLamportsAfterSend = await input.rpc.faucet.getBalanceLamports(input.signer.publicKeyBase58);
+  } catch {
+    base.balanceLamportsAfterSend = null;
+  }
   if (confirmation.confirmed && confirmation.errLabel === null) {
     steps.push({ step: "confirm", status: "ok", detail: `confirmed at slot ${confirmation.slot ?? "unknown"} after ${confirmation.polls} poll(s)` });
     return finish("rehearsed");
