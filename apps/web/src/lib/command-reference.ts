@@ -299,6 +299,13 @@ export const COMMANDS: readonly CommandRef[] = [
     readsChain: false,
   },
   {
+    command: "paper:sniper:preflight:input:prepare",
+    summary:
+      "The read-only intelligence BRIDGE: pair standalone token:inspect --json / token:risk --json files to candidates by mint and emit the preflight input artifact paper:sniper:dry-run consumes. Candidates without data stay honestly uncovered — never marked safe.",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
+  {
     command: "paper:sniper:decide",
     summary:
       "Paper-only decisions per candidate (skip / watch / paper-enter / paper-reject / unknown). Use --schema-version v2 for the reason-coded v2 artifact. Never an order.",

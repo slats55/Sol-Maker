@@ -46,6 +46,7 @@ the full semantics.
 | 1. Candidate intake | `paper:sniper:candidates:validate` | `sniper.candidate.list.v1` | Validates + normalizes a local candidate list (mint pubkey validity, unique ids, duplicate-mint warnings). |
 | 2. Read-only inputs | `token:inspect`, `token:risk` | (existing) | Existing read-only commands that produce per-mint inspection + advisory risk JSON. |
 | 2b. Input validation | `paper:sniper:preflight:input:validate` | `sniper.preflight.input.v1` | Validates the LOCAL inspection/risk inputs as one bundle (unsupported shape / missing section / mint mismatch surface here), optionally cross-checked against the candidate list. |
+| 2c. Real-input bridge | `paper:sniper:preflight:input:prepare` | `sniper.preflight.input.v1` | Pairs standalone `token:inspect --json` / `token:risk --json` output files to candidates BY MINT and writes the preflight input artifact the dry-run consumes via `--preflight-input`. Candidates without data stay honestly uncovered — never marked safe. |
 | 3. Token preflight | `paper:sniper:preflight` | `sniper.token.preflight.report.v1` | Combines mint validity + inspection + risk into `pass` / `warn` / `fail` / `unknown` per candidate. Accepts `--preflight-input` instead of repeatable flags. |
 | 4. Paper decisions | `paper:sniper:decide` | `sniper.paper.decision.report.v1` | Folds the candidate list + preflight + rules into `skip` / `watch` / `paper-enter` / `paper-reject` / `unknown`. |
 | 5. Run report | `paper:sniper:report` | `sniper.run.report.v1` | Joins candidate list + preflight + decision + workflow into one navigable per-candidate view (reason trail, grouped ids, navigation, CI section). |
@@ -78,6 +79,7 @@ invariants.
 | `paper:sniper:candidates:validate` | `--input` | never | `sniper.candidate.list.v1` |
 | `paper:sniper:preflight` | `--candidates` | `--out` only | `sniper.token.preflight.report.v1` |
 | `paper:sniper:preflight:input:validate` | `--input` | never | `sniper.preflight.input.v1` |
+| `paper:sniper:preflight:input:prepare` | `--candidates` + at least one `--inspect`/`--risk` | `--out` only | `sniper.preflight.input.v1` (the real-input bridge) |
 | `paper:sniper:decide` | `--candidates` | `--out` only | `sniper.paper.decision.report.v1` (or `.v2` via `--schema-version v2`) |
 | `paper:sniper:policy:validate` | `--input` | never | `sniper.policy.config.v1` (or `.v2` via `--schema-version v2`) |
 | `paper:sniper:workflow` | (none) | never | `sniper.workflow.plan.v1` |
@@ -361,6 +363,29 @@ Unsupported shapes, missing inspection/risk sections, and mint mismatches surfac
 warnings (with `--fail-on-warning` / `--fail-on-missing-risk` / `--fail-on-missing-inspection` CI
 gates); an entry for an unknown candidate or a disagreeing mint is refused. **Local-only** — this
 validates well-formedness, it verifies no on-chain fact.
+
+#### Preparing the input from real read-only outputs (Sprint 90 — the bridge)
+
+You do not have to hand-assemble `pf-input.json`. Capture the read-only command outputs as JSON
+files, then let the bridge pair them to candidates **by mint** and write the canonical artifact:
+
+```bash
+pnpm soulmaker token:inspect <MINT> --allow-paper-read --json --out inspect.json
+pnpm soulmaker token:risk <MINT> --allow-paper-read --json --out risk.json
+pnpm soulmaker paper:sniper:preflight:input:prepare --candidates candidates.json \
+  --inspect inspect.json --risk risk.json --out pf-input.artifact.json
+pnpm soulmaker paper:sniper:dry-run --candidates candidates.json --preflight-input pf-input.artifact.json \
+  --out runs/my-run --adopt-specs --operator "you" --acknowledge-paper-enter-review
+```
+
+`--inspect` / `--risk` are repeatable (one file per mint). Honesty rules: values are carried
+VERBATIM; a candidate without data stays uncovered with an explicit warning (never marked safe);
+malformed JSON, a cross-kind file (inspect output passed as `--risk` or vice versa — named
+explicitly), a file whose mint matches no candidate, duplicate files for one mint, and
+secret-shaped input are all REFUSED. Prefer `--out` on the read-only commands over shell
+redirection: on Windows PowerShell, `>` writes UTF-16, which the downstream JSON readers refuse.
+A ready-to-run fictional walkthrough lives in
+[`examples/sniper/real-input-rehearsal/`](../examples/sniper/real-input-rehearsal/README.md).
 
 ### 4. Decide (paper-only)
 

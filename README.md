@@ -710,8 +710,8 @@ pnpm soulmaker paper:sniper:candidates:validate --input examples/sniper/candidat
 # + advisory risk (token:risk output). LOCAL-ONLY: no RPC, no network, no wallet. Risk REJECT or a
 # critical flag = fail; CAUTION / freeze or mint authority / high flag = warn; no data = unknown.
 # A safety/research preflight, NOT a trade signal. Reads the named files only, writes nothing unless --out:
-pnpm soulmaker token:inspect <mint> --json > c1.inspect.json   # existing read-only command (operator-run)
-pnpm soulmaker token:risk <mint> --json > c1.risk.json         # existing advisory risk command
+pnpm soulmaker token:inspect <mint> --json --out c1.inspect.json   # existing read-only command (operator-run; --out writes UTF-8 — prefer it over `>` on Windows)
+pnpm soulmaker token:risk <mint> --json --out c1.risk.json         # existing advisory risk command
 pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> --inspection c1=c1.inspect.json --risk c1=c1.risk.json
 pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> --risk c1=c1.risk.json --fail-on-fail
 
@@ -721,6 +721,13 @@ pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> --risk c1=c
 pnpm soulmaker paper:sniper:preflight:input:validate --input pf-input.json --candidates <candidates.json> --json
 pnpm soulmaker paper:sniper:preflight:input:validate --input pf-input.json --fail-on-missing-risk
 pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> --preflight-input pf-input.json
+
+# Sprint 90 — REAL-INPUT BRIDGE: pair standalone token:inspect --json / token:risk --json output files
+# to candidates BY MINT and write the canonical preflight input artifact paper:sniper:dry-run consumes
+# via --preflight-input. Values carried VERBATIM; uncovered candidates stay honestly warned (never
+# marked safe); malformed / cross-kind / unknown-mint / duplicate / secret-shaped files are REFUSED.
+# LOCAL-ONLY: no RPC, no network, no wallet (walkthrough: examples/sniper/real-input-rehearsal/):
+pnpm soulmaker paper:sniper:preflight:input:prepare --candidates <candidates.json> --inspect c1.inspect.json --risk c1.risk.json --out pf-input.artifact.json
 
 # Sprint 27 — PAPER SNIPER DECISIONS: fold the candidate list + preflight + optional operator rules
 # into a per-candidate SIMULATED decision — skip / watch / paper-enter / paper-reject / unknown — with

@@ -29,7 +29,7 @@ import {
   type Config,
   type LoadConfigOptions,
 } from "@soulmaker/core";
-import { redactValue, redactString } from "@soulmaker/security";
+import { redactValue, redactString, isSensitiveKey } from "@soulmaker/security";
 import {
   createReadOnlySolanaClient,
   endpointHostOf,
@@ -86,6 +86,7 @@ import {
   type Phase6OperatorBundleRole,
 } from "@soulmaker/simulation";
 import {
+  parseMintAddress,
   normalizeSniperCandidateList,
   formatSniperCandidateList,
   buildSniperTokenPreflightReport,
@@ -590,12 +591,29 @@ export async function walletWatchReport(
   }
 }
 
+export interface TokenInspectCommandOptions extends ChainReadOptions {
+  /** Emit the inspection as stable JSON (the shape the sniper preflight bridge consumes). */
+  json?: boolean;
+  /** Optional path to write ONLY the inspection JSON (UTF-8; refuses overwrite without force). */
+  outPath?: string;
+  /** Overwrite an existing --out file (refused by default). */
+  force?: boolean;
+}
+
 /** `soulmaker token:inspect <mint>` — read-only mint inspection. */
 export async function tokenInspectReport(
   mint: string,
   ctx: CommandContext = {},
-  opts: ChainReadOptions = {},
+  opts: TokenInspectCommandOptions = {},
 ): Promise<string> {
+  // Fail early on a doomed --out before any chain read happens.
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`);
+    }
+  }
+
   const gate = openChainRead(ctx, opts);
   if (!gate.ok) return redactString(gate.message);
 
@@ -603,7 +621,24 @@ export async function tokenInspectReport(
     const report = await buildTokenInspectReport(gate.client, mint, {
       now: ctx.now,
     });
-    return formatTokenInspectReport(report);
+    // Optional write: ONLY the inspection JSON, UTF-8 (shell redirection on Windows
+    // PowerShell writes UTF-16, which downstream JSON readers refuse).
+    let wroteLine = "";
+    if (opts.outPath) {
+      const resolved = resolvePath(ctx, opts.outPath);
+      try {
+        writeFileSync(resolved, JSON.stringify(redactValue(report), null, 2) + "\n");
+      } catch (err) {
+        return redactString(
+          `Refusing: cannot write inspection JSON at ${resolved}: ${(err as Error).message}`,
+        );
+      }
+      wroteLine = `\nwrote ${resolved}`;
+    }
+    if (opts.json) {
+      return JSON.stringify(redactValue(report), null, 2);
+    }
+    return formatTokenInspectReport(report) + wroteLine;
   } catch (err) {
     if (err instanceof InvalidPublicKeyError) {
       return `Refusing: ${err.message}`;
@@ -678,6 +713,10 @@ export interface RiskCommandOptions extends ChainReadOptions {
   previouslyTradedPath?: string;
   /** Emit the report as stable JSON instead of the human-readable block. */
   json?: boolean;
+  /** Optional path to write ONLY the risk report JSON (UTF-8; refuses overwrite without force). */
+  outPath?: string;
+  /** Overwrite an existing --out file (refused by default). */
+  force?: boolean;
 }
 
 /** Read + parse one operator list file. Throws a clear (non-secret) error. */
@@ -710,6 +749,14 @@ export async function tokenRiskReport(
   ctx: CommandContext = {},
   opts: RiskCommandOptions = {},
 ): Promise<string> {
+  // Fail early on a doomed --out before any chain read happens.
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`);
+    }
+  }
+
   const gate = openChainRead(ctx, opts);
   if (!gate.ok) return redactString(gate.message);
 
@@ -755,11 +802,25 @@ export async function tokenRiskReport(
       previouslyTradedMints,
     };
     const report = buildTokenRiskReport(input, { now: ctx.now });
+    // Optional write: ONLY the risk report JSON, UTF-8 (shell redirection on Windows
+    // PowerShell writes UTF-16, which downstream JSON readers refuse).
+    let wroteLine = "";
+    if (opts.outPath) {
+      const resolved = resolvePath(ctx, opts.outPath);
+      try {
+        writeFileSync(resolved, JSON.stringify(redactValue(report), null, 2) + "\n");
+      } catch (err) {
+        return redactString(
+          `Refusing: cannot write risk report JSON at ${resolved}: ${(err as Error).message}`,
+        );
+      }
+      wroteLine = `\nwrote ${resolved}`;
+    }
     if (opts.json) {
       // redactValue is a backstop; the report carries only public data.
       return JSON.stringify(redactValue(report), null, 2);
     }
-    return formatTokenRiskReport(report);
+    return formatTokenRiskReport(report) + wroteLine;
   } catch (err) {
     if (err instanceof InvalidPublicKeyError) return `Refusing: ${err.message}`;
     return readError(err);
@@ -4491,6 +4552,251 @@ export function paperSniperPreflightInputValidateReport(
     return { text: JSON.stringify(redactValue(artifact), null, 2), exitCode };
   }
   return { text: formatSniperPreflightInput(artifact, { label: opts.inputPath }), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 90 — paper:sniper:preflight:input:prepare
+//   The READ-ONLY INTELLIGENCE BRIDGE: pair standalone token:inspect /
+//   token:risk JSON output files to a candidate list BY MINT and emit the
+//   canonical preflight input artifact (sniper.preflight.input.v1) that
+//   paper:sniper:dry-run consumes via --preflight-input. LOCAL-ONLY: no RPC,
+//   no network, no wallet. Candidates without data stay honestly uncovered
+//   (warnings), never invented. Secret-shaped input is REFUSED.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperPreflightInputPrepareCommandOptions {
+  /** Candidate list JSON path (raw operator input or canonical). Required. */
+  candidatesPath?: string;
+  /** Repeatable token:inspect --json output file paths (matched to candidates by mint). */
+  inspectPaths?: string[];
+  /** Repeatable token:risk --json output file paths (matched to candidates by mint). */
+  riskPaths?: string[];
+  /** Optional operator label for the produced artifact. */
+  sourceLabel?: string;
+  json?: boolean;
+  /** Optional path to write ONLY the canonical preflight input JSON (refuses overwrite without --force). */
+  outPath?: string;
+  /** Overwrite an existing --out file (refused by default). */
+  force?: boolean;
+  /** Exit non-zero when the produced artifact carries any warning. */
+  failOnWarning?: boolean;
+  /** Exit non-zero when any candidate has no usable risk report. */
+  failOnMissingRisk?: boolean;
+  /** Exit non-zero when any candidate has no usable inspection. */
+  failOnMissingInspection?: boolean;
+}
+
+/**
+ * Depth-capped scan for secret-shaped KEY NAMES anywhere in a parsed read-only output file.
+ * Returns the offending key path (key names only — never a value) or null. Fail-closed backstop:
+ * legitimate token:inspect / token:risk output never carries such keys, so any hit is either the
+ * wrong file or something that must not flow into an artifact.
+ */
+function findSensitiveKeyPath(value: unknown, path = "", depth = 0): string | null {
+  if (depth > 8 || value === null || typeof value !== "object") return null;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      const hit = findSensitiveKeyPath(value[i], `${path}[${i}]`, depth + 1);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    const childPath = path ? `${path}.${key}` : key;
+    if (isSensitiveKey(key)) return childPath;
+    const hit = findSensitiveKeyPath(child, childPath, depth + 1);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * `soulmaker paper:sniper:preflight:input:prepare` — the real-input bridge from the read-only
+ * intelligence commands into the PAPER dry-run. It reads a candidate list plus standalone
+ * `token:inspect --json` / `token:risk --json` output files, matches each file to candidates BY
+ * MINT, and emits the canonical `sniper.preflight.input.v1` artifact that `paper:sniper:dry-run`
+ * (and `paper:sniper:preflight`) consume via `--preflight-input`. Honesty rules: raw values are
+ * carried VERBATIM; a candidate without data stays uncovered with an explicit warning (never
+ * marked safe); nothing here fetches chain data or verifies any on-chain fact. Refusals (exit 1):
+ * malformed JSON, a file that does not look like the named command's output (an inspect/risk
+ * cross-up is named explicitly), a file whose mint matches no candidate, duplicate files for one
+ * mint, secret-shaped key names anywhere in an input file, and secret-length mint strings (never
+ * echoed). `--out` writes ONLY the artifact JSON, refusing overwrite without `--force` and
+ * creating no directories. No network, no RPC, no wallet.
+ */
+export function paperSniperPreflightInputPrepareReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperPreflightInputPrepareCommandOptions = {},
+): CliReport {
+  if (!opts.candidatesPath) return { text: "Refusing: --candidates <path> is required.", exitCode: 1 };
+  if ((opts.inspectPaths?.length ?? 0) === 0 && (opts.riskPaths?.length ?? 0) === 0) {
+    return {
+      text: "Refusing: supply at least one --inspect <path> or --risk <path> file (token:inspect --json / token:risk --json output).",
+      exitCode: 1,
+    };
+  }
+
+  // 1) Read + normalize the candidate list (same wrong-schema guard as the sibling commands).
+  let raw: unknown;
+  try {
+    raw = readJsonValue(ctx, opts.candidatesPath, "sniper candidate list");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  if (!isPlainObject(raw)) {
+    return { text: "Refusing: candidate list must be a JSON object with a candidates array.", exitCode: 1 };
+  }
+  if (raw.schemaVersion !== undefined && raw.schemaVersion !== SNIPER_CANDIDATE_LIST_SCHEMA_VERSION) {
+    return {
+      text: redactString(`Refusing: candidate list schemaVersion must be "${SNIPER_CANDIDATE_LIST_SCHEMA_VERSION}".`),
+      exitCode: 1,
+    };
+  }
+  let list: SniperCandidateList;
+  try {
+    list = normalizeSniperCandidateList({
+      sourceLabel: typeof raw.sourceLabel === "string" ? raw.sourceLabel : opts.candidatesPath,
+      candidates: (raw.candidates ?? []) as never,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  const candidateMints = new Set(list.distinctMints);
+
+  // 2) Load each read-only output file: strict local checks, then keyed by canonical mint.
+  interface LoadedFile {
+    path: string;
+    value: Record<string, unknown>;
+  }
+  const loadFiles = (
+    paths: string[] | undefined,
+    kind: "inspect" | "risk",
+  ): { byMint?: Map<string, LoadedFile>; error?: string } => {
+    const byMint = new Map<string, LoadedFile>();
+    for (const path of paths ?? []) {
+      let value: unknown;
+      try {
+        value = readJsonValue(ctx, path, `--${kind} file`);
+      } catch (err) {
+        return { error: (err as Error).message };
+      }
+      if (!isPlainObject(value)) {
+        return { error: `--${kind} "${path}" must be a JSON object (token:${kind === "inspect" ? "inspect" : "risk"} --json output).` };
+      }
+      // Fail-closed: a secret-shaped KEY anywhere means this is not read-only command output.
+      const sensitive = findSensitiveKeyPath(value);
+      if (sensitive !== null) {
+        return { error: `--${kind} "${path}" carries a secret-shaped key ("${sensitive}") — refusing to bridge it into any artifact.` };
+      }
+      // Cross-up guards first (friendlier than the generic shape refusal).
+      const riskShaped = ("score" in value || "flags" in value) && !("decimals" in value);
+      const inspectShaped = ("decimals" in value || "supplyRaw" in value) && !("score" in value);
+      if (kind === "inspect" && riskShaped) {
+        return { error: `--inspect "${path}" looks like token:risk output — pass it with --risk instead.` };
+      }
+      if (kind === "risk" && inspectShaped) {
+        return { error: `--risk "${path}" looks like token:inspect output — pass it with --inspect instead.` };
+      }
+      if (kind === "inspect" && !inspectShaped) {
+        return { error: `--inspect "${path}" does not look like token:inspect --json output (no decimals/supplyRaw fields).` };
+      }
+      if (kind === "risk" && !riskShaped) {
+        return { error: `--risk "${path}" does not look like token:risk --json output (no score/flags fields).` };
+      }
+      if (typeof value.mint !== "string") {
+        return { error: `--${kind} "${path}" carries no mint string.` };
+      }
+      let mint: string;
+      try {
+        mint = parseMintAddress(value.mint); // refuses secret-length input outright, never echoed
+      } catch (err) {
+        return { error: `--${kind} "${path}": ${(err as Error).message}` };
+      }
+      const existing = byMint.get(mint);
+      if (existing) {
+        return { error: `duplicate --${kind} for mint ${mint} ("${existing.path}" and "${path}").` };
+      }
+      if (!candidateMints.has(mint)) {
+        return { error: `--${kind} "${path}" is for mint ${mint}, which is not in the candidate list.` };
+      }
+      byMint.set(mint, { path, value });
+    }
+    return { byMint };
+  };
+
+  const inspects = loadFiles(opts.inspectPaths, "inspect");
+  if (inspects.error) return { text: redactString(`Refusing: ${inspects.error}`), exitCode: 1 };
+  const risks = loadFiles(opts.riskPaths, "risk");
+  if (risks.error) return { text: redactString(`Refusing: ${risks.error}`), exitCode: 1 };
+
+  // 3) Pair BY MINT, in candidate-list order. A candidate without data stays honestly uncovered
+  //    (the normalizer records the warning); data is carried VERBATIM, never adjusted.
+  const entries = list.candidates.map((c) => {
+    const inspect = inspects.byMint?.get(c.mint);
+    const risk = risks.byMint?.get(c.mint);
+    const provenance = [
+      ...(inspect ? [`inspect:${inspect.path}`] : []),
+      ...(risk ? [`risk:${risk.path}`] : []),
+    ].join(" + ");
+    return {
+      candidateId: c.candidateId,
+      mint: c.mint,
+      ...(inspect ? { inspection: inspect.value } : {}),
+      ...(risk ? { risk: risk.value } : {}),
+      sourceLabel: provenance.length > 0 ? provenance : null,
+    };
+  });
+
+  let artifact: SniperPreflightInput;
+  try {
+    artifact = normalizeSniperPreflightInput({
+      sourceLabel: opts.sourceLabel ?? `prepared from read-only outputs for ${opts.candidatesPath}`,
+      candidateListRef: opts.candidatesPath,
+      entries,
+      candidateList: list,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // 4) Optional write: ONLY the artifact JSON, refuse overwrite without --force, create no directories.
+  let wrotePath: string | null = null;
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(artifact), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write preflight input at ${resolved}`), exitCode: 1 };
+    }
+    wrotePath = resolved;
+  }
+
+  const exitCode =
+    (opts.failOnWarning && artifact.hasWarnings) ||
+    (opts.failOnMissingRisk && artifact.missingRiskCount > 0) ||
+    (opts.failOnMissingInspection && artifact.missingInspectionCount > 0)
+      ? 1
+      : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(artifact), null, 2), exitCode };
+  }
+
+  const lines = [formatSniperPreflightInput(artifact, { label: opts.candidatesPath }), "", "Next:"];
+  if (wrotePath) {
+    lines.push(
+      `- Run the PAPER dry-run: pnpm soulmaker paper:sniper:dry-run --candidates "${opts.candidatesPath}" --preflight-input "${opts.outPath}" --out <output-dir> --adopt-specs --operator <your-name> --acknowledge-paper-enter-review`,
+      "- Then open the output folder in the web UI: pnpm web:inspect --dir <output-dir> --force",
+    );
+  } else {
+    lines.push(
+      "- Nothing was written (no --out). Re-run with --out <path> to produce the file paper:sniper:dry-run consumes via --preflight-input.",
+    );
+  }
+  return { text: redactString(lines.join("\n")), exitCode };
 }
 
 // ---------------------------------------------------------------------------

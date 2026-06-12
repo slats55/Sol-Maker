@@ -45,6 +45,7 @@ import {
   paperSniperCandidatesValidateReport,
   paperSniperPreflightReport,
   paperSniperPreflightInputValidateReport,
+  paperSniperPreflightInputPrepareReport,
   paperSniperDecideReport,
   paperSniperWorkflowReport,
   paperSniperReportReport,
@@ -219,15 +220,28 @@ program
   .command("token:inspect <mint>")
   .description("Read-only token mint inspection (not a buy recommendation)")
   .option("--allow-paper-read", "permit chain reads while in PAPER mode")
-  .action(async (mint: string, opts: { allowPaperRead?: boolean }) => {
-    printResult(
-      await tokenInspectReport(
-        mint,
-        {},
-        { allowPaperRead: Boolean(opts.allowPaperRead) },
-      ),
-    );
-  });
+  .option("--json", "emit the inspection as stable JSON (the shape the sniper preflight bridge consumes)")
+  .option("--out <path>", "write ONLY the inspection JSON to this path (UTF-8; refused if it exists)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .action(
+    async (
+      mint: string,
+      opts: { allowPaperRead?: boolean; json?: boolean; out?: string; force?: boolean },
+    ) => {
+      printResult(
+        await tokenInspectReport(
+          mint,
+          {},
+          {
+            allowPaperRead: Boolean(opts.allowPaperRead),
+            json: Boolean(opts.json),
+            outPath: opts.out,
+            force: Boolean(opts.force),
+          },
+        ),
+      );
+    },
+  );
 
 program
   .command("token:accounts <ownerPublicKey>")
@@ -253,6 +267,8 @@ program
   .option("--denylist <path>", "newline-separated denylist file")
   .option("--previously-traded <path>", "newline-separated previously-traded mints file")
   .option("--json", "emit the report as stable JSON")
+  .option("--out <path>", "write ONLY the risk report JSON to this path (UTF-8; refused if it exists)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
   .action(
     async (
       mint: string,
@@ -262,6 +278,8 @@ program
         denylist?: string;
         previouslyTraded?: string;
         json?: boolean;
+        out?: string;
+        force?: boolean;
       },
     ) => {
       printResult(
@@ -274,6 +292,8 @@ program
             denylistPath: opts.denylist,
             previouslyTradedPath: opts.previouslyTraded,
             json: Boolean(opts.json),
+            outPath: opts.out,
+            force: Boolean(opts.force),
           },
         ),
       );
@@ -1188,6 +1208,64 @@ program
           inputPath: opts.input,
           candidatesPath: opts.candidates,
           json: Boolean(opts.json),
+          failOnWarning: Boolean(opts.failOnWarning),
+          failOnMissingRisk: Boolean(opts.failOnMissingRisk),
+          failOnMissingInspection: Boolean(opts.failOnMissingInspection),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:preflight:input:prepare")
+  .description(
+    "BRIDGE read-only intelligence into the PAPER dry-run: pair standalone token:inspect --json / token:risk --json output files to a candidate list BY MINT and emit the canonical preflight input artifact (sniper.preflight.input.v1) that paper:sniper:dry-run consumes via --preflight-input. Raw values are carried VERBATIM; a candidate without data stays honestly uncovered (warned, never marked safe); malformed, cross-kind, unknown-mint, duplicate, or secret-shaped files are REFUSED. LOCAL-ONLY: no RPC, no network, no wallet — nothing here verifies an on-chain fact",
+  )
+  .option("--candidates <path>", "candidate list JSON to pair against (required)")
+  .option(
+    "--inspect <path>",
+    "token:inspect --json output file (repeatable; matched to a candidate by mint)",
+    (value: string, previous: string[]) => previous.concat(value),
+    [] as string[],
+  )
+  .option(
+    "--risk <path>",
+    "token:risk --json output file (repeatable; matched to a candidate by mint)",
+    (value: string, previous: string[]) => previous.concat(value),
+    [] as string[],
+  )
+  .option("--source-label <label>", "operator label recorded on the produced artifact")
+  .option("--json", "emit the canonical preflight input artifact as stable JSON")
+  .option("--out <path>", "write ONLY the canonical preflight input JSON to this path (refused if it exists)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-warning", "exit non-zero when the produced artifact carries any warning")
+  .option("--fail-on-missing-risk", "exit non-zero when any candidate has no usable risk report")
+  .option("--fail-on-missing-inspection", "exit non-zero when any candidate has no usable inspection")
+  .action(
+    (opts: {
+      candidates?: string;
+      inspect: string[];
+      risk: string[];
+      sourceLabel?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnWarning?: boolean;
+      failOnMissingRisk?: boolean;
+      failOnMissingInspection?: boolean;
+    }) => {
+      const { text, exitCode } = paperSniperPreflightInputPrepareReport(
+        {},
+        {
+          candidatesPath: opts.candidates,
+          inspectPaths: opts.inspect,
+          riskPaths: opts.risk,
+          sourceLabel: opts.sourceLabel,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
           failOnWarning: Boolean(opts.failOnWarning),
           failOnMissingRisk: Boolean(opts.failOnMissingRisk),
           failOnMissingInspection: Boolean(opts.failOnMissingInspection),
