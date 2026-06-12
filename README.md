@@ -824,6 +824,7 @@ gitignored. Defaults are safe: `PAPER` mode, kill switch off, redaction on.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — phased plan (Phases 0 → 8)
 - [`docs/WALLET_SAFETY_MODEL.md`](docs/WALLET_SAFETY_MODEL.md) — key handling & live gate
 - [`docs/RISK_MODEL.md`](docs/RISK_MODEL.md) — caps, kill switch, token risk flags
+- [`docs/EXECUTION_SAFETY.md`](docs/EXECUTION_SAFETY.md) — the gated execution lane: modes, the fourteen-condition live gate, quote freshness, the signer boundary, the devnet rehearsal (S92–S93)
 - [`docs/PAPER_TRADING_MODEL.md`](docs/PAPER_TRADING_MODEL.md) — simulated paper engine (Phase 4) + backtest
 - [`docs/STRATEGY_MODEL.md`](docs/STRATEGY_MODEL.md) — paper-only strategy rules engine (Phase 5)
 - [`examples/backtest/README.md`](examples/backtest/README.md) — injected example scenarios (fixtures, not market truth)
