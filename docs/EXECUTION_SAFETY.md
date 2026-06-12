@@ -1,4 +1,4 @@
-# Execution Safety Model (Sprints 92–93)
+# Execution Safety Model (Sprints 92–95)
 
 This document is the operator's map of the **gated execution lane**: what each mode can do, where
 the boundaries are, and exactly why live mainnet trading cannot happen from this codebase today.
@@ -138,6 +138,50 @@ Since S93 `token:risk --deep` also inspects Token-2022 extensions read-only (tra
 permanent delegates, transfer fees, default-frozen state, pausable, non-transferable, mint close
 authority, and more) — the high-risk extensions force `REJECT`, and unreadable extension data is
 an explicit caution, never "no extensions, all clear".
+
+Since S95 the risk report's **flag ids ride into the build request**: a Token-2022 BLOCKER
+extension (transfer hook, permanent delegate, non-transferable, frozen-by-default, pausable,
+extreme transfer fee) refuses the build pre-network with its own code
+(`build-refused-token2022-blocker`) — independent of, and in addition to, the score/decision
+gates.
+
+## Transaction build safety (Sprint 95)
+
+The swap build path is a **provider adapter boundary**, not a one-off
+(`packages/txbuilder/src/jupiter-swap.ts` behind the `SwapTransactionBuilder` interface; the
+CLI injects it through a seam, which is how tests prove provider-never-called properties):
+
+1. **Refusal-first** — `evaluateBuildRefusals` runs over a CLOSED 29-code set BEFORE any
+   network call: kill switch, mode, network match, wallet/mint validity, amount, risk
+   (missing/REJECT/over-cap/Token-2022 blocker), spend cap, slippage cap, allowlist validity.
+   Refusals accumulate; the same request facts always produce the same codes.
+2. **Strict response validation** — the provider's transaction is accepted only if it
+   validates as a strictly UNSIGNED `txpreview.envelope.v1` (any embedded signature refuses),
+   and the fresh quote's mints/amounts are cross-checked against the request and the spend cap.
+3. **The S95 shape gate** — the validated envelope's decoded transaction must also pass:
+   supported version (`legacy`/0), a real recent blockhash, and — when the operator supplies a
+   program allowlist — every statically-resolvable invoked program on the list. Program ids
+   loaded through address-lookup tables cannot be verified offline, so under an allowlist they
+   refuse HONESTLY (`build-refused-unsupported-instruction`) instead of passing unverified. No
+   allowlist supplied = no program check (the default).
+4. **Operator guidance taxonomy** — every refusal code and every simulation-failure
+   classification carries a plain operator message and an exact next safe action
+   (`BUILD_REFUSAL_GUIDANCE`, `TX_SIMULATION_CLASSIFICATION_GUIDANCE`); completeness is pinned
+   by tests, and no guidance ever suggests bypassing a gate.
+5. **An auditable record per attempt** — `--report-out` (and the rehearsal always) writes
+   `txbuild.report.v1` on BOTH outcomes: a refused build is a first-class artifact, never just
+   error text. The report carries the redacted request summary, the refusals with guidance,
+   the fresh-quote facts, and the transaction SHAPE facts — never the transaction body.
+6. **Simulation before live** — the dry-run pipeline's only continuation is
+   `paper:simulation:tx` (sigVerify:false over the unsigned envelope). Every failure is
+   deterministically classified (`slippage-or-route-error`, `compute-exceeded`,
+   `blockhash-error`, `account-error`, `program-error`, `unclassified-error`,
+   `rpc-unavailable`, `envelope-refused`) from the program error + bounded redacted logs.
+   Live-gate condition 10 accepts only `simulated-ok` over the EXACT envelope.
+7. **No mainnet send surface** — unchanged: the builder cannot sign, the simulator cannot
+   send, and no CLI command reaches a mainnet send (see
+   [`MAINNET_DRY_RUN.md`](MAINNET_DRY_RUN.md) for the end-to-end workflow and the real
+   2026-06-12 evidence).
 
 ## Audit requirements
 

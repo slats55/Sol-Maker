@@ -1013,12 +1013,20 @@ working order for *when*. Rust does not begin until the TypeScript workflow is f
 end-to-end; live trading does not begin until Sprint 104, separately authorized (see
 [`PHASE7_LIVE_SEND_DESIGN_REVIEW.md`](PHASE7_LIVE_SEND_DESIGN_REVIEW.md)).
 
-- **S94-A (this sprint)** — devnet broadcast completion (bounded faucet retries, keypair reuse,
+- **S94-A** ✅ — devnet broadcast completion (bounded faucet retries, keypair reuse,
   honest funding-blocked artifacts) + mainnet dry-run risk-evidence automation
   (`paper:sniper:rehearse --mode mainnet-dry-run` auto-fetches deep per-candidate risk) +
   readiness evidence quality + the Phase 7 live-send design review (document only).
-- **S95** — real Jupiter swap build dry-run + simulation hardening (error taxonomy, compute
-  budget facts, retry discipline — still unsigned, still never sent).
+  (The real devnet broadcast itself remains faucet-blocked — carried forward.)
+- **S95** ✅ — real Jupiter swap build dry-run + simulation hardening: refusal taxonomy grown
+  to 29 codes with operator guidance (message + exact next safe action per code), Token-2022
+  blocker gate on the build path, post-build transaction SHAPE gate (version / blockhash /
+  optional program allowlist), the `txbuild.report.v1` attempt artifact (written on BOTH
+  outcomes), deterministic simulation-failure classification (slippage / compute / blockhash /
+  account / program) feeding rehearse + readiness + the inspector. REAL mainnet evidence:
+  BONK built (v0 tx, 7 instructions, ALT lookup) + classified `account-error` simulation;
+  USDC refused pre-network on auto-risk REJECT. Still unsigned, still never sent.
+  See [`MAINNET_DRY_RUN.md`](MAINNET_DRY_RUN.md).
 - **S96** — post-trade accounting/reconciliation on DEVNET (confirm → balance read →
   reconciliation artifact; an unreconciled session refuses new trades).
 - **S97** — Rust sidecar foundation (crate layout, IPC contract, artifact-schema parity tests;
