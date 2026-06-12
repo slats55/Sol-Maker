@@ -1,0 +1,14 @@
+{
+  "_comment": "FICTIONAL DETERMINISTIC FIXTURE — NOT live data, NOT verified on-chain facts. A sniper.preflight.input.v1 operator input whose single INVENTED entry passes risk but carries a freeze authority — the preflight WARNs and the decision pipeline watches the candidate (no simulated paper-enter). Real preflight inputs come from your own read-only token:inspect / token:risk output.",
+  "sourceLabel": "examples/sniper/operator-dress-rehearsal/preflight-input.watch-only.json",
+  "candidateListRef": "examples/sniper/operator-dress-rehearsal/candidates.watch-only.json",
+  "entries": [
+    {
+      "candidateId": "rehearsal-watch",
+      "mint": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+      "inspection": { "mint": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn", "decimals": 9, "supplyRaw": "5000000", "uiSupply": 5, "mintAuthorityPresent": false, "freezeAuthorityPresent": true, "isInitialized": true, "programLabel": "spl-token" },
+      "risk": { "mint": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn", "score": 25, "decision": "PASS_FOR_PAPER_EVALUATION", "flags": [], "summary": ["fictional: freeze authority present in invented data"] },
+      "sourceLabel": "fictional"
+    }
+  ]
+}

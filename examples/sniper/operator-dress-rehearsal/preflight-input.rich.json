@@ -1,0 +1,21 @@
+{
+  "_comment": "FICTIONAL DETERMINISTIC FIXTURE — NOT live data, NOT verified on-chain facts. A sniper.preflight.input.v1 operator input with INVENTED inspection/risk values for the two rehearsal candidates: rehearsal-clean passes cleanly, rehearsal-freeze carries a freeze authority (honest WARN -> watch). Real preflight inputs come from your own read-only token:inspect / token:risk output.",
+  "sourceLabel": "examples/sniper/operator-dress-rehearsal/preflight-input.rich.json",
+  "candidateListRef": "examples/sniper/operator-dress-rehearsal/candidates.rich.json",
+  "entries": [
+    {
+      "candidateId": "rehearsal-clean",
+      "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+      "inspection": { "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx", "decimals": 6, "supplyRaw": "1000000", "uiSupply": 1, "mintAuthorityPresent": false, "freezeAuthorityPresent": false, "isInitialized": true, "programLabel": "spl-token" },
+      "risk": { "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx", "score": 10, "decision": "PASS_FOR_PAPER_EVALUATION", "flags": [], "summary": ["fictional: no concern in invented data"] },
+      "sourceLabel": "fictional"
+    },
+    {
+      "candidateId": "rehearsal-freeze",
+      "mint": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+      "inspection": { "mint": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn", "decimals": 9, "supplyRaw": "5000000", "uiSupply": 5, "mintAuthorityPresent": false, "freezeAuthorityPresent": true, "isInitialized": true, "programLabel": "spl-token" },
+      "risk": { "mint": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn", "score": 25, "decision": "PASS_FOR_PAPER_EVALUATION", "flags": [], "summary": ["fictional: freeze authority present in invented data"] },
+      "sourceLabel": "fictional"
+    }
+  ]
+}

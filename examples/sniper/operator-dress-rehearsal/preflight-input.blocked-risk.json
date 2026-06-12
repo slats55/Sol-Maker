@@ -1,0 +1,13 @@
+{
+  "_comment": "FICTIONAL DETERMINISTIC FIXTURE — NOT live data, NOT verified on-chain facts. A sniper.preflight.input.v1 operator input whose single INVENTED risk section is a critical REJECT — the preflight FAILs and the decision pipeline paper-rejects the candidate. Real preflight inputs come from your own read-only token:inspect / token:risk output.",
+  "sourceLabel": "examples/sniper/operator-dress-rehearsal/preflight-input.blocked-risk.json",
+  "candidateListRef": "examples/sniper/operator-dress-rehearsal/candidates.blocked-risk.json",
+  "entries": [
+    {
+      "candidateId": "rehearsal-reject",
+      "mint": "2Z8oHviEbrqDD5kg2sW8h8kYceqdVTnrrPL6Lk2nBfRG",
+      "risk": { "mint": "2Z8oHviEbrqDD5kg2sW8h8kYceqdVTnrrPL6Lk2nBfRG", "score": 95, "decision": "REJECT", "flags": [{ "id": "fictional-rug-pattern", "severity": "critical", "title": "Fictional rug pattern (invented)" }], "summary": ["fictional: invented critical flag"] },
+      "sourceLabel": "fictional"
+    }
+  ]
+}

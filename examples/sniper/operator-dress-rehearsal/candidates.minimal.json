@@ -1,0 +1,10 @@
+{
+  "_comment": "FICTIONAL DETERMINISTIC FIXTURE — NOT live data, NOT a trade signal, NOT financial advice. The smallest valid operator candidate file: one invented candidate with only the two required fields (candidateId + mint). The mint is a synthetic 32-byte base58 key, NOT a real token. Run: pnpm soulmaker paper:sniper:dry-run --candidates examples/sniper/operator-dress-rehearsal/candidates.minimal.json --out runs/dress-rehearsal-minimal",
+  "sourceLabel": "examples/sniper/operator-dress-rehearsal/candidates.minimal.json",
+  "candidates": [
+    {
+      "candidateId": "rehearsal-minimal",
+      "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx"
+    }
+  ]
+}

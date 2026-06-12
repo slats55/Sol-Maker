@@ -9,6 +9,14 @@
 > made-up operator-supplied number and is **NOT verified on-chain**. Nothing here builds, signs,
 > simulates, or sends a transaction; nothing here is a trade signal.
 
+## One-command dress rehearsal
+
+[`operator-dress-rehearsal/`](operator-dress-rehearsal/README.md) is the fastest way to see the
+whole pipeline: four ready-to-run candidate files for `paper:sniper:dry-run` (minimal, rich,
+watch-only, blocked-risk) that together produce every operator verdict, with the exact commands,
+the expected output folder, and what each verdict means. Start there if you just want to run the
+PAPER sniper end to end.
+
 ## Fixture files
 
 | File | Purpose |

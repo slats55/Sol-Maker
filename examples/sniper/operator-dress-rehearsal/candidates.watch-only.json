@@ -1,0 +1,17 @@
+{
+  "_comment": "FICTIONAL DETERMINISTIC FIXTURE — NOT live data, NOT a trade signal, NOT financial advice. An operator candidate file whose single invented candidate carries a freeze authority in its paired preflight input — the decision pipeline watches it (no simulated paper-enter), which is the ONLY state that reaches the best dry-run verdict, reviewable-paper-only. The mint is a synthetic 32-byte base58 key, NOT a real token. Pair with preflight-input.watch-only.json.",
+  "sourceLabel": "examples/sniper/operator-dress-rehearsal/candidates.watch-only.json",
+  "candidates": [
+    {
+      "candidateId": "rehearsal-watch",
+      "mint": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+      "symbol": "RHWT",
+      "name": "Rehearsal Watch-Only Token (fictional)",
+      "sourceTag": "watchlist",
+      "sourceNote": "Invented candidate exercising the preflight WARN (freeze authority) -> watch path.",
+      "observedLiquidityUsd": 8000,
+      "tags": ["fictional", "dress-rehearsal"],
+      "operatorNotes": ["Fixture candidate; invented; not a recommendation."]
+    }
+  ]
+}

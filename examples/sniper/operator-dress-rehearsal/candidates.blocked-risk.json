@@ -1,0 +1,17 @@
+{
+  "_comment": "FICTIONAL DETERMINISTIC FIXTURE — NOT live data, NOT a trade signal, NOT financial advice. An operator candidate file whose single invented candidate carries a critical risk REJECT in its paired preflight input — the decision pipeline paper-rejects it, so the chain stays watch-only. The mint is a synthetic 32-byte base58 key, NOT a real token. Pair with preflight-input.blocked-risk.json.",
+  "sourceLabel": "examples/sniper/operator-dress-rehearsal/candidates.blocked-risk.json",
+  "candidates": [
+    {
+      "candidateId": "rehearsal-reject",
+      "mint": "2Z8oHviEbrqDD5kg2sW8h8kYceqdVTnrrPL6Lk2nBfRG",
+      "symbol": "RHRJ",
+      "name": "Rehearsal High-Risk Token (fictional)",
+      "sourceTag": "fixture",
+      "sourceNote": "Invented candidate exercising the preflight FAIL (risk REJECT) -> simulated paper-reject path.",
+      "observedLiquidityUsd": 2000,
+      "tags": ["fictional", "dress-rehearsal"],
+      "operatorNotes": ["Fixture candidate; invented; not a recommendation."]
+    }
+  ]
+}
