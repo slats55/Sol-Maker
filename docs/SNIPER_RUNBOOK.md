@@ -131,9 +131,21 @@ invariants.
 | `paper:simulation:readiness` | (none — anything missing blocks) | `--out` only | `phase6.simulation.readiness.report.v1` (stack readiness; `phase7LiveTradingReady` is a literal false, always) |
 | `paper:simulation:bundle` | (none — missing artifacts classified) | `--out` only | `phase6.operator.bundle.v1` (S88 operator bundle over THIRTEEN roles incl. the handoff pack; recomputed blocking trail cross-checked against the pack; per-file `sha256-128` integrity digests; best verdict is `reviewable-paper-only`) |
 | `paper:sniper:dry-run` | `--candidates`, `--out` | a full directory | the S88 PAPER dry-run ORCHESTRATOR — one command, the whole chain (19 artifacts + `RUN_SUMMARY.md`; +`routequote-prepared.json` when `--routequote` is supplied) |
+| `paper:sniper:rehearse` | `--candidates` or `--replay-file`, `--out` | a full directory | the S93 UNIFIED rehearsal WORKFLOW — chains candidates → risk bridge → quote fetch/prepare → dry-run → unsigned build → real simulation → optional devnet broadcast → readiness, with an honest per-stage record (`sniper.rehearsal.report.v1`). Closed mode set `--mode paper` (default, offline) / `devnet` (broadcast only behind `--devnet-send` + the double opt-in) / `mainnet-dry-run` (build+simulate, structurally cannot send). NO mainnet-live mode |
 
 Common flags: `--json` (stable JSON), `--out <path>` + `--force` (write the artifact; refuse overwrite
 without `--force`), and command-specific `--fail-on-*` CI gates (see [CI gates](#ci-gates)).
+
+The Sprint 92/93 `execution:*` lane (gated; documented in `docs/EXECUTION_SAFETY.md`):
+`execution:status` (mode + the FOURTEEN-condition live-gate checklist; S93 adds `--quote-report` +
+`--max-quote-age-ms` so condition 9 is evaluated from a LIVE fetch report), `execution:build`
+(refusal-first UNSIGNED swap build; S93 adds `--max-quote-age-ms` and stamps `quotedAt` into the
+envelope), `execution:devnet:send` (the only S92 send surface, devnet-only; S93 computes the REAL
+quote age from the envelope), `execution:devnet:rehearse` (S93: the devnet end-to-end broadcast
+rehearsal — throwaway gitignored keypair, airdrop, probe, simulate, send, confirm; honest
+`devnet-funding-blocked` on faucet rate limits), and `execution:readiness` (S93: the honest
+mainnet readiness checklist — structurally incapable of reporting armed). Mainnet sending has NO
+CLI surface — deliberately.
 
 ## Phase 6 simulation (the authorized, safe slice)
 

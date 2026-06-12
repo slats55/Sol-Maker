@@ -774,6 +774,18 @@ pnpm soulmaker execution:status --request mainnet-live --i-understand-this-can-l
 pnpm soulmaker execution:build --candidate-mint <mint> --wallet <pubkey> --risk risk.json --amount-sol 0.01 --slippage-bps 50 --max-spend-sol 0.02 --slippage-cap-bps 100 --risk-score-cap 30 --request mainnet-dry-run --allow-paper-read --out envelope.json
 pnpm soulmaker paper:simulation:tx --envelope envelope.json --rpc-url <mainnet rpc> --allow-paper-read
 
+# Sprint 93 — QUOTE FRESHNESS end-to-end (envelopes carry quotedAt; explicit caps everywhere; no
+# default cap by design), the DEVNET END-TO-END BROADCAST REHEARSAL (throwaway gitignored keypair,
+# airdrop, probe, simulate, send, confirm — an airdrop rate limit becomes an honest
+# devnet-funding-blocked artifact), the HONEST mainnet readiness checklist (structurally incapable
+# of reporting armed), and the UNIFIED rehearsal workflow paper:sniper:rehearse (closed mode set:
+# paper default / devnet behind --devnet-send + double opt-in / mainnet-dry-run which can never
+# send; every skipped stage names its exact next command). See docs/EXECUTION_SAFETY.md:
+pnpm soulmaker execution:readiness --quote-report runs/quotes/fetch-report.json --max-quote-age-ms 30000 --risk risk.json --risk-score-cap 30
+SOLMAKER_ENABLE_DEVNET_EXECUTION=devnet-only pnpm soulmaker execution:devnet:rehearse --out runs/devnet-rehearsal/today --acknowledge-devnet-execution
+pnpm soulmaker paper:sniper:rehearse --candidates candidates.json --out runs/rehearsal-today
+pnpm soulmaker paper:sniper:rehearse --mode mainnet-dry-run --candidates candidates.json --build-wallet <pubkey> --risk risk.json --amount-sol 0.01 --slippage-bps 50 --max-spend-sol 0.02 --slippage-cap-bps 100 --risk-score-cap 30 --allow-paper-read --out runs/rehearsal-dry-run
+
 # Sprint 27 — PAPER SNIPER DECISIONS: fold the candidate list + preflight + optional operator rules
 # into a per-candidate SIMULATED decision — skip / watch / paper-enter / paper-reject / unknown — with
 # reasons. A paper-enter is a PAPER-ONLY decision, NOT a buy/sell order, NOT a transaction, NOT live

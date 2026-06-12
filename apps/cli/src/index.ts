@@ -56,6 +56,7 @@ import {
   executionDevnetSendReport,
   executionDevnetRehearseReport,
   executionReadinessReport,
+  paperSniperRehearseReport,
   paperSniperDecideReport,
   paperSniperWorkflowReport,
   paperSniperReportReport,
@@ -2326,6 +2327,96 @@ program
           stopSimulationTripped: Boolean(opts.stopSimulationTripped),
           operatorLabel: opts.operator,
           runLabel: opts.runLabel,
+          outDir: opts.out,
+          force: Boolean(opts.force),
+          json: Boolean(opts.json),
+          failOnBlocked: Boolean(opts.failOnBlocked),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:rehearse")
+  .description(
+    "The UNIFIED sniper rehearsal workflow (Sprint 93): chain the existing production commands (candidates [file or realtime replay] -> risk bridge -> quote fetch -> quote prepare -> paper dry-run -> unsigned tx build -> real simulation -> optional devnet broadcast rehearsal -> mainnet readiness checklist) over ONE output directory with an honest per-stage record (sniper.rehearsal.report.v1). CLOSED mode set: paper (DEFAULT; fully offline) | devnet (broadcast only behind --devnet-send + the devnet double opt-in) | mainnet-dry-run (live quotes + build + simulate; structurally CANNOT send). There is NO mainnet-live mode — deliberately. Every skipped stage names its exact standalone command; a blocked chain exits 0 with the honest report (--fail-on-blocked gates)",
+  )
+  .option("--mode <mode>", "paper (default) | devnet | mainnet-dry-run — there is NO mainnet-live mode")
+  .option("--candidates <path>", "candidate list JSON (exactly one of --candidates / --replay-file)")
+  .option("--replay-file <path>", "realtime replay events JSON — candidates come from a replay snapshot")
+  .option("--preflight-input <path>", "preflight input JSON with per-candidate inspection/risk (sniper.preflight.input.v1)")
+  .option("--routequote <path>", "already-prepared routequote artifact (skips the fetch/prepare stages)")
+  .option("--amount-sol <sol>", "quote/build input amount in SOL (default 0.01 for the quote probe)")
+  .option("--slippage-bps <bps>", "explicit slippage tolerance for quote fetch + build")
+  .option("--endpoint <url>", "override the quote/build provider base URL")
+  .option("--max-quote-age-ms <ms>", "explicit quote-age cap for the build + readiness stages")
+  .option("--build-wallet <publicKey>", "wallet PUBLIC key forwarded to the build stage (never a secret)")
+  .option("--risk <path>", "token:risk --json report for the build target (building blind is refused)")
+  .option("--max-spend-sol <sol>", "explicit per-trade spend cap for the build stage")
+  .option("--slippage-cap-bps <bps>", "explicit slippage cap for the build stage")
+  .option("--risk-score-cap <n>", "explicit advisory risk score cap for the build stage")
+  .option("--devnet-send", "EXPLICIT opt-in to the devnet broadcast rehearsal (devnet mode only)")
+  .option("--acknowledge-devnet-execution", "the explicit devnet acknowledgment flag (with the env flag)")
+  .option("--rpc-url <url>", "RPC endpoint for the simulate/devnet stages")
+  .option("--adopt-specs", "build the dry-run governance specs as ADOPTED (requires --operator)")
+  .option("--operator <label>", "operator label echoed through the dry-run chain")
+  .option("--allow-paper-read", "explicitly allow network reads while in PAPER mode (quote fetch + simulation)")
+  .option("--out <dir>", "output DIRECTORY for all stage artifacts (created if missing; required)")
+  .option("--force", "overwrite existing artifacts in the output directory")
+  .option("--json", "emit the rehearsal stage report as stable JSON")
+  .option("--fail-on-blocked", "exit non-zero when any executed stage blocked or failed")
+  .action(
+    async (opts: {
+      mode?: string;
+      candidates?: string;
+      replayFile?: string;
+      preflightInput?: string;
+      routequote?: string;
+      amountSol?: string;
+      slippageBps?: string;
+      endpoint?: string;
+      maxQuoteAgeMs?: string;
+      buildWallet?: string;
+      risk?: string;
+      maxSpendSol?: string;
+      slippageCapBps?: string;
+      riskScoreCap?: string;
+      devnetSend?: boolean;
+      acknowledgeDevnetExecution?: boolean;
+      rpcUrl?: string;
+      adoptSpecs?: boolean;
+      operator?: string;
+      allowPaperRead?: boolean;
+      out?: string;
+      force?: boolean;
+      json?: boolean;
+      failOnBlocked?: boolean;
+    }) => {
+      const { text, exitCode } = await paperSniperRehearseReport(
+        {},
+        {
+          mode: opts.mode,
+          candidatesPath: opts.candidates,
+          replayFile: opts.replayFile,
+          preflightInputPath: opts.preflightInput,
+          routequotePath: opts.routequote,
+          amountSol: opts.amountSol,
+          slippageBps: opts.slippageBps,
+          endpoint: opts.endpoint,
+          maxQuoteAgeMs: opts.maxQuoteAgeMs,
+          wallet: opts.buildWallet,
+          riskPath: opts.risk,
+          maxSpendSol: opts.maxSpendSol,
+          slippageCapBps: opts.slippageCapBps,
+          riskScoreCap: opts.riskScoreCap,
+          devnetSend: Boolean(opts.devnetSend),
+          acknowledgeDevnetExecution: Boolean(opts.acknowledgeDevnetExecution),
+          rpcUrl: opts.rpcUrl,
+          adoptSpecs: Boolean(opts.adoptSpecs),
+          operatorLabel: opts.operator,
+          allowPaperRead: Boolean(opts.allowPaperRead),
           outDir: opts.out,
           force: Boolean(opts.force),
           json: Boolean(opts.json),

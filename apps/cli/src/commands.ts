@@ -10077,3 +10077,458 @@ export function paperSimulationDiffResultReport(
     "simulation result",
   );
 }
+
+// ---------------------------------------------------------------------------
+// Sprint 93 — paper:sniper:rehearse
+//   ONE senior-operator workflow command that chains the EXISTING safe steps
+//   (candidates -> risk bridge -> quote fetch -> quote prepare -> paper
+//   dry-run -> tx build -> tx simulate -> optional devnet rehearse ->
+//   readiness) into one output directory with an honest per-stage record.
+//   It hides nothing: every stage is the production command, every skip names
+//   the exact next command, and the mode set is CLOSED (paper | devnet |
+//   mainnet-dry-run). There is no mainnet-live mode — deliberately.
+// ---------------------------------------------------------------------------
+
+export const SNIPER_REHEARSAL_REPORT_SCHEMA_VERSION = "sniper.rehearsal.report.v1";
+
+export const SNIPER_REHEARSE_MODES = ["paper", "devnet", "mainnet-dry-run"] as const;
+export type SniperRehearseMode = (typeof SNIPER_REHEARSE_MODES)[number];
+
+export type RehearseStageStatus = "executed" | "skipped" | "blocked" | "failed" | "unavailable";
+
+export interface SniperRehearseStage {
+  stage:
+    | "candidates"
+    | "risk"
+    | "quote-fetch"
+    | "quote-prepare"
+    | "dry-run"
+    | "tx-build"
+    | "tx-simulate"
+    | "devnet-rehearse"
+    | "readiness";
+  status: RehearseStageStatus;
+  detail: string;
+  /** Artifact path(s) this stage produced or consumed, relative to the out dir where possible. */
+  artifacts: string[];
+  /** The exact command an operator runs to do/redo this stage standalone (when applicable). */
+  nextCommand: string | null;
+}
+
+export interface PaperSniperRehearseCommandOptions {
+  /** Workflow mode: paper (default) | devnet | mainnet-dry-run. There is NO mainnet-live mode. */
+  mode?: string;
+  /** Candidate list JSON path (exactly one of --candidates / --replay-file). */
+  candidatesPath?: string;
+  /** Realtime replay events file — the candidates come from a realtime snapshot replay. */
+  replayFile?: string;
+  /** Optional preflight input (sniper.preflight.input.v1) with per-candidate inspection/risk. */
+  preflightInputPath?: string;
+  /** Optional already-prepared routequote artifact (skips the fetch/prepare stages). */
+  routequotePath?: string;
+  /** Quote fetch inputs (mainnet-dry-run mode). */
+  amountSol?: string;
+  slippageBps?: string;
+  endpoint?: string;
+  maxQuoteAgeMs?: string;
+  /** Tx build inputs (mainnet-dry-run mode; all explicit, same flags as execution:build). */
+  wallet?: string;
+  riskPath?: string;
+  maxSpendSol?: string;
+  slippageCapBps?: string;
+  riskScoreCap?: string;
+  /** Devnet mode: the devnet broadcast rehearsal runs ONLY with this explicit flag. */
+  devnetSend?: boolean;
+  acknowledgeDevnetExecution?: boolean;
+  rpcUrl?: string;
+  /** Dry-run governance. */
+  adoptSpecs?: boolean;
+  operatorLabel?: string;
+  allowPaperRead?: boolean;
+  outDir?: string;
+  force?: boolean;
+  json?: boolean;
+  failOnBlocked?: boolean;
+}
+
+const REHEARSE_NEXT: Readonly<Record<string, string>> = {
+  risk: "pnpm soulmaker token:risk <mint> --deep --json --out <risk.json> per candidate, then paper:sniper:preflight:input:prepare to bridge them",
+  "quote-fetch": "pnpm soulmaker paper:routequote:fetch --candidates <candidates.json> --amount-sol <sol> --out <dir> --allow-paper-read",
+  "quote-prepare": "pnpm soulmaker paper:routequote:prepare --candidates <candidates.json> --quote <quote.*.json> --out <prepared.json>",
+  "tx-build": "pnpm soulmaker execution:build --candidate-mint <mint> --wallet <publicKey> --risk <risk.json> --amount-sol <sol> --slippage-bps <bps> --max-spend-sol <sol> --slippage-cap-bps <bps> --risk-score-cap <n> --request mainnet-dry-run --allow-paper-read --out <envelope.json>",
+  "tx-simulate": "pnpm soulmaker paper:simulation:tx --envelope <envelope.json> --allow-paper-read --out <sim.json>",
+  "devnet-rehearse": "pnpm soulmaker execution:devnet:rehearse --out runs/<dir> --acknowledge-devnet-execution (requires SOLMAKER_ENABLE_DEVNET_EXECUTION=devnet-only)",
+};
+
+/**
+ * `soulmaker paper:sniper:rehearse` — the UNIFIED sniper rehearsal workflow (Sprint 93). Chains
+ * the existing production commands over ONE output directory and records an honest per-stage
+ * report (`sniper.rehearsal.report.v1`). Closed mode set:
+ *
+ *   - `paper` (DEFAULT): fully offline — candidates (file or realtime replay) -> paper dry-run
+ *     -> readiness. Network stages are SKIPPED with their exact next commands.
+ *   - `devnet`: paper stages + the devnet broadcast rehearsal, and ONLY behind the explicit
+ *     `--devnet-send` flag on top of the devnet double opt-in.
+ *   - `mainnet-dry-run`: paper stages + live quote fetch/prepare + unsigned tx build + real
+ *     simulateTransaction. It can NEVER send — the only send-capable stage is structurally
+ *     limited to devnet mode.
+ *
+ * There is NO mainnet-live mode and no flag combination that sends on mainnet. A blocked chain
+ * exits 0 with the honest report (`--fail-on-blocked` gates).
+ */
+export async function paperSniperRehearseReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperRehearseCommandOptions = {},
+): Promise<CliReport> {
+  const mode = (opts.mode ?? "paper") as SniperRehearseMode;
+  if (!(SNIPER_REHEARSE_MODES as readonly string[]).includes(mode)) {
+    return {
+      text: redactString(
+        `Refusing: --mode must be one of ${SNIPER_REHEARSE_MODES.join(" | ")}. There is NO mainnet-live rehearsal mode — opening one requires a separate, explicitly authorized future sprint.`,
+      ),
+      exitCode: 1,
+    };
+  }
+  if (!opts.outDir) return { text: "Refusing: --out <dir> is required (every stage writes under it).", exitCode: 1 };
+  if ((opts.candidatesPath === undefined) === (opts.replayFile === undefined)) {
+    return { text: "Refusing: pass exactly one of --candidates <file> or --replay-file <events.json>.", exitCode: 1 };
+  }
+  if (opts.devnetSend && mode !== "devnet") {
+    return { text: `Refusing: --devnet-send is only meaningful with --mode devnet (current mode: ${mode}). No other mode can send anything.`, exitCode: 1 };
+  }
+
+  const outDir = resolvePath(ctx, opts.outDir);
+  const reportPath = join(outDir, "rehearsal-report.json");
+  if (!opts.force && existsSync(reportPath)) {
+    return { text: redactString(`Refusing: ${reportPath} already exists (pass --force to overwrite).`), exitCode: 1 };
+  }
+  try {
+    mkdirSync(outDir, { recursive: true });
+  } catch {
+    return { text: redactString(`Refusing: cannot create output directory at ${outDir}`), exitCode: 1 };
+  }
+
+  const stages: SniperRehearseStage[] = [];
+  const push = (stage: SniperRehearseStage["stage"], status: RehearseStageStatus, detail: string, artifacts: string[] = [], nextCommand: string | null = null): void => {
+    stages.push({ stage, status, detail: redactString(detail).slice(0, 500), artifacts, nextCommand });
+  };
+
+  // --- Stage 1: candidates ---------------------------------------------------
+  let candidatesPath: string;
+  if (opts.replayFile !== undefined) {
+    const realtimeDir = join(outDir, "realtime");
+    try {
+      mkdirSync(realtimeDir, { recursive: true });
+    } catch {
+      return { text: redactString(`Refusing: cannot create ${realtimeDir}`), exitCode: 1 };
+    }
+    const snapshot = await paperRealtimeSnapshotReport(ctx, {
+      source: "replay",
+      replayFile: opts.replayFile,
+      outDir: realtimeDir,
+      force: opts.force,
+    });
+    candidatesPath = join(realtimeDir, "candidates.json");
+    if (snapshot.exitCode !== 0 || !existsSync(candidatesPath)) {
+      push("candidates", "failed", `realtime replay snapshot failed: ${snapshot.text.slice(0, 200)}`);
+      return finishRehearsal();
+    }
+    push("candidates", "executed", `candidates from realtime REPLAY snapshot of ${opts.replayFile}`, ["realtime/snapshot.json", "realtime/candidates.json"]);
+  } else {
+    candidatesPath = opts.candidatesPath as string;
+    push("candidates", "executed", `candidates from operator file ${candidatesPath}`, [candidatesPath]);
+  }
+
+  // --- Stage 2: risk bridge ----------------------------------------------------
+  if (opts.preflightInputPath) {
+    push("risk", "executed", `operator-supplied preflight input (inspection/risk per candidate): ${opts.preflightInputPath}`, [opts.preflightInputPath]);
+  } else {
+    push("risk", "skipped", "no --preflight-input supplied — the dry-run preflight stage stays honestly unknown per candidate", [], REHEARSE_NEXT.risk ?? null);
+  }
+
+  // --- Stages 3+4: quote fetch + prepare (mainnet-dry-run only) ----------------
+  let routequotePath: string | null = opts.routequotePath ?? null;
+  let fetchReportPath: string | null = null;
+  if (routequotePath !== null) {
+    push("quote-fetch", "skipped", `a prepared routequote was supplied directly: ${routequotePath}`, [routequotePath]);
+    push("quote-prepare", "skipped", "prepare not needed — prepared artifact supplied", []);
+  } else if (mode !== "mainnet-dry-run") {
+    const why =
+      mode === "devnet"
+        ? "the quote provider serves mainnet only — no devnet quotes exist"
+        : "paper mode reaches no network";
+    push("quote-fetch", "skipped", `${why}`, [], REHEARSE_NEXT["quote-fetch"] ?? null);
+    push("quote-prepare", "skipped", "nothing to prepare without a fetch", [], REHEARSE_NEXT["quote-prepare"] ?? null);
+  } else {
+    const quotesDir = join(outDir, "quotes");
+    try {
+      mkdirSync(quotesDir, { recursive: true });
+    } catch {
+      return { text: redactString(`Refusing: cannot create ${quotesDir}`), exitCode: 1 };
+    }
+    const fetch = await paperRouteQuoteFetchReport(ctx, {
+      candidatesPath,
+      amountSol: opts.amountSol ?? "0.01",
+      slippageBps: opts.slippageBps,
+      endpoint: opts.endpoint,
+      allowPaperRead: opts.allowPaperRead,
+      outDir: quotesDir,
+      force: opts.force,
+    });
+    fetchReportPath = join(quotesDir, "fetch-report.json");
+    if (!existsSync(fetchReportPath)) {
+      push("quote-fetch", "unavailable", `quote fetch produced no report: ${fetch.text.slice(0, 200)}`, [], REHEARSE_NEXT["quote-fetch"] ?? null);
+      fetchReportPath = null;
+    } else {
+      const quoteFiles = readdirSync(quotesDir).filter((f) => f.startsWith("quote.") && f.endsWith(".json"));
+      push(
+        "quote-fetch",
+        fetch.exitCode === 0 ? "executed" : "unavailable",
+        `live quote fetch wrote ${quoteFiles.length} observation file(s) (exit ${fetch.exitCode})`,
+        ["quotes/fetch-report.json", ...quoteFiles.map((f) => `quotes/${f}`)],
+      );
+      if (quoteFiles.length > 0) {
+        const preparedPath = join(outDir, "routequote-prepared.json");
+        const prepare = paperRouteQuotePrepareReport(ctx, {
+          candidatesPath,
+          quotePaths: quoteFiles.map((f) => join(quotesDir, f)),
+          sourceLabel: "paper:sniper:rehearse quote fetch",
+          outPath: preparedPath,
+          force: opts.force,
+        });
+        if (prepare.exitCode === 0 && existsSync(preparedPath)) {
+          routequotePath = preparedPath;
+          push("quote-prepare", "executed", "prepared routequote built from the fetched observations", ["routequote-prepared.json"]);
+        } else {
+          push("quote-prepare", "failed", `prepare refused: ${prepare.text.slice(0, 200)}`, [], REHEARSE_NEXT["quote-prepare"] ?? null);
+        }
+      } else {
+        push("quote-prepare", "unavailable", "no quote observation files to prepare (provider unavailable/blocked) — the route stage stays honestly unavailable", [], null);
+      }
+    }
+  }
+
+  // --- Stage 5: paper dry-run ---------------------------------------------------
+  const dryRunDir = join(outDir, "dry-run");
+  const dryRun = paperSniperDryRunReport(ctx, {
+    candidatesPath,
+    preflightInputPath: opts.preflightInputPath,
+    routequotePath: routequotePath ?? undefined,
+    adoptSpecs: opts.adoptSpecs,
+    operatorLabel: opts.operatorLabel,
+    runLabel: "paper:sniper:rehearse",
+    outDir: dryRunDir,
+    force: opts.force,
+  });
+  let dryRunVerdict: string | null = null;
+  if (dryRun.exitCode === 0 && existsSync(join(dryRunDir, "operator-bundle.json"))) {
+    try {
+      const bundle = JSON.parse(stripJsonBom(readFileSync(join(dryRunDir, "operator-bundle.json"), "utf8"))) as { operatorVerdict?: string };
+      dryRunVerdict = typeof bundle.operatorVerdict === "string" ? bundle.operatorVerdict : null;
+    } catch {
+      dryRunVerdict = null;
+    }
+    // "reviewable-paper-only" is the BEST possible bundle verdict; anything else (blocked /
+    // incomplete / attention / unreadable) is honestly a blocked stage.
+    push(
+      "dry-run",
+      dryRunVerdict === "reviewable-paper-only" ? "executed" : "blocked",
+      `full paper dry-run chain completed; operator bundle verdict: ${dryRunVerdict ?? "unreadable"}`,
+      ["dry-run/operator-bundle.json", "dry-run/RUN_SUMMARY.md"],
+    );
+  } else {
+    push("dry-run", "failed", `dry-run refused: ${dryRun.text.slice(0, 300)}`);
+    return finishRehearsal();
+  }
+
+  // --- Stages 6+7: unsigned build + real simulation (mainnet-dry-run only) -------
+  let envelopePath: string | null = null;
+  let simulationPath: string | null = null;
+  if (mode !== "mainnet-dry-run") {
+    const why = mode === "devnet" ? "the swap builder serves mainnet only; the devnet stage uses the self-transfer probe instead" : "paper mode builds nothing";
+    push("tx-build", "skipped", why, [], REHEARSE_NEXT["tx-build"] ?? null);
+    push("tx-simulate", "skipped", "nothing to simulate without a build", [], REHEARSE_NEXT["tx-simulate"] ?? null);
+  } else if (!opts.wallet || !opts.riskPath || !opts.maxSpendSol || !opts.slippageCapBps || !opts.riskScoreCap || !opts.slippageBps) {
+    push(
+      "tx-build",
+      "skipped",
+      "tx build needs ALL of --wallet --risk --amount-sol --slippage-bps --max-spend-sol --slippage-cap-bps --risk-score-cap (explicit caps; nothing is defaulted)",
+      [],
+      REHEARSE_NEXT["tx-build"] ?? null,
+    );
+    push("tx-simulate", "skipped", "nothing to simulate without a build", [], REHEARSE_NEXT["tx-simulate"] ?? null);
+  } else {
+    // The build target is the FIRST candidate's mint (one candidate per build — explicit).
+    let buildMint: string | null = null;
+    try {
+      const rawList = readJsonValue(ctx, candidatesPath, "sniper candidate list");
+      if (isPlainObject(rawList) && Array.isArray(rawList.candidates) && isPlainObject(rawList.candidates[0])) {
+        const first = rawList.candidates[0] as Record<string, unknown>;
+        buildMint = typeof first.mint === "string" ? first.mint : null;
+      }
+    } catch {
+      buildMint = null;
+    }
+    if (buildMint === null) {
+      push("tx-build", "failed", "could not read the first candidate's mint for the build target");
+      push("tx-simulate", "skipped", "nothing to simulate without a build", []);
+    } else {
+      envelopePath = join(outDir, "envelope.json");
+      const build = await executionBuildReport(ctx, {
+        candidateMint: buildMint,
+        amountSol: opts.amountSol ?? "0.01",
+        slippageBps: opts.slippageBps,
+        wallet: opts.wallet,
+        riskPath: opts.riskPath,
+        request: "mainnet-dry-run",
+        maxSpendSol: opts.maxSpendSol,
+        slippageCapBps: opts.slippageCapBps,
+        riskScoreCap: opts.riskScoreCap,
+        maxQuoteAgeMs: opts.maxQuoteAgeMs,
+        endpoint: opts.endpoint,
+        allowPaperRead: opts.allowPaperRead,
+        outPath: envelopePath,
+        force: opts.force,
+      });
+      if (build.exitCode !== 0 || !existsSync(envelopePath)) {
+        push("tx-build", "blocked", `build refused: ${build.text.slice(0, 300)}`, [], REHEARSE_NEXT["tx-build"] ?? null);
+        envelopePath = null;
+        push("tx-simulate", "skipped", "nothing to simulate without a build", []);
+      } else {
+        push("tx-build", "executed", `UNSIGNED mainnet-dry-run envelope built for ${buildMint} (nothing signed, nothing sent)`, ["envelope.json"]);
+        simulationPath = join(outDir, "tx-simulation.json");
+        const sim = await paperSimulationTxReport(ctx, {
+          envelopePath,
+          rpcUrl: opts.rpcUrl,
+          allowPaperRead: opts.allowPaperRead,
+          outPath: simulationPath,
+          force: opts.force,
+        });
+        let simOutcome: string | null = null;
+        if (existsSync(simulationPath)) {
+          try {
+            simOutcome = (JSON.parse(stripJsonBom(readFileSync(simulationPath, "utf8"))) as { outcome?: string }).outcome ?? null;
+          } catch {
+            simOutcome = null;
+          }
+        }
+        if (simOutcome === "simulated-ok") {
+          push("tx-simulate", "executed", "the exact envelope simulated ok against recent chain state", ["tx-simulation.json"]);
+        } else if (simOutcome === null) {
+          push("tx-simulate", "unavailable", `simulation produced no report (exit ${sim.exitCode}): ${sim.text.slice(0, 200)}`, [], REHEARSE_NEXT["tx-simulate"] ?? null);
+          simulationPath = null;
+        } else {
+          push("tx-simulate", "failed", `simulation outcome: ${simOutcome}`, ["tx-simulation.json"]);
+        }
+      }
+    }
+  }
+
+  // --- Stage 8: devnet rehearse (devnet mode + explicit flag ONLY) ----------------
+  if (mode === "devnet" && opts.devnetSend === true) {
+    const devnetDir = join(outDir, "devnet");
+    const rehearse = await executionDevnetRehearseReport(ctx, {
+      outDir: devnetDir,
+      rpcUrl: opts.rpcUrl,
+      acknowledgeDevnetExecution: opts.acknowledgeDevnetExecution,
+      force: opts.force,
+    });
+    let outcome: string | null = null;
+    let signature: string | null = null;
+    const devnetReportPath = join(devnetDir, "devnet-rehearsal-report.json");
+    if (existsSync(devnetReportPath)) {
+      try {
+        const parsed = JSON.parse(stripJsonBom(readFileSync(devnetReportPath, "utf8"))) as { outcome?: string; signature?: string | null };
+        outcome = parsed.outcome ?? null;
+        signature = parsed.signature ?? null;
+      } catch {
+        outcome = null;
+      }
+    }
+    if (outcome === "rehearsed" || outcome === "submitted-unconfirmed") {
+      push("devnet-rehearse", "executed", `devnet broadcast ${outcome}${signature !== null ? `; signature ${signature}` : ""}`, ["devnet/devnet-rehearsal-report.json"]);
+    } else if (outcome !== null) {
+      push("devnet-rehearse", "blocked", `devnet rehearsal outcome: ${outcome}`, ["devnet/devnet-rehearsal-report.json"], REHEARSE_NEXT["devnet-rehearse"] ?? null);
+    } else {
+      push("devnet-rehearse", "failed", `devnet rehearsal refused: ${rehearse.text.slice(0, 300)}`, [], REHEARSE_NEXT["devnet-rehearse"] ?? null);
+    }
+  } else if (mode === "devnet") {
+    push("devnet-rehearse", "skipped", "devnet broadcast requires the EXPLICIT --devnet-send flag (plus the devnet double opt-in)", [], REHEARSE_NEXT["devnet-rehearse"] ?? null);
+  } else {
+    push("devnet-rehearse", "skipped", `mode ${mode} can never send anything — the only send-capable stage is structurally limited to devnet mode`, []);
+  }
+
+  // --- Stage 9: readiness (always; read-only) -------------------------------------
+  const readinessPath = join(outDir, "readiness.json");
+  const readiness = executionReadinessReport(ctx, {
+    quoteReportPath: fetchReportPath ?? undefined,
+    maxQuoteAgeMs: fetchReportPath !== null ? opts.maxQuoteAgeMs : undefined,
+    riskPath: opts.riskPath,
+    riskScoreCap: opts.riskScoreCap,
+    simulationPath: simulationPath ?? undefined,
+    slippageCapBps: opts.slippageCapBps,
+    wallet: opts.wallet,
+    outPath: readinessPath,
+    force: opts.force,
+  });
+  if (readiness.exitCode === 0 && existsSync(readinessPath)) {
+    let satisfied = "?";
+    try {
+      const parsed = JSON.parse(stripJsonBom(readFileSync(readinessPath, "utf8"))) as { satisfiedCount?: number; totalChecks?: number };
+      satisfied = `${parsed.satisfiedCount ?? "?"}/${parsed.totalChecks ?? "?"}`;
+    } catch {
+      satisfied = "?";
+    }
+    push("readiness", "executed", `mainnet readiness checklist written (${satisfied} conditions satisfied; verdict blocked by design)`, ["readiness.json"]);
+  } else {
+    push("readiness", "failed", `readiness refused: ${readiness.text.slice(0, 200)}`);
+  }
+
+  return finishRehearsal();
+
+  function finishRehearsal(): CliReport {
+    const ranStages = stages.filter((s) => s.status !== "skipped");
+    const cleanRun = ranStages.every((s) => s.status === "executed");
+    const report = {
+      schemaVersion: SNIPER_REHEARSAL_REPORT_SCHEMA_VERSION,
+      banner:
+        "SNIPER REHEARSAL REPORT — a chained run of the EXISTING production commands with an honest per-stage record. A skipped stage names its exact standalone command; a blocked stage is the system working, not a bug. Nothing here is live-trading readiness, and no mode of this command can send on mainnet.",
+      mode,
+      outcome: cleanRun ? "rehearsed" : "blocked",
+      generatedAt: (ctx.now ?? isoNow)(),
+      stages,
+      executedCount: stages.filter((s) => s.status === "executed").length,
+      skippedCount: stages.filter((s) => s.status === "skipped").length,
+      blockedCount: stages.filter((s) => s.status === "blocked" || s.status === "failed" || s.status === "unavailable").length,
+      neverSendsOnMainnet: true,
+      phase7LiveTradingReady: false,
+      caveats: [
+        "Every stage above is the existing production command — run them standalone with the printed next commands.",
+        "paper is the default mode; devnet broadcast requires --mode devnet --devnet-send plus the devnet double opt-in.",
+        "mainnet-dry-run may build and simulate but is structurally incapable of sending.",
+      ],
+    };
+    try {
+      writeFileSync(reportPath, JSON.stringify(redactValue(report), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the rehearsal report at ${reportPath}`), exitCode: 1 };
+    }
+    const exitCode = opts.failOnBlocked && report.outcome !== "rehearsed" ? 1 : 0;
+    if (opts.json) {
+      return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
+    }
+    const lines: string[] = [];
+    lines.push(`SNIPER REHEARSAL (${mode}): ${report.outcome.toUpperCase()}`);
+    lines.push("=".repeat(40));
+    for (const s of stages) {
+      lines.push(`  [${s.status === "executed" ? "x" : s.status === "skipped" ? "-" : " "}] ${s.stage} (${s.status}): ${s.detail}`);
+      if (s.nextCommand !== null && s.status !== "executed") lines.push(`        next: ${s.nextCommand}`);
+    }
+    lines.push("");
+    lines.push(`artifacts under: ${outDir}`);
+    lines.push(`stage record:    ${reportPath}`);
+    lines.push("");
+    for (const caveat of report.caveats) lines.push(`CAVEAT: ${caveat}`);
+    return { text: redactString(lines.join("\n")), exitCode };
+  }
+}
