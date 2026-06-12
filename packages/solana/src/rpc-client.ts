@@ -17,6 +17,7 @@ import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
 import { redactString } from "@soulmaker/security";
 import { parsePublicKey } from "./public-key.js";
 import { buildTokenHolderConcentration, buildTokenMetadataInfo } from "./deep-inspect.js";
+import { summarizeToken2022Extensions } from "./token2022.js";
 import type {
   ReadOnlyClientConfig,
   ReadOnlySolanaClient,
@@ -36,6 +37,8 @@ interface ParsedMintInfo {
   freezeAuthority: string | null;
   supply: string;
   isInitialized: boolean;
+  /** Token-2022 extension entries (jsonParsed); absent on classic mints / extensionless mints. */
+  extensions?: unknown;
 }
 
 interface ParsedTokenAmount {
@@ -182,6 +185,7 @@ export function createClientFromRpc(
       );
     }
     const info = parsed.info;
+    const programLabel = labelForProgram(value.owner);
     return {
       mint: pk.toBase58(),
       decimals: info.decimals,
@@ -190,7 +194,9 @@ export function createClientFromRpc(
       mintAuthorityPresent: info.mintAuthority != null,
       freezeAuthorityPresent: info.freezeAuthority != null,
       isInitialized: info.isInitialized,
-      programLabel: labelForProgram(value.owner),
+      programLabel,
+      // S93: extension facts ride on the SAME jsonParsed read — no extra network call.
+      token2022Extensions: summarizeToken2022Extensions(programLabel, info.extensions),
       source: "getParsedAccountInfo(jsonParsed)",
     };
   }

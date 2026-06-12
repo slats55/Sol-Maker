@@ -76,6 +76,12 @@ export interface TokenMintInfo {
   isInitialized: boolean;
   /** The owning token program (classic SPL or Token-2022). */
   programLabel: TokenProgramLabel | "unknown";
+  /**
+   * Sprint 93: Token-2022 extension facts parsed from the same jsonParsed read (no extra RPC
+   * call). OPTIONAL so older fakes/seams stay valid — an absent field means the inspection was
+   * not run (honest "not checked"), never "no extensions".
+   */
+  token2022Extensions?: import("./token2022.js").Token2022ExtensionsSummary;
   /** How this was read, for auditability. */
   source: string;
 }

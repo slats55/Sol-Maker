@@ -54,6 +54,23 @@ export function formatTokenInspectReport(report: TokenInspectReport): string {
     `freeze authority:  ${report.freezeAuthorityPresent ? "PRESENT (can freeze — you may not be able to sell)" : "renounced"}`,
   );
   lines.push(`initialized:       ${report.isInitialized ? "yes" : "no"}`);
+  const t22 = report.token2022Extensions;
+  if (t22 !== undefined && t22.status !== "not-applicable") {
+    if (t22.status === "unavailable") {
+      lines.push("token-2022 ext:    UNREADABLE — extension data could not be parsed (a caution, never assumed absent)");
+    } else {
+      lines.push(`token-2022 ext:    ${t22.extensionNames.length > 0 ? t22.extensionNames.join(", ") : "none"}`);
+      const warnings: string[] = [];
+      if (t22.transferHookPresent === true) warnings.push("TRANSFER HOOK (external program controls every transfer)");
+      if (t22.permanentDelegatePresent === true) warnings.push("PERMANENT DELEGATE (can seize/burn any holder's tokens)");
+      if (t22.nonTransferable === true) warnings.push("NON-TRANSFERABLE (cannot be sold)");
+      if (t22.defaultAccountStateFrozen === true) warnings.push("DEFAULT FROZEN (new accounts start frozen)");
+      if (t22.pausable === true) warnings.push("PAUSABLE (all transfers can be paused)");
+      if (typeof t22.transferFeeBps === "number" && t22.transferFeeBps > 0) warnings.push(`TRANSFER FEE ${t22.transferFeeBps} bps on every transfer`);
+      if (t22.mintCloseAuthorityPresent === true) warnings.push("MINT CLOSE AUTHORITY (address can be reused for a different token)");
+      for (const warning of warnings) lines.push(`  !! ${warning}`);
+    }
+  }
   lines.push(`source:            ${report.source}`);
   lines.push(`rpc host:          ${report.endpointHost}`);
   lines.push(`time:              ${report.timestamp}`);

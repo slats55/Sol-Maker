@@ -142,3 +142,97 @@ describe("token:risk --deep", () => {
     });
   });
 });
+
+describe("token:risk --deep — S93 Token-2022 extension checks", () => {
+  function token2022Client(extensions: Partial<import("@soulmaker/solana").Token2022ExtensionsSummary> | undefined): ReadOnlySolanaClient {
+    const base = deepClient();
+    return {
+      ...base,
+      getTokenMintInfo: async (mint: PublicKeyInput) => ({
+        ...(await base.getTokenMintInfo(mint)),
+        programLabel: "spl-token-2022" as const,
+        ...(extensions === undefined
+          ? {}
+          : {
+              token2022Extensions: {
+                status: "parsed" as const,
+                extensionNames: [],
+                unexaminedNames: [],
+                transferFeeBps: null,
+                transferHookPresent: false,
+                transferHookProgramId: null,
+                permanentDelegatePresent: false,
+                permanentDelegate: null,
+                defaultAccountStateFrozen: false,
+                confidentialTransfersEnabled: false,
+                metadataPointerPresent: false,
+                mintCloseAuthorityPresent: false,
+                nonTransferable: false,
+                interestBearing: false,
+                pausable: false,
+                scaledUiAmount: false,
+                ...extensions,
+              },
+            }),
+      }),
+    };
+  }
+
+  it("a transfer-hook Token-2022 mint REJECTS with the critical flag (score 100 path)", async () => {
+    await withTmpAsync(async (tmp) => {
+      const client = token2022Client({ transferHookPresent: true, extensionNames: ["transferHook"] });
+      const out = await tokenRiskReport(USDC, ctx(tmp, client), { json: true, deep: true });
+      const report = JSON.parse(out) as { decision: string; flags: Array<{ id: string; severity: string }> };
+      expect(report.decision).toBe("REJECT");
+      const hook = report.flags.find((f) => f.id === "transfer-hook-present");
+      expect(hook?.severity).toBe("critical");
+    });
+  });
+
+  it("a transfer-fee Token-2022 mint carries the HIGH fee flag with its bps", async () => {
+    await withTmpAsync(async (tmp) => {
+      const client = token2022Client({ transferFeeBps: 300, extensionNames: ["transferFeeConfig"] });
+      const out = await tokenRiskReport(USDC, ctx(tmp, client), { json: true, deep: true });
+      const report = JSON.parse(out) as { flags: Array<{ id: string; evidence?: Record<string, unknown> }> };
+      expect(report.flags.find((f) => f.id === "transfer-fee-present")?.evidence?.transferFeeBps).toBe(300);
+    });
+  });
+
+  it("a permanent-delegate mint REJECTS; a clean parsed Token-2022 mint gets the informational clear", async () => {
+    await withTmpAsync(async (tmp) => {
+      const delegated = await tokenRiskReport(USDC, ctx(tmp, token2022Client({ permanentDelegatePresent: true })), { json: true, deep: true });
+      expect((JSON.parse(delegated) as { decision: string }).decision).toBe("REJECT");
+
+      const clean = await tokenRiskReport(USDC, ctx(tmp, token2022Client({})), { json: true, deep: true });
+      const cleanReport = JSON.parse(clean) as { flags: Array<{ id: string }> };
+      expect(cleanReport.flags.some((f) => f.id === "token-2022-no-risky-extensions")).toBe(true);
+    });
+  });
+
+  it("a Token-2022 mint whose seam did NOT parse extensions degrades to the explicit unknown caution", async () => {
+    await withTmpAsync(async (tmp) => {
+      const out = await tokenRiskReport(USDC, ctx(tmp, token2022Client(undefined)), { json: true, deep: true });
+      const report = JSON.parse(out) as { flags: Array<{ id: string; severity: string }> };
+      const unknown = report.flags.find((f) => f.id === "token-2022-extensions-unknown");
+      expect(unknown?.severity).toBe("medium");
+    });
+  });
+
+  it("WITHOUT --deep no extension flag appears, even for a hooked Token-2022 mint (deep opt-in preserved)", async () => {
+    await withTmpAsync(async (tmp) => {
+      const client = token2022Client({ transferHookPresent: true });
+      const out = await tokenRiskReport(USDC, ctx(tmp, client), { json: true });
+      const report = JSON.parse(out) as { flags: Array<{ id: string }> };
+      expect(report.flags.some((f) => f.id === "transfer-hook-present")).toBe(false);
+      expect(report.flags.some((f) => f.id === "token-2022-program")).toBe(true);
+    });
+  });
+
+  it("a classic SPL mint with --deep carries NO extension flags (not-applicable)", async () => {
+    await withTmpAsync(async (tmp) => {
+      const out = await tokenRiskReport(USDC, ctx(tmp, deepClient()), { json: true, deep: true });
+      const report = JSON.parse(out) as { flags: Array<{ id: string }> };
+      expect(report.flags.some((f) => f.id.startsWith("token-2022-") || f.id === "transfer-hook-present")).toBe(false);
+    });
+  });
+});

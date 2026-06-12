@@ -932,6 +932,16 @@ export async function tokenRiskReport(
       } else {
         input.metadataAvailable = false;
       }
+      // S93: Token-2022 extension facts ride on the SAME jsonParsed inspection read. A seam
+      // that did not parse extensions on a Token-2022 mint is an honest unknown caution; a
+      // classic mint is not-applicable (extensions cannot exist there).
+      if (inspection.token2022Extensions !== undefined) {
+        input.token2022 = inspection.token2022Extensions;
+      } else if (inspection.programLabel === "spl-token-2022") {
+        input.token2022 = { status: "unavailable" };
+      } else {
+        input.token2022 = { status: "not-applicable" };
+      }
     }
     if (quotePriceImpactPct !== undefined) {
       input.quotePriceImpactPct = quotePriceImpactPct;

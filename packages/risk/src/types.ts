@@ -84,6 +84,32 @@ export interface TokenRiskInput {
   metadataMutable?: boolean;
   /** Provider-reported price impact percent of a small quote probe (liquidity depth). */
   quotePriceImpactPct?: number;
+
+  /**
+   * Sprint 93 Token-2022 extension facts (from `@soulmaker/solana`'s jsonParsed read). Same
+   * honesty contract as the S92 deep checks: ABSENT means the inspection was not run and NO
+   * extension flag fires (existing reports stay byte-identical); SUPPLIED means the
+   * corresponding flags always fire — including the explicit `status: "unavailable"` form,
+   * which is a caution, never "no extensions, all clear".
+   */
+  token2022?: {
+    status: "not-applicable" | "parsed" | "unavailable";
+    extensionNames?: string[];
+    unexaminedNames?: string[];
+    transferFeeBps?: number | null;
+    transferHookPresent?: boolean | null;
+    transferHookProgramId?: string | null;
+    permanentDelegatePresent?: boolean | null;
+    permanentDelegate?: string | null;
+    defaultAccountStateFrozen?: boolean | null;
+    confidentialTransfersEnabled?: boolean | null;
+    metadataPointerPresent?: boolean | null;
+    mintCloseAuthorityPresent?: boolean | null;
+    nonTransferable?: boolean | null;
+    interestBearing?: boolean | null;
+    pausable?: boolean | null;
+    scaledUiAmount?: boolean | null;
+  };
 }
 
 /** The full advisory risk report for one mint. */

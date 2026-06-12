@@ -29,6 +29,13 @@ export const HOLDER_TOP5_ELEVATED_PCT = 70;
 export const QUOTE_IMPACT_VERY_THIN_PCT = 10;
 export const QUOTE_IMPACT_THIN_PCT = 3;
 
+/**
+ * Sprint 93 Token-2022 thresholds: a transfer fee at or above this (10%) is treated as a
+ * deal-breaker — at that level every round trip loses a fifth of the position to the fee
+ * authority, which is honeypot economics, not a fee.
+ */
+export const TRANSFER_FEE_EXTREME_BPS = 1000;
+
 /** Token program labels we recognize as standard. Anything else is "unknown". */
 const STANDARD_PROGRAM = "spl-token";
 const TOKEN_2022_PROGRAM = "spl-token-2022";
@@ -353,6 +360,175 @@ export function evaluateRiskFlags(input: TokenRiskInput): RiskFlag[] {
         detail: "The Metaplex metadata can no longer be changed.",
         evidence: { metadataMutable: false },
       });
+    }
+  }
+
+  // --- Sprint 93 Token-2022 extension checks ---------------------------------
+  // Fire ONLY when the token2022 block was supplied (absence = "not checked").
+  if (input.token2022 !== undefined) {
+    const t22 = input.token2022;
+    if (t22.status === "unavailable") {
+      flags.push({
+        id: "token-2022-extensions-unknown",
+        severity: "medium",
+        title: "Token-2022 extension data unreadable",
+        detail:
+          "This is a Token-2022 mint but its extension data could not be read or parsed. " +
+          "Extensions can include transfer hooks, fees, and permanent delegates — treated as a caution, never assumed absent.",
+        evidence: { token2022Status: "unavailable" },
+      });
+    } else if (t22.status === "parsed") {
+      let riskyExtensionFlagged = false;
+
+      if (t22.transferHookPresent === true) {
+        riskyExtensionFlagged = true;
+        flags.push({
+          id: "transfer-hook-present",
+          severity: "critical",
+          title: "Transfer hook extension present",
+          detail:
+            "Every transfer of this token invokes an external program that can reject, redirect, or condition transfers " +
+            "at will — the canonical programmable-honeypot vector. Rejected outright.",
+          evidence: { transferHookProgramId: t22.transferHookProgramId ?? null },
+        });
+      }
+      if (t22.permanentDelegatePresent === true) {
+        riskyExtensionFlagged = true;
+        flags.push({
+          id: "permanent-delegate-present",
+          severity: "critical",
+          title: "Permanent delegate extension present",
+          detail:
+            "A permanent delegate can transfer or burn ANY holder's tokens without consent, forever. " +
+            "Legitimate for some regulated assets — fatal for a sniped token. Rejected outright.",
+          evidence: { permanentDelegate: t22.permanentDelegate ?? null },
+        });
+      }
+      if (t22.nonTransferable === true) {
+        riskyExtensionFlagged = true;
+        flags.push({
+          id: "non-transferable-token",
+          severity: "critical",
+          title: "Non-transferable token",
+          detail: "The non-transferable extension is set — the token cannot be moved or sold at all. Rejected outright.",
+          evidence: { nonTransferable: true },
+        });
+      }
+      if (t22.defaultAccountStateFrozen === true) {
+        riskyExtensionFlagged = true;
+        flags.push({
+          id: "default-account-state-frozen",
+          severity: "critical",
+          title: "New token accounts start FROZEN",
+          detail:
+            "The defaultAccountState extension freezes every new token account until an authority thaws it — " +
+            "buyers receive tokens they cannot move. A classic honeypot construction. Rejected outright.",
+          evidence: { defaultAccountStateFrozen: true },
+        });
+      }
+      if (t22.pausable === true) {
+        riskyExtensionFlagged = true;
+        flags.push({
+          id: "pausable-token",
+          severity: "critical",
+          title: "Pausable extension present",
+          detail:
+            "An authority can pause ALL transfers of this token at any moment — you may be unable to sell exactly " +
+            "when it matters. Rejected outright.",
+          evidence: { pausable: true },
+        });
+      }
+      if (typeof t22.transferFeeBps === "number" && t22.transferFeeBps > 0) {
+        riskyExtensionFlagged = true;
+        const extreme = t22.transferFeeBps >= TRANSFER_FEE_EXTREME_BPS;
+        flags.push({
+          id: extreme ? "transfer-fee-extreme" : "transfer-fee-present",
+          severity: extreme ? "critical" : "high",
+          title: extreme ? "Extreme transfer fee" : "Transfer fee extension present",
+          detail: extreme
+            ? `Every transfer loses ${t22.transferFeeBps} bps (≥ ${TRANSFER_FEE_EXTREME_BPS}) to the fee authority — ` +
+              "honeypot economics, not a fee. Rejected outright."
+            : `Every transfer loses ${t22.transferFeeBps} bps to the fee authority — entry and exit both pay it, ` +
+              "and the authority can raise it (up to its configured maximum) for future epochs.",
+          evidence: { transferFeeBps: t22.transferFeeBps },
+        });
+      }
+      if (t22.mintCloseAuthorityPresent === true) {
+        riskyExtensionFlagged = true;
+        flags.push({
+          id: "mint-close-authority-present",
+          severity: "high",
+          title: "Mint close authority present",
+          detail:
+            "An authority can close the mint account once supply hits zero — and a closed mint address can be " +
+            "reinitialized as a DIFFERENT token, a known impersonation vector.",
+          evidence: { mintCloseAuthorityPresent: true },
+        });
+      }
+      if (t22.confidentialTransfersEnabled === true) {
+        flags.push({
+          id: "confidential-transfers-enabled",
+          severity: "medium",
+          title: "Confidential transfers enabled",
+          detail:
+            "Balances/amounts can move confidentially, which blinds holder-concentration and flow analysis for this " +
+            "token — a transparency caution, not a verdict.",
+          evidence: { confidentialTransfersEnabled: true },
+        });
+      }
+      if (t22.scaledUiAmount === true) {
+        flags.push({
+          id: "scaled-ui-amount-present",
+          severity: "medium",
+          title: "Scaled UI amount extension present",
+          detail:
+            "Displayed balances are multiplied by an authority-controlled factor — what wallets show can be changed " +
+            "without any real transfer. Display figures for this token are untrustworthy.",
+          evidence: { scaledUiAmount: true },
+        });
+      }
+      if (t22.interestBearing === true) {
+        flags.push({
+          id: "interest-bearing-token",
+          severity: "low",
+          title: "Interest-bearing extension present",
+          detail: "Displayed balances accrue a configured interest rate — display-only accounting, flagged for awareness.",
+          evidence: { interestBearing: true },
+        });
+      }
+      if (t22.metadataPointerPresent === true) {
+        flags.push({
+          id: "metadata-pointer-present",
+          severity: "info",
+          title: "Metadata pointer extension present",
+          detail: "Token metadata lives at the account this pointer names (often the mint itself) rather than Metaplex.",
+          evidence: { metadataPointerPresent: true },
+        });
+      }
+      const unexamined = (t22.unexaminedNames ?? []).filter((n) => typeof n === "string" && n.length > 0);
+      if (unexamined.length > 0) {
+        flags.push({
+          id: "token-2022-unexamined-extension",
+          severity: "medium",
+          title: "Unexamined Token-2022 extension present",
+          detail:
+            `This mint carries extension(s) this inspector does not examine (${unexamined.slice(0, 5).join(", ")}) — ` +
+            "their behavior is unverified, which is a caution, not a pass.",
+          evidence: { unexaminedNames: unexamined.slice(0, 10) },
+        });
+      }
+      if (input.programLabel === TOKEN_2022_PROGRAM && !riskyExtensionFlagged && unexamined.length === 0) {
+        flags.push({
+          id: "token-2022-no-risky-extensions",
+          severity: "info",
+          title: "No high-risk Token-2022 extensions detected",
+          detail:
+            "The parsed extension set contains none of the high-risk extensions (hook, permanent delegate, " +
+            "non-transferable, default-frozen, pausable, transfer fee, mint close authority). Informational — " +
+            "this clears the EXTENSION checks only, nothing else.",
+          evidence: { extensionNames: (t22.extensionNames ?? []).slice(0, 16) },
+        });
+      }
     }
   }
 

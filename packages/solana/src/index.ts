@@ -45,6 +45,15 @@ export {
   parseMetadataAccount,
 } from "./deep-inspect.js";
 
+export {
+  TOKEN_2022_EXAMINED_EXTENSIONS,
+  summarizeToken2022Extensions,
+} from "./token2022.js";
+export type {
+  Token2022ExtensionsStatus,
+  Token2022ExtensionsSummary,
+} from "./token2022.js";
+
 export type {
   PublicKeyInput,
   ReadOnlyClientConfig,
