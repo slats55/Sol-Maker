@@ -3056,7 +3056,7 @@ function renderEngineStatusView(rec: Record<string, unknown>): RawHtml {
   const caveats = readStringArray(rec, "caveats");
   return html`
     ${RiskNotice({
-      tone: allDisabled ? "info" : "danger",
+      tone: allDisabled ? "info" : "caution",
       title: allDisabled
         ? "Rust engine sidecar — foundation only, every execution capability disabled"
         : "Rust engine artifact claims a capability the foundation forbids — do NOT trust this artifact",
