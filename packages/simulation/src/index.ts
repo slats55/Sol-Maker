@@ -194,6 +194,8 @@ export {
   type SimulationRouteResolutionEntryV1,
   type SimulationRouteResolutionV1,
   type BuildSimulationRouteResolutionV1Input,
+  type SimulationRouteFactEntryInput,
+  type SimulationRouteFactsInput,
   type FormatSimulationRouteResolutionV1Options,
 } from "./route-resolution.js";
 

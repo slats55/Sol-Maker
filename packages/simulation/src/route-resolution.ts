@@ -181,6 +181,29 @@ export interface SimulationRouteResolutionV1 {
   notes: string[];
 }
 
+/** One label-only route fact a separately-validated quote layer supplies (Sprint 91). Labels are
+ * INERT strings with provenance — never a transaction, never an instruction, never an address the
+ * pipeline acts on. A missing label stays honestly unresolved. */
+export interface SimulationRouteFactEntryInput {
+  /** Must match a plan entry's candidateId exactly (a fact for an unknown candidate THROWS). */
+  candidateId: string;
+  /** Must match that plan entry's mint exactly (a contradiction THROWS — fail closed). */
+  mint: string;
+  routeLabel?: string | null;
+  destinationLabel?: string | null;
+  feeLabel?: string | null;
+}
+
+/** Quote-derived route facts for {@link buildSimulationRouteResolutionV1} (Sprint 91): an inert
+ * provenance id plus per-candidate label facts. Supplying this NEVER unblocks a blocked chain —
+ * a blocked plan still produces a blocked artifact with zero entries and no attempt recorded. */
+export interface SimulationRouteFactsInput {
+  /** Kebab-case provenance id (e.g. "routequote-operator-supplied"). It can never be the
+   * canonical no-resolver id and can never look like key material. */
+  resolverId: string;
+  facts: SimulationRouteFactEntryInput[];
+}
+
 /** Everything {@link buildSimulationRouteResolutionV1} needs. Plan problems BLOCK (never throw). */
 export interface BuildSimulationRouteResolutionV1Input {
   /** `simulation.intent.plan.v2` (required; missing/invalid/blocked BLOCKS the artifact). */
@@ -191,6 +214,9 @@ export interface BuildSimulationRouteResolutionV1Input {
   operatorLabel?: string | null;
   /** Optional resolution label echoed into the artifact. */
   resolutionLabel?: string | null;
+  /** Optional quote-derived label facts (Sprint 91; strictly shape-validated — malformed facts,
+   * a fact for a candidate not in the plan, a mint contradiction, or a duplicate THROW). */
+  routeFacts?: SimulationRouteFactsInput | null;
 }
 
 // --- pure helpers ------------------------------------------------------------
@@ -222,6 +248,84 @@ function assertClosedKeys(value: Record<string, unknown>, allowed: ReadonlySet<s
       );
     }
   }
+}
+
+// --- route-facts input validation (Sprint 91) ----------------------------------
+
+const ROUTE_FACTS_KEYS: ReadonlySet<string> = new Set(["resolverId", "facts"]);
+const ROUTE_FACT_ENTRY_KEYS: ReadonlySet<string> = new Set([
+  "candidateId",
+  "mint",
+  "routeLabel",
+  "destinationLabel",
+  "feeLabel",
+]);
+
+/** One canonical (null-normalized) route fact after strict shape validation. */
+interface CanonicalRouteFact {
+  candidateId: string;
+  mint: string;
+  routeLabel: string | null;
+  destinationLabel: string | null;
+  feeLabel: string | null;
+}
+
+/** Validate one optional fact label: a string must be non-empty and must survive the shared
+ * redactor UNCHANGED — a secret-shaped value is refused and NEVER echoed back. */
+function validateFactLabel(value: unknown, name: string): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string" || value.length === 0) {
+    throw new SimulationRouteResolutionV1Error(`${name} must be a non-empty string or null`);
+  }
+  if (redactString(value) !== value) {
+    throw new SimulationRouteResolutionV1Error(`${name} carries a secret-shaped value — refused (and never echoed)`);
+  }
+  return value;
+}
+
+/** Strictly validate the optional quote-derived facts input SHAPE (throws — never downgrades). */
+function validateRouteFactsInput(value: unknown): {
+  resolverId: string;
+  facts: CanonicalRouteFact[];
+} {
+  if (!isObject(value)) throw new SimulationRouteResolutionV1Error("route resolution input.routeFacts must be an object");
+  assertClosedKeys(value, ROUTE_FACTS_KEYS, "route resolution input.routeFacts");
+  if (typeof value.resolverId !== "string" || !/^[a-z0-9][a-z0-9-]*$/.test(value.resolverId)) {
+    throw new SimulationRouteResolutionV1Error("route resolution input.routeFacts.resolverId must be a kebab-case identifier");
+  }
+  if (isSensitiveKey(value.resolverId)) {
+    throw new SimulationRouteResolutionV1Error(
+      "route resolution input.routeFacts.resolverId is sensitive-shaped — a resolver id can never look like key material",
+    );
+  }
+  if (value.resolverId === SIMULATION_ROUTE_RESOLUTION_V1_NO_RESOLVER_ID) {
+    throw new SimulationRouteResolutionV1Error(
+      `route resolution input.routeFacts.resolverId can never be "${SIMULATION_ROUTE_RESOLUTION_V1_NO_RESOLVER_ID}" — the no-resolver id can never supply facts`,
+    );
+  }
+  if (!Array.isArray(value.facts)) {
+    throw new SimulationRouteResolutionV1Error("route resolution input.routeFacts.facts must be an array");
+  }
+  const seen = new Set<string>();
+  const facts = value.facts.map((raw, i) => {
+    const where = `route resolution input.routeFacts.facts[${i}]`;
+    if (!isObject(raw)) throw new SimulationRouteResolutionV1Error(`${where} must be an object`);
+    assertClosedKeys(raw as unknown as Record<string, unknown>, ROUTE_FACT_ENTRY_KEYS, where);
+    if (!nonEmptyString(raw.candidateId)) throw new SimulationRouteResolutionV1Error(`${where}.candidateId must be a non-empty string`);
+    if (!nonEmptyString(raw.mint)) throw new SimulationRouteResolutionV1Error(`${where}.mint must be a non-empty string`);
+    if (seen.has(raw.candidateId)) {
+      throw new SimulationRouteResolutionV1Error(`${where} duplicates candidateId "${raw.candidateId}" — duplicate facts are refused`);
+    }
+    seen.add(raw.candidateId);
+    return {
+      candidateId: raw.candidateId,
+      mint: raw.mint,
+      routeLabel: validateFactLabel(raw.routeLabel, `${where}.routeLabel`),
+      destinationLabel: validateFactLabel(raw.destinationLabel, `${where}.destinationLabel`),
+      feeLabel: validateFactLabel(raw.feeLabel, `${where}.feeLabel`),
+    };
+  });
+  return { resolverId: value.resolverId, facts };
 }
 
 // --- shared recomputation (single source for the builder AND the validator) ----
@@ -350,11 +454,17 @@ function nextSafeActionOf(status: SimulationRouteResolutionStatus): string {
  * STRICTLY validated in place; a missing/invalid/blocked plan or a declared stop-simulation
  * switch BLOCKS the artifact with stable reason codes and zero entries — fail-closed, never a
  * silent downgrade, never a throw. On an unblocked chain the builder records one entry per plan
- * preview entry, and — because NO route-resolution capability exists inside this boundary —
- * every entry is honestly UNAVAILABLE under the canonical
- * {@link SIMULATION_ROUTE_RESOLUTION_V1_NO_RESOLVER_ID} (route, destination, and fee stay
- * unresolved; nothing is invented). The produced artifact is self-validated before returning.
- * Throws {@link SimulationRouteResolutionV1Error} only on a malformed input SHAPE.
+ * preview entry. WITHOUT `routeFacts` (the only behavior before Sprint 91, and still the
+ * default) — because NO route-resolution capability exists inside this boundary — every entry is
+ * honestly UNAVAILABLE under the canonical {@link SIMULATION_ROUTE_RESOLUTION_V1_NO_RESOLVER_ID}
+ * (route, destination, and fee stay unresolved; nothing is invented). WITH `routeFacts`
+ * (Sprint 91: label-only facts from a separately-validated READ-ONLY quote observation layer) the
+ * builder records the supplied labels with provenance — a fact for a candidate not in the plan, a
+ * mint contradiction, or a duplicate THROWS (fail closed, never applied loosely); a missing label
+ * stays honestly unresolved; supplying facts NEVER unblocks a blocked chain (a blocked artifact
+ * records no attempt and applies nothing); and any label-resolved fact forces the mandatory
+ * live-state caveat. The produced artifact is self-validated before returning. Throws
+ * {@link SimulationRouteResolutionV1Error} only on a malformed/contradictory input SHAPE.
  */
 export function buildSimulationRouteResolutionV1(
   input: BuildSimulationRouteResolutionV1Input = {},
@@ -368,6 +478,8 @@ export function buildSimulationRouteResolutionV1(
   if (input.stopSimulationTripped !== undefined && typeof input.stopSimulationTripped !== "boolean") {
     throw new SimulationRouteResolutionV1Error("route resolution input.stopSimulationTripped must be a boolean when present");
   }
+  const routeFacts =
+    input.routeFacts === undefined || input.routeFacts === null ? null : validateRouteFactsInput(input.routeFacts);
 
   // 1) Check the plan in place (fail-closed: problems become blocking codes, never throws).
   let plan: SimulationIntentPlanV2 | null = null;
@@ -416,27 +528,56 @@ export function buildSimulationRouteResolutionV1(
   const blockingReasonCodes = computeBlockingCodes(sourcePlanRef, stopTripped);
   const blocked = blockingReasonCodes.length > 0;
 
-  // 2) Entries — only over an unblocked chain; one per plan preview entry; honest UNAVAILABLE
-  //    (this package holds no route-resolution capability and never invents a fact).
+  // 2) Entries — only over an unblocked chain; one per plan preview entry. Without quote facts
+  //    every entry is honest UNAVAILABLE (this package holds no route-resolution capability and
+  //    never invents a fact). With quote facts, supplied labels are recorded with provenance —
+  //    a fact that contradicts the plan THROWS, and a missing label stays honestly unresolved.
+  const attempted = routeFacts !== null && !blocked;
   const entries: SimulationRouteResolutionEntryV1[] = [];
   if (!blocked && plan !== null) {
+    const factById = new Map<string, CanonicalRouteFact>();
+    if (routeFacts !== null) {
+      const planById = new Map(plan.entries.map((e) => [e.candidateId, e]));
+      for (const f of routeFacts.facts) {
+        const planEntry = planById.get(f.candidateId);
+        if (planEntry === undefined) {
+          throw new SimulationRouteResolutionV1Error(
+            `route resolution input.routeFacts carries a fact for candidateId "${f.candidateId}" which is not in the plan — a quote that does not match the plan is refused (fail closed)`,
+          );
+        }
+        if (planEntry.mint !== f.mint) {
+          throw new SimulationRouteResolutionV1Error(
+            `route resolution input.routeFacts fact for candidateId "${f.candidateId}" contradicts the plan's mint — refused (fail closed)`,
+          );
+        }
+        factById.set(f.candidateId, f);
+      }
+    }
     for (const e of plan.entries) {
-      const state = computeEntryState(
-        false,
-        { status: "unresolved", label: null },
-        { status: "unresolved", label: null },
-        { status: "unresolved", label: null },
-      )!;
+      const fact = factById.get(e.candidateId) ?? null;
+      const toPreview = (label: string | null): SimulationPreviewField =>
+        label !== null ? { status: "resolved-as-label", label } : { status: "unresolved", label: null };
+      const routePreview = toPreview(fact?.routeLabel ?? null);
+      const destinationPreview = toPreview(fact?.destinationLabel ?? null);
+      const feePreview = toPreview(fact?.feeLabel ?? null);
+      const state = computeEntryState(attempted, routePreview, destinationPreview, feePreview)!;
+      const operatorText = !attempted
+        ? `Route resolution for ${e.candidateId}: UNAVAILABLE — no validated route-resolution capability exists inside this boundary; route, destination, and fee stay unresolved (never invented).`
+        : state.status === "resolved"
+          ? `Route resolution for ${e.candidateId}: RESOLVED as label-only facts from a read-only quote observation (${routeFacts!.resolverId}) — never a transaction, never executable; the live-state caveat applies.`
+          : fact !== null
+            ? `Route resolution for ${e.candidateId}: UNRESOLVED — a read-only quote observation (${routeFacts!.resolverId}) supplied label-only facts, but ${state.unresolvedFields.join(", ")} ${state.unresolvedFields.length === 1 ? "stays" : "stay"} unresolved (never invented). Not executable; the live-state caveat applies.`
+            : `Route resolution for ${e.candidateId}: UNRESOLVED — the quote layer (${routeFacts!.resolverId}) observed no quote for this candidate; route, destination, and fee stay unresolved (never invented).`;
       entries.push({
         candidateId: e.candidateId,
         mint: e.mint,
         routeResolutionStatus: state.status,
-        routePreview: { status: "unresolved", label: null },
-        destinationPreview: { status: "unresolved", label: null },
-        feePreview: { status: "unresolved", label: null },
+        routePreview,
+        destinationPreview,
+        feePreview,
         unresolvedFields: state.unresolvedFields,
         reasonCodes: state.reasonCodes,
-        operatorText: `Route resolution for ${e.candidateId}: UNAVAILABLE — no validated route-resolution capability exists inside this boundary; route, destination, and fee stay unresolved (never invented).`,
+        operatorText,
       });
     }
   }
@@ -459,6 +600,11 @@ export function buildSimulationRouteResolutionV1(
         `${entries.length} entr${entries.length === 1 ? "y" : "ies"}: ${resolvedEntryCount} resolved / ${unresolvedEntryCount} unresolved / ${unavailableEntryCount} unavailable.`,
         "An unresolved fact stays unresolved — nothing here invents a route, destination, fee, pool, or address.",
         "Route-resolution provenance only: not live trading, not a buy recommendation, not a transaction approval.",
+        ...(attempted
+          ? [
+              `Label facts come from a READ-ONLY quote observation layer ("${routeFacts!.resolverId}") — observation provenance only: a quote may have expired, slippage is not guaranteed, the route was never simulated, and nothing here is executable.`,
+            ]
+          : []),
       ];
 
   const artifact: SimulationRouteResolutionV1 = {
@@ -476,8 +622,8 @@ export function buildSimulationRouteResolutionV1(
     operatorLabel: nonEmptyString(input.operatorLabel) ? input.operatorLabel : null,
     resolutionLabel: nonEmptyString(input.resolutionLabel) ? input.resolutionLabel : null,
     sourcePlanRef,
-    routeResolverId: SIMULATION_ROUTE_RESOLUTION_V1_NO_RESOLVER_ID,
-    routeResolverAttempted: false,
+    routeResolverId: routeFacts !== null ? routeFacts.resolverId : SIMULATION_ROUTE_RESOLUTION_V1_NO_RESOLVER_ID,
+    routeResolverAttempted: attempted,
     stopSimulationDeclaredTripped: stopTripped,
     resolutionStatus,
     blocked,
