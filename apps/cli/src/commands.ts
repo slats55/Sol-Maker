@@ -122,6 +122,25 @@ import {
   type TxSimulationReport,
 } from "@soulmaker/txpreview";
 import {
+  createJupiterSwapBuilder,
+  type SwapTransactionBuilder,
+  type JupiterSwapBuilderOptions,
+} from "@soulmaker/txbuilder";
+import {
+  resolveExecutionMode,
+  evaluateMainnetLiveGate,
+  loadLocalSignerBoundary,
+  attemptExecution,
+  createSendRpc,
+  SignerBoundaryError,
+  LIVE_TRADING_ENV_FLAG,
+  DEVNET_EXECUTION_ENV_FLAG,
+  DEVNET_EXECUTION_ENV_VALUE,
+  type ResolvedExecutionMode,
+  type OperatorSafetyControls,
+  type SendRpc,
+} from "@soulmaker/execution";
+import {
   parseMintAddress,
   normalizeSniperCandidateList,
   formatSniperCandidateList,
@@ -352,6 +371,10 @@ export interface CommandContext {
   createCandidateSource?: (options: JupiterRecentAdapterOptions) => CandidateSourceAdapter;
   /** Factory for the simulate-only tx preview RPC; injected in tests to avoid network. */
   createTxPreview?: (rpcUrl: string) => TxPreviewRpc;
+  /** Factory for the refusal-first swap builder; injected in tests to avoid network. */
+  createSwapBuilder?: (options: JupiterSwapBuilderOptions) => SwapTransactionBuilder;
+  /** Factory for the send-path RPC; injected in tests to avoid network. */
+  createSendRpc?: (rpcUrl: string) => SendRpc;
   /** Injectable sleep for the bounded realtime watch; injected in tests. */
   sleep?: (ms: number) => Promise<void>;
   /** Injectable clock for deterministic report timestamps. */
@@ -5759,6 +5782,479 @@ export async function paperSimulationTxReport(
     "Next:",
     "- A simulated-ok outcome is evidence for operator review — it does NOT arm anything and is NOT live-trading readiness.",
     "- Inspect the JSON: re-run with --json (or open the --out file in the web inspector).",
+  ];
+  return { text: redactString(lines.join("\n")), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 92 — execution:status / execution:build / execution:devnet:send
+//   The GATED execution boundary's operator surface. Status shows the resolved
+//   execution mode + the FULL fourteen-condition mainnet live-gate checklist
+//   (default: BLOCKED, every condition failed). Build wraps the refusal-first
+//   unsigned swap builder. Devnet send is the ONLY send surface tonight —
+//   mainnet sending deliberately has NO CLI surface.
+// ---------------------------------------------------------------------------
+
+/** Convert a SOL decimal string to lamports (integer string); throws on bad input. */
+function solFlagToLamports(flag: string, name: string): string {
+  const match = /^([0-9]+)(?:\.([0-9]{1,9}))?$/.exec(flag.trim());
+  if (!match) throw new Error(`${name} must be a plain decimal with at most 9 decimal places`);
+  const raw = `${match[1]}${(match[2] ?? "").padEnd(9, "0")}`.replace(/^0+(?=[0-9])/, "");
+  if (/^0+$/.test(raw)) throw new Error(`${name} must be greater than zero`);
+  return raw;
+}
+
+/** Is the emergency stop engaged? (env flag OR a stop file in the working directory). */
+function emergencyStopPresent(ctx: CommandContext): boolean {
+  const env = ctx.env ?? process.env;
+  if (typeof env["SOULMAKER_EMERGENCY_STOP"] === "string" && env["SOULMAKER_EMERGENCY_STOP"].length > 0) return true;
+  return existsSync(resolvePath(ctx, ".soulmaker-emergency-stop"));
+}
+
+export interface ExecutionStatusCommandOptions {
+  /** What to evaluate: paper (default) | readonly | devnet | mainnet-dry-run | mainnet-live. */
+  request?: string;
+  acknowledgeDevnetExecution?: boolean;
+  iUnderstandThisCanLoseRealMoney?: boolean;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+}
+
+/**
+ * `soulmaker execution:status` — resolve and SHOW the execution mode honestly: the closed mode
+ * set, why the resolution landed where it did, the full fourteen-condition mainnet live-gate
+ * checklist, the long-standing core live gate, and the emergency-stop state. Pure read; this
+ * command can never arm anything.
+ */
+export function executionStatusReport(
+  ctx: CommandContext = {},
+  opts: ExecutionStatusCommandOptions = {},
+): CliReport {
+  let config: Config;
+  try {
+    config = loadConfig(toLoadOptions(ctx));
+  } catch (err) {
+    const msg = err instanceof ConfigError ? err.message : String(err);
+    return { text: redactString(`Refusing: config is invalid.\n\n${msg}`), exitCode: 1 };
+  }
+  const env = (ctx.env ?? process.env) as Record<string, string | undefined>;
+  const stop = emergencyStopPresent(ctx);
+
+  const resolved: ResolvedExecutionMode = resolveExecutionMode({
+    requested: opts.request ?? "paper",
+    env,
+    devnetCliAcknowledged: Boolean(opts.acknowledgeDevnetExecution),
+    liveGateInput: {
+      env,
+      configPhase7LiveTradingReady: config.phase7LiveTradingReady,
+      cliAcknowledged: Boolean(opts.iUnderstandThisCanLoseRealMoney),
+      network: "mainnet-beta",
+      maxSpendLamports: solFlagToLamports(String(config.caps.maxTradeSizeSol), "caps.maxTradeSizeSol"),
+      sessionLossCapSol: config.caps.maxDailyLossSol,
+      slippageCapBps: null, // no slippage cap exists in config yet — honestly unsatisfied
+      killSwitchActive: config.killSwitch || stop ? true : false,
+      quoteFresh: null, // a status check carries no live quote — honestly unsatisfied
+      simulationOutcome: null, // and no simulation — honestly unsatisfied
+      riskScore: null,
+      riskScoreCap: null,
+      walletPublicKeyValid: false,
+      signerBoundaryKind: null,
+      auditLogPathProvided: false,
+      redactionFindings: null,
+    },
+  });
+  // The status surface ALWAYS shows the gate checklist, even for paper/readonly requests.
+  const liveGate = resolved.liveGate ?? evaluateMainnetLiveGate({ env, configPhase7LiveTradingReady: config.phase7LiveTradingReady });
+  const coreGate = evaluateLiveGate(config, env as NodeJS.ProcessEnv);
+
+  const status = {
+    schemaVersion: "execution.status.report.v1",
+    requested: opts.request ?? "paper",
+    mode: resolved.mode,
+    reasons: resolved.reasons,
+    killSwitch: config.killSwitch,
+    emergencyStopPresent: stop,
+    mainnetLiveGate: {
+      armed: liveGate.armed,
+      satisfiedCount: liveGate.checks.filter((c) => c.satisfied).length,
+      totalChecks: liveGate.checks.length,
+      checks: liveGate.checks,
+    },
+    coreLiveGate: { open: coreGate.allowed, reasons: coreGate.reasons },
+    liveTradingEnvFlag: LIVE_TRADING_ENV_FLAG,
+    devnetExecutionEnvFlag: DEVNET_EXECUTION_ENV_FLAG,
+    phase7LiveTradingReady: config.phase7LiveTradingReady,
+    note: "Live trading requires BOTH gates (the fourteen-condition execution gate AND the core DANGEROUS_BURNER_LIVE gate). Default state: blocked. Mainnet sending has NO CLI surface in Sprint 92.",
+  };
+
+  let wroteLine = "";
+  if (opts.outPath) {
+    const resolvedPath = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolvedPath)) {
+      return { text: redactString(`Refusing: ${resolvedPath} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolvedPath, JSON.stringify(redactValue(status), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write execution status at ${resolvedPath}`), exitCode: 1 };
+    }
+    wroteLine = `\nwrote ${resolvedPath}`;
+  }
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(status), null, 2), exitCode: 0 };
+  }
+  const lines: string[] = [];
+  lines.push("EXECUTION STATUS (read-only; this command can never arm anything)");
+  lines.push("=================================================================");
+  lines.push(`requested:        ${status.requested}`);
+  lines.push(`resolved mode:    ${status.mode}`);
+  for (const reason of resolved.reasons) lines.push(`  - ${reason}`);
+  lines.push(`kill switch:      ${config.killSwitch ? "ENGAGED" : "off"}`);
+  lines.push(`emergency stop:   ${stop ? "PRESENT (everything refuses)" : "absent"}`);
+  lines.push("");
+  lines.push(
+    `mainnet live gate: ${liveGate.armed ? "ARMED (!!)" : "BLOCKED"} — ${status.mainnetLiveGate.satisfiedCount}/${status.mainnetLiveGate.totalChecks} conditions satisfied`,
+  );
+  for (const check of liveGate.checks) {
+    lines.push(`  [${check.satisfied ? "x" : " "}] ${check.gate}: ${check.detail}`);
+  }
+  lines.push("");
+  lines.push(`core live gate:   ${coreGate.allowed ? "OPEN (!!)" : "CLOSED (safe)"}`);
+  if (!coreGate.allowed) for (const reason of coreGate.reasons) lines.push(`  - ${reason}`);
+  lines.push("");
+  lines.push(status.note);
+  return { text: redactString(lines.join("\n")) + wroteLine, exitCode: 0 };
+}
+
+export interface ExecutionBuildCommandOptions {
+  candidateMint?: string;
+  inputMint?: string;
+  amountRaw?: string;
+  amountSol?: string;
+  slippageBps?: string;
+  /** The wallet PUBLIC key the unsigned transaction is built FOR. */
+  wallet?: string;
+  /** token:risk --json output file for the candidate (required). */
+  riskPath?: string;
+  /** Requested mode for the build: devnet | mainnet-dry-run | mainnet-live. */
+  request?: string;
+  acknowledgeDevnetExecution?: boolean;
+  iUnderstandThisCanLoseRealMoney?: boolean;
+  maxSpendSol?: string;
+  slippageCapBps?: string;
+  riskScoreCap?: string;
+  endpoint?: string;
+  allowPaperRead?: boolean;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+}
+
+/**
+ * `soulmaker execution:build` — the refusal-first unsigned swap build. EVERY refusal reason is
+ * evaluated before any network call; the only possible artifact is a strictly-validated UNSIGNED
+ * envelope for `paper:simulation:tx`. Building never signs and never sends.
+ */
+export async function executionBuildReport(
+  ctx: CommandContext = {},
+  opts: ExecutionBuildCommandOptions = {},
+): Promise<CliReport> {
+  if (!opts.candidateMint) return { text: "Refusing: --candidate-mint <mint> is required.", exitCode: 1 };
+  if (!opts.wallet) return { text: "Refusing: --wallet <publicKey> is required (a PUBLIC key; never a secret).", exitCode: 1 };
+  if (!opts.riskPath) return { text: "Refusing: --risk <token-risk.json> is required (run token:risk --json --out first; building blind is never allowed).", exitCode: 1 };
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+  }
+
+  let config: Config;
+  try {
+    config = loadConfig(toLoadOptions(ctx));
+  } catch (err) {
+    const msg = err instanceof ConfigError ? err.message : String(err);
+    return { text: redactString(`Refusing: config is invalid.\n\n${msg}`), exitCode: 1 };
+  }
+  const caps = capabilitiesFor(config.mode);
+  if (!caps.canReadChain && !(config.mode === "PAPER" && opts.allowPaperRead === true)) {
+    return {
+      text: `Refusing: mode ${config.mode} does not read the network. Use WATCH_ONLY/SIMULATION, or pass --allow-paper-read.`,
+      exitCode: 1,
+    };
+  }
+  const env = (ctx.env ?? process.env) as Record<string, string | undefined>;
+  const stop = emergencyStopPresent(ctx);
+
+  // Amount: exactly one of --amount-raw / --amount-sol.
+  if ((opts.amountRaw === undefined) === (opts.amountSol === undefined)) {
+    return { text: "Refusing: pass exactly one of --amount-raw <units> or --amount-sol <sol>.", exitCode: 1 };
+  }
+  let amountRaw: string;
+  try {
+    amountRaw = opts.amountRaw !== undefined ? opts.amountRaw.trim() : solFlagToLamports(opts.amountSol as string, "--amount-sol");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // Caps: explicit flags, TIGHTEN-ONLY against the config hard caps.
+  if (!opts.maxSpendSol) return { text: "Refusing: --max-spend-sol <sol> is required (an explicit per-trade spend cap).", exitCode: 1 };
+  let maxSpendLamports: string;
+  try {
+    maxSpendLamports = solFlagToLamports(opts.maxSpendSol, "--max-spend-sol");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  if (Number(opts.maxSpendSol) > config.caps.maxTradeSizeSol) {
+    return {
+      text: `Refusing: --max-spend-sol ${opts.maxSpendSol} exceeds the config cap caps.maxTradeSizeSol=${config.caps.maxTradeSizeSol} (caps only tighten).`,
+      exitCode: 1,
+    };
+  }
+  const slippageBps = opts.slippageBps === undefined ? null : Number(opts.slippageBps);
+  const slippageCapBps = opts.slippageCapBps === undefined ? null : Number(opts.slippageCapBps);
+  const riskScoreCap = opts.riskScoreCap === undefined ? null : Number(opts.riskScoreCap);
+
+  // Risk file: the candidate's token:risk --json output, mint cross-checked.
+  let riskValue: unknown;
+  try {
+    riskValue = readJsonValue(ctx, opts.riskPath, "token risk report");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  if (!isPlainObject(riskValue) || typeof riskValue.score !== "number" || typeof riskValue.decision !== "string") {
+    return { text: "Refusing: --risk file is not a token:risk --json report (score/decision missing).", exitCode: 1 };
+  }
+  if (riskValue.mint !== opts.candidateMint) {
+    return { text: "Refusing: the --risk report is for a DIFFERENT mint than --candidate-mint.", exitCode: 1 };
+  }
+
+  const resolved = resolveExecutionMode({
+    requested: opts.request ?? "paper",
+    env,
+    devnetCliAcknowledged: Boolean(opts.acknowledgeDevnetExecution),
+    liveGateInput: { env, configPhase7LiveTradingReady: config.phase7LiveTradingReady, cliAcknowledged: Boolean(opts.iUnderstandThisCanLoseRealMoney) },
+  });
+
+  const makeBuilder = ctx.createSwapBuilder ?? createJupiterSwapBuilder;
+  const builder = makeBuilder({ baseUrl: opts.endpoint, clock: ctx.now });
+  const result = await builder.build({
+    candidateMint: opts.candidateMint,
+    inputMint: opts.inputMint ?? WSOL_MINT,
+    amountRaw,
+    slippageBps,
+    walletPublicKey: opts.wallet,
+    network: opts.request === "devnet" ? "devnet" : "mainnet-beta",
+    executionMode: resolved.mode,
+    killSwitchActive: config.killSwitch || stop,
+    risk: { score: riskValue.score, decision: riskValue.decision },
+    controls: { maxSpendLamports, slippageCapBps, riskScoreCap },
+  });
+
+  if (!result.built) {
+    const lines = [
+      `BUILD REFUSED (${result.refusals.length} reason(s); resolved mode: ${resolved.mode})`,
+      ...result.refusals.map((r) => `  - ${r.code}: ${r.detail}`),
+      "",
+      "Nothing was fetched or built unless every pre-network check passed. Fix the refusals and re-run.",
+    ];
+    if (opts.json) {
+      return { text: JSON.stringify(redactValue({ built: false, mode: resolved.mode, refusals: result.refusals }), null, 2), exitCode: 1 };
+    }
+    return { text: redactString(lines.join("\n")), exitCode: 1 };
+  }
+
+  let wroteLine = "";
+  if (opts.outPath) {
+    const resolvedPath = resolvePath(ctx, opts.outPath);
+    try {
+      writeFileSync(resolvedPath, JSON.stringify(redactValue(result.envelope), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write envelope at ${resolvedPath}`), exitCode: 1 };
+    }
+    wroteLine = `\nwrote ${resolvedPath}`;
+  }
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue({ built: true, mode: resolved.mode, envelope: result.envelope, quoteFacts: result.quoteFacts }), null, 2), exitCode: 0 };
+  }
+  const lines = [
+    "UNSIGNED SWAP ENVELOPE BUILT (nothing signed, nothing sent)",
+    `mode:         ${resolved.mode}`,
+    `builder:      ${result.envelope.builderId}`,
+    `candidate:    ${result.envelope.candidateMint}`,
+    `fee payer:    ${result.envelope.feePayerPublicKey} (public key)`,
+    `quote:        in ${result.quoteFacts.inAmountRaw} raw -> out ${result.quoteFacts.outAmountRaw} raw @ ${result.quoteFacts.quotedAt}`,
+    `impact:       ${result.quoteFacts.priceImpactPct ?? "not reported"}%`,
+    wroteLine.trim(),
+    "",
+    "Next:",
+    `- Simulate it for real (no signer needed): pnpm soulmaker paper:simulation:tx --envelope "${opts.outPath ?? "<envelope.json>"}" --rpc-url <mainnet rpc> --allow-paper-read`,
+    "- An unsigned envelope is simulation material — never an order, never live-trading readiness.",
+  ];
+  return { text: redactString(lines.filter((l) => l !== "").join("\n")), exitCode: 0 };
+}
+
+export interface ExecutionDevnetSendCommandOptions {
+  envelopePath?: string;
+  /** The NAME of the env var holding the devnet keypair file PATH. */
+  signerEnvVar?: string;
+  rpcUrl?: string;
+  acknowledgeDevnetExecution?: boolean;
+  /** Append-only JSONL audit log path (required). */
+  auditLog?: string;
+  /** Explicit advisory risk score for the trade context (required; probes use 0). */
+  riskScore?: string;
+  json?: boolean;
+}
+
+/**
+ * `soulmaker execution:devnet:send` — the ONLY send surface in Sprint 92, and it is DEVNET-ONLY
+ * by construction: the resolved mode must be devnet-execution (env flag + CLI flag), the envelope
+ * and the signer boundary must both be devnet, every safety control is enforced, and the attempt
+ * (refused or submitted) is appended to the audit log. There is no mainnet variant of this
+ * command — deliberately.
+ */
+export async function executionDevnetSendReport(
+  ctx: CommandContext = {},
+  opts: ExecutionDevnetSendCommandOptions = {},
+): Promise<CliReport> {
+  if (!opts.envelopePath) return { text: "Refusing: --envelope <path> is required.", exitCode: 1 };
+  if (!opts.signerEnvVar) return { text: "Refusing: --signer-env <ENV_VAR_NAME> is required (the NAME of the env var holding the devnet keypair file PATH).", exitCode: 1 };
+  if (!opts.auditLog) return { text: "Refusing: --audit-log <path> is required (every attempt is journaled).", exitCode: 1 };
+  if (opts.riskScore === undefined || !Number.isFinite(Number(opts.riskScore))) {
+    return { text: "Refusing: --risk-score <n> is required (explicit; a self-transfer probe is 0).", exitCode: 1 };
+  }
+
+  let config: Config;
+  try {
+    config = loadConfig(toLoadOptions(ctx));
+  } catch (err) {
+    const msg = err instanceof ConfigError ? err.message : String(err);
+    return { text: redactString(`Refusing: config is invalid.\n\n${msg}`), exitCode: 1 };
+  }
+  const env = (ctx.env ?? process.env) as Record<string, string | undefined>;
+  const stop = emergencyStopPresent(ctx);
+
+  const resolved = resolveExecutionMode({
+    requested: "devnet",
+    env,
+    devnetCliAcknowledged: Boolean(opts.acknowledgeDevnetExecution),
+  });
+  if (resolved.mode !== "devnet-execution") {
+    return {
+      text: redactString(
+        [
+          "Refusing: devnet execution is NOT enabled.",
+          ...resolved.reasons.map((r) => `  - ${r}`),
+          `Enable it explicitly: set ${DEVNET_EXECUTION_ENV_FLAG}=${DEVNET_EXECUTION_ENV_VALUE} and pass --acknowledge-devnet-execution.`,
+        ].join("\n"),
+      ),
+      exitCode: 1,
+    };
+  }
+
+  let envelopeValue: unknown;
+  try {
+    envelopeValue = readJsonValue(ctx, opts.envelopePath, "unsigned tx envelope");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  let envelope;
+  try {
+    envelope = validateUnsignedTxEnvelope(envelopeValue);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let signer;
+  try {
+    signer = loadLocalSignerBoundary({
+      envVarName: opts.signerEnvVar,
+      env,
+      readFile: (path: string) => readFileSync(path, "utf8"),
+      network: "devnet",
+    });
+  } catch (err) {
+    const msg = err instanceof SignerBoundaryError ? err.message : "signer boundary failed";
+    return { text: redactString(`Refusing: ${msg}`), exitCode: 1 };
+  }
+
+  const rpcUrl = opts.rpcUrl ?? "https://api.devnet.solana.com";
+  if (rpcUrl.toLowerCase().includes("mainnet")) {
+    return { text: "Refusing: execution:devnet:send never talks to a mainnet endpoint.", exitCode: 1 };
+  }
+  const makeSendRpc = ctx.createSendRpc ?? createSendRpc;
+  let sendRpc: SendRpc;
+  try {
+    sendRpc = makeSendRpc(rpcUrl);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // Devnet probe safety controls — explicit, tight, and honest (devnet SOL is valueless, the
+  // discipline is not): one trade, tiny loss cap, cooldown 0, duplicate protection on.
+  const controls: OperatorSafetyControls = {
+    killSwitchActive: config.killSwitch,
+    emergencyStopFilePresent: stop,
+    maxSpendPerTradeLamports: envelope.constraints.maxSpendLamports ?? "1",
+    maxTradesPerSession: 1,
+    sessionLossCapSol: 0.01,
+    slippageCapBps: envelope.constraints.slippageBps ?? 0,
+    riskScoreCap: 100,
+    quoteAgeCapMs: 60_000,
+    allowedMints: null,
+    blockedMints: [],
+    allowedProviders: null,
+    networkLock: "devnet",
+    auditLogRequired: true,
+    cooldownMs: 0,
+    duplicateMintProtection: true,
+  };
+  const report = await attemptExecution({
+    mode: resolved.mode,
+    signer,
+    envelopeValue,
+    rpc: sendRpc.rpc,
+    endpointHost: sendRpc.endpointHost,
+    controls,
+    trade: {
+      mint: envelope.candidateMint ?? envelope.feePayerPublicKey,
+      provider: envelope.builderId,
+      network: envelope.network,
+      spendLamports: envelope.constraints.maxSpendLamports ?? "1",
+      slippageBps: envelope.constraints.slippageBps ?? 0,
+      riskScore: Number(opts.riskScore),
+      quoteAgeMs: 0,
+      auditLogPathProvided: true,
+    },
+    session: { tradesCount: 0, sessionLossSol: 0, lastTradeAtMs: null, mintsTraded: [] },
+    nowMs: Date.now(),
+    clock: ctx.now,
+  });
+
+  // Journal the attempt — refused or submitted — before reporting it.
+  try {
+    appendFileSync(resolvePath(ctx, opts.auditLog), JSON.stringify(redactValue(report)) + "\n");
+  } catch {
+    return { text: redactString(`Refusing: cannot append the audit log at ${opts.auditLog}`), exitCode: 1 };
+  }
+
+  const exitCode = report.outcome === "submitted" ? 0 : 1;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
+  }
+  const lines = [
+    `DEVNET EXECUTION ATTEMPT: ${report.outcome.toUpperCase()}`,
+    `mode:       ${report.mode}`,
+    `endpoint:   ${report.endpointHost}`,
+    report.signature !== null ? `signature:  ${report.signature}` : `refusal:    ${report.refusalCode}: ${report.refusalDetail}`,
+    ...report.safetyViolations.map((v) => `  - ${v.code}: ${v.detail}`),
+    `audit log:  ${opts.auditLog} (appended)`,
+    "",
+    ...report.caveats.map((c) => `CAVEAT: ${c}`),
   ];
   return { text: redactString(lines.join("\n")), exitCode };
 }

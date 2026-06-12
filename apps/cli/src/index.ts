@@ -51,6 +51,9 @@ import {
   paperRealtimeSnapshotReport,
   paperRealtimeWatchReport,
   paperSimulationTxReport,
+  executionStatusReport,
+  executionBuildReport,
+  executionDevnetSendReport,
   paperSniperDecideReport,
   paperSniperWorkflowReport,
   paperSniperReportReport,
@@ -2364,6 +2367,153 @@ program
           outPath: opts.out,
           force: Boolean(opts.force),
           failOnNotOk: Boolean(opts.failOnNotOk),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("execution:status")
+  .description(
+    "Resolve and SHOW the execution mode honestly (paper | readonly | devnet-execution | mainnet-dry-run | mainnet-live-blocked | mainnet-live-armed) plus the FULL fourteen-condition mainnet live-gate checklist (default: BLOCKED, every condition failed), the core DANGEROUS_BURNER_LIVE gate, and the emergency-stop state. Read-only: this command can never arm anything. Mainnet sending has NO CLI surface in Sprint 92 — deliberately",
+  )
+  .option("--request <mode>", "what to evaluate: paper (default) | readonly | devnet | mainnet-dry-run | mainnet-live")
+  .option("--acknowledge-devnet-execution", "the explicit devnet acknowledgment flag (with the env flag)")
+  .option("--i-understand-this-can-lose-real-money", "the explicit mainnet-live CLI acknowledgment (one of FOURTEEN required conditions; never sufficient alone)")
+  .option("--json", "emit the status report as stable JSON")
+  .option("--out <path>", "write ONLY the status report JSON to this path (refused if it exists)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .action(
+    (opts: {
+      request?: string;
+      acknowledgeDevnetExecution?: boolean;
+      iUnderstandThisCanLoseRealMoney?: boolean;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+    }) => {
+      const { text, exitCode } = executionStatusReport(
+        {},
+        {
+          request: opts.request,
+          acknowledgeDevnetExecution: Boolean(opts.acknowledgeDevnetExecution),
+          iUnderstandThisCanLoseRealMoney: Boolean(opts.iUnderstandThisCanLoseRealMoney),
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("execution:build")
+  .description(
+    "REFUSAL-FIRST unsigned swap build (Jupiter swap API): every refusal reason — kill switch, mode, risk REJECT/over-cap, spend cap, slippage cap, wallet, mint match — is evaluated BEFORE any network call, and the only possible artifact is a strictly-validated UNSIGNED txpreview.envelope.v1 for paper:simulation:tx. Building never signs and never sends; an envelope is simulation material, never an order. Caps only TIGHTEN against config. PAPER mode requires --allow-paper-read",
+  )
+  .option("--candidate-mint <mint>", "the mint to swap INTO (required)")
+  .option("--input-mint <mint>", "the swap input mint (default: wrapped SOL)")
+  .option("--amount-raw <units>", "input amount in raw base units (exactly one of --amount-raw/--amount-sol)")
+  .option("--amount-sol <sol>", "input amount in SOL (decimal, up to 9 dp)")
+  .option("--slippage-bps <bps>", "explicit slippage tolerance in basis points (refused when missing)")
+  .option("--wallet <publicKey>", "the wallet PUBLIC key the transaction is built FOR (required; never a secret)")
+  .option("--risk <path>", "token:risk --json report for the candidate (required; building blind is refused)")
+  .option("--request <mode>", "requested execution mode: devnet | mainnet-dry-run | mainnet-live (default paper -> build refuses)")
+  .option("--acknowledge-devnet-execution", "the explicit devnet acknowledgment flag")
+  .option("--i-understand-this-can-lose-real-money", "the explicit mainnet-live CLI acknowledgment (never sufficient alone)")
+  .option("--max-spend-sol <sol>", "explicit per-trade spend cap in SOL (required; must not exceed config caps)")
+  .option("--slippage-cap-bps <bps>", "explicit slippage cap in basis points (refused when missing)")
+  .option("--risk-score-cap <n>", "explicit advisory risk score cap (refused when missing)")
+  .option("--endpoint <url>", "override the provider base URL")
+  .option("--allow-paper-read", "explicitly allow the network read while in PAPER mode")
+  .option("--json", "emit the build result as stable JSON")
+  .option("--out <path>", "write ONLY the unsigned envelope JSON to this path (refused if it exists)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .action(
+    async (opts: {
+      candidateMint?: string;
+      inputMint?: string;
+      amountRaw?: string;
+      amountSol?: string;
+      slippageBps?: string;
+      wallet?: string;
+      risk?: string;
+      request?: string;
+      acknowledgeDevnetExecution?: boolean;
+      iUnderstandThisCanLoseRealMoney?: boolean;
+      maxSpendSol?: string;
+      slippageCapBps?: string;
+      riskScoreCap?: string;
+      endpoint?: string;
+      allowPaperRead?: boolean;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+    }) => {
+      const { text, exitCode } = await executionBuildReport(
+        {},
+        {
+          candidateMint: opts.candidateMint,
+          inputMint: opts.inputMint,
+          amountRaw: opts.amountRaw,
+          amountSol: opts.amountSol,
+          slippageBps: opts.slippageBps,
+          wallet: opts.wallet,
+          riskPath: opts.risk,
+          request: opts.request,
+          acknowledgeDevnetExecution: Boolean(opts.acknowledgeDevnetExecution),
+          iUnderstandThisCanLoseRealMoney: Boolean(opts.iUnderstandThisCanLoseRealMoney),
+          maxSpendSol: opts.maxSpendSol,
+          slippageCapBps: opts.slippageCapBps,
+          riskScoreCap: opts.riskScoreCap,
+          endpoint: opts.endpoint,
+          allowPaperRead: Boolean(opts.allowPaperRead),
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("execution:devnet:send")
+  .description(
+    "The ONLY send surface in Sprint 92, DEVNET-ONLY by construction: requires SOLMAKER_ENABLE_DEVNET_EXECUTION=devnet-only AND --acknowledge-devnet-execution; the envelope and the signer boundary must both be devnet; every operator safety control is enforced; every attempt (refused or submitted) is appended to the required --audit-log. The signer keypair file PATH comes from an env var NAME (--signer-env) and is never logged or serialized. There is NO mainnet variant of this command — deliberately. Submission is not confirmation",
+  )
+  .option("--envelope <path>", "unsigned transaction envelope JSON (txpreview.envelope.v1; required; must be devnet)")
+  .option("--signer-env <ENV_VAR_NAME>", "the NAME of the env var holding the devnet keypair file PATH (required)")
+  .option("--rpc-url <url>", "devnet RPC endpoint (default https://api.devnet.solana.com; mainnet endpoints refused)")
+  .option("--acknowledge-devnet-execution", "the explicit devnet acknowledgment flag (required with the env flag)")
+  .option("--audit-log <path>", "append-only JSONL audit log (required; every attempt is journaled)")
+  .option("--risk-score <n>", "explicit advisory risk score for the trade context (required; a self-transfer probe is 0)")
+  .option("--json", "emit the attempt report as stable JSON")
+  .action(
+    async (opts: {
+      envelope?: string;
+      signerEnv?: string;
+      rpcUrl?: string;
+      acknowledgeDevnetExecution?: boolean;
+      auditLog?: string;
+      riskScore?: string;
+      json?: boolean;
+    }) => {
+      const { text, exitCode } = await executionDevnetSendReport(
+        {},
+        {
+          envelopePath: opts.envelope,
+          signerEnvVar: opts.signerEnv,
+          rpcUrl: opts.rpcUrl,
+          acknowledgeDevnetExecution: Boolean(opts.acknowledgeDevnetExecution),
+          auditLog: opts.auditLog,
+          riskScore: opts.riskScore,
+          json: Boolean(opts.json),
         },
       );
       console.log(text);

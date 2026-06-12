@@ -764,6 +764,16 @@ pnpm soulmaker paper:routequote:fetch --candidates <candidates.json> --amount-so
 pnpm soulmaker paper:realtime:snapshot --allow-paper-read --min-liquidity-usd 1000 --out-dir runs/feed
 pnpm soulmaker paper:realtime:watch --polls 10 --interval-ms 5000 --journal runs/watch.jsonl --allow-paper-read
 
+# Sprint 92 — GATED EXECUTION (architecture real, live DISABLED by default, mainnet sending has NO
+# CLI surface). execution:status shows the resolved mode + the FOURTEEN-condition mainnet live gate
+# (default BLOCKED) + the core gate; execution:build is the refusal-first UNSIGNED swap builder
+# (only output is a txpreview envelope for paper:simulation:tx); execution:devnet:send is the ONLY
+# send surface and is DEVNET-ONLY behind a double opt-in (env flag + CLI flag), journaled, signer
+# path from an env var NAME (never the key). See docs/PHASE7_LIVE_EXECUTION_GATE.md:
+pnpm soulmaker execution:status --request mainnet-live --i-understand-this-can-lose-real-money
+pnpm soulmaker execution:build --candidate-mint <mint> --wallet <pubkey> --risk risk.json --amount-sol 0.01 --slippage-bps 50 --max-spend-sol 0.02 --slippage-cap-bps 100 --risk-score-cap 30 --request mainnet-dry-run --allow-paper-read --out envelope.json
+pnpm soulmaker paper:simulation:tx --envelope envelope.json --rpc-url <mainnet rpc> --allow-paper-read
+
 # Sprint 27 — PAPER SNIPER DECISIONS: fold the candidate list + preflight + optional operator rules
 # into a per-candidate SIMULATED decision — skip / watch / paper-enter / paper-reject / unknown — with
 # reasons. A paper-enter is a PAPER-ONLY decision, NOT a buy/sell order, NOT a transaction, NOT live

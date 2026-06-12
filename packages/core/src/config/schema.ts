@@ -66,6 +66,12 @@ export const ConfigSchema = z
     mode: z.enum(TRADING_MODES).default("PAPER"),
     /** Global halt: when true, every trading action is refused. */
     killSwitch: z.boolean().default(false),
+    /**
+     * Sprint 92: ONE of the FOURTEEN mainnet live-gate conditions (see
+     * @soulmaker/execution). Setting it true does NOT enable live trading by
+     * itself — every other gate must independently pass. Default: false.
+     */
+    phase7LiveTradingReady: z.boolean().default(false),
     rpcUrl: z.string().url().optional(),
     wsUrl: z.string().url().optional(),
     watchPublicKeys: z.array(z.string().min(32)).default([]),

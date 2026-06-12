@@ -1,0 +1,15 @@
+{
+  "name": "@soulmaker/execution",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "GATED execution boundary (Sprint 92): execution-mode resolution (paper | readonly | devnet-execution | mainnet-dry-run | mainnet-live-blocked | mainnet-live-armed), the 14-condition mainnet LIVE gate (default state: BLOCKED; every condition must independently pass), operator safety controls (kill switch, caps, cooldowns, lists, network lock), an explicit signer BOUNDARY (devnet-first; mainnet only behind the armed gate; secrets never logged or serialized), and the refusal-first send path. Live trading is DISABLED BY DEFAULT and structurally impossible to trigger accidentally â€” proven by tests.",
+  "exports": { ".": "./src/index.ts" },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@solana/web3.js": "^1.95.0",
+    "@soulmaker/security": "workspace:*",
+    "@soulmaker/txpreview": "workspace:*"
+  }
+}

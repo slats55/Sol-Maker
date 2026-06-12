@@ -11,6 +11,7 @@
     "@solana/web3.js": "^1.95.0",
     "@soulmaker/backtest": "workspace:*",
     "@soulmaker/core": "workspace:*",
+    "@soulmaker/execution": "workspace:*",
     "@soulmaker/paper": "workspace:*",
     "@soulmaker/quotefetch": "workspace:*",
     "@soulmaker/realtime": "workspace:*",
@@ -21,6 +22,7 @@
     "@soulmaker/sniper": "workspace:*",
     "@soulmaker/solana": "workspace:*",
     "@soulmaker/strategy": "workspace:*",
+    "@soulmaker/txbuilder": "workspace:*",
     "@soulmaker/txpreview": "workspace:*",
     "commander": "^12.1.0"
   }

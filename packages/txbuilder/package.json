@@ -1,0 +1,15 @@
+{
+  "name": "@soulmaker/txbuilder",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "REFUSAL-FIRST unsigned swap transaction BUILDER (Sprint 92). Evaluates a closed set of refusal reasons (risk, caps, slippage, mode, kill switch, wallet, mint match) BEFORE any network call; only a fully-clean request reaches the provider swap API (Jupiter), and the only possible output is a strictly-validated UNSIGNED txpreview envelope. No signer, no secret key, no sending â€” a built envelope is material for simulation and gated review, never an order.",
+  "exports": { ".": "./src/index.ts" },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@solana/web3.js": "^1.95.0",
+    "@soulmaker/security": "workspace:*",
+    "@soulmaker/txpreview": "workspace:*"
+  }
+}
