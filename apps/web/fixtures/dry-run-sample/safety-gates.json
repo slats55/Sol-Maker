@@ -1,0 +1,181 @@
+{
+  "schemaVersion": "sniper.safety.gates.report.v2",
+  "banner": "SIMULATED PAPER-ONLY SNIPER SAFETY GATES V2",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "neverAuthorizesPhase6": true,
+  "disclaimers": [
+    "SIMULATED PAPER-ONLY SNIPER SAFETY GATES V2 — a deterministic, fail-closed check over the v2 artifacts themselves (each strictly validated in place).",
+    "The POLICY is the single source of allowances: a concern is tolerated only when the governing policy artifact says so; with no policy nothing is tolerated.",
+    "It is FAIL-CLOSED: a missing or invalid required artifact fails; blocking reason codes with no governing policy fail; a v1 decision fails the decision gate (the code-aware checks need v2).",
+    "Passing every gate is LOCAL/PAPER readiness ONLY — it is NEVER authorization to start Phase 6, build/sign/send a transaction, or trade. neverAuthorizesPhase6 is literally true.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim.",
+    "No wallet, key, signing, sending, or transaction planning is involved anywhere in this report."
+  ],
+  "operatorLabel": "rehearsal-operator",
+  "artifactsChecked": {
+    "candidateList": {
+      "present": true,
+      "valid": true
+    },
+    "preflightInput": {
+      "present": false,
+      "valid": null
+    },
+    "preflight": {
+      "present": true,
+      "valid": true
+    },
+    "policy": {
+      "present": true,
+      "valid": true
+    },
+    "decision": {
+      "present": true,
+      "valid": true
+    },
+    "runReport": {
+      "present": true,
+      "valid": true
+    },
+    "sessionPack": {
+      "present": true,
+      "valid": true
+    },
+    "auditLog": {
+      "present": true,
+      "valid": true
+    }
+  },
+  "policyDerivedAllowances": {
+    "paperEnterAllowedByPolicy": true,
+    "unknownsToleratedByPolicy": false
+  },
+  "gates": [
+    {
+      "id": "CANDIDATE_LIST_VALID",
+      "title": "Candidate list",
+      "required": true,
+      "status": "pass",
+      "reason": "candidate list present and strictly valid"
+    },
+    {
+      "id": "PREFLIGHT_INPUT_VALID",
+      "title": "Preflight input",
+      "required": false,
+      "status": "warn",
+      "reason": "no preflight input artifact — the preflight inputs were not validated as a bundle"
+    },
+    {
+      "id": "PREFLIGHT_REPORT_VALID",
+      "title": "Preflight report",
+      "required": false,
+      "status": "pass",
+      "reason": "preflight report present and strictly valid"
+    },
+    {
+      "id": "POLICY_VALID",
+      "title": "Policy config",
+      "required": false,
+      "status": "pass",
+      "reason": "policy config present and strictly valid"
+    },
+    {
+      "id": "DECISION_V2_VALID",
+      "title": "Decision report (v2)",
+      "required": true,
+      "status": "pass",
+      "reason": "decision report (v2) present and strictly valid"
+    },
+    {
+      "id": "RUN_REPORT_V2_VALID",
+      "title": "Run report (v2)",
+      "required": true,
+      "status": "pass",
+      "reason": "run report (v2) present and strictly valid"
+    },
+    {
+      "id": "SESSION_PACK_PRESENT",
+      "title": "Session pack",
+      "required": true,
+      "status": "pass",
+      "reason": "session pack present and strictly valid"
+    },
+    {
+      "id": "AUDIT_LOG_PRESENT",
+      "title": "Audit log",
+      "required": true,
+      "status": "pass",
+      "reason": "audit log present and strictly valid"
+    },
+    {
+      "id": "NO_UNGOVERNED_BLOCKING_CODES",
+      "title": "Blocking reason codes",
+      "required": true,
+      "status": "pass",
+      "reason": "no blocking reason codes in the decision"
+    },
+    {
+      "id": "NO_UNKNOWNS",
+      "title": "Unknowns",
+      "required": true,
+      "status": "pass",
+      "reason": "no unknown classifications or unresolved unknowns"
+    },
+    {
+      "id": "NO_PAPER_ENTER",
+      "title": "Paper-enter",
+      "required": true,
+      "status": "warn",
+      "reason": "1 SIMULATED paper-enter(s) — allowed by the policy (allowPaperEnter=true); review them"
+    },
+    {
+      "id": "RISK_PRESENT_WHEN_REQUIRED",
+      "title": "Risk data required",
+      "required": true,
+      "status": "pass",
+      "reason": "the policy requires risk data and no candidate lacks it"
+    },
+    {
+      "id": "INSPECTION_PRESENT_WHEN_REQUIRED",
+      "title": "Inspection required",
+      "required": false,
+      "status": "skip",
+      "reason": "not applicable — no v2 policy requires inspection data (or no v2 decision to read)"
+    },
+    {
+      "id": "NO_OPERATOR_BLOCKING_REASONS",
+      "title": "Operator-blocking reasons",
+      "required": false,
+      "status": "warn",
+      "reason": "1 operator-blocking reason(s) in the run report — resolve them"
+    },
+    {
+      "id": "PHASE6_NOT_AUTO_AUTHORIZED",
+      "title": "Phase 6 boundary",
+      "required": false,
+      "status": "skip",
+      "reason": "Phase 6 (transaction planning/simulation) is NOT started by design — these gates can NEVER authorize it; passing is local/paper readiness only"
+    }
+  ],
+  "passCount": 10,
+  "failCount": 0,
+  "warnCount": 3,
+  "skipCount": 2,
+  "ready": true,
+  "hasFailure": false,
+  "hasWarning": true,
+  "recommendation": "All required gates pass; review the warnings before relying on this session. This is local/paper readiness only — NEVER Phase 6 authorization.",
+  "failReasons": [],
+  "notes": [
+    "10 pass / 0 fail / 3 warn / 2 skip; ready=true.",
+    "The policy is the single source of allowances — with no governing policy, nothing is tolerated (fail-closed).",
+    "Fail-closed local/paper safety check — passing is NEVER authorization to start Phase 6, build/sign/send a transaction, or trade."
+  ]
+}

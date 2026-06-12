@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "sniper.burner.isolation.spec.v1",
+  "banner": "SNIPER BURNER ISOLATION SPEC (LOCAL DESIGN ARTIFACT — NOT A WALLET, CREATES NO WALLET)",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "burnerOnlyPrinciple": true,
+  "mainWalletExcluded": true,
+  "requireSimulationBeforeAnySend": true,
+  "requireRedactedLogging": true,
+  "requireExplicitOptIn": true,
+  "requireOperatorApproval": true,
+  "createsNoWallet": true,
+  "disclaimers": [
+    "SNIPER BURNER ISOLATION SPEC — a machine-readable LOCAL design/checklist artifact for FUTURE burner isolation. It is NOT a wallet: it creates no wallet, imports no wallet, and holds no key.",
+    "The core principles are literals that must be true; a spec where any was weakened is REFUSED by the validator.",
+    "Loss bounds are LABELS only — never a currency amount, a balance, or a profitability claim.",
+    "An adopted spec is a Phase-6/7 PREREQUISITE — it is never authorization for live or burner work, which remain not started.",
+    "Phase 7 (live/burner trading) is NOT started and cannot be enabled from here.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim.",
+    "No wallet, key, signing, sending, or transaction planning is involved anywhere in this artifact."
+  ],
+  "operatorLabel": "rehearsal-operator",
+  "maxLossLabel": null,
+  "futureCapRequirements": [
+    "any future burner must carry an explicit, operator-set loss bound BEFORE it is funded",
+    "any future burner cap must be enforced by reviewed code, never by operator discipline alone",
+    "a future burner that reaches its loss bound must stop — no automatic refill, no cap raise mid-session"
+  ],
+  "operatorApprovalRequirements": [
+    "a human operator explicitly approves creating any future burner (never a machine)",
+    "a human operator explicitly approves every escalation of a future burner's scope",
+    "the explicit dangerous opt-in for any live capability must be re-confirmed per session, never persisted as a default"
+  ],
+  "killSwitchSpecRef": "rehearsal-operator",
+  "readinessStatus": "adopted",
+  "adopted": true,
+  "warnings": [
+    "no maxLossLabel — name the loss bound (a LABEL, never an amount) a future burner design must respect."
+  ],
+  "notes": [
+    "The core principles are constants of this artifact — they are not inputs and cannot be configured off.",
+    "This artifact is NOT a wallet: it creates no wallet, imports no wallet, and holds no key.",
+    "Loss bounds are labels only — a future burner design enforces real caps in reviewed code."
+  ]
+}

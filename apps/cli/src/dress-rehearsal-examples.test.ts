@@ -127,6 +127,21 @@ describe("examples/sniper/operator-dress-rehearsal — every rehearsal runs as d
     });
   }
 
+  it("the committed web demo fixture IS the rich rehearsal's exact output (no drift)", () => {
+    // apps/web/fixtures/dry-run-sample/ is a real, committed orchestrator output used by the web
+    // inspector's dry-run overview tests and demo. Regenerate it here and byte-compare: if pipeline
+    // output ever changes, this fails loudly and the fixture must be regenerated alongside.
+    const fixtureDir = join(REHEARSAL_DIR, "../../../apps/web/fixtures/dry-run-sample");
+    withTmp((tmp) => {
+      const rich = REHEARSALS[1];
+      expect(paperSniperDryRunReport({ cwd: tmp, env: {} }, { ...rich.opts, outDir: "out" }).exitCode).toBe(0);
+      expect(readdirSync(fixtureDir).sort()).toEqual([...PAPER_DRY_RUN_FILES].sort());
+      for (const f of PAPER_DRY_RUN_FILES) {
+        expect(readFileSync(join(fixtureDir, f), "utf8"), f).toBe(readFileSync(join(tmp, "out", f), "utf8"));
+      }
+    });
+  });
+
   it("the rich rehearsal is byte-deterministic across two runs", () => {
     withTmp((tmp) => {
       const rich = REHEARSALS[1];

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "sniper.policy.config.v2",
+  "banner": "SIMULATED PAPER-ONLY SNIPER POLICY CONFIG V2",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "disclaimers": [
+    "SIMULATED PAPER-ONLY SNIPER POLICY CONFIG V2 — the v1 operator/risk policy plus an explicit policy mode and structured, reason-code-aware risk limits.",
+    "Tighten-only: every v2 limit can only make the paper pipeline MORE conservative — downgrade a SIMULATED paper-enter or reject a candidate, never the reverse.",
+    "A policy mode is a consistency contract: a config whose explicit switches contradict its mode is REFUSED, never silently adjusted.",
+    "It enables NO live behaviour: no wallet, key, signing, sending, or transaction planning is configurable here.",
+    "Paper sizing assumptions remain LABELS / unitless simulated counts only — never a currency amount, profit, ROI, or win-rate claim.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim."
+  ],
+  "policyLabel": "paper-dry-run-default-policy",
+  "operatorLabels": [],
+  "requirePreflightPass": true,
+  "maxRiskScore": null,
+  "minObservedLiquidityUsd": null,
+  "denyMints": [],
+  "allowPaperEnter": true,
+  "failClosedOnUnknownPreflight": true,
+  "failClosedOnMissingRisk": true,
+  "disallowedRiskFlags": [],
+  "maxCandidatesPerRun": null,
+  "duplicateMintPolicy": "warn",
+  "paperSizing": {
+    "budgetLabel": null,
+    "maxPaperPositionUnits": null,
+    "maxCandidatesToPaperEnter": null
+  },
+  "warnings": [
+    "no maxRiskScore set — risk-score capping is off (the preflight pass gate still applies)."
+  ],
+  "notes": [
+    "Conservative by default. This policy can ONLY tighten the paper pipeline; it never loosens it or enables live behaviour.",
+    "Paper sizing assumptions are labels / simulated units — never a currency amount, profit, ROI, or win-rate claim.",
+    "policy mode: balanced-paper (explicit, consistency-checked).",
+    "The maximum paper-enter count limit is paperSizing.maxCandidatesToPaperEnter (carried from v1, not duplicated)."
+  ],
+  "policyMode": "balanced-paper",
+  "riskLimits": {
+    "disallowedReasonCodes": [],
+    "disallowedPreflightStatuses": [],
+    "maxWarningsPerCandidate": null,
+    "requireRiskPresent": true,
+    "requireInspectionPresent": false,
+    "requirePreflightInputArtifact": false
+  }
+}

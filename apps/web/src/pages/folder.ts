@@ -25,8 +25,14 @@ import {
   type VerdictState,
 } from "../lib/folder-index.js";
 import { truncateText } from "../lib/json-access.js";
+import {
+  buildDryRunOverview,
+  routeStatusExplanation,
+  type DryRunOverview,
+  type DryRunRoleStatus,
+} from "../lib/dry-run-overview.js";
 import { PageHeader } from "../components/layout.js";
-import { EmptyState, Pill, RiskNotice, Section, StatusCard } from "../components/ui.js";
+import { EmptyState, Pill, RiskNotice, Section, StatusCard, type Tone } from "../components/ui.js";
 import { DataTable, type TableColumn } from "../components/tables.js";
 import { ReportSchemaBadge } from "../components/reports.js";
 import { ArtifactReportView } from "../components/artifact.js";
@@ -159,6 +165,9 @@ function whatItDoesSection(): RawHtml {
       <li>Recognized artifacts link to a per-artifact section rendered with the typed inspector view.</li>
       <li>The loaded index groups the scan into <strong>pre-rendered, static</strong> filter sections —
         all / regression / changed / unknown-or-malformed / clean — with no JavaScript and no query params.</li>
+      <li>A <code>paper:sniper:dry-run</code> output folder (recognized by its valid operator bundle) gets a
+        landing overview first: the operator verdict, the artifact chain, route status, and the blocking
+        codes — all read verbatim from the bundle, with a loud SIMULATION-ONLY banner.</li>
     </ul>`,
   });
 }
@@ -183,6 +192,183 @@ export function renderFolder(): RawHtml {
       }),
     })}
   `;
+}
+
+/* ------------------------------------------------------------------ *
+ * PAPER dry-run landing overview (rendered only when the scanned folder
+ * carries a valid phase6.operator.bundle.v1 — see ../lib/dry-run-overview.ts).
+ * ------------------------------------------------------------------ */
+
+/** Verdict → presentation. The best verdict stays explicitly SIMULATION ONLY. */
+function verdictPresentation(verdict: string | null): { tone: Tone; note: string } {
+  switch (verdict) {
+    case "reviewable-paper-only":
+      return { tone: "safe", note: "Best possible verdict — and still SIMULATION ONLY, never live-trading readiness." };
+    case "blocked":
+      return { tone: "caution", note: "The chain carries blocking conditions — listed verbatim below." };
+    case "attention":
+      return { tone: "caution", note: "Something needs review before trusting this bundle." };
+    case "incomplete":
+      return { tone: "caution", note: "One or more chain artifacts are missing or invalid." };
+    default:
+      return { tone: "caution", note: "Unrecognized verdict — inspect the bundle artifact directly." };
+  }
+}
+
+function paperOnlyBanner(): RawHtml {
+  return RiskNotice({
+    tone: "caution",
+    title: "PAPER dry-run output — SIMULATION ONLY. This is NOT live trading.",
+    body: html`This folder was produced by <code>paper:sniper:dry-run</code>. Nothing here signed, sent,
+      or authorized anything: <strong>no live order, no transaction, no wallet, no network</strong>. A
+      simulated <em>paper-enter</em> is a classification, never a trade, and no verdict on this page is
+      live-trading readiness. Phase 7 (live trading) remains unauthorized.`,
+  });
+}
+
+/** One chain role chip: role name + file state, linking to the artifact when present. */
+function chainRoleChip(role: DryRunRoleStatus): RawHtml {
+  const stateTone = role.state === "valid" ? "safe" : role.state === "invalid" ? "danger" : "caution";
+  const body = html`<span class="sm-chainrole__name">${role.role}</span>
+    <span class="sm-pill sm-pill--${stateTone}">${role.state}</span>`;
+  return role.anchor !== null
+    ? html`<a class="sm-chainrole sm-chainrole--${role.state}" href="#${role.anchor}" title="${role.fileName ?? role.role}">${body}</a>`
+    : html`<span class="sm-chainrole sm-chainrole--${role.state}" title="${role.fileName ?? role.role}">${body}</span>`;
+}
+
+function dryRunVerdictSection(overview: DryRunOverview): RawHtml {
+  const verdict = verdictPresentation(overview.operatorVerdict);
+  const blockingCount = overview.chainBlockingCodes.total;
+  const cards: readonly RawHtml[] = [
+    StatusCard({
+      label: "Operator verdict",
+      value: overview.operatorVerdict ?? "(missing)",
+      tone: verdict.tone,
+      note: verdict.note,
+    }),
+    StatusCard({
+      label: "Route resolution",
+      value: overview.routeResolutionStatus ?? "(missing)",
+      tone: "neutral",
+      note: routeStatusExplanation(overview.routeResolutionStatus),
+    }),
+    StatusCard({
+      label: "Blocking conditions",
+      value: String(blockingCount),
+      tone: blockingCount > 0 ? "caution" : "safe",
+      note: blockingCount > 0 ? "codes listed verbatim below" : "none recorded in the bundle",
+    }),
+    StatusCard({
+      label: "Readiness (verbatim)",
+      value:
+        overview.simulationReadyPerReadiness === null ? "unknown" : String(overview.simulationReadyPerReadiness),
+      tone: "neutral",
+      note: "phase6 SIMULATION readiness — never live readiness",
+    }),
+    StatusCard({
+      label: "Bundle complete",
+      value: overview.complete === null ? "unknown" : String(overview.complete),
+      tone: overview.complete === true ? "safe" : "caution",
+      note: `${String(overview.validRoleCount)} valid / ${String(overview.invalidRoleCount)} invalid / ${String(overview.missingRoleCount)} missing`,
+    }),
+    StatusCard({
+      label: "Blocking trail consistent",
+      value: overview.blockingTrailConsistent === null ? "unknown" : String(overview.blockingTrailConsistent),
+      tone: overview.blockingTrailConsistent === true ? "safe" : "danger",
+      note:
+        overview.blockingTrailConsistent === false
+          ? "codes disagree across the chain — treat as tampered"
+          : "handoff codes match the bundled chain",
+    }),
+  ];
+  const labels = [
+    overview.bundleLabel !== null ? html`run <code class="sm-codechip">${overview.bundleLabel}</code>` : null,
+    overview.operatorLabel !== null ? html`operator <code class="sm-codechip">${overview.operatorLabel}</code>` : null,
+  ].filter((value) => value !== null);
+  return Section({
+    title: "Dry-run result",
+    description:
+      "Read verbatim from this folder's operator bundle — nothing on this card is recomputed or inferred.",
+    aside: html`<a href="#${overview.bundleAnchor}"><code>${displayName(overview.bundleName)}</code></a>`,
+    body: html`
+      ${labels.length > 0 ? html`<p class="sm-muted-line">${labels.map((l, i) => (i > 0 ? html` · ${l}` : l))}</p>` : null}
+      <div class="sm-cardgrid">${cards}</div>
+      ${overview.whatHappened !== null ? html`<p class="sm-dryrun__happened">${overview.whatHappened}</p>` : null}
+    `,
+  });
+}
+
+function dryRunChainSection(overview: DryRunOverview): RawHtml {
+  return Section({
+    title: "Artifact chain",
+    description:
+      "Every role the bundle records, in chain order, with its file-backed state. Click a role to jump to that artifact's rendered section.",
+    body: html`<div class="sm-chain">${overview.roles.map((role) => chainRoleChip(role))}</div>
+      ${
+        overview.rolesHidden > 0
+          ? html`<p class="sm-muted-line">${String(overview.rolesHidden)} additional role(s) not shown.</p>`
+          : null
+      }`,
+  });
+}
+
+function dryRunBlockingSection(overview: DryRunOverview): RawHtml {
+  const codes = overview.chainBlockingCodes;
+  const why = overview.whyBlocked;
+  return Section({
+    title: "Blocking conditions",
+    description: "Chain blocking codes carried verbatim by the bundle, with the bundle's own explanations.",
+    body:
+      codes.items.length === 0 && why.items.length === 0
+        ? html`<p class="sm-muted-line">None — the bundled chain carries no blocking condition.</p>`
+        : html`
+            ${codes.items.length > 0
+              ? html`<ul class="sm-bullets sm-bullets--deny">
+                  ${codes.items.map((code) => html`<li><code>${code}</code></li>`)}
+                </ul>`
+              : null}
+            ${codes.hidden > 0 ? html`<p class="sm-muted-line">${String(codes.hidden)} more code(s) not shown.</p>` : null}
+            ${why.items.length > 0
+              ? html`<ul class="sm-bullets sm-bullets--plain">
+                  ${why.items.map((line) => html`<li>${line}</li>`)}
+                </ul>`
+              : null}
+          `,
+  });
+}
+
+function dryRunNextSection(overview: DryRunOverview): RawHtml | null {
+  if (overview.whatToInspectNext.items.length === 0 && !overview.hasRunSummary) return null;
+  return Section({
+    title: "What to inspect next",
+    description: "The bundle's own next steps, carried verbatim.",
+    body: html`
+      ${overview.whatToInspectNext.items.length > 0
+        ? html`<ul class="sm-bullets sm-bullets--plain">
+            ${overview.whatToInspectNext.items.map((line) => html`<li>${line}</li>`)}
+          </ul>`
+        : null}
+      ${overview.hasRunSummary
+        ? html`<p class="sm-muted-line">
+            This folder also carries <code>RUN_SUMMARY.md</code> — the run's human-readable summary (open it in
+            your editor; markdown is not rendered here).
+          </p>`
+        : null}
+    `,
+  });
+}
+
+/** The full landing block for a recognized dry-run folder (or nothing). */
+function dryRunOverviewBlock(index: FolderIndex): RawHtml | null {
+  const overview = buildDryRunOverview(index);
+  if (overview === null) return null;
+  return html`<div class="sm-dryrun">
+    ${paperOnlyBanner()}
+    ${dryRunVerdictSection(overview)}
+    ${dryRunChainSection(overview)}
+    ${dryRunBlockingSection(overview)}
+    ${dryRunNextSection(overview)}
+  </div>`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -403,6 +589,7 @@ export function renderFolderIndex(index: FolderIndex, source: FolderSource): Raw
   return html`
     ${header()}
     ${localOnlyNotice()}
+    ${dryRunOverviewBlock(index)}
 
     <div class="sm-folderindex">
       ${Section({

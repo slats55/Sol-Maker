@@ -1,0 +1,142 @@
+{
+  "schemaVersion": "sniper.session.pack.v1",
+  "banner": "SIMULATED PAPER-ONLY SNIPER SESSION PACK",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "disclaimers": [
+    "SIMULATED PAPER-ONLY SNIPER SESSION PACK — a deterministic bundle of an operator's local sniper artifacts.",
+    "Each artifact is classified by its schemaVersion; a KNOWN sniper schema is strictly validated and its flags read VERBATIM, while an UNKNOWN schema is surfaced honestly as `unsupported`.",
+    "Chain-coverage tiers describe PRESENCE only (which artifact kinds are in the pack) — never completeness, correctness, or trading readiness.",
+    "A `paper-enter` flag carried through is a SIMULATED classification — NOT a buy/sell order, NOT a transaction, and NOT live-trading readiness.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim.",
+    "No wallet, key, signing, sending, or transaction planning is involved anywhere in this pack."
+  ],
+  "sessionLabel": "rehearsal-rich",
+  "artifactCount": 6,
+  "artifacts": [
+    {
+      "label": "candidates",
+      "sourceLabel": null,
+      "schemaVersion": "sniper.candidate.list.v1",
+      "kind": "candidate-list",
+      "recognized": true,
+      "candidateCount": 2,
+      "hasPaperEnter": null,
+      "hasRiskBlock": null,
+      "hasUnknown": null,
+      "hasFailure": null,
+      "notes": []
+    },
+    {
+      "label": "preflight",
+      "sourceLabel": null,
+      "schemaVersion": "sniper.token.preflight.report.v1",
+      "kind": "token-preflight",
+      "recognized": true,
+      "candidateCount": 2,
+      "hasPaperEnter": null,
+      "hasRiskBlock": null,
+      "hasUnknown": false,
+      "hasFailure": false,
+      "notes": []
+    },
+    {
+      "label": "decision",
+      "sourceLabel": null,
+      "schemaVersion": "sniper.paper.decision.report.v2",
+      "kind": "unsupported",
+      "recognized": false,
+      "candidateCount": null,
+      "hasPaperEnter": null,
+      "hasRiskBlock": null,
+      "hasUnknown": null,
+      "hasFailure": null,
+      "notes": [
+        "unknown schemaVersion \"sniper.paper.decision.report.v2\""
+      ]
+    },
+    {
+      "label": "run-report",
+      "sourceLabel": null,
+      "schemaVersion": "sniper.run.report.v2",
+      "kind": "unsupported",
+      "recognized": false,
+      "candidateCount": null,
+      "hasPaperEnter": null,
+      "hasRiskBlock": null,
+      "hasUnknown": null,
+      "hasFailure": null,
+      "notes": [
+        "unknown schemaVersion \"sniper.run.report.v2\""
+      ]
+    },
+    {
+      "label": "audit-log",
+      "sourceLabel": null,
+      "schemaVersion": "sniper.audit.log.v1",
+      "kind": "audit-log",
+      "recognized": true,
+      "candidateCount": 2,
+      "hasPaperEnter": true,
+      "hasRiskBlock": false,
+      "hasUnknown": false,
+      "hasFailure": false,
+      "notes": []
+    },
+    {
+      "label": "policy",
+      "sourceLabel": null,
+      "schemaVersion": "sniper.policy.config.v2",
+      "kind": "unsupported",
+      "recognized": false,
+      "candidateCount": null,
+      "hasPaperEnter": null,
+      "hasRiskBlock": null,
+      "hasUnknown": null,
+      "hasFailure": null,
+      "notes": [
+        "unknown schemaVersion \"sniper.policy.config.v2\""
+      ]
+    }
+  ],
+  "recognizedCount": 3,
+  "unsupportedCount": 3,
+  "kindsPresent": [
+    "audit-log",
+    "candidate-list",
+    "token-preflight"
+  ],
+  "coverage": {
+    "hasCandidateList": true,
+    "hasPreflight": true,
+    "hasDecision": false,
+    "hasRunReport": false,
+    "hasAuditLog": true,
+    "hasPolicy": false,
+    "isMinimal": true,
+    "isDecisionReady": false,
+    "isAudited": false
+  },
+  "hasPaperEnter": true,
+  "hasRiskBlock": false,
+  "hasUnknown": false,
+  "hasFailure": false,
+  "hasUnsupported": true,
+  "ciFailReasons": [
+    "at least one artifact carries a SIMULATED paper-enter.",
+    "3 artifact(s) have an unsupported schema."
+  ],
+  "warnings": [
+    "3 unsupported artifact(s) were surfaced (not silently trusted)."
+  ],
+  "notes": [
+    "6 artifact(s): 3 recognized, 3 unsupported.",
+    "Coverage tiers describe PRESENCE only — never completeness, correctness, or trading readiness."
+  ]
+}

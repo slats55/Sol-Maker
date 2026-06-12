@@ -1,0 +1,115 @@
+{
+  "schemaVersion": "sniper.paper.decision.report.v2",
+  "banner": "SIMULATED PAPER-ONLY SNIPER DECISION REPORT V2",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "disclaimers": [
+    "SIMULATED PAPER-ONLY SNIPER DECISION REPORT V2 — the v1 per-candidate simulated decisions plus stable machine-readable reason codes.",
+    "Reason codes are machine-readable integrity/risk explanations for SIMULATED paper-only decisions — never trading advice, never a buy/sell signal.",
+    "Codes are emitted by the same branches that produce the decisions; the free-text reasons remain operator prose and are never parsed as logic.",
+    "A `paper-enter` is a SIMULATED, paper-only decision — it is NOT a buy/sell order, NOT a transaction, and NOT live-trading readiness.",
+    "Conservative: a candidate reaches `paper-enter` only when the preflight PASSED and every deterministic entry rule (and any policy) is satisfied.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim.",
+    "No wallet, key, signing, sending, or transaction planning is involved anywhere in this report."
+  ],
+  "sourceLabel": "examples/sniper/operator-dress-rehearsal/candidates.rich.json",
+  "hasPreflight": true,
+  "rules": {
+    "requirePreflightPass": true,
+    "maxRiskScore": null,
+    "minObservedLiquidityUsd": null,
+    "denyMints": []
+  },
+  "policyApplied": true,
+  "policyLabel": "paper-dry-run-default-policy",
+  "policySchemaVersion": "sniper.policy.config.v2",
+  "upgradedFromV1": false,
+  "candidateCount": 2,
+  "decisions": [
+    {
+      "candidateId": "rehearsal-clean",
+      "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+      "preflightStatus": "pass",
+      "decision": "paper-enter",
+      "reasons": [
+        "risk decision PASS_FOR_PAPER_EVALUATION",
+        "preflight pass and all deterministic entry rules satisfied (SIMULATED paper entry only)"
+      ],
+      "blockingRiskFlags": [],
+      "appliedRules": [
+        "requirePreflightPass"
+      ],
+      "assumptions": [],
+      "reasonCodes": [
+        "policy-allowed-paper-enter",
+        "paper-enter-candidate"
+      ],
+      "blockingReasonCodes": [],
+      "warningReasonCodes": [],
+      "policyReasonCodes": [
+        "policy-allowed-paper-enter"
+      ],
+      "riskReasonCodes": []
+    },
+    {
+      "candidateId": "rehearsal-freeze",
+      "mint": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+      "preflightStatus": "warn",
+      "decision": "watch",
+      "reasons": [
+        "freeze authority present (the token can be frozen — you may not be able to sell)"
+      ],
+      "blockingRiskFlags": [],
+      "appliedRules": [],
+      "assumptions": [],
+      "reasonCodes": [
+        "preflight-warning",
+        "watch-candidate"
+      ],
+      "blockingReasonCodes": [],
+      "warningReasonCodes": [
+        "preflight-warning"
+      ],
+      "policyReasonCodes": [],
+      "riskReasonCodes": []
+    }
+  ],
+  "skipCount": 0,
+  "watchCount": 1,
+  "paperEnterCount": 1,
+  "paperRejectCount": 0,
+  "unknownCount": 0,
+  "hasPaperEnter": true,
+  "hasPaperReject": false,
+  "hasRiskReject": false,
+  "reportReasonCodes": [],
+  "reasonCodeCounts": {
+    "paper-enter-candidate": 1,
+    "policy-allowed-paper-enter": 1,
+    "preflight-warning": 1,
+    "watch-candidate": 1
+  },
+  "categoryCounts": {
+    "decision": 2,
+    "policy": 1,
+    "preflight": 1
+  },
+  "wouldFailOnPaperEnter": true,
+  "wouldFailOnRisk": false,
+  "ciFailReasons": [
+    "1 candidate(s) would paper-enter: rehearsal-clean"
+  ],
+  "warnings": [],
+  "notes": [
+    "2 candidate(s): 1 paper-enter, 1 watch, 0 skip, 0 paper-reject, 0 unknown.",
+    "A paper-enter is a SIMULATED, paper-only decision — never a buy/sell order, a transaction, or live readiness.",
+    "policy \"paper-dry-run-default-policy\" applied (tighten-only).",
+    "policy v2 risk limits applied (mode: balanced-paper; tighten-only)."
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "sniper.kill_switch.spec.v1",
+  "banner": "SNIPER KILL-SWITCH SPEC (LOCAL DESIGN ARTIFACT — NOT A LIVE CONTROL)",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "specOnly": true,
+  "performsNoProcessControl": true,
+  "disclaimers": [
+    "SNIPER KILL-SWITCH SPEC — a machine-readable LOCAL design/checklist artifact describing what a future kill switch must do. It is NOT a kill switch.",
+    "It performs NO process control: nothing here stops, starts, signals, or monitors any process, and it exposes no live controls.",
+    "The stop-live-disabled-placeholder mode is PERMANENTLY disabled in v1 — Phase 7 (live/burner trading) is not started and cannot be controlled from here.",
+    "The Phase-6 prerequisite tracker consumes this artifact; an adopted spec is a PREREQUISITE for future simulation work, never authorization for it.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim.",
+    "No wallet, key, signing, sending, or transaction planning is involved anywhere in this artifact."
+  ],
+  "operatorLabel": "rehearsal-operator",
+  "modes": [
+    {
+      "mode": "stop-paper-decisions",
+      "description": "halt all NEW paper decision builds for the session (existing artifacts stay readable)",
+      "scope": "paper",
+      "status": "specified"
+    },
+    {
+      "mode": "stop-simulation",
+      "description": "halt any future Phase 6 simulation run before it starts (Phase 6 is not implemented yet — this mode is specified ahead of it)",
+      "scope": "phase6-simulation-future",
+      "status": "specified"
+    },
+    {
+      "mode": "stop-live-disabled-placeholder",
+      "description": "PERMANENTLY DISABLED placeholder for a future live halt — Phase 7 is not started and cannot be controlled from here",
+      "scope": "phase7-live-disabled",
+      "status": "placeholder-disabled"
+    }
+  ],
+  "requiredOperatorConfirmations": [
+    "rehearsal-operator confirms adoption of the canonical PAPER-only kill-switch spec for this dry run",
+    "the operator explicitly confirms the session label being halted",
+    "the operator explicitly confirms which mode is being tripped"
+  ],
+  "disabledActions": [
+    "building any new paper decision report",
+    "building or diffing any simulation intent plan",
+    "any future Phase 6 simulation run",
+    "any future live/burner action (already disabled by design)"
+  ],
+  "escalationNotes": [],
+  "auditRequirements": [
+    "every trip and reset must be recorded in a local audit artifact with the operator label",
+    "the tripped mode and the reason must be recorded verbatim"
+  ],
+  "testRequirements": [
+    "a test must prove a tripped switch refuses every disabled action",
+    "a test must prove the live placeholder mode cannot be armed"
+  ],
+  "readinessStatus": "adopted",
+  "adopted": true,
+  "warnings": [
+    "no escalation notes — consider writing down who to alert when the switch trips."
+  ],
+  "notes": [
+    "This artifact is a SPEC: it controls nothing, halts nothing, and exposes no live behaviour.",
+    "The three modes are fixed in v1; the live mode is a permanently-disabled placeholder."
+  ]
+}

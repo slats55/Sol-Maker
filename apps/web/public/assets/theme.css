@@ -1223,6 +1223,58 @@ h3 {
   font-size: 13px;
 }
 
+/* ---- PAPER dry-run landing overview ------------------------------------- */
+
+.sm-dryrun {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.sm-dryrun__happened {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-dim);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.sm-chain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sm-chainrole {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  text-decoration: none;
+  color: inherit;
+}
+.sm-chainrole__name {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.sm-chainrole--valid {
+  border-left-color: var(--safe);
+}
+.sm-chainrole--invalid {
+  border-left-color: var(--danger);
+}
+.sm-chainrole--missing {
+  border-left-color: var(--caution);
+}
+a.sm-chainrole:hover {
+  background: var(--bg-card-hi);
+}
+
 /* ---- Responsive --------------------------------------------------------- */
 
 @media (max-width: 880px) {

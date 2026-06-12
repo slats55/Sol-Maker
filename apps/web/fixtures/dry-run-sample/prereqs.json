@@ -1,0 +1,231 @@
+{
+  "schemaVersion": "phase6.prerequisite.report.v2",
+  "banner": "PHASE 6 PREREQUISITE TRACKER V2 (PAPER-ONLY, NOT AUTHORIZATION)",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "disclaimers": [
+    "PHASE 6 PREREQUISITE TRACKER V2 — explicit readiness buckets over the actual v2 artifacts (policy / safety gates v2 / decision v2 / run report v2 / audit log / session pack / kill-switch spec / secrets policy / burner isolation spec).",
+    "It is NOT authorization to start Phase 6: even when every bucket is ready, beginning Phase 6 requires an explicit human decision, never this report.",
+    "phase6ImplementationReady may become true ONLY for a PURE SIMULATION implementation prerequisite check — never for live execution; phase7LiveTradingReady is ALWAYS false.",
+    "A missing, invalid, weakened, or non-ADOPTED spec artifact keeps its readiness bucket not-met — readiness is fail-closed, never invented.",
+    "Phase 6 (transaction planning/simulation) and Phase 7 (burner/live trading) are NOT started; this tracker implements NO transaction planning and carries no chain capability.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim.",
+    "No wallet, key, signing, sending, or transaction planning is involved anywhere in this report."
+  ],
+  "operatorLabel": "rehearsal-operator",
+  "prerequisites": [
+    {
+      "id": "SESSION_PACK",
+      "title": "Session pack collected",
+      "bucket": "artifact",
+      "status": "met",
+      "source": "sniper.session.pack.v1",
+      "reason": "the session pack is present and strictly valid"
+    },
+    {
+      "id": "DECISION_V2",
+      "title": "Decision report v2 (reason codes)",
+      "bucket": "artifact",
+      "status": "met",
+      "source": "sniper.paper.decision.report.v2",
+      "reason": "the v2 decision report is present and strictly valid"
+    },
+    {
+      "id": "RUN_REPORT_V2",
+      "title": "Run report v2 (rollups + blocking reasons)",
+      "bucket": "artifact",
+      "status": "met",
+      "source": "sniper.run.report.v2",
+      "reason": "the v2 run report is present and strictly valid"
+    },
+    {
+      "id": "POLICY_PRESENT",
+      "title": "Versioned operator policy",
+      "bucket": "policy",
+      "status": "met",
+      "source": "sniper.policy.config.v1|v2",
+      "reason": "a sniper.policy.config.v2 policy governs the run"
+    },
+    {
+      "id": "POLICY_V2_RISK_LIMITS",
+      "title": "Policy v2 risk limits + explicit mode",
+      "bucket": "policy",
+      "status": "met",
+      "source": "sniper.policy.config.v2",
+      "reason": "the policy is v2 (mode: balanced-paper)"
+    },
+    {
+      "id": "SAFETY_GATES_V2",
+      "title": "Safety gates v2 evaluated",
+      "bucket": "safety",
+      "status": "met",
+      "source": "sniper.safety.gates.report.v2",
+      "reason": "the v2 safety gates report is present and strictly valid"
+    },
+    {
+      "id": "SAFETY_GATES_READY",
+      "title": "Safety gates READY",
+      "bucket": "safety",
+      "status": "met",
+      "source": "sniper.safety.gates.report.v2",
+      "reason": "every required safety gate passes"
+    },
+    {
+      "id": "AUDIT_LOG",
+      "title": "Audit log present",
+      "bucket": "audit",
+      "status": "met",
+      "source": "sniper.audit.log.v1",
+      "reason": "the audit log is present and strictly valid"
+    },
+    {
+      "id": "AUDIT_CLEAN",
+      "title": "Audit log clean (no step failures)",
+      "bucket": "audit",
+      "status": "met",
+      "source": "sniper.audit.log.v1",
+      "reason": "no audit step recorded a failure"
+    },
+    {
+      "id": "OPERATOR_LABELED",
+      "title": "Operator identified (label)",
+      "bucket": "operator",
+      "status": "met",
+      "source": "operator input",
+      "reason": "an operator label was supplied"
+    },
+    {
+      "id": "NO_OPERATOR_BLOCKING",
+      "title": "No operator-blocking reasons",
+      "bucket": "operator",
+      "status": "not-met",
+      "source": "sniper.run.report.v2",
+      "reason": "1 operator-blocking reason(s) remain"
+    },
+    {
+      "id": "KILL_SWITCH_SPEC_ARTIFACT",
+      "title": "Machine-readable kill-switch spec (adopted)",
+      "bucket": "kill-switch",
+      "status": "met",
+      "source": "sniper.kill_switch.spec.v1",
+      "reason": "an ADOPTED kill-switch spec is supplied and strictly valid"
+    },
+    {
+      "id": "SECRETS_POLICY_ARTIFACT",
+      "title": "Machine-readable secrets policy (adopted)",
+      "bucket": "secrets-policy",
+      "status": "met",
+      "source": "sniper.secrets.policy.v1",
+      "reason": "an ADOPTED secrets policy is supplied and strictly valid (core rules intact)"
+    },
+    {
+      "id": "BURNER_ISOLATION_SPEC_ARTIFACT",
+      "title": "Machine-readable burner isolation spec (adopted)",
+      "bucket": "burner-isolation",
+      "status": "met",
+      "source": "sniper.burner.isolation.spec.v1",
+      "reason": "an ADOPTED burner isolation spec is supplied and strictly valid (core principles intact)"
+    },
+    {
+      "id": "BURNER_KILL_SWITCH_PAIRED",
+      "title": "Burner spec paired with a kill-switch spec",
+      "bucket": "burner-isolation",
+      "status": "met",
+      "source": "sniper.burner.isolation.spec.v1#killSwitchSpecRef",
+      "reason": "the burner spec references kill-switch spec \"rehearsal-operator\""
+    },
+    {
+      "id": "SAFETY_REGRESSION_SUITE",
+      "title": "Per-module safety regression suite",
+      "bucket": "test",
+      "status": "documented",
+      "source": "packages/sniper/src/*-safety.test.ts",
+      "reason": "every sniper module ships a source-scanning safety regression test (no wallet/sign/send/network capability) — this tracker cannot run them, only point at them"
+    }
+  ],
+  "buckets": [
+    {
+      "bucket": "artifact",
+      "title": "Artifact readiness",
+      "itemCount": 3,
+      "metCount": 3,
+      "ready": true
+    },
+    {
+      "bucket": "policy",
+      "title": "Policy readiness",
+      "itemCount": 2,
+      "metCount": 2,
+      "ready": true
+    },
+    {
+      "bucket": "safety",
+      "title": "Safety readiness",
+      "itemCount": 2,
+      "metCount": 2,
+      "ready": true
+    },
+    {
+      "bucket": "audit",
+      "title": "Audit readiness",
+      "itemCount": 2,
+      "metCount": 2,
+      "ready": true
+    },
+    {
+      "bucket": "operator",
+      "title": "Operator readiness",
+      "itemCount": 2,
+      "metCount": 1,
+      "ready": false
+    },
+    {
+      "bucket": "kill-switch",
+      "title": "Kill-switch readiness",
+      "itemCount": 1,
+      "metCount": 1,
+      "ready": true
+    },
+    {
+      "bucket": "secrets-policy",
+      "title": "Secrets-policy readiness",
+      "itemCount": 1,
+      "metCount": 1,
+      "ready": true
+    },
+    {
+      "bucket": "burner-isolation",
+      "title": "Burner-isolation readiness",
+      "itemCount": 2,
+      "metCount": 2,
+      "ready": true
+    },
+    {
+      "bucket": "test",
+      "title": "Test readiness",
+      "itemCount": 1,
+      "metCount": 1,
+      "ready": true
+    }
+  ],
+  "notMet": [
+    "NO_OPERATOR_BLOCKING"
+  ],
+  "phase6ImplementationReady": false,
+  "phase6ImplementationStarted": false,
+  "requiresExplicitHumanApproval": true,
+  "phase7LiveTradingReady": false,
+  "neverAuthorizesLiveTrading": true,
+  "recommendation": "Not ready: 1 prerequisite(s) unmet across 1 bucket(s). Phase 6 work must not begin.",
+  "notes": [
+    "16 prerequisite(s) across 9 bucket(s); 1 not met; phase6ImplementationReady=false.",
+    "phase6ImplementationReady speaks ONLY to a pure simulation implementation prerequisite check — never live execution, and never authorization.",
+    "The kill-switch / secrets-policy / burner-isolation buckets are met only by ADOPTED, strictly-valid spec artifacts — a missing, invalid, weakened, or draft spec keeps them not-met."
+  ]
+}

@@ -1,0 +1,326 @@
+{
+  "schemaVersion": "phase6.operator.bundle.v1",
+  "banner": "PHASE 6 OPERATOR BUNDLE (ARCHIVE/REVIEW ONLY — SIMULATION ONLY, NEVER SIGNS, NEVER SENDS, NEVER AUTHORIZES LIVE TRADING)",
+  "generatedBy": "@soulmaker/simulation",
+  "paperOnly": true,
+  "simulated": true,
+  "notLiveResult": true,
+  "notFinancialAdvice": true,
+  "notProfitabilityClaim": true,
+  "neverAuthorizesLiveTrading": true,
+  "neverSigns": true,
+  "neverSends": true,
+  "dryRunOnly": true,
+  "phase7LiveTradingReady": false,
+  "disclaimers": [
+    "PHASE 6 OPERATOR BUNDLE — thirteen chain artifacts strictly validated in place and summarized from STRUCTURED FIELDS ONLY; a missing artifact is classified as missing, never invented.",
+    "The chain's blocking conditions are RECOMPUTED from the bundled artifacts and cross-checked against the handoff pack's verbatim trail — a disagreement is surfaced as a blocked bundle, never waived.",
+    "The best possible operator verdict is reviewable-paper-only: an operator bundle is structurally incapable of claiming live-trading readiness, and the validator refuses anything else.",
+    "phase7LiveTradingReady is ALWAYS false: Phase 7 (live/burner trading) remains unauthorized and cannot be authorized from here.",
+    "SIMULATION ONLY — a deterministic, read-only, dry-run-only artifact over validated PAPER inputs; nothing here is, or can become, a live action.",
+    "It can NEVER authorize live trading: neverAuthorizesLiveTrading is literally true and the validator refuses anything else.",
+    "It NEVER signs and NEVER sends: this package holds no wallet, no key material, no signing surface, and no transaction-submission surface.",
+    "Where a real on-chain dry-run is impossible without transaction material it is reported as UNAVAILABLE with an honest reason code — never faked.",
+    "Phase 7 (live/burner trading) is NOT started, NOT authorized, and cannot be authorized from here.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim."
+  ],
+  "operatorLabel": "rehearsal-operator",
+  "bundleLabel": "rehearsal-rich",
+  "artifacts": [
+    {
+      "role": "decision",
+      "expectedSchemaVersion": "sniper.paper.decision.report.v2",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "sniper.paper.decision.report.v2",
+      "label": "examples/sniper/operator-dress-rehearsal/candidates.rich.json",
+      "error": null,
+      "summary": {
+        "decisionCount": 2,
+        "paperEnterCount": 1,
+        "hasPaperEnter": true,
+        "unknownCount": 0
+      }
+    },
+    {
+      "role": "run-report",
+      "expectedSchemaVersion": "sniper.run.report.v2",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "sniper.run.report.v2",
+      "label": "rehearsal-operator",
+      "error": null,
+      "summary": {
+        "candidateCount": 2,
+        "operatorBlockingReasonCount": 1,
+        "unresolvedUnknownCount": 0,
+        "upgradedFromV1": false
+      }
+    },
+    {
+      "role": "safety-gates",
+      "expectedSchemaVersion": "sniper.safety.gates.report.v2",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "sniper.safety.gates.report.v2",
+      "label": "rehearsal-operator",
+      "error": null,
+      "summary": {
+        "ready": true,
+        "failCount": 0
+      }
+    },
+    {
+      "role": "prereqs",
+      "expectedSchemaVersion": "phase6.prerequisite.report.v2",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "phase6.prerequisite.report.v2",
+      "label": "rehearsal-operator",
+      "error": null,
+      "summary": {
+        "phase6ImplementationReady": false,
+        "notMetCount": 1
+      }
+    },
+    {
+      "role": "kill-switch-spec",
+      "expectedSchemaVersion": "sniper.kill_switch.spec.v1",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "sniper.kill_switch.spec.v1",
+      "label": "rehearsal-operator",
+      "error": null,
+      "summary": {
+        "adopted": true,
+        "readinessStatus": "adopted"
+      }
+    },
+    {
+      "role": "secrets-policy",
+      "expectedSchemaVersion": "sniper.secrets.policy.v1",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "sniper.secrets.policy.v1",
+      "label": "rehearsal-operator",
+      "error": null,
+      "summary": {
+        "adopted": true,
+        "readinessStatus": "adopted"
+      }
+    },
+    {
+      "role": "burner-isolation-spec",
+      "expectedSchemaVersion": "sniper.burner.isolation.spec.v1",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "sniper.burner.isolation.spec.v1",
+      "label": "rehearsal-operator",
+      "error": null,
+      "summary": {
+        "adopted": true,
+        "readinessStatus": "adopted"
+      }
+    },
+    {
+      "role": "intent-plan",
+      "expectedSchemaVersion": "simulation.intent.plan.v2",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "simulation.intent.plan.v2",
+      "label": "rehearsal-rich",
+      "error": null,
+      "summary": {
+        "blocked": false,
+        "entryCount": 1,
+        "unresolvedEntryCount": 1,
+        "acknowledgmentApplied": true
+      }
+    },
+    {
+      "role": "simulation-result",
+      "expectedSchemaVersion": "simulation.result.v1",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "simulation.result.v1",
+      "label": "rehearsal-rich",
+      "error": null,
+      "summary": {
+        "resultStatus": "skipped_unresolved",
+        "entryCount": 1,
+        "dryRunAttempted": false,
+        "adapterId": "unavailable-safe-boundary"
+      }
+    },
+    {
+      "role": "route-resolution",
+      "expectedSchemaVersion": "simulation.route.resolution.v1",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "simulation.route.resolution.v1",
+      "label": "rehearsal-rich",
+      "error": null,
+      "summary": {
+        "resolutionStatus": "unavailable",
+        "blocked": false,
+        "entryCount": 1,
+        "unavailableEntryCount": 1,
+        "liveStateCaveat": false,
+        "routeResolverAttempted": false
+      }
+    },
+    {
+      "role": "audit-report",
+      "expectedSchemaVersion": "phase6.audit.report.v1",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "phase6.audit.report.v1",
+      "label": "rehearsal-operator",
+      "error": null,
+      "summary": {
+        "auditPassed": true,
+        "chainComplete": true,
+        "blockingFindingCount": 0,
+        "chainConditionCount": 1
+      }
+    },
+    {
+      "role": "readiness-report",
+      "expectedSchemaVersion": "phase6.simulation.readiness.report.v1",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "phase6.simulation.readiness.report.v1",
+      "label": "rehearsal-operator",
+      "error": null,
+      "summary": {
+        "phase6SimulationReady": true,
+        "blockingCount": 0,
+        "declaredEvidenceCount": 11
+      }
+    },
+    {
+      "role": "handoff-pack",
+      "expectedSchemaVersion": "phase6.simulation.handoff.pack.v1",
+      "present": true,
+      "valid": true,
+      "suppliedSchemaVersion": "phase6.simulation.handoff.pack.v1",
+      "label": "rehearsal-rich",
+      "error": null,
+      "summary": {
+        "complete": true,
+        "validCount": 12,
+        "chainBlockingCount": 1,
+        "hasBlockingConditions": true,
+        "simulationReadyPerReadiness": true,
+        "operatorBlockingReasonCount": 1
+      }
+    }
+  ],
+  "files": [
+    {
+      "role": "decision",
+      "fileName": "decision.json",
+      "digest": "sha256-128:ec7cff7dd4165f5fb9bd01ac56cebdb3"
+    },
+    {
+      "role": "run-report",
+      "fileName": "run-report.json",
+      "digest": "sha256-128:c0f7262de13de65b20a3c1f63c7b56e4"
+    },
+    {
+      "role": "safety-gates",
+      "fileName": "safety-gates.json",
+      "digest": "sha256-128:3c9aeb2b179cea79ceba8e0354c48618"
+    },
+    {
+      "role": "prereqs",
+      "fileName": "prereqs.json",
+      "digest": "sha256-128:3ec77bf87fd47219a96f120491a4f387"
+    },
+    {
+      "role": "kill-switch-spec",
+      "fileName": "kill-switch.json",
+      "digest": "sha256-128:0128f29af6c9133b9403d6ec019c249c"
+    },
+    {
+      "role": "secrets-policy",
+      "fileName": "secrets-policy.json",
+      "digest": "sha256-128:ceb4d8080eda561ae9e7763ab8e5a9fc"
+    },
+    {
+      "role": "burner-isolation-spec",
+      "fileName": "burner-isolation.json",
+      "digest": "sha256-128:1e31dc8290bd298e2721d396660062ae"
+    },
+    {
+      "role": "intent-plan",
+      "fileName": "intent-plan.json",
+      "digest": "sha256-128:50bc29a2249e4c93cd06b693f87e7199"
+    },
+    {
+      "role": "simulation-result",
+      "fileName": "simulation-result.json",
+      "digest": "sha256-128:927d2c98e0731450a60865356a9eda50"
+    },
+    {
+      "role": "route-resolution",
+      "fileName": "route-resolution.json",
+      "digest": "sha256-128:2dc423abf15a9a8e6d5b1b26787d7de2"
+    },
+    {
+      "role": "audit-report",
+      "fileName": "chain-audit.json",
+      "digest": "sha256-128:3014e2c74d3ea41ddca860537269ab04"
+    },
+    {
+      "role": "readiness-report",
+      "fileName": "readiness.json",
+      "digest": "sha256-128:7f3c19f1af9a363df5b472e30ad0255c"
+    },
+    {
+      "role": "handoff-pack",
+      "fileName": "handoff-pack.json",
+      "digest": "sha256-128:688ec6f25fe512ad95fa2fe9fbe07ad2"
+    }
+  ],
+  "missingRoles": [],
+  "invalidRoles": [],
+  "complete": true,
+  "chainBlockingCodes": [
+    "simulation-blocked-prereqs-not-ready"
+  ],
+  "hasBlockingConditions": true,
+  "handoffChainBlockingCodes": [
+    "simulation-blocked-prereqs-not-ready"
+  ],
+  "blockingTrailConsistent": true,
+  "operatorBlockingReasons": [
+    "1 SIMULATED paper-enter(s) need operator review before any further step: rehearsal-clean."
+  ],
+  "routeResolutionStatus": "unavailable",
+  "routeResolverAttempted": false,
+  "routeLiveStateCaveat": false,
+  "simulationReadyPerReadiness": true,
+  "operatorVerdict": "blocked",
+  "whatHappened": "One PAPER dry-run chain collected: 13/13 artifacts strictly valid (0 missing, 0 invalid); 1 chain blocking condition(s); route resolution: unavailable; readiness verdict (verbatim): phase6 SIMULATION ready (never live readiness); operator verdict: blocked.",
+  "whyBlocked": [
+    "simulation-blocked-prereqs-not-ready: The v2 Phase-6 prerequisite report is valid but not every readiness bucket is met — resolve the not-met items before simulating. (When the ONLY unmet item is NO_OPERATOR_BLOCKING caused by paper-enters awaiting review, an explicit operator acknowledgment may stand in for that one review item.)"
+  ],
+  "whatToInspectNext": [
+    "Resolve the chain blocking conditions listed verbatim above, rebuild the affected artifacts, then re-run paper:simulation:audit.",
+    "Route resolution is honestly UNAVAILABLE (no route-resolver capability exists inside this boundary) — that is the expected Phase 6 state, not an error."
+  ],
+  "presentCount": 13,
+  "validCount": 13,
+  "missingCount": 0,
+  "invalidCount": 0,
+  "notes": [
+    "13/13 bundled artifacts strictly valid (0 missing, 0 invalid); 1 chain blocking condition(s) recomputed from the bundled artifacts.",
+    "Every summary is verbatim structured fields from a strictly-validated artifact — a missing artifact is classified as missing, never invented.",
+    "File references (fileName + truncated sha256-128 digest) are caller-supplied integrity refs carried verbatim — this package computes no digest and does no I/O.",
+    "This bundle archives SIMULATION state only: it never signs, never sends, never authorizes live trading, and phase7LiveTradingReady is literally false."
+  ]
+}
