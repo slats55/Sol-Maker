@@ -941,13 +941,38 @@ remaining safe Phase 6 gaps:
   [`research/COMPETITIVE_SNIPER_REFERENCE.md`](research/COMPETITIVE_SNIPER_REFERENCE.md) — the
   execute/exit layers are recorded as Phase 7 future-only topics, not built.
 
+- ✅ **(S91) Read-only route quote package + route provenance integration** — the route stage is
+  no longer permanently blind. NEW separately-scanned pure package `@soulmaker/routequote`
+  (forbidden-import + capability-token scans from the first commit; `@soulmaker/simulation`
+  explicitly forbidden as an import; the boundary package's allowlist untouched):
+  `routequote.observation.input.v1` (one operator-supplied READ-ONLY quote observation per
+  candidate mint; CLOSED outcome set `quote-observed | unavailable | blocked | error |
+  unsupported` — nothing can mean executable; observed-at is an operator LABEL, never system
+  time) + `routequote.prepared.v1` (observations paired BY MINT with deterministic label-only
+  route facts and the MANDATORY caveat set). New CLI `paper:routequote:prepare`;
+  `paper:simulation:route` gained `--quotes` and `paper:sniper:dry-run` gained `--routequote` —
+  validated quote facts enter `buildSimulationRouteResolutionV1` as label facts under the
+  `routequote-operator-supplied` provenance id with the live-state caveat. The
+  `simulation.route.resolution.v1` SCHEMA IS UNCHANGED (the S85 validator already required
+  exactly this shape), so all pre-S91 artifacts stay valid and the no-quotes default is
+  byte-identical to before. Fail-closed everywhere: unknown-mint/duplicate/cross-kind/
+  secret-shaped observation files refused; a quotes file that contradicts the plan or candidate
+  list refused; a blocked chain never applies facts (quotes can never unblock anything);
+  destination facts stay null in v1, so a quote alone can never claim a fully `resolved` route.
+  UI: typed views for both schemas, the command-center route stage un-mutes to "review" with the
+  quote framing when facts are present, a per-candidate Route quote column, and the
+  observability panel's route-quote fact — live trading stays disabled/unauthorized. Walkthrough:
+  `examples/sniper/routequote-rehearsal/` (pin-tested, deterministic). Also fixed: the config
+  loader now strips a UTF-8 BOM from `soulmaker.config.json` (the S90 PowerShell-redirect bug).
+
 **Still honestly missing from Phase 6 (future, in order):**
 
-- ⬜ A real route-resolution capability: per the S88 decision record in
-  [`PHASE6_DRY_RUN_BOUNDARY.md`](PHASE6_DRY_RUN_BOUNDARY.md), a NEW separately-scanned read-only
-  quote package (no wallet/signer/transaction/send) whose facts enter the chain ONLY through the
-  S85 resolved-entry contract + `liveStateCaveat`. Until then every route artifact is honestly
-  all-UNAVAILABLE.
+- ⬜ A read-only quote FETCHER (live RPC/HTTP quote source): S91 shipped the package, schemas,
+  and chain integration over OPERATOR-SUPPLIED observation files only. A live fetcher remains a
+  future, separately-authorized adapter per the S89 stub in
+  [`PHASE6_DRY_RUN_BOUNDARY.md`](PHASE6_DRY_RUN_BOUNDARY.md) (closed outcomes, kill-switch
+  refusal, fake-RPC-only tests). Until then quote observations are operator-authored, and without
+  them every route artifact stays honestly all-UNAVAILABLE.
 - ⬜ A real `simulateTransaction` dry-run — the boundary is DESIGNED
   ([`PHASE6_DRY_RUN_BOUNDARY.md`](PHASE6_DRY_RUN_BOUNDARY.md)) and its route-resolution input
   artifact EXISTS, but implementation remains unauthorized and still requires: the route

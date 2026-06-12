@@ -1,7 +1,59 @@
-# Phase 6 Continuation Pack (continuation run 2026-06-10 #2, Sprints 73–82; addenda: S85–S90)
+# Phase 6 Continuation Pack (continuation run 2026-06-10 #2, Sprints 73–82; addenda: S85–S91)
 
 The precise hand-off for the next session. Everything below is verifiable from the repo —
 no claim here rests on memory.
+
+## Addendum — Sprint 91 (read-only route quote package + route provenance integration; 2026-06-12) — COMPLETED
+
+S91 un-blinded the route stage with READ-ONLY observation provenance. No execution capability
+entered the codebase: no wallet, no signing, no transaction, no live order; Phase 7 remains
+unauthorized; `phase7LiveTradingReady` stays a validated literal `false` everywhere.
+
+- **New package** — `@soulmaker/routequote` (`packages/routequote/`): pure (no fs/network/chain
+  imports — its forbidden-import scan also forbids `@soulmaker/simulation`, and the simulation
+  package's own allowlist is untouched). Schemas: `routequote.observation.input.v1` (one
+  operator-supplied observation per candidate mint; CLOSED outcome set `quote-observed |
+  unavailable | blocked | error | unsupported`; `quote-observed` requires validated input/output
+  mints with outputMint === candidateMint; non-observed statuses must carry NULL facts; labels
+  bounded + redaction-stable, secret-shaped values refused and never echoed; observed-at is an
+  operator LABEL, never system time) and `routequote.prepared.v1` (by-mint pairing against a
+  strictly-validated candidate list; unknown-mint/duplicate observations REFUSED; per-entry
+  deterministic `routeLabel` recomputed by the validator; the MANDATORY caveat set verbatim;
+  `destinationLabel` ALWAYS null in v1 — a quote validates no destination). Conversion:
+  `toRouteQuoteFacts` emits facts ONLY for observed entries under the fixed
+  `routequote-operator-supplied` provenance id.
+- **Simulation integration, schema UNCHANGED** — `buildSimulationRouteResolutionV1` gained an
+  optional `routeFacts` input (strict shape validation; a fact for a candidate not in the plan, a
+  mint contradiction, or a duplicate THROWS; a blocked chain never applies facts and records no
+  attempt). `simulation.route.resolution.v1` is byte-compatible: the S85 validator already
+  required exactly this shape (attempted resolver + label-resolved facts + mandatory
+  `liveStateCaveat`), so every pre-S91 artifact revalidates and the no-quotes default build is
+  byte-identical to pre-S91.
+- **CLI** — new `paper:routequote:prepare` (`--candidates` + repeatable `--quote`, `--out`/
+  `--force`, `--fail-on-warning`/`--fail-on-missing-quote`/`--fail-on-not-observed`; exact next
+  commands emitted); `paper:simulation:route --quotes` (prepared artifact must COVER every plan
+  entry by candidateId+mint or it refuses; observed quotes for non-plan candidates are skipped
+  and reported, never applied); `paper:sniper:dry-run --routequote` (cross-checked BOTH ways
+  against the candidate list; the validated artifact rides verbatim into the out dir as
+  `routequote-prepared.json` — a 21st file; RUN_SUMMARY + terminal summary carry the quote
+  provenance line). Audit/handoff/bundle carry the new route state through the EXISTING verbatim
+  mirrors (`routeResolutionStatus`/`routeResolverAttempted`/`routeLiveStateCaveat`).
+- **UI** — typed views for both routequote schemas (observation-only framing + mandatory
+  caveats); the command-center route stage un-mutes to "review" with the quote framing when
+  `unresolved` + attempted; per-candidate "Route quote" column (prepared quoteStatus wins, route
+  entry status is the fallback); observability panel gained the "Route quote" fact; capability
+  strip gained "Read-only route quotes = available" while route resolver stays boundary-only and
+  live trading stays disabled/unauthorized.
+- **Example** — `examples/sniper/routequote-rehearsal/` (committed fictional observation files +
+  README chain), pinned by `apps/cli/src/routequote-rehearsal-example.test.ts`: unblocked 1-entry
+  plan; route `unresolved` w/ attempted + caveat + route/fee labels resolved and destination
+  honestly unresolved; verdict still `blocked` on `simulation-blocked-prereqs-not-ready` (a quote
+  can never change it); byte determinism.
+- **Bug fix** — the core config loader now strips a UTF-8 BOM before `JSON.parse`
+  (`packages/core/src/config/load.ts` + `load.test.ts`) — the S90 PowerShell-redirect bug.
+- **NOT built (still future, by design)** — a live read-only quote FETCHER (the S89 stub in
+  `PHASE6_DRY_RUN_BOUNDARY.md` remains its design of record), any route resolver/execution, a
+  real `simulateTransaction` engine, Phase 7 anything.
 
 ## Addendum — Sprint 90 (real-input bridge + Sniper Command Center + competitive mapping; 2026-06-11) — COMPLETED
 

@@ -732,6 +732,15 @@ pnpm soulmaker paper:sniper:preflight --candidates <candidates.json> --preflight
 # LOCAL-ONLY: no RPC, no network, no wallet (walkthrough: examples/sniper/real-input-rehearsal/):
 pnpm soulmaker paper:sniper:preflight:input:prepare --candidates <candidates.json> --inspect c1.inspect.json --risk c1.risk.json --out pf-input.artifact.json
 
+# Sprint 91 — READ-ONLY ROUTE QUOTE BRIDGE: pair operator-supplied quote observation files
+# (routequote.observation.input.v1) to candidates BY MINT and write the canonical
+# routequote.prepared.v1 artifact that paper:sniper:dry-run consumes via --routequote and
+# paper:simulation:route via --quotes. CLOSED outcome set (quote-observed | unavailable | blocked |
+# error | unsupported — nothing can mean "executable"); every observed quote carries the mandatory
+# caveats (read-only observation only; not a transaction; quote may expire; route not simulated).
+# LOCAL-ONLY: an observation proves a quote was VISIBLE at some point, never that one is executable:
+pnpm soulmaker paper:routequote:prepare --candidates <candidates.json> --quote c1.quote.json --out rq.artifact.json
+
 # Sprint 27 — PAPER SNIPER DECISIONS: fold the candidate list + preflight + optional operator rules
 # into a per-candidate SIMULATED decision — skip / watch / paper-enter / paper-reject / unknown — with
 # reasons. A paper-enter is a PAPER-ONLY decision, NOT a buy/sell order, NOT a transaction, NOT live

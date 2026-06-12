@@ -30,7 +30,7 @@ candidate intake → read-only inspect → risk → paper decision → route bou
 | Detect | mempool/log streams, new-pool listeners | operator-authored candidate intake (`sniper.candidate.list.v1`); no scraper is shipped | shipped |
 | Analyze | mint/program safety, liquidity, holders | `token:inspect` + `token:risk` (read-only RPC) → the S90 **preflight bridge** → preflight report | shipped |
 | Decide | entry rules, sizing, throttles | tighten-only policy + v2 decision report with reason codes; paper-enter always demands review | shipped |
-| Route | route quotes, slippage, priority fees | **route boundary**: `simulation.route.resolution.v1`, honestly UNAVAILABLE — no resolver exists | boundary only |
+| Route | route quotes, slippage, priority fees | **read-only quote provenance** (S91): operator-supplied `routequote.observation.input.v1` → `paper:routequote:prepare` → label facts with the live-state caveat in `simulation.route.resolution.v1`; no fetcher, no resolver, nothing executable | observation only |
 | Execute | tx build/sign/send, Jito bundles | **not built** — Phase 7, unauthorized | not authorized |
 | Exit | TP/SL, position manager | paper engine TP/SL exists in the offline paper simulator only | paper only |
 | Audit | fill logs, PnL attribution | chain audit + readiness + handoff + operator bundle with per-file digests | shipped |
@@ -65,8 +65,9 @@ counts, per-file `sha256-128` digests, deterministic byte-identical artifacts (n
 design — the UI says "timing unavailable" instead of inventing latency numbers).
 
 Safe future additions (read-only): slot/RPC health metadata on inspect outputs, stage timing
-labels (operator-supplied or wall-clock-optional), quote-age metadata once a read-only quote
-package exists (see the S89 design stub).
+labels (operator-supplied or wall-clock-optional), quote-age metadata for the S91 routequote
+observations (today the observed-at value is an operator label — a read-only fetcher with
+quote-age metadata remains future work per the S89 design stub).
 
 ## 4. Product / UI lessons (GoodCrypto lesson: a command center, not an artifact dump)
 
@@ -86,7 +87,8 @@ one-click buy buttons, and anything that makes a paper classification look like 
 
 ## 5. Phase 7 future-only topics (recorded, NOT authorized, NOT implemented)
 
-- Route quote package (read-only; design stub exists from S89) and route resolver.
+- A live read-only route quote FETCHER (S91 shipped the package + operator-supplied observation
+  files; the RPC/HTTP fetcher stays future per the S89 stub) and any route resolver.
 - A real `simulateTransaction` dry-run engine.
 - Dynamic priority-fee modeling; Jito/bundle awareness.
 - Transaction construction, signing, sending; live execution and exits.

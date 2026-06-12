@@ -232,7 +232,38 @@ Sniper Command Center UI. Both sit strictly on the INPUT and PRESENTATION sides 
   all-UNAVAILABLE; the S88 resolver decision record and the S89 quote-package design stub below
   stand unchanged.
 
-### Sprint 89 assessment — design stub for the read-only quote package (NOT implemented)
+### Sprint 91 — the routequote package is now SHIPPED (Option A: operator-supplied files only)
+
+S91 implemented the S89 stub's safe subset. What shipped, and how it maps to the stub:
+
+- **Package:** `@soulmaker/routequote` exists (`packages/routequote/`), with its own
+  forbidden-import scan (no fs/network/chain modules; `@soulmaker/simulation` explicitly
+  forbidden) and capability-token scan from the same commit as the first source file. It was
+  NEVER added to `@soulmaker/simulation`'s allowlist — the boundary package remains
+  network-incapable, and the routequote package itself is ALSO pure (no network in v1).
+- **Quote source:** Option A ONLY — operator-supplied observation files
+  (`routequote.observation.input.v1`, one per candidate mint). The S89 stub's
+  `resolveRouteQuote` RPC fetcher was deliberately NOT built: a live quote surface, even
+  read-only, stays a future separately-authorized adapter (see the stub below, which remains the
+  design of record for it). The closed outcome set shipped as
+  `quote-observed | unavailable | blocked | error | unsupported` — nothing can mean executable.
+- **Integration:** exactly the stub's seam. `paper:routequote:prepare` pairs observations to
+  candidates BY MINT into `routequote.prepared.v1`; `paper:simulation:route --quotes` and
+  `paper:sniper:dry-run --routequote` carry the validated facts into
+  `buildSimulationRouteResolutionV1` as label-only facts under the
+  `routequote-operator-supplied` provenance id. The `simulation.route.resolution.v1` SCHEMA IS
+  UNCHANGED — the S85 validator already required exactly this shape (attempted resolver +
+  label-resolved facts + the mandatory live-state caveat), so every pre-S91 artifact stays valid.
+- **Honesty invariants, all test-pinned:** no quotes → the all-UNAVAILABLE default is
+  byte-identical to pre-S91; a quotes file that contradicts the plan/candidates REFUSES; a
+  blocked chain never applies facts (quotes can never unblock anything); destination facts stay
+  null in v1 (a quote validates no destination, so a quote alone can never produce a fully
+  `resolved` artifact); every observed quote carries the mandatory caveat set verbatim.
+- **Determinism stance held:** quote files are operator inputs; the dry-run chain stays
+  byte-deterministic for a fixed input set; CI uses fictional fixture quote files only
+  (`examples/sniper/routequote-rehearsal/`).
+
+### Sprint 89 assessment — design stub for the read-only quote FETCHER (fetcher NOT implemented)
 
 S89 re-inspected the S88 decision record with all gates green and confirms: the smallest safe next
 step remains a NEW package, and it is deliberately NOT built in a milestone-polish sprint (a live
@@ -259,9 +290,10 @@ page:
 - **Determinism stance:** live quotes are non-deterministic by nature, so quote output is an
   OPERATOR INPUT FILE (like `token:inspect` output is today) — the dry-run chain stays
   byte-deterministic for a fixed input set; CI uses fictional fixture quote files only.
-- **Not authorized by this stub:** writing the package, any CLI that reaches RPC for quotes, or
-  any change to the honest all-UNAVAILABLE default. Implementation requires a future session that
-  explicitly takes it on with the "required tests BEFORE any implementation lands" section.
+- **Not authorized by this stub:** any CLI that reaches RPC for quotes, or any change to the
+  honest all-UNAVAILABLE default. (S91 shipped the package and the operator-supplied-file path —
+  see the Sprint 91 section above; the RPC FETCHER remains future work that requires a session
+  explicitly taking it on with the "required tests BEFORE any implementation lands" section.)
 
 ## Required tests BEFORE any implementation lands
 

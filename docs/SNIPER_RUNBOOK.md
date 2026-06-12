@@ -104,6 +104,7 @@ invariants.
 | `paper:sniper:preflight` | `--candidates` | `--out` only | `sniper.token.preflight.report.v1` |
 | `paper:sniper:preflight:input:validate` | `--input` | never | `sniper.preflight.input.v1` |
 | `paper:sniper:preflight:input:prepare` | `--candidates` + at least one `--inspect`/`--risk` | `--out` only | `sniper.preflight.input.v1` (the real-input bridge) |
+| `paper:routequote:prepare` | `--candidates` | `--out` only | `routequote.prepared.v1` (S91 read-only quote bridge: operator-supplied `routequote.observation.input.v1` files paired by mint; CLOSED outcome set — nothing can mean "executable") |
 | `paper:sniper:decide` | `--candidates` | `--out` only | `sniper.paper.decision.report.v1` (or `.v2` via `--schema-version v2`) |
 | `paper:sniper:policy:validate` | `--input` | never | `sniper.policy.config.v1` (or `.v2` via `--schema-version v2`) |
 | `paper:sniper:workflow` | (none) | never | `sniper.workflow.plan.v1` |
@@ -120,12 +121,12 @@ invariants.
 | `paper:phase6:diff:intent` | `--base`, `--next` | never | `simulation.intent.plan.diff.v1` (INERT) |
 | `paper:simulation:intent:plan` | (none — missing inputs BLOCK honestly) | `--out` only | `simulation.intent.plan.v2` (the first REAL Phase 6 artifact; fail-closed preview) |
 | `paper:simulation:result` | `--plan` | `--out` only | `simulation.result.v1` (dry-run-only; unavailable dry-run reported honestly) |
-| `paper:simulation:route` | `--plan` | `--out` only | `simulation.route.resolution.v1` (route PROVENANCE only; every entry honestly UNAVAILABLE — no resolver capability exists) |
+| `paper:simulation:route` | `--plan` | `--out` only | `simulation.route.resolution.v1` (route PROVENANCE only; honestly UNAVAILABLE without `--quotes`; with `--quotes` READ-ONLY quote observations enter as label facts + live-state caveat — still never executable) |
 | `paper:simulation:validate` | `--plan` and/or `--result` | never | validates `simulation.intent.plan.v2` / `simulation.result.v1` (literal locks enforced) |
 | `paper:simulation:audit` | (none — missing artifacts reported as warnings) | `--out` only | `phase6.audit.report.v1` (chain audit over the ten v2/simulation artifacts incl. the route-resolution artifact via `--route`; reports, never authorizes) |
 | `paper:simulation:readiness` | (none — anything missing blocks) | `--out` only | `phase6.simulation.readiness.report.v1` (stack readiness; `phase7LiveTradingReady` is a literal false, always) |
 | `paper:simulation:bundle` | (none — missing artifacts classified) | `--out` only | `phase6.operator.bundle.v1` (S88 operator bundle over THIRTEEN roles incl. the handoff pack; recomputed blocking trail cross-checked against the pack; per-file `sha256-128` integrity digests; best verdict is `reviewable-paper-only`) |
-| `paper:sniper:dry-run` | `--candidates`, `--out` | a full directory | the S88 PAPER dry-run ORCHESTRATOR — one command, the whole chain (19 artifacts + `RUN_SUMMARY.md`) |
+| `paper:sniper:dry-run` | `--candidates`, `--out` | a full directory | the S88 PAPER dry-run ORCHESTRATOR — one command, the whole chain (19 artifacts + `RUN_SUMMARY.md`; +`routequote-prepared.json` when `--routequote` is supplied) |
 
 Common flags: `--json` (stable JSON), `--out <path>` + `--force` (write the artifact; refuse overwrite
 without `--force`), and command-specific `--fail-on-*` CI gates (see [CI gates](#ci-gates)).
@@ -160,7 +161,15 @@ pnpm soulmaker paper:simulation:route --plan plan.json --operator you \
 #     A missing/invalid/blocked plan or --stop-simulation-tripped produces a BLOCKED artifact
 #     (exit 0 — the blocked artifact is the honest record; --fail-on-blocked is the CI gate).
 #     --fail-on-unavailable exists as a CI tripwire but trips on EVERY honest artifact until a
-#     separately-authorized resolver exists.
+#     quote source or separately-authorized resolver supplies facts.
+#
+# 3c) OPTIONAL since S91: carry READ-ONLY quote observations into the route artifact via
+#     --quotes (a routequote.prepared.v1 file — see the routequote section). Observed quotes
+#     enter as LABEL facts with provenance and the mandatory live-state caveat; destination
+#     facts stay honestly unresolved (a quote validates no destination); a quotes file that
+#     contradicts the plan REFUSES; a blocked plan is never unblocked by quotes:
+pnpm soulmaker paper:simulation:route --plan plan.json --quotes rq.json --operator you \
+  --resolution-label session-01 --out route.json
 
 # 4) Audit the WHOLE chain (each artifact strictly validated; structured cross-refs checked —
 #    since S87 the route artifact is an audited role: a route built from a different plan is a
@@ -271,9 +280,16 @@ Input shapes (both are existing, validated schemas):
   read-only inspection (`token:inspect` output) and advisory risk (`token:risk` output) values.
   Candidates without data stay honestly `unknown`, and the default fail-closed policy then keeps
   them out of paper-enter.
+- `--routequote` (optional, S91) — a `routequote.prepared.v1` from `paper:routequote:prepare`:
+  READ-ONLY quote observations carried into the route-resolution stage as label facts with
+  provenance and the mandatory live-state caveat. The file must have been prepared over THIS
+  candidate list (a mismatched or stale file refuses outright), it is copied verbatim into the
+  output folder as `routequote-prepared.json`, and it can never unblock a blocked chain or imply
+  execution readiness.
 
 Output: nineteen artifacts plus `RUN_SUMMARY.md` under `--out` (created if missing; existing
-artifact files refuse overwrite without `--force`):
+artifact files refuse overwrite without `--force`); with `--routequote`, `routequote-prepared.json`
+is carried in as a twenty-first file:
 
 ```text
 out/
@@ -298,8 +314,12 @@ What to expect, honestly:
   the PLAN (loudly surfaced), but the condition is still reported through audit/handoff/bundle.
   That is the system telling the truth, not a bug. A watch-only run (no paper-enter anywhere)
   reaches `reviewable-paper-only` — the best verdict that exists.
-- **Route resolution is honestly UNAVAILABLE.** No route-resolver capability exists inside the
-  simulation boundary; route/destination/fee stay UNRESOLVED, never invented.
+- **Route resolution is honestly UNAVAILABLE — unless you supply quote observations.** No
+  route-resolver capability exists inside the simulation boundary; route/destination/fee stay
+  UNRESOLVED, never invented. With `--routequote`, observed quotes enter as LABEL facts with
+  provenance (`routequote-operator-supplied`) and the artifact moves to `unresolved` with the
+  live-state caveat — partial honest progress, still never executable: a quote validates no
+  destination, so destination facts stay unresolved by design.
 - **A blocked chain still writes the full artifact set** (exit 0 — the artifacts ARE the honest
   record; `--fail-on-blocked` gates on the final verdict). `--stop-simulation-tripped` blocks the
   whole chain with the kill-switch code carried verbatim.
@@ -307,8 +327,9 @@ What to expect, honestly:
   run — compare two runs with the diff commands.
 - **The terminal summary and `RUN_SUMMARY.md` list the chain blocking codes verbatim** (S89), the
   route line explains its status per state (`unavailable` = the expected boundary; `blocked` =
-  blocked plan; `no_entries` = watch-only plan), and the output ends with the exact web-inspect
-  command for the folder.
+  blocked plan; `no_entries` = watch-only plan; `unresolved`/`resolved` with an attempted
+  resolver = read-only quote facts with the live-state caveat), and the output ends with the
+  exact web-inspect command for the folder.
 - Inspect the folder in the local web inspector: `pnpm web:inspect --dir runs/session-01 --force`.
   Since S89 the folder page recognizes a dry-run output (by its valid operator bundle) and leads
   with a landing overview — operator verdict, the clickable 13-role artifact chain, route status,
@@ -410,6 +431,49 @@ secret-shaped input are all REFUSED. Prefer `--out` on the read-only commands ov
 redirection: on Windows PowerShell, `>` writes UTF-16, which the downstream JSON readers refuse.
 A ready-to-run fictional walkthrough lives in
 [`examples/sniper/real-input-rehearsal/`](../examples/sniper/real-input-rehearsal/README.md).
+
+#### Preparing read-only route quote observations (Sprint 91 — routequote)
+
+The route stage no longer has to stay blind. A **quote observation** is an operator-authored,
+LABEL-only record that a possible route/quote was *visible* for a candidate — never that one is
+executable. Write one small `routequote.observation.input.v1` file per candidate mint, then let
+the bridge pair them **by mint** and emit the canonical `routequote.prepared.v1` artifact:
+
+```json
+{
+  "schemaVersion": "routequote.observation.input.v1",
+  "source": "operator-supplied",
+  "candidateMint": "<the candidate mint>",
+  "quoteStatus": "quote-observed",
+  "inputMint": "So11111111111111111111111111111111111111112",
+  "outputMint": "<the candidate mint>",
+  "amountInLabel": "0.05 SOL (paper units)",
+  "amountOutLabel": "12345 units (paper)",
+  "venueLabel": "the venue you observed",
+  "feeLabel": "0.3% pool fee (label only)",
+  "observedAtLabel": "your own session label — never system time"
+}
+```
+
+```bash
+pnpm soulmaker paper:routequote:prepare --candidates candidates.json \
+  --quote quote-a.json --quote quote-b.json --out rq.json
+pnpm soulmaker paper:sniper:dry-run --candidates candidates.json --preflight-input pf-input.artifact.json \
+  --routequote rq.json --out runs/my-run --adopt-specs --operator "you" --acknowledge-paper-enter-review
+```
+
+The outcome set is **CLOSED**: `quote-observed` | `unavailable` | `blocked` | `error` |
+`unsupported` — there is no "executable", no "ready-to-trade", and never will be. Honesty rules:
+`quote-observed` requires validated input/output mints and the output mint must equal the
+candidate mint (a quote for a different token is a contradiction, refused); every other status
+must carry NULL quote facts; a candidate without an observation stays honestly `unavailable`;
+unknown-mint, duplicate, cross-kind, and secret-shaped files are REFUSED; every observed quote
+carries the mandatory caveat set (read-only observation only; not executable; not a transaction;
+quote may expire; slippage not guaranteed; route not simulated; live state may change). This is
+**provenance, not live routing**: nothing fetches a quote, nothing refreshes one, and the
+artifact proves only what an operator observed. Statuses other than `quote-observed` describe WHY
+nothing was observed (`error` = a source failed; `blocked` = something refused; `unsupported` =
+the pair/venue is out of scope) — none of them is ever upgraded.
 
 ### 4. Decide (paper-only)
 
