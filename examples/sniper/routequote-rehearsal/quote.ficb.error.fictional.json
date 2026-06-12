@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "routequote.observation.input.v1",
+  "source": "operator-supplied",
+  "candidateMint": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+  "quoteStatus": "error",
+  "statusReason": "FICTIONAL rehearsal: the operator's quote source was unreachable - reported honestly, never upgraded",
+  "notes": ["FICTIONAL rehearsal observation - shows the honest non-observed path."]
+}

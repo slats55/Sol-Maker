@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "routequote.observation.input.v1",
+  "source": "operator-supplied",
+  "candidateMint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+  "quoteStatus": "quote-observed",
+  "inputMint": "So11111111111111111111111111111111111111112",
+  "outputMint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+  "amountInLabel": "0.05 SOL (paper units)",
+  "amountOutLabel": "12345 FICA (paper units)",
+  "venueLabel": "fictional-amm",
+  "feeLabel": "0.3% pool fee (label only)",
+  "observedAtLabel": "rehearsal-session",
+  "notes": ["FICTIONAL rehearsal observation - invented data; not live, not a trade signal, not executable."]
+}

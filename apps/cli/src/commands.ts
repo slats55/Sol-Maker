@@ -82,9 +82,19 @@ import {
   type Phase6SimulationReadinessReportV1,
   type Phase6SimulationHandoffPackV1,
   type SimulationRouteResolutionV1,
+  type SimulationRouteFactsInput,
   type Phase6OperatorBundleV1,
   type Phase6OperatorBundleRole,
 } from "@soulmaker/simulation";
+import {
+  ROUTE_QUOTE_OBSERVATION_INPUT_SCHEMA_VERSION,
+  ROUTE_QUOTE_PREPARED_SCHEMA_VERSION,
+  normalizeRouteQuotePrepared,
+  validateRouteQuotePrepared,
+  toRouteQuoteFacts,
+  formatRouteQuotePrepared,
+  type RouteQuotePrepared,
+} from "@soulmaker/routequote";
 import {
   parseMintAddress,
   normalizeSniperCandidateList,
@@ -4800,6 +4810,165 @@ export function paperSniperPreflightInputPrepareReport(
 }
 
 // ---------------------------------------------------------------------------
+// Sprint 91 — paper:routequote:prepare
+//   The READ-ONLY ROUTE QUOTE bridge: pair operator-supplied quote observation
+//   files (`routequote.observation.input.v1`) to a candidate list BY MINT and
+//   emit the canonical prepared artifact (`routequote.prepared.v1`) that
+//   paper:simulation:route consumes via --quotes and paper:sniper:dry-run via
+//   --routequote. LOCAL-ONLY: no RPC, no network, no wallet — an observation
+//   proves a quote was VISIBLE at some point, never that one is executable.
+// ---------------------------------------------------------------------------
+
+export interface PaperRouteQuotePrepareCommandOptions {
+  /** Candidate list JSON path. Required. */
+  candidatesPath?: string;
+  /** Quote observation files (`routequote.observation.input.v1`; repeatable, paired by mint). */
+  quotePaths?: string[];
+  /** Operator label recorded on the produced artifact. */
+  sourceLabel?: string;
+  json?: boolean;
+  /** Optional path to write the prepared routequote JSON (writes nothing if omitted). */
+  outPath?: string;
+  /** Overwrite an existing --out file (refused by default). */
+  force?: boolean;
+  /** Exit non-zero when the produced artifact carries any warning. */
+  failOnWarning?: boolean;
+  /** Exit non-zero when any candidate has no quote observation at all. */
+  failOnMissingQuote?: boolean;
+  /** Exit non-zero when any candidate's quote was not observed (unavailable/blocked/error/unsupported). */
+  failOnNotObserved?: boolean;
+}
+
+/**
+ * `soulmaker paper:routequote:prepare` — pair operator-supplied READ-ONLY quote observation files
+ * to a candidate list BY MINT and emit the canonical `routequote.prepared.v1` artifact. Each
+ * observation file is strictly validated (CLOSED schema; closed outcome set; secret-shaped
+ * fields/values refused, never echoed); an observation for a mint not in the candidate list is
+ * REFUSED; duplicates are REFUSED; a candidate without an observation stays honestly
+ * `unavailable`. Every observed quote carries the mandatory caveat set: read-only observation
+ * only, never executable, never a transaction, never an order. LOCAL-ONLY: reads only the named
+ * files, fetches nothing, verifies no on-chain fact; writes nothing unless `--out` (refusing
+ * overwrite without `--force`). Never signs, never sends. No network, no wallet.
+ */
+export function paperRouteQuotePrepareReport(
+  ctx: CommandContext = {},
+  opts: PaperRouteQuotePrepareCommandOptions = {},
+): CliReport {
+  if (!opts.candidatesPath) return { text: "Refusing: --candidates <path> is required.", exitCode: 1 };
+
+  // 1) Read + normalize the candidate list (same wrong-schema guard as the sibling commands).
+  let raw: unknown;
+  try {
+    raw = readJsonValue(ctx, opts.candidatesPath, "sniper candidate list");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  if (!isPlainObject(raw)) {
+    return { text: "Refusing: candidate list must be a JSON object with a candidates array.", exitCode: 1 };
+  }
+  if (raw.schemaVersion !== undefined && raw.schemaVersion !== SNIPER_CANDIDATE_LIST_SCHEMA_VERSION) {
+    return {
+      text: redactString(`Refusing: candidate list schemaVersion must be "${SNIPER_CANDIDATE_LIST_SCHEMA_VERSION}".`),
+      exitCode: 1,
+    };
+  }
+  let list: SniperCandidateList;
+  try {
+    list = normalizeSniperCandidateList({
+      sourceLabel: typeof raw.sourceLabel === "string" ? raw.sourceLabel : opts.candidatesPath,
+      candidates: (raw.candidates ?? []) as never,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // 2) Read each observation file: strict local checks (the normalizer does the deep validation,
+  //    by-mint pairing, unknown-mint and duplicate refusals).
+  const observations: unknown[] = [];
+  for (const path of opts.quotePaths ?? []) {
+    let value: unknown;
+    try {
+      value = readJsonValue(ctx, path, "--quote file");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (!isPlainObject(value)) {
+      return { text: redactString(`Refusing: --quote "${path}" must be a JSON object (a routequote.observation.input.v1 file).`), exitCode: 1 };
+    }
+    if (value.schemaVersion !== ROUTE_QUOTE_OBSERVATION_INPUT_SCHEMA_VERSION) {
+      return {
+        text: redactString(
+          `Refusing: --quote "${path}" schemaVersion must be "${ROUTE_QUOTE_OBSERVATION_INPUT_SCHEMA_VERSION}" — a cross-kind file is refused.`,
+        ),
+        exitCode: 1,
+      };
+    }
+    const sensitive = findSensitiveKeyPath(value);
+    if (sensitive !== null) {
+      return {
+        text: redactString(`Refusing: --quote "${path}" carries a secret-shaped key ("${sensitive}") — refusing to bridge it into any artifact.`),
+        exitCode: 1,
+      };
+    }
+    observations.push(value);
+  }
+
+  // 3) Build the canonical prepared artifact (by-mint pairing; fail-closed refusals inside).
+  let artifact: RouteQuotePrepared;
+  try {
+    artifact = normalizeRouteQuotePrepared({
+      candidateList: list,
+      observations,
+      sourceLabel: opts.sourceLabel ?? `prepared from operator-supplied quote observations for ${opts.candidatesPath}`,
+      candidateListRef: opts.candidatesPath,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // 4) Optional write: ONLY the artifact JSON, refuse overwrite without --force, create no directories.
+  let wrotePath: string | null = null;
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(artifact), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write prepared routequote at ${resolved}`), exitCode: 1 };
+    }
+    wrotePath = resolved;
+  }
+
+  const missingQuoteCount = artifact.entries.filter((e) => !e.observationSupplied).length;
+  const exitCode =
+    (opts.failOnWarning && artifact.hasWarnings) ||
+    (opts.failOnMissingQuote && missingQuoteCount > 0) ||
+    (opts.failOnNotObserved && artifact.observedCount < artifact.entryCount)
+      ? 1
+      : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(artifact), null, 2), exitCode };
+  }
+
+  const lines = [formatRouteQuotePrepared(artifact, { label: opts.candidatesPath }), "", "Next:"];
+  if (wrotePath) {
+    lines.push(
+      `- Run the PAPER dry-run with quote provenance: pnpm soulmaker paper:sniper:dry-run --candidates "${opts.candidatesPath}" --routequote "${opts.outPath}" --out <output-dir> --adopt-specs --operator <your-name> --acknowledge-paper-enter-review`,
+      `- Or build a standalone route artifact: pnpm soulmaker paper:simulation:route --plan <intent-plan.json> --quotes "${opts.outPath}" --out <route-resolution.json>`,
+      "- Then open the output folder in the web UI: pnpm web:inspect --dir <output-dir> --force",
+    );
+  } else {
+    lines.push(
+      "- Nothing was written (no --out). Re-run with --out <path> to produce the file paper:sniper:dry-run consumes via --routequote.",
+    );
+  }
+  return { text: redactString(lines.join("\n")), exitCode };
+}
+
+// ---------------------------------------------------------------------------
 // Sprint 27 — paper:sniper:decide
 //   Fold a LOCAL candidate list + an optional preflight report + optional
 //   operator rules into a per-candidate SIMULATED decision (skip / watch /
@@ -7042,6 +7211,9 @@ export function paperSimulationHandoffReport(
 export interface PaperSimulationRouteCommandOptions {
   /** Path to the `simulation.intent.plan.v2` artifact (required). */
   planPath?: string;
+  /** Optional `routequote.prepared.v1` artifact (Sprint 91): READ-ONLY quote observations whose
+   * label facts enter the artifact with provenance. Contradictions with the plan REFUSE. */
+  quotesPath?: string;
   /** Operator-declared stop-simulation kill-switch state AT RESOLUTION TIME (true BLOCKS). */
   stopSimulationTripped?: boolean;
   operatorLabel?: string;
@@ -7083,6 +7255,61 @@ export function paperSimulationRouteReport(
     return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
   }
 
+  // Optional Sprint 91 quote seam: a strictly-validated routequote.prepared.v1 whose label facts
+  // enter the builder with provenance. The prepared artifact must COVER every plan entry
+  // (candidateId + mint) — a stale or mismatched quotes file refuses outright (fail closed); an
+  // observed quote for a candidate that is NOT in the plan is skipped and reported, never applied.
+  let routeFacts: SimulationRouteFactsInput | null = null;
+  let quotesApplied = 0;
+  let quotesSkipped: string[] = [];
+  if (opts.quotesPath) {
+    let quotesRaw: unknown;
+    try {
+      quotesRaw = readJsonValue(ctx, opts.quotesPath, "prepared routequote");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    let prepared: RouteQuotePrepared;
+    try {
+      prepared = validateRouteQuotePrepared(quotesRaw);
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    let plan: SimulationIntentPlanV2 | null = null;
+    try {
+      plan = validateSimulationIntentPlanV2(raw);
+    } catch {
+      plan = null; // The builder records the invalid plan as a BLOCKED artifact; facts stay unapplied.
+    }
+    if (plan !== null && !plan.blocked) {
+      const preparedById = new Map(prepared.entries.map((e) => [e.candidateId, e]));
+      for (const pe of plan.entries) {
+        const q = preparedById.get(pe.candidateId);
+        if (q === undefined) {
+          return {
+            text: redactString(
+              `Refusing: the prepared routequote carries no entry for plan candidate "${pe.candidateId}" — it was prepared for a different candidate set; rebuild it with paper:routequote:prepare (fail closed).`,
+            ),
+            exitCode: 1,
+          };
+        }
+        if (q.mint !== pe.mint) {
+          return {
+            text: redactString(
+              `Refusing: the prepared routequote entry for "${pe.candidateId}" contradicts the plan's mint — fail closed.`,
+            ),
+            exitCode: 1,
+          };
+        }
+      }
+      const all = toRouteQuoteFacts(prepared);
+      const planIds = new Set(plan.entries.map((e) => e.candidateId));
+      routeFacts = { resolverId: all.resolverId, facts: all.facts.filter((f) => planIds.has(f.candidateId)) };
+      quotesApplied = routeFacts.facts.length;
+      quotesSkipped = all.facts.filter((f) => !planIds.has(f.candidateId)).map((f) => f.candidateId);
+    }
+  }
+
   let artifact: SimulationRouteResolutionV1;
   try {
     artifact = buildSimulationRouteResolutionV1({
@@ -7090,6 +7317,7 @@ export function paperSimulationRouteReport(
       stopSimulationTripped: Boolean(opts.stopSimulationTripped),
       operatorLabel: opts.operatorLabel ?? null,
       resolutionLabel: opts.resolutionLabel ?? null,
+      routeFacts,
     });
   } catch (err) {
     return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
@@ -7113,7 +7341,19 @@ export function paperSimulationRouteReport(
   if (opts.json) {
     return { text: JSON.stringify(redactValue(artifact), null, 2), exitCode };
   }
-  return { text: formatSimulationRouteResolutionV1(artifact, { label: opts.planPath }), exitCode };
+  const lines = [formatSimulationRouteResolutionV1(artifact, { label: opts.planPath })];
+  if (opts.quotesPath) {
+    lines.push("");
+    lines.push(
+      `Quotes: ${quotesApplied} observed label fact(s) applied from ${opts.quotesPath} (read-only observation provenance — never executable).`,
+    );
+    if (quotesSkipped.length > 0) {
+      lines.push(
+        `Skipped ${quotesSkipped.length} observed quote(s) for candidates not in the plan (${quotesSkipped.join(", ")}) — a quote can never add a candidate to the plan.`,
+      );
+    }
+  }
+  return { text: redactString(lines.join("\n")), exitCode };
 }
 
 // ---------------------------------------------------------------------------
@@ -7280,6 +7520,11 @@ export function paperSimulationBundleReport(
 //   no transaction, touches no wallet, and reaches no network.
 // ---------------------------------------------------------------------------
 
+/** The extra artifact a dry run writes when `--routequote` is supplied (Sprint 91): the validated
+ * `routequote.prepared.v1` carried VERBATIM into the output folder so the chain's quote
+ * provenance is inspectable next to the route-resolution artifact it fed. */
+export const PAPER_DRY_RUN_ROUTEQUOTE_FILE = "routequote-prepared.json";
+
 /** The artifact files one dry run writes into its output directory (stable order). */
 export const PAPER_DRY_RUN_FILES = [
   "candidates.json",
@@ -7325,6 +7570,10 @@ export interface PaperSniperDryRunCommandOptions {
   candidatesPath?: string;
   /** Optional preflight input (`sniper.preflight.input.v1`) with per-candidate inspection/risk. */
   preflightInputPath?: string;
+  /** Optional prepared routequote (`routequote.prepared.v1`, Sprint 91): READ-ONLY quote
+   * observations carried into the route-resolution stage as label facts with provenance. Omitted →
+   * the route stage stays the honest all-UNAVAILABLE boundary, exactly as before. */
+  routequotePath?: string;
   /** Optional policy config path (v1 configs are upgraded; default: a fail-closed v2 policy). */
   policyPath?: string;
   /** Optional existing kill-switch spec artifact path (built draft/adopted otherwise). */
@@ -7378,8 +7627,9 @@ export function paperSniperDryRunReport(
   }
 
   const outDir = resolvePath(ctx, opts.outDir);
+  const dryRunFiles: string[] = [...PAPER_DRY_RUN_FILES, ...(opts.routequotePath ? [PAPER_DRY_RUN_ROUTEQUOTE_FILE] : [])];
   if (!opts.force) {
-    for (const f of PAPER_DRY_RUN_FILES) {
+    for (const f of dryRunFiles) {
       if (existsSync(join(outDir, f))) {
         return { text: redactString(`Refusing: ${join(outDir, f)} already exists (pass --force to overwrite).`), exitCode: 1 };
       }
@@ -7440,6 +7690,58 @@ export function paperSniperDryRunReport(
       if (e.inspection !== null) entry.inspection = e.inspection;
       if (e.risk !== null) entry.risk = e.risk;
       dataById.set(e.candidateId, entry);
+    }
+  }
+
+  // 2b) Optional prepared routequote (Sprint 91): strictly validated, then cross-checked BOTH ways
+  //     against the candidate list — a quotes file prepared for a different candidate set refuses
+  //     outright (fail closed; rebuild it with paper:routequote:prepare).
+  let routequote: RouteQuotePrepared | null = null;
+  if (opts.routequotePath) {
+    let routequoteRaw: unknown;
+    try {
+      routequoteRaw = readJsonValue(ctx, opts.routequotePath, "prepared routequote");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (isPlainObject(routequoteRaw) && routequoteRaw.schemaVersion !== ROUTE_QUOTE_PREPARED_SCHEMA_VERSION) {
+      return {
+        text: redactString(`Refusing: --routequote schemaVersion must be "${ROUTE_QUOTE_PREPARED_SCHEMA_VERSION}" (build it with paper:routequote:prepare).`),
+        exitCode: 1,
+      };
+    }
+    try {
+      routequote = validateRouteQuotePrepared(routequoteRaw);
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    const mintById = new Map(candidateList.candidates.map((c) => [c.candidateId, c.mint]));
+    for (const e of routequote.entries) {
+      const expected = mintById.get(e.candidateId);
+      if (expected === undefined) {
+        return {
+          text: redactString(
+            `Refusing: the prepared routequote carries entry "${e.candidateId}" which is not in this candidate list — it was prepared for a different set; rebuild it with paper:routequote:prepare (fail closed).`,
+          ),
+          exitCode: 1,
+        };
+      }
+      if (expected !== e.mint) {
+        return {
+          text: redactString(`Refusing: the prepared routequote entry "${e.candidateId}" contradicts the candidate list's mint — fail closed.`),
+          exitCode: 1,
+        };
+      }
+    }
+    const covered = new Set(routequote.entries.map((e) => e.candidateId));
+    const uncovered = candidateList.candidates.filter((c) => !covered.has(c.candidateId));
+    if (uncovered.length > 0) {
+      return {
+        text: redactString(
+          `Refusing: the prepared routequote does not cover candidate(s) ${uncovered.map((c) => c.candidateId).join(", ")} — rebuild it with paper:routequote:prepare over THIS candidate list (fail closed).`,
+        ),
+        exitCode: 1,
+      };
     }
   }
 
@@ -7547,6 +7849,7 @@ export function paperSniperDryRunReport(
       ["burner-isolation.json", burnerIsolationSpec],
       ["safety-gates.json", gates],
       ["prereqs.json", prereqs],
+      ...(routequote !== null ? [[PAPER_DRY_RUN_ROUTEQUOTE_FILE, routequote] as const] : []),
     ] as const as Array<readonly [string, unknown]>;
   } catch (err) {
     return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
@@ -7602,6 +7905,7 @@ export function paperSniperDryRunReport(
     failed ??
     run("route-resolution", paperSimulationRouteReport(inner, {
       planPath: "intent-plan.json",
+      quotesPath: routequote !== null ? PAPER_DRY_RUN_ROUTEQUOTE_FILE : undefined,
       stopSimulationTripped: Boolean(opts.stopSimulationTripped),
       operatorLabel: opts.operatorLabel,
       resolutionLabel: runLabel,
@@ -7687,7 +7991,11 @@ export function paperSniperDryRunReport(
         ? "the plan is blocked, so no resolution was attempted"
         : bundle.routeResolutionStatus === "no_entries"
           ? "watch-only plan — nothing to resolve"
-          : "honest boundary — no resolver capability exists";
+          : bundle.routeResolutionStatus === "unresolved" && bundle.routeResolverAttempted === true
+            ? "a READ-ONLY quote observation supplied partial label facts (live-state caveat applies); the remaining facts stay honestly unresolved — never invented, never executable"
+            : bundle.routeResolutionStatus === "resolved" && bundle.routeResolverAttempted === true
+              ? "label-resolved facts from a READ-ONLY quote observation (live-state caveat applies) — still simulation only, never executable"
+              : "honest boundary — no resolver capability exists";
 
   // 7) RUN_SUMMARY.md — deterministic markdown derived ONLY from the bundle's structured state.
   const summaryLines = [
@@ -7700,6 +8008,11 @@ export function paperSniperDryRunReport(
     `- **Operator:** ${opts.operatorLabel ?? "(none declared)"}`,
     `- **Operator verdict:** \`${bundle.operatorVerdict}\``,
     `- **Route resolution:** ${bundle.routeResolutionStatus ?? "unknown"} (${routeExplanation}; resolver attempted: ${String(bundle.routeResolverAttempted)})`,
+    ...(routequote !== null
+      ? [
+          `- **Route quote provenance:** ${routequote.observedCount}/${routequote.entryCount} candidate(s) carried an observed READ-ONLY quote (\`${PAPER_DRY_RUN_ROUTEQUOTE_FILE}\`; observation only — never executable, never an order)`,
+        ]
+      : []),
     `- **Readiness verdict (verbatim):** ${bundle.simulationReadyPerReadiness === null ? "unknown" : String(bundle.simulationReadyPerReadiness)}`,
     `- **Chain blocking conditions:** ${bundle.chainBlockingCodes.length}`,
     "",
@@ -7749,8 +8062,8 @@ export function paperSniperDryRunReport(
     `blocking: ${bundle.chainBlockingCodes.length} chain blocking condition(s)`,
     ...bundle.chainBlockingCodes.map((c) => `  ✗ ${c}`),
     "",
-    `artifacts: ${PAPER_DRY_RUN_FILES.length} files under ${outDir}`,
-    ...PAPER_DRY_RUN_FILES.map((f) => `  - ${join(outDir, f)}`),
+    `artifacts: ${dryRunFiles.length} files under ${outDir}`,
+    ...dryRunFiles.map((f) => `  - ${join(outDir, f)}`),
     "",
     `What happened: ${bundle.whatHappened}`,
     ...(bundle.whyBlocked.length > 0 ? ["", "Why blocked:", ...bundle.whyBlocked.map((l) => `✗ ${l}`)] : []),

@@ -46,6 +46,7 @@ import {
   paperSniperPreflightReport,
   paperSniperPreflightInputValidateReport,
   paperSniperPreflightInputPrepareReport,
+  paperRouteQuotePrepareReport,
   paperSniperDecideReport,
   paperSniperWorkflowReport,
   paperSniperReportReport,
@@ -1277,6 +1278,56 @@ program
   );
 
 program
+  .command("paper:routequote:prepare")
+  .description(
+    "BRIDGE read-only route-quote observations into the PAPER dry-run: pair operator-supplied quote observation files (routequote.observation.input.v1) to a candidate list BY MINT and emit the canonical prepared artifact (routequote.prepared.v1) that paper:sniper:dry-run consumes via --routequote and paper:simulation:route via --quotes. The outcome set is CLOSED (quote-observed | unavailable | blocked | error | unsupported — nothing here can mean executable); every observed quote carries the mandatory caveat set; a candidate without an observation stays honestly unavailable; malformed, cross-kind, unknown-mint, duplicate, or secret-shaped files are REFUSED. LOCAL-ONLY: no RPC, no network, no wallet — an observation proves a quote was visible at some point, never that one is executable",
+  )
+  .option("--candidates <path>", "candidate list JSON to pair against (required)")
+  .option(
+    "--quote <path>",
+    "quote observation file (routequote.observation.input.v1; repeatable; matched to a candidate by mint)",
+    (value: string, previous: string[]) => previous.concat(value),
+    [] as string[],
+  )
+  .option("--source-label <label>", "operator label recorded on the produced artifact")
+  .option("--json", "emit the canonical prepared routequote artifact as stable JSON")
+  .option("--out <path>", "write ONLY the canonical prepared routequote JSON to this path (refused if it exists)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-warning", "exit non-zero when the produced artifact carries any warning")
+  .option("--fail-on-missing-quote", "exit non-zero when any candidate has no quote observation at all")
+  .option("--fail-on-not-observed", "exit non-zero when any candidate's quote was not observed (unavailable/blocked/error/unsupported)")
+  .action(
+    (opts: {
+      candidates?: string;
+      quote: string[];
+      sourceLabel?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnWarning?: boolean;
+      failOnMissingQuote?: boolean;
+      failOnNotObserved?: boolean;
+    }) => {
+      const { text, exitCode } = paperRouteQuotePrepareReport(
+        {},
+        {
+          candidatesPath: opts.candidates,
+          quotePaths: opts.quote,
+          sourceLabel: opts.sourceLabel,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnWarning: Boolean(opts.failOnWarning),
+          failOnMissingQuote: Boolean(opts.failOnMissingQuote),
+          failOnNotObserved: Boolean(opts.failOnNotObserved),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
   .command("paper:sniper:decide")
   .description(
     "Produce a PAPER-only per-candidate decision report from a LOCAL candidate list + an optional preflight + optional operator rules (`sniper.paper.decision.report.v1`, or `.v2` with --schema-version v2 for stable machine-readable reason codes). Each candidate gets a SIMULATED skip / watch / paper-enter / paper-reject / unknown with reasons (denylist or invalid mint = skip; preflight fail or risk-score-over-cap = paper-reject; preflight warn / unknown / no preflight / low liquidity = watch; preflight pass + all rules = paper-enter). A paper-enter is a paper-only decision — NOT a buy/sell order, NOT a transaction, NOT live readiness. Reads the named files only, writes nothing unless --out. No network, no wallet",
@@ -1961,9 +2012,10 @@ program
 program
   .command("paper:simulation:route")
   .description(
-    "Build a `simulation.route.resolution.v1` — the honest ROUTE-RESOLUTION PROVENANCE record over a named `simulation.intent.plan.v2`, via the package's CANONICAL builder (the only one that exists). No route-resolution capability exists inside the simulation boundary, so every entry is honestly UNAVAILABLE under the fixed `unavailable-no-route-resolver` id: route, destination, and fee stay UNRESOLVED — never invented, never fetched, never typed in by hand. A missing/invalid/blocked plan or a declared stop-simulation kill switch produces a BLOCKED artifact with stable reason codes (the blocked artifact IS the honest record). This artifact is provenance only: not live trading, not a buy recommendation, not a transaction approval; it never signs, never sends, never resolves. Reads only the named file, writes nothing unless --out. No network, no wallet",
+    "Build a `simulation.route.resolution.v1` — the honest ROUTE-RESOLUTION PROVENANCE record over a named `simulation.intent.plan.v2`. Without --quotes every entry is honestly UNAVAILABLE under the fixed `unavailable-no-route-resolver` id (no route-resolution capability exists inside the simulation boundary): route, destination, and fee stay UNRESOLVED — never invented, never fetched, never typed in by hand. With --quotes (a routequote.prepared.v1 from paper:routequote:prepare) READ-ONLY quote observations enter as label facts with provenance and the mandatory live-state caveat — still never executable, and a quote that contradicts the plan REFUSES. A missing/invalid/blocked plan or a declared stop-simulation kill switch produces a BLOCKED artifact with stable reason codes (the blocked artifact IS the honest record; quotes never unblock it). This artifact is provenance only: not live trading, not a buy recommendation, not a transaction approval; it never signs, never sends, never executes. Reads only the named files, writes nothing unless --out. No network, no wallet",
   )
   .option("--plan <path>", "simulation intent plan JSON (simulation.intent.plan.v2; required)")
+  .option("--quotes <path>", "prepared routequote JSON (routequote.prepared.v1 from paper:routequote:prepare): READ-ONLY quote observations carried in as label facts with provenance; contradictions with the plan REFUSE")
   .option("--stop-simulation-tripped", "declare the stop-simulation kill switch TRIPPED at resolution time (blocks the artifact)")
   .option("--operator <label>", "operator label echoed into the artifact")
   .option("--resolution-label <label>", "resolution label echoed into the artifact")
@@ -1971,16 +2023,17 @@ program
   .option("--out <path>", "write ONLY the artifact JSON to this path (writes nothing if omitted)")
   .option("--force", "overwrite an existing --out file (refused by default)")
   .option("--fail-on-blocked", "exit non-zero when the artifact is BLOCKED")
-  .option("--fail-on-unavailable", "exit non-zero when any entry is UNAVAILABLE (trips on every honest artifact until a separately-authorized resolver exists)")
+  .option("--fail-on-unavailable", "exit non-zero when any entry is UNAVAILABLE (trips on every honest artifact until a quote source or separately-authorized resolver supplies facts)")
   .action(
     (opts: {
-      plan?: string; stopSimulationTripped?: boolean; operator?: string; resolutionLabel?: string;
+      plan?: string; quotes?: string; stopSimulationTripped?: boolean; operator?: string; resolutionLabel?: string;
       json?: boolean; out?: string; force?: boolean; failOnBlocked?: boolean; failOnUnavailable?: boolean;
     }) => {
       const { text, exitCode } = paperSimulationRouteReport(
         {},
         {
           planPath: opts.plan,
+          quotesPath: opts.quotes,
           stopSimulationTripped: Boolean(opts.stopSimulationTripped),
           operatorLabel: opts.operator,
           resolutionLabel: opts.resolutionLabel,
@@ -2062,10 +2115,11 @@ program
 program
   .command("paper:sniper:dry-run")
   .description(
-    "Run the FULL PAPER dry-run pipeline over an operator-supplied candidate file and write the complete validated artifact set (candidates -> preflight -> policy -> v2 decision/run-report/gates/prereqs -> specs -> intent plan -> simulation result -> route resolution -> chain audit -> readiness -> handoff pack -> operator bundle -> RUN_SUMMARY.md) into ONE output directory. Route resolution is honestly all-UNAVAILABLE: no route-resolver capability exists and nothing is invented. A BLOCKED chain still writes the full honest artifact set (exit 0; --fail-on-blocked gates). SIMULATION ONLY: it creates no live order, builds no transaction, touches no wallet, and reaches no network. Phase 7 (live trading) remains unauthorized",
+    "Run the FULL PAPER dry-run pipeline over an operator-supplied candidate file and write the complete validated artifact set (candidates -> preflight -> policy -> v2 decision/run-report/gates/prereqs -> specs -> intent plan -> simulation result -> route resolution -> chain audit -> readiness -> handoff pack -> operator bundle -> RUN_SUMMARY.md) into ONE output directory. Route resolution is honestly all-UNAVAILABLE unless --routequote supplies READ-ONLY quote observations (label facts with provenance; live-state caveat; never executable) — nothing is ever invented. A BLOCKED chain still writes the full honest artifact set (exit 0; --fail-on-blocked gates). SIMULATION ONLY: it creates no live order, builds no transaction, touches no wallet, and reaches no network. Phase 7 (live trading) remains unauthorized",
   )
   .option("--candidates <path>", "candidate list JSON (raw operator input or sniper.candidate.list.v1; required)")
   .option("--preflight-input <path>", "preflight input JSON with per-candidate inspection/risk (sniper.preflight.input.v1)")
+  .option("--routequote <path>", "prepared routequote JSON (routequote.prepared.v1 from paper:routequote:prepare): READ-ONLY quote observations carried into the route stage as label facts with provenance; omitted = the honest all-UNAVAILABLE boundary")
   .option("--policy <path>", "policy config JSON (v1 upgraded to v2; default: a fail-closed v2 policy)")
   .option("--kill-switch <path>", "existing kill-switch spec artifact JSON (built draft/adopted otherwise)")
   .option("--secrets-policy <path>", "existing secrets policy artifact JSON (built draft/adopted otherwise)")
@@ -2081,7 +2135,7 @@ program
   .option("--fail-on-blocked", "exit non-zero when the final operator verdict is blocked")
   .action(
     (opts: {
-      candidates?: string; preflightInput?: string; policy?: string; killSwitch?: string;
+      candidates?: string; preflightInput?: string; routequote?: string; policy?: string; killSwitch?: string;
       secretsPolicy?: string; burnerIsolation?: string; adoptSpecs?: boolean;
       acknowledgePaperEnterReview?: boolean; stopSimulationTripped?: boolean; operator?: string;
       runLabel?: string; out?: string; force?: boolean; json?: boolean; failOnBlocked?: boolean;
@@ -2091,6 +2145,7 @@ program
         {
           candidatesPath: opts.candidates,
           preflightInputPath: opts.preflightInput,
+          routequotePath: opts.routequote,
           policyPath: opts.policy,
           killSwitchPath: opts.killSwitch,
           secretsPolicyPath: opts.secretsPolicy,

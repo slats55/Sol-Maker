@@ -27,6 +27,7 @@ const EXPECTED_COMMANDS: readonly string[] = [
   "paper:sniper:preflight",
   "paper:sniper:preflight:input:validate",
   "paper:sniper:preflight:input:prepare",
+  "paper:routequote:prepare",
   "paper:sniper:decide",
   "paper:sniper:workflow",
   "paper:sniper:report",
@@ -60,14 +61,21 @@ const REQUIRED_DOCS = ["docs/SNIPER_RUNBOOK.md", "README.md"] as const;
 /** Docs whose command mentions must all be registered (superset of REQUIRED_DOCS). */
 const SCANNED_DOCS = [...REQUIRED_DOCS, "docs/SNIPER_MODEL.md", "examples/sniper/README.md"] as const;
 
-/** A command-shaped token: paper:sniper:… / paper:phase6:… / paper:simulation:… (colon/hyphen segments). */
-const COMMAND_TOKEN = /paper:(?:sniper|phase6|simulation):[a-z0-9-]+(?::[a-z0-9-]+)*/g;
+/** A command-shaped token: paper:sniper:… / paper:phase6:… / paper:simulation:… /
+ * paper:routequote:… (colon/hyphen segments). */
+const COMMAND_TOKEN = /paper:(?:sniper|phase6|simulation|routequote):[a-z0-9-]+(?::[a-z0-9-]+)*/g;
 
 function registeredCommands(): string[] {
   const source = readFileSync(CLI_INDEX, "utf8");
   const names = [...source.matchAll(/\.command\("([^"]+)"\)/g)].map((m) => m[1] as string);
   return names
-    .filter((n) => n.startsWith("paper:sniper:") || n.startsWith("paper:phase6:") || n.startsWith("paper:simulation:"))
+    .filter(
+      (n) =>
+        n.startsWith("paper:sniper:") ||
+        n.startsWith("paper:phase6:") ||
+        n.startsWith("paper:simulation:") ||
+        n.startsWith("paper:routequote:"),
+    )
     .sort();
 }
 
@@ -126,7 +134,7 @@ const EXPECTED_SIMULATION_FLAGS: Readonly<Record<string, readonly string[]>> = {
     "--fail-on-blocked", "--fail-on-unresolved", "--fail-on-dry-run-unavailable",
   ],
   "paper:simulation:route": [
-    "--plan", "--stop-simulation-tripped", "--operator", "--resolution-label", "--json", "--out",
+    "--plan", "--quotes", "--stop-simulation-tripped", "--operator", "--resolution-label", "--json", "--out",
     "--force", "--fail-on-blocked", "--fail-on-unavailable",
   ],
   "paper:simulation:validate": ["--plan", "--result", "--json"],

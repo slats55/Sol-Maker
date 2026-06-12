@@ -389,7 +389,7 @@ describe("CLI registration — both Sprint 88 commands are registered exactly on
     const flags = [...block.matchAll(/\.option\(\s*\n?\s*"(--[a-z0-9-]+)/g)].map((m) => m[1]);
     expect(flags.slice().sort()).toEqual(
       [
-        "--candidates", "--preflight-input", "--policy", "--kill-switch", "--secrets-policy",
+        "--candidates", "--preflight-input", "--routequote", "--policy", "--kill-switch", "--secrets-policy",
         "--burner-isolation", "--adopt-specs", "--acknowledge-paper-enter-review",
         "--stop-simulation-tripped", "--operator", "--run-label", "--out", "--force", "--json",
         "--fail-on-blocked",

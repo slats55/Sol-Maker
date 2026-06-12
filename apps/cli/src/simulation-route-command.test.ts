@@ -245,7 +245,10 @@ describe("paper:simulation:route — CLI registration (help surface pinned to th
   it("is registered exactly once with a --help description that keeps the honest framing", () => {
     expect([...source.matchAll(/\.command\("paper:simulation:route"\)/g)]).toHaveLength(1);
     expect(block).toContain("unavailable-no-route-resolver");
-    expect(block).toContain("never signs, never sends, never resolves");
+    // S91: the description now also covers the read-only --quotes seam; "never executes" is the
+    // accurate ceiling (label facts CAN be recorded with provenance — execution never can).
+    expect(block).toContain("never signs, never sends, never executes");
+    expect(block).toContain("never executable");
     expect(block).toContain("not live trading, not a buy recommendation, not a transaction approval");
     expect(block).toContain("writes nothing unless --out");
   });
@@ -253,7 +256,7 @@ describe("paper:simulation:route — CLI registration (help surface pinned to th
   it("exposes no dangerous flag (no live/send/sign/key/resolver-override surface)", () => {
     const flags = [...block.matchAll(/\.option\(\s*\n?\s*"(--[a-z0-9-]+)/g)].map((m) => m[1] as string);
     expect(flags.sort()).toEqual(
-      ["--plan", "--stop-simulation-tripped", "--operator", "--resolution-label", "--json", "--out", "--force", "--fail-on-blocked", "--fail-on-unavailable"].sort(),
+      ["--plan", "--quotes", "--stop-simulation-tripped", "--operator", "--resolution-label", "--json", "--out", "--force", "--fail-on-blocked", "--fail-on-unavailable"].sort(),
     );
     for (const flag of flags) {
       for (const token of ["--live", "--send", "--sign", "--private", "--mnemonic", "--seed", "--wallet", "--dangerous", "--bypass", "--unsafe", "--execute", "--resolver"]) {

@@ -17,6 +17,11 @@ watch-only, blocked-risk) that together produce every operator verdict, with the
 the expected output folder, and what each verdict means. Start there if you just want to run the
 PAPER sniper end to end.
 
+[`routequote-rehearsal/`](routequote-rehearsal/README.md) (S91) adds the read-only route quote
+layer on top: an operator-supplied quote observation flows through `paper:routequote:prepare` and
+`paper:sniper:dry-run` (via `--routequote`) into the route-resolution artifact as label facts
+with provenance and the live-state caveat — observation only, never executable.
+
 ## Fixture files
 
 | File | Purpose |
