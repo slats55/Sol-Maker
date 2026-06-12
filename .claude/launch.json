@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web-static",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--yes", "http-server", "apps/web/public", "-p", "8378", "-c-1"],
+      "port": 8378
+    }
+  ]
+}
