@@ -19,7 +19,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
-import { basename, isAbsolute, join } from "node:path";
+import { basename, isAbsolute, join, normalize } from "node:path";
 import {
   loadConfig,
   evaluateLiveGate,
@@ -795,7 +795,8 @@ const DEFAULT_PAPER_CAPS = {
 
 function resolvePath(ctx: CommandContext, path: string): string {
   const base = ctx.cwd ?? process.cwd();
-  return isAbsolute(path) ? path : join(base, path);
+  // normalize() collapses doubled separators some shells/wrappers inject into absolute paths.
+  return isAbsolute(path) ? normalize(path) : join(base, path);
 }
 
 function readJsonArray(
@@ -7367,6 +7368,16 @@ export function paperSniperDryRunReport(
 
   const bundle = JSON.parse(bundleJson) as Phase6OperatorBundleV1;
 
+  // Per-status route explanation (the honest boundary, phrased for the state that produced it).
+  const routeExplanation =
+    bundle.routeResolutionStatus === "unavailable"
+      ? "expected — no route resolver exists inside the simulation boundary; nothing was faked"
+      : bundle.routeResolutionStatus === "blocked"
+        ? "the plan is blocked, so no resolution was attempted"
+        : bundle.routeResolutionStatus === "no_entries"
+          ? "watch-only plan — nothing to resolve"
+          : "honest boundary — no resolver capability exists";
+
   // 7) RUN_SUMMARY.md — deterministic markdown derived ONLY from the bundle's structured state.
   const summaryLines = [
     "# PAPER Dry-Run Summary",
@@ -7377,7 +7388,7 @@ export function paperSniperDryRunReport(
     `- **Run label:** ${runLabel}`,
     `- **Operator:** ${opts.operatorLabel ?? "(none declared)"}`,
     `- **Operator verdict:** \`${bundle.operatorVerdict}\``,
-    `- **Route resolution:** ${bundle.routeResolutionStatus ?? "unknown"} (resolver attempted: ${String(bundle.routeResolverAttempted)})`,
+    `- **Route resolution:** ${bundle.routeResolutionStatus ?? "unknown"} (${routeExplanation}; resolver attempted: ${String(bundle.routeResolverAttempted)})`,
     `- **Readiness verdict (verbatim):** ${bundle.simulationReadyPerReadiness === null ? "unknown" : String(bundle.simulationReadyPerReadiness)}`,
     `- **Chain blocking conditions:** ${bundle.chainBlockingCodes.length}`,
     "",
@@ -7385,6 +7396,9 @@ export function paperSniperDryRunReport(
     "",
     "## Blocking conditions",
     "",
+    ...(bundle.chainBlockingCodes.length > 0
+      ? ["Chain blocking codes (verbatim):", "", ...bundle.chainBlockingCodes.map((c) => `- \`${c}\``), ""]
+      : []),
     ...(bundle.whyBlocked.length > 0 ? bundle.whyBlocked.map((l) => `- ${l}`) : ["- none"]),
     "",
     "## What to inspect next",
@@ -7419,9 +7433,10 @@ export function paperSniperDryRunReport(
   const lines = [
     "PAPER DRY-RUN COMPLETE — SIMULATION ONLY (never signs, never sends, never authorizes live trading)",
     `verdict:  ${bundle.operatorVerdict}`,
-    `route:    ${bundle.routeResolutionStatus ?? "unknown"} (honest boundary — no resolver capability exists)`,
+    `route:    ${bundle.routeResolutionStatus ?? "unknown"} (${routeExplanation})`,
     `readiness verdict (verbatim): ${bundle.simulationReadyPerReadiness === null ? "unknown" : String(bundle.simulationReadyPerReadiness)}`,
     `blocking: ${bundle.chainBlockingCodes.length} chain blocking condition(s)`,
+    ...bundle.chainBlockingCodes.map((c) => `  ✗ ${c}`),
     "",
     `artifacts: ${PAPER_DRY_RUN_FILES.length} files under ${outDir}`,
     ...PAPER_DRY_RUN_FILES.map((f) => `  - ${join(outDir, f)}`),
@@ -7432,6 +7447,7 @@ export function paperSniperDryRunReport(
     "Next:",
     ...bundle.whatToInspectNext.map((l) => `- ${l}`),
     `- Full summary: ${join(outDir, "RUN_SUMMARY.md")}`,
+    `- Inspect in the web UI: pnpm web:inspect --dir "${outDir}" --force`,
   ];
   return { text: redactString(lines.join("\n")), exitCode };
 }

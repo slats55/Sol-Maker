@@ -141,6 +141,14 @@ describe("paper:sniper:dry-run — happy path over fictional candidates", () => 
       expect(summary).toContain("SIMULATION ONLY");
       expect(summary).toContain("never signs, never sends");
       expect(summary).not.toMatch(/ready for live|live-ready/i);
+      // The blocking CODES appear verbatim in the summary, not just a count.
+      expect(summary).toContain("`simulation-blocked-prereqs-not-ready`");
+      // The route status carries its per-status explanation.
+      expect(summary).toContain("nothing was faked");
+      // The terminal output surfaces the codes and the one-line UI inspection command.
+      expect(r.text).toContain("✗ simulation-blocked-prereqs-not-ready");
+      expect(r.text).toContain(`pnpm web:inspect --dir "${out}" --force`);
+      expect(r.text).toContain("nothing was faked");
     });
   });
 
