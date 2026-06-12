@@ -45,6 +45,24 @@ export interface LoadLocalSignerInput {
 
 const REDACTION_MARKER = "[signer-boundary: redacted]";
 
+/** Parse solana-keygen byte-array file text into a Keypair. Throws SignerBoundaryError only. */
+function keypairFromFileText(text: string): Keypair {
+  let bytes: unknown;
+  try {
+    bytes = JSON.parse(text);
+  } catch {
+    throw new SignerBoundaryError("the keypair file is not valid JSON (expected the solana-keygen byte-array format)");
+  }
+  if (!Array.isArray(bytes) || bytes.length !== 64 || bytes.some((b) => !Number.isInteger(b) || b < 0 || b > 255)) {
+    throw new SignerBoundaryError("the keypair file is not a 64-byte solana-keygen array");
+  }
+  try {
+    return Keypair.fromSecretKey(Uint8Array.from(bytes as number[]));
+  } catch {
+    throw new SignerBoundaryError("the keypair file bytes do not form a valid keypair");
+  }
+}
+
 /**
  * Load a local keypair file through the boundary. Refusals (all SignerBoundaryError, none of
  * which ever echoes a path or byte): missing env var name/value, unreadable file, malformed
@@ -72,21 +90,7 @@ export function loadLocalSignerBoundary(input: LoadLocalSignerInput): Transactio
   } catch {
     throw new SignerBoundaryError(`the keypair file named by ${input.envVarName} could not be read`);
   }
-  let bytes: unknown;
-  try {
-    bytes = JSON.parse(text);
-  } catch {
-    throw new SignerBoundaryError("the keypair file is not valid JSON (expected the solana-keygen byte-array format)");
-  }
-  if (!Array.isArray(bytes) || bytes.length !== 64 || bytes.some((b) => !Number.isInteger(b) || b < 0 || b > 255)) {
-    throw new SignerBoundaryError("the keypair file is not a 64-byte solana-keygen array");
-  }
-  let keypair: Keypair;
-  try {
-    keypair = Keypair.fromSecretKey(Uint8Array.from(bytes as number[]));
-  } catch {
-    throw new SignerBoundaryError("the keypair file bytes do not form a valid keypair");
-  }
+  const keypair = keypairFromFileText(text);
 
   const boundary: TransactionSigningBoundary = {
     kind: "local-file",
@@ -143,6 +147,51 @@ export function createThrowawayDevnetSigner(input: CreateThrowawayDevnetSignerIn
   } catch {
     throw new SignerBoundaryError("the throwaway keypair file could not be written (the key was discarded)");
   }
+
+  const boundary: TransactionSigningBoundary = {
+    kind: "local-file",
+    network: "devnet",
+    publicKeyBase58: keypair.publicKey.toBase58(),
+    signTransactionInPlace(transaction: VersionedTransaction): VersionedTransaction {
+      transaction.sign([keypair]);
+      return transaction;
+    },
+    toJSON(): string {
+      return REDACTION_MARKER;
+    },
+  };
+  return { boundary: Object.freeze(boundary), keypairPath: input.keypairPath };
+}
+
+export interface LoadThrowawayDevnetSignerInput {
+  /** Path of an EXISTING throwaway keypair file. Must carry the gitignored ".keypair" suffix. */
+  keypairPath: string;
+  /** Injected file reader (CLI passes readFileSync; tests inject). Never receives logs. */
+  readFile: (path: string) => string;
+}
+
+/**
+ * REUSE an existing throwaway devnet keypair file (Sprint 94): a faucet-blocked rehearsal can be
+ * funded externally and rerun against the SAME key without the funding evaporating into a fresh
+ * keypair. Same wall as generation: the `.keypair` suffix is mandatory, the returned boundary is
+ * DEVNET-ONLY, and the secret bytes never leave this module. There is no mainnet variant.
+ */
+export function loadThrowawayDevnetSigner(input: LoadThrowawayDevnetSignerInput): ThrowawayDevnetSigner {
+  if (typeof input.keypairPath !== "string" || input.keypairPath.trim().length === 0) {
+    throw new SignerBoundaryError("a keypairPath is required to reuse a throwaway devnet signer");
+  }
+  if (!input.keypairPath.endsWith(".keypair")) {
+    throw new SignerBoundaryError(
+      'REFUSED: a throwaway keypair file must end with ".keypair" (the gitignored suffix) — anything else is not a throwaway key',
+    );
+  }
+  let text: string;
+  try {
+    text = input.readFile(input.keypairPath);
+  } catch {
+    throw new SignerBoundaryError("the throwaway keypair file could not be read");
+  }
+  const keypair = keypairFromFileText(text);
 
   const boundary: TransactionSigningBoundary = {
     kind: "local-file",

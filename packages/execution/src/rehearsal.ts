@@ -43,6 +43,13 @@ export const DEVNET_REHEARSAL_OUTCOMES = [
 ] as const;
 export type DevnetRehearsalOutcome = (typeof DEVNET_REHEARSAL_OUTCOMES)[number];
 
+/** How the rehearsal signer came to exist. Reuse (S94) keeps external funding on the same key. */
+export type RehearsalSignerSource = "generated-throwaway" | "reused-throwaway" | "operator-env";
+
+/** Bounded faucet retry (S94): never more than this many airdrop requests per rehearsal run. */
+export const DEVNET_REHEARSAL_MAX_AIRDROP_ATTEMPTS = 5;
+export const DEVNET_REHEARSAL_DEFAULT_AIRDROP_ATTEMPTS = 3;
+
 export type RehearsalStepId = "mode" | "signer" | "funding" | "build-probe" | "simulate" | "send" | "confirm";
 export type RehearsalStepStatus = "ok" | "failed" | "unavailable" | "skipped";
 
@@ -115,12 +122,16 @@ export interface DevnetRehearsalReport {
   signerPublicKey: string | null;
   /** Path of the throwaway keypair file (path only — never contents); null for operator-env signers. */
   throwawayFilePath: string | null;
-  signerSource: "generated-throwaway" | "operator-env";
+  signerSource: RehearsalSignerSource;
   airdrop: {
     requested: boolean;
     lamports: number | null;
     signature: string | null;
     status: "confirmed" | "submitted" | "unavailable" | "skipped";
+    /** Faucet requests actually made this run (bounded; 0 when none were needed). */
+    attempts: number;
+    /** The bound the run was configured with. */
+    maxAttempts: number;
   };
   balanceLamportsBefore: number | null;
   balanceLamportsAfter: number | null;
@@ -130,6 +141,11 @@ export interface DevnetRehearsalReport {
   /** The probe's transaction signature when submitted. Public chain data. */
   signature: string | null;
   confirmation: { confirmed: boolean; slot: number | null; errLabel: string | null; polls: number } | null;
+  /**
+   * Present ONLY on a devnet-funding-blocked outcome: the exact safe ways to fund the rehearsal
+   * key externally and rerun against the SAME key. Never instructions toward mainnet.
+   */
+  fundingGuidance: string[] | null;
   startedAt: string;
   finishedAt: string;
   caveats: string[];
@@ -149,7 +165,7 @@ export interface RunDevnetRehearsalInput {
   mode: ExecutionMode;
   signer: TransactionSigningBoundary;
   rpc: RehearsalRpc;
-  signerSource: "generated-throwaway" | "operator-env";
+  signerSource: RehearsalSignerSource;
   /** Path of the throwaway keypair file when generated (echoed as a path only). */
   throwawayFilePath?: string | null;
   /** Injected simulation seam (CLI backs it with txpreview); absent = step skipped honestly. */
@@ -158,6 +174,8 @@ export interface RunDevnetRehearsalInput {
   emergencyStopFilePresent: boolean;
   skipAirdrop?: boolean;
   airdropLamports?: number;
+  /** Bounded faucet retries per run (default 3, hard cap 5 — never spam the faucet). */
+  airdropAttempts?: number;
   minBalanceLamports?: number;
   /** Confirmation polling bounds (defaults: 30 polls, 2000 ms apart). */
   confirmPolls?: number;
@@ -179,6 +197,10 @@ export async function runDevnetRehearsal(input: RunDevnetRehearsalInput): Promis
   const steps: RehearsalStep[] = [];
   const minBalance = input.minBalanceLamports ?? DEVNET_REHEARSAL_MIN_BALANCE_LAMPORTS;
   const airdropLamports = input.airdropLamports ?? DEVNET_REHEARSAL_DEFAULT_AIRDROP_LAMPORTS;
+  const maxAirdropAttempts = Math.min(
+    Math.max(Math.trunc(input.airdropAttempts ?? DEVNET_REHEARSAL_DEFAULT_AIRDROP_ATTEMPTS), 1),
+    DEVNET_REHEARSAL_MAX_AIRDROP_ATTEMPTS,
+  );
 
   const base = {
     schemaVersion: DEVNET_REHEARSAL_REPORT_SCHEMA_VERSION,
@@ -188,13 +210,21 @@ export async function runDevnetRehearsal(input: RunDevnetRehearsalInput): Promis
     signerPublicKey: null as string | null,
     throwawayFilePath: input.throwawayFilePath ?? null,
     signerSource: input.signerSource,
-    airdrop: { requested: false, lamports: null as number | null, signature: null as string | null, status: "skipped" as "confirmed" | "submitted" | "unavailable" | "skipped" },
+    airdrop: {
+      requested: false,
+      lamports: null as number | null,
+      signature: null as string | null,
+      status: "skipped" as "confirmed" | "submitted" | "unavailable" | "skipped",
+      attempts: 0,
+      maxAttempts: maxAirdropAttempts,
+    },
     balanceLamportsBefore: null as number | null,
     balanceLamportsAfter: null as number | null,
     simulation: null as { outcome: string; errLabel: string | null } | null,
     attempt: null as ExecutionAttemptReport | null,
     signature: null as string | null,
     confirmation: null as { confirmed: boolean; slot: number | null; errLabel: string | null; polls: number } | null,
+    fundingGuidance: null as string[] | null,
     startedAt,
     caveats: [...REHEARSAL_CAVEATS],
     neverMainnet: true as const,
@@ -220,46 +250,84 @@ export async function runDevnetRehearsal(input: RunDevnetRehearsalInput): Promis
     return finish("blocked");
   }
   base.signerPublicKey = input.signer.publicKeyBase58;
+  const signerLabel =
+    input.signerSource === "generated-throwaway"
+      ? "throwaway devnet keypair generated (gitignored .keypair file)"
+      : input.signerSource === "reused-throwaway"
+        ? "EXISTING throwaway devnet keypair reused (gitignored .keypair file; external funding sticks to this key)"
+        : "operator devnet signer loaded through the boundary";
   steps.push({
     step: "signer",
     status: "ok",
-    detail: `${input.signerSource === "generated-throwaway" ? "throwaway devnet keypair generated (gitignored .keypair file)" : "operator devnet signer loaded through the boundary"}; public key ${input.signer.publicKeyBase58}`,
+    detail: `${signerLabel}; public key ${input.signer.publicKeyBase58}`,
   });
+  // Funding guidance attaches ONLY to a funding-blocked exit — devnet faucets and reuse, never
+  // a mainnet instruction.
+  const fundingGuidance = [
+    `Fund the rehearsal public key ${input.signer.publicKeyBase58} with valueless DEVNET SOL: https://faucet.solana.com (select devnet) or \`solana airdrop 1 ${input.signer.publicKeyBase58} --url devnet\`.`,
+    "Rerun the SAME command with --force: an existing throwaway keypair in the output directory is REUSED, so external funding stays on this key.",
+    "Never fund this key on mainnet — the rehearsal refuses mainnet endpoints and the key is throwaway by design.",
+  ];
 
-  // 3) Funding — balance, then airdrop when short (rate limits become an HONEST artifact).
+  // 3) Funding — balance, then a BOUNDED airdrop retry loop when short (rate limits become an
+  //    HONEST artifact with the attempt count preserved; the faucet is never spammed).
   try {
     base.balanceLamportsBefore = await input.rpc.faucet.getBalanceLamports(input.signer.publicKeyBase58);
   } catch (err) {
     steps.push({ step: "funding", status: "unavailable", detail: redactString(`balance read failed: ${(err as Error).message ?? "unknown"}`).slice(0, 300) });
+    base.fundingGuidance = fundingGuidance;
     return finish("devnet-funding-blocked");
   }
   let balance = base.balanceLamportsBefore;
   if (balance < minBalance && input.skipAirdrop !== true) {
     base.airdrop.requested = true;
     base.airdrop.lamports = airdropLamports;
-    try {
-      base.airdrop.signature = await input.rpc.faucet.requestAirdrop(input.signer.publicKeyBase58, airdropLamports);
-      base.airdrop.status = "submitted";
-      // Bounded wait for the airdrop to land before re-reading the balance.
-      const polls = input.confirmPolls ?? 30;
-      const delay = input.pollDelayMs ?? 2000;
-      for (let i = 0; i < polls; i += 1) {
-        const status = await input.rpc.faucet.getSignatureStatus(base.airdrop.signature);
-        if (status.confirmed) {
-          base.airdrop.status = "confirmed";
-          break;
-        }
-        await sleep(delay);
+    const retryDelay = input.pollDelayMs ?? 2000;
+    let lastAirdropError: string | null = null;
+    for (let attempt = 1; attempt <= maxAirdropAttempts && base.airdrop.signature === null; attempt += 1) {
+      base.airdrop.attempts = attempt;
+      try {
+        base.airdrop.signature = await input.rpc.faucet.requestAirdrop(input.signer.publicKeyBase58, airdropLamports);
+        base.airdrop.status = "submitted";
+      } catch (err) {
+        lastAirdropError = redactString((err as Error).message ?? "unknown").slice(0, 200);
+        if (attempt < maxAirdropAttempts) await sleep(retryDelay);
       }
-      balance = await input.rpc.faucet.getBalanceLamports(input.signer.publicKeyBase58);
-    } catch (err) {
+    }
+    if (base.airdrop.signature !== null) {
+      try {
+        // Bounded wait for the airdrop to land before re-reading the balance.
+        const polls = input.confirmPolls ?? 30;
+        for (let i = 0; i < polls; i += 1) {
+          const status = await input.rpc.faucet.getSignatureStatus(base.airdrop.signature);
+          if (status.confirmed) {
+            base.airdrop.status = "confirmed";
+            break;
+          }
+          await sleep(retryDelay);
+        }
+        balance = await input.rpc.faucet.getBalanceLamports(input.signer.publicKeyBase58);
+      } catch (err) {
+        base.airdrop.status = "unavailable";
+        steps.push({
+          step: "funding",
+          status: "unavailable",
+          detail: redactString(`airdrop submitted but its status/balance could not be read: ${(err as Error).message ?? "unknown"}`).slice(0, 300),
+        });
+        base.fundingGuidance = fundingGuidance;
+        return finish("devnet-funding-blocked");
+      }
+    } else {
       base.airdrop.status = "unavailable";
       steps.push({
         step: "funding",
         status: "unavailable",
-        detail: redactString(`airdrop unavailable (rate limit or faucet outage): ${(err as Error).message ?? "unknown"}`).slice(0, 300),
+        detail: redactString(
+          `airdrop unavailable after ${base.airdrop.attempts} bounded attempt(s) (rate limit or faucet outage): ${lastAirdropError ?? "unknown"}`,
+        ).slice(0, 300),
       });
-      if (balance < minBalance) return finish("devnet-funding-blocked");
+      base.fundingGuidance = fundingGuidance;
+      return finish("devnet-funding-blocked");
     }
   }
   base.balanceLamportsAfter = balance;
@@ -269,6 +337,7 @@ export async function runDevnetRehearsal(input: RunDevnetRehearsalInput): Promis
       status: "failed",
       detail: `balance ${balance} lamports is below the ${minBalance}-lamport rehearsal minimum and no airdrop landed`,
     });
+    base.fundingGuidance = fundingGuidance;
     return finish("devnet-funding-blocked");
   }
   if (steps[steps.length - 1]?.step !== "funding") {

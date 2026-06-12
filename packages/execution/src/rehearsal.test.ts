@@ -7,7 +7,7 @@ import {
   DEVNET_REHEARSAL_MIN_BALANCE_LAMPORTS,
 } from "./rehearsal.js";
 import type { RehearsalRpc, RunDevnetRehearsalInput } from "./rehearsal.js";
-import { createThrowawayDevnetSigner, SignerBoundaryError } from "./signer.js";
+import { createThrowawayDevnetSigner, loadThrowawayDevnetSigner, SignerBoundaryError } from "./signer.js";
 import type { SendRpcLike } from "./send.js";
 
 const CLOCK = (): string => "2026-06-12T00:00:00.000Z";
@@ -17,16 +17,19 @@ const NO_SLEEP = async (): Promise<void> => {};
 interface FakeRpcOptions {
   balances?: number[];
   airdropError?: string;
+  /** When set, requestAirdrop throws this many times before succeeding (retry coverage). */
+  airdropFailuresBeforeSuccess?: number;
   sendError?: string;
   confirmAfterPolls?: number;
   confirmErrLabel?: string | null;
   slot?: number;
 }
 
-function fakeRpc(options: FakeRpcOptions = {}): { rpc: RehearsalRpc; sends: Uint8Array[] } {
+function fakeRpc(options: FakeRpcOptions = {}): { rpc: RehearsalRpc; sends: Uint8Array[]; airdropCalls: () => number } {
   const balances = [...(options.balances ?? [0, 1_000_000_000])];
   const sends: Uint8Array[] = [];
   let statusPolls = 0;
+  let airdropCalls = 0;
   const confirmAfter = options.confirmAfterPolls ?? 1;
   const send: SendRpcLike = {
     getLatestBlockhash: async () => ({ blockhash: Keypair.generate().publicKey.toBase58() }),
@@ -38,12 +41,17 @@ function fakeRpc(options: FakeRpcOptions = {}): { rpc: RehearsalRpc; sends: Uint
   };
   return {
     sends,
+    airdropCalls: () => airdropCalls,
     rpc: Object.freeze({
       endpointHost: "fake.devnet.test",
       faucet: {
         getBalanceLamports: async () => (balances.length > 1 ? (balances.shift() as number) : (balances[0] as number)),
         requestAirdrop: async () => {
-          if (options.airdropError) throw new Error(options.airdropError);
+          airdropCalls += 1;
+          if (options.airdropFailuresBeforeSuccess !== undefined && airdropCalls <= options.airdropFailuresBeforeSuccess) {
+            throw new Error("429 Too Many Requests (transient)");
+          }
+          if (options.airdropError && options.airdropFailuresBeforeSuccess === undefined) throw new Error(options.airdropError);
           return "FAKE_AIRDROP_SIGNATURE_111111111111111111111";
         },
         getSignatureStatus: async () => {
@@ -227,6 +235,74 @@ describe("runDevnetRehearsal — the full chain over injected seams", () => {
     const report = await runDevnetRehearsal(baseInput(rpc));
     expect(report.outcome).toBe("submitted-unconfirmed");
     expect(report.steps.at(-1)).toMatchObject({ step: "confirm", status: "failed" });
+  });
+
+  it("S94: a transient faucet failure is RETRIED within the bound and the run still rehearses", async () => {
+    const { rpc, airdropCalls } = fakeRpc({ balances: [0, 1_000_000_000], airdropFailuresBeforeSuccess: 2 });
+    const report = await runDevnetRehearsal({ ...baseInput(rpc), airdropAttempts: 3 });
+    expect(report.outcome).toBe("rehearsed");
+    expect(airdropCalls()).toBe(3);
+    expect(report.airdrop.attempts).toBe(3);
+    expect(report.airdrop.maxAttempts).toBe(3);
+    expect(report.airdrop.status).toBe("confirmed");
+    expect(report.fundingGuidance).toBeNull();
+  });
+
+  it("S94: faucet retries are HARD-BOUNDED (never spammed) and exhaustion records attempts + funding guidance", async () => {
+    const { rpc, airdropCalls } = fakeRpc({ balances: [0], airdropError: "429 Too Many Requests" });
+    const report = await runDevnetRehearsal({ ...baseInput(rpc), airdropAttempts: 99 });
+    expect(report.outcome).toBe("devnet-funding-blocked");
+    // The 99 request is clamped to the hard cap of 5.
+    expect(airdropCalls()).toBe(5);
+    expect(report.airdrop.attempts).toBe(5);
+    expect(report.steps.at(-1)?.detail).toContain("after 5 bounded attempt(s)");
+    // Guidance names the public key, the devnet faucet, and the reuse-on-rerun semantics — never mainnet funding.
+    expect(report.fundingGuidance).not.toBeNull();
+    const guidance = (report.fundingGuidance as string[]).join("\n");
+    expect(guidance).toContain(report.signerPublicKey as string);
+    expect(guidance).toContain("faucet.solana.com");
+    expect(guidance).toContain("REUSED");
+    expect(guidance).not.toMatch(/fund.*mainnet sol/i);
+  });
+
+  it("S94: a reused-throwaway signer source is recorded verbatim in the report and signer step", async () => {
+    const { rpc } = fakeRpc({ balances: [1_000_000_000] });
+    const report = await runDevnetRehearsal({ ...baseInput(rpc), signerSource: "reused-throwaway", skipAirdrop: true });
+    expect(report.outcome).toBe("rehearsed");
+    expect(report.signerSource).toBe("reused-throwaway");
+    expect(report.steps.find((s) => s.step === "signer")?.detail).toContain("EXISTING throwaway devnet keypair reused");
+  });
+});
+
+describe("loadThrowawayDevnetSigner — reuse stays inside the boundary (S94)", () => {
+  it("round-trips a generated throwaway file into a devnet-only boundary with the SAME public key", () => {
+    const written = new Map<string, string>();
+    const generated = createThrowawayDevnetSigner({
+      keypairPath: "runs/x/throwaway.devnet.keypair",
+      writeFile: (path, contents) => written.set(path, contents),
+    });
+    const reused = loadThrowawayDevnetSigner({
+      keypairPath: "runs/x/throwaway.devnet.keypair",
+      readFile: (path) => written.get(path) as string,
+    });
+    expect(reused.boundary.network).toBe("devnet");
+    expect(reused.boundary.publicKeyBase58).toBe(generated.boundary.publicKeyBase58);
+    // The reused boundary never serializes the secret either.
+    expect(JSON.stringify(reused.boundary)).toBe('"[signer-boundary: redacted]"');
+  });
+
+  it('REFUSES a path without the ".keypair" suffix and malformed file contents', () => {
+    expect(() => loadThrowawayDevnetSigner({ keypairPath: "runs/x/key.json", readFile: () => "[]" })).toThrow(SignerBoundaryError);
+    expect(() => loadThrowawayDevnetSigner({ keypairPath: "runs/x/t.keypair", readFile: () => "not json" })).toThrow(/not valid JSON/);
+    expect(() => loadThrowawayDevnetSigner({ keypairPath: "runs/x/t.keypair", readFile: () => "[1,2,3]" })).toThrow(/64-byte/);
+    expect(() =>
+      loadThrowawayDevnetSigner({
+        keypairPath: "runs/x/t.keypair",
+        readFile: () => {
+          throw new Error("missing");
+        },
+      }),
+    ).toThrow(/could not be read/);
   });
 });
 

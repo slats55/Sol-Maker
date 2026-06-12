@@ -39,6 +39,7 @@ export type {
 export {
   loadLocalSignerBoundary,
   createThrowawayDevnetSigner,
+  loadThrowawayDevnetSigner,
   SignerBoundaryError,
   SIGNER_REDACTION_MARKER,
 } from "./signer.js";
@@ -46,6 +47,7 @@ export type {
   TransactionSigningBoundary,
   LoadLocalSignerInput,
   CreateThrowawayDevnetSignerInput,
+  LoadThrowawayDevnetSignerInput,
   ThrowawayDevnetSigner,
 } from "./signer.js";
 
@@ -69,11 +71,14 @@ export {
   DEVNET_REHEARSAL_DEFAULT_AIRDROP_LAMPORTS,
   DEVNET_REHEARSAL_MIN_BALANCE_LAMPORTS,
   DEVNET_REHEARSAL_OUTCOMES,
+  DEVNET_REHEARSAL_MAX_AIRDROP_ATTEMPTS,
+  DEVNET_REHEARSAL_DEFAULT_AIRDROP_ATTEMPTS,
   createRehearsalRpc,
   runDevnetRehearsal,
 } from "./rehearsal.js";
 export type {
   DevnetRehearsalOutcome,
+  RehearsalSignerSource,
   RehearsalStepId,
   RehearsalStepStatus,
   RehearsalStep,
