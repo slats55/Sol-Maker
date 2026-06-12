@@ -4,10 +4,12 @@ This runbook ties together the local, offline sniper path built in `@soulmaker/s
 practical "how do I run this" companion to [`SNIPER_MODEL.md`](SNIPER_MODEL.md) (the design/model doc).
 
 > **Everything here is PAPER-only and offline.** No command in this runbook holds a wallet, key, seed
-> phrase, signer, or keypair; none builds, signs, simulates, or sends a transaction; none places an
-> order or trades live. A `paper-enter` decision is a **simulated** decision only. Phase 6 (transaction
-> planning/simulation) and Phase 7 (burner/live trading) are **NOT started** — see the prerequisites at
-> the end of this doc.
+> phrase, signer, or keypair; none builds, signs, or sends a transaction; none places an order or
+> trades live. A `paper-enter` decision is a **simulated** decision only. The Phase 6 SIMULATION
+> foundation (intent plans, results, route provenance, audit/readiness/handoff/bundle) is shipped and
+> fail-closed, but the real route resolver and the real `simulateTransaction` dry-run do **NOT** exist
+> (their honest UNAVAILABLE states are the record), and Phase 7 (burner/live trading) is **NOT
+> started** — see the prerequisites at the end of this doc.
 
 ## Quick start — run the whole thing right now
 

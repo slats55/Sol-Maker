@@ -102,11 +102,12 @@ function readRoles(bundle: Record<string, unknown>, index: FolderIndex): {
   for (const row of fileRows) {
     const rec = asRecord(row);
     const role = rec === null ? null : readString(rec, "role");
-    if (rec !== null && role !== null) fileByRole.set(role, rec);
+    // First-wins: a hostile bundle repeating a role cannot silently replace an earlier entry.
+    if (rec !== null && role !== null && !fileByRole.has(role)) fileByRole.set(role, rec);
   }
   const anchorByName = new Map<string, string>();
   for (const entry of index.artifacts) {
-    if (entry.status === "valid") anchorByName.set(entry.name, entry.anchor);
+    if (entry.status === "valid" && !anchorByName.has(entry.name)) anchorByName.set(entry.name, entry.anchor);
   }
 
   const roles: DryRunRoleStatus[] = [];

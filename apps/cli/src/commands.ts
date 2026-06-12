@@ -7253,7 +7253,12 @@ export function paperSniperDryRunReport(
       writeFileSync(join(outDir, name), JSON.stringify(redactValue(value), null, 2) + "\n");
     }
   } catch {
-    return { text: redactString(`Refusing: cannot write dry-run artifacts under ${outDir}`), exitCode: 1 };
+    return {
+      text: redactString(
+        `Refusing: cannot write dry-run artifacts under ${outDir} (partially written files, if any, remain for inspection).`,
+      ),
+      exitCode: 1,
+    };
   }
 
   // 6) The Phase 6 simulation chain through the REAL command functions over the written files.

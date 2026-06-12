@@ -23,7 +23,6 @@ import { buildSniperTokenPreflightReport, type SniperPreflightCandidateData } fr
 import { buildPaperSniperDecisionReport } from "./paper-decision.js";
 
 const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-const WSOL = "So11111111111111111111111111111111111111112";
 
 const listOf = (...cands: SniperCandidateInput[]) =>
   normalizeSniperCandidateList({ sourceLabel: "test", candidates: cands });
