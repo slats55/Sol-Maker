@@ -47,6 +47,7 @@ import {
   paperSniperPreflightInputValidateReport,
   paperSniperPreflightInputPrepareReport,
   paperRouteQuotePrepareReport,
+  paperRouteQuoteFetchReport,
   paperSniperDecideReport,
   paperSniperWorkflowReport,
   paperSniperReportReport,
@@ -1319,6 +1320,60 @@ program
           force: Boolean(opts.force),
           failOnWarning: Boolean(opts.failOnWarning),
           failOnMissingQuote: Boolean(opts.failOnMissingQuote),
+          failOnNotObserved: Boolean(opts.failOnNotObserved),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:routequote:fetch")
+  .description(
+    "FETCH a REAL read-only quote per candidate from a public quote API (free Jupiter lite tier by default) and emit routequote.observation.input.v1 files + a freshness/provenance fetch report (routequote.fetch.report.v1). The outcome set is CLOSED (quote-observed | unavailable | blocked | error | unsupported — nothing here can mean executable); every observed quote carries the mandatory caveat set plus a REAL fetch timestamp, provider id, price impact, and truncated response digest. Network READ only: no wallet, no keys, no signing, no sending, no transaction construction — a quote is an observation, never an order, and can never unblock a blocked chain. PAPER mode requires --allow-paper-read",
+  )
+  .option("--candidates <path>", "candidate list JSON (required; each candidate mint is quoted as the swap OUTPUT)")
+  .option("--input-mint <mint>", "swap INPUT mint (default: wrapped SOL So11111111111111111111111111111111111111112)")
+  .option("--amount-raw <units>", "input amount in raw base units (integer; exactly one of --amount-raw/--amount-sol)")
+  .option("--amount-sol <sol>", "input amount in SOL (decimal, up to 9 dp; converted to lamports)")
+  .option("--slippage-bps <bps>", "slippage tolerance in basis points (default 50)")
+  .option("--endpoint <url>", "override the provider base URL (default: the free Jupiter lite endpoint)")
+  .option("--timeout-ms <ms>", "per-request timeout in milliseconds (default 10000)")
+  .option("--allow-paper-read", "explicitly allow this read-only network fetch while in PAPER mode")
+  .option("--out-dir <dir>", "write quote.<candidateId>.json per distinct mint + fetch-report.json into this EXISTING directory (existing files refused)")
+  .option("--force", "overwrite existing output files (refused by default)")
+  .option("--json", "emit the fetch report as stable JSON")
+  .option("--fail-on-not-observed", "exit non-zero when any candidate's quote was not observed")
+  .action(
+    async (opts: {
+      candidates?: string;
+      inputMint?: string;
+      amountRaw?: string;
+      amountSol?: string;
+      slippageBps?: string;
+      endpoint?: string;
+      timeoutMs?: string;
+      allowPaperRead?: boolean;
+      outDir?: string;
+      force?: boolean;
+      json?: boolean;
+      failOnNotObserved?: boolean;
+    }) => {
+      const { text, exitCode } = await paperRouteQuoteFetchReport(
+        {},
+        {
+          candidatesPath: opts.candidates,
+          inputMint: opts.inputMint,
+          amountRaw: opts.amountRaw,
+          amountSol: opts.amountSol,
+          slippageBps: opts.slippageBps,
+          endpoint: opts.endpoint,
+          timeoutMs: opts.timeoutMs,
+          allowPaperRead: Boolean(opts.allowPaperRead),
+          outDir: opts.outDir,
+          force: Boolean(opts.force),
+          json: Boolean(opts.json),
           failOnNotObserved: Boolean(opts.failOnNotObserved),
         },
       );

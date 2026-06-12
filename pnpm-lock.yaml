@@ -41,6 +41,9 @@ importers:
       '@soulmaker/paper':
         specifier: workspace:*
         version: link:../../packages/paper
+      '@soulmaker/quotefetch':
+        specifier: workspace:*
+        version: link:../../packages/quotefetch
       '@soulmaker/risk':
         specifier: workspace:*
         version: link:../../packages/risk
@@ -98,6 +101,18 @@ importers:
       '@soulmaker/security':
         specifier: workspace:*
         version: link:../security
+
+  packages/quotefetch:
+    dependencies:
+      '@soulmaker/routequote':
+        specifier: workspace:*
+        version: link:../routequote
+      '@soulmaker/security':
+        specifier: workspace:*
+        version: link:../security
+      '@soulmaker/sniper':
+        specifier: workspace:*
+        version: link:../sniper
 
   packages/risk:
     dependencies:

@@ -28,6 +28,7 @@ const EXPECTED_COMMANDS: readonly string[] = [
   "paper:sniper:preflight:input:validate",
   "paper:sniper:preflight:input:prepare",
   "paper:routequote:prepare",
+  "paper:routequote:fetch",
   "paper:sniper:decide",
   "paper:sniper:workflow",
   "paper:sniper:report",

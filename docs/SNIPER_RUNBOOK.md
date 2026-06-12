@@ -105,6 +105,7 @@ invariants.
 | `paper:sniper:preflight:input:validate` | `--input` | never | `sniper.preflight.input.v1` |
 | `paper:sniper:preflight:input:prepare` | `--candidates` + at least one `--inspect`/`--risk` | `--out` only | `sniper.preflight.input.v1` (the real-input bridge) |
 | `paper:routequote:prepare` | `--candidates` | `--out` only | `routequote.prepared.v1` (S91 read-only quote bridge: operator-supplied `routequote.observation.input.v1` files paired by mint; CLOSED outcome set — nothing can mean "executable") |
+| `paper:routequote:fetch` | `--candidates` + one of `--amount-raw`/`--amount-sol` | `--out-dir` only | `routequote.fetch.report.v1` + per-mint `routequote.observation.input.v1` files (S92 REAL read-only fetcher over the free Jupiter lite quote API; network READ only — no wallet/keys/signing/sending; PAPER mode requires `--allow-paper-read`; a fetched quote can never unblock a blocked chain) |
 | `paper:sniper:decide` | `--candidates` | `--out` only | `sniper.paper.decision.report.v1` (or `.v2` via `--schema-version v2`) |
 | `paper:sniper:policy:validate` | `--input` | never | `sniper.policy.config.v1` (or `.v2` via `--schema-version v2`) |
 | `paper:sniper:workflow` | (none) | never | `sniper.workflow.plan.v1` |
@@ -470,10 +471,37 @@ must carry NULL quote facts; a candidate without an observation stays honestly `
 unknown-mint, duplicate, cross-kind, and secret-shaped files are REFUSED; every observed quote
 carries the mandatory caveat set (read-only observation only; not executable; not a transaction;
 quote may expire; slippage not guaranteed; route not simulated; live state may change). This is
-**provenance, not live routing**: nothing fetches a quote, nothing refreshes one, and the
-artifact proves only what an operator observed. Statuses other than `quote-observed` describe WHY
+**provenance, not live routing**: the prepare step fetches nothing and refreshes nothing, and the
+artifact proves only what was observed. Statuses other than `quote-observed` describe WHY
 nothing was observed (`error` = a source failed; `blocked` = something refused; `unsupported` =
 the pair/venue is out of scope) — none of them is ever upgraded.
+
+#### Fetching REAL read-only quotes (Sprint 92 — quotefetch)
+
+`paper:routequote:fetch` is the real fetcher the S89/S91 stub reserved: it asks a public quote
+API (the free Jupiter lite tier by default) for one quote per candidate mint and writes the SAME
+`routequote.observation.input.v1` files an operator would author by hand — plus a
+`routequote.fetch.report.v1` with honest freshness metadata (real fetch timestamp, provider id,
+HTTP status, context slot, price impact, truncated response digest). It is a network **READ**:
+no wallet, no keys, no signing, no sending, no transaction construction, and a fetched quote can
+never unblock a blocked chain downstream.
+
+```bash
+# 1) Fetch one quote per candidate (0.01 SOL probe size, 50 bps slippage) into an existing dir:
+pnpm soulmaker paper:routequote:fetch --candidates candidates.json \
+  --amount-sol 0.01 --slippage-bps 50 --allow-paper-read --out-dir runs/quotes
+
+# 2) Pair the fetched observation files exactly like hand-authored ones:
+pnpm soulmaker paper:routequote:prepare --candidates candidates.json \
+  --quote runs/quotes/quote.c-a.json --quote runs/quotes/quote.c-b.json --out rq.json
+```
+
+Provider failures map onto the CLOSED status set, never upgraded: network failure/timeout →
+`unavailable`; HTTP 401/403/429 → `blocked`; other non-2xx → `error`; an unparseable or
+contradictory response → `unsupported`/`error`. The fetch report pins
+`phase7LiveTradingReady: false` and the never-executable literals; `--fail-on-not-observed`
+gates a scripted pass. A fetched quote expires within seconds — `fetchedAt` records when it was
+observed, never that it is still valid.
 
 ### 4. Decide (paper-only)
 

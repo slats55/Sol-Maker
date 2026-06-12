@@ -1,0 +1,15 @@
+{
+  "name": "@soulmaker/quotefetch",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "READ-ONLY route-quote FETCHER (Sprint 92): the separately-reviewed adapter layer the S89/S91 design stub reserved. Fetches real quotes from a provider's public HTTP quote API (Jupiter lite endpoint first) and normalizes every outcome into the EXISTING routequote.observation.input.v1 contract plus a provenance/freshness fetch report. No wallet, no keys, no signing, no sending, no transaction construction, no swap execution â€” a fetched quote is an observation, never an order.",
+  "exports": { ".": "./src/index.ts" },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@soulmaker/routequote": "workspace:*",
+    "@soulmaker/security": "workspace:*",
+    "@soulmaker/sniper": "workspace:*"
+  }
+}

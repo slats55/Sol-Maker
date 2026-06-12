@@ -741,6 +741,16 @@ pnpm soulmaker paper:sniper:preflight:input:prepare --candidates <candidates.jso
 # LOCAL-ONLY: an observation proves a quote was VISIBLE at some point, never that one is executable:
 pnpm soulmaker paper:routequote:prepare --candidates <candidates.json> --quote c1.quote.json --out rq.artifact.json
 
+# Sprint 92 — REAL READ-ONLY QUOTE FETCHER: fetch one live quote per candidate from a public quote
+# API (free Jupiter lite tier by default) and write the SAME routequote.observation.input.v1 files an
+# operator would author by hand, plus a routequote.fetch.report.v1 with honest freshness metadata
+# (real fetch timestamp, provider id, HTTP status, context slot, price impact, truncated digest).
+# Provider failures map onto the CLOSED status set (network down -> unavailable; 401/403/429 ->
+# blocked; other non-2xx -> error; unparseable -> unsupported) — never upgraded, never faked.
+# Network READ only: no wallet, no keys, no signing, no sending, no transaction construction; a
+# fetched quote can never unblock a blocked chain. PAPER mode requires --allow-paper-read:
+pnpm soulmaker paper:routequote:fetch --candidates <candidates.json> --amount-sol 0.01 --allow-paper-read --out-dir runs/quotes
+
 # Sprint 27 — PAPER SNIPER DECISIONS: fold the candidate list + preflight + optional operator rules
 # into a per-candidate SIMULATED decision — skip / watch / paper-enter / paper-reject / unknown — with
 # reasons. A paper-enter is a PAPER-ONLY decision, NOT a buy/sell order, NOT a transaction, NOT live

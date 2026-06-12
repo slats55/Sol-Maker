@@ -96,6 +96,14 @@ import {
   type RouteQuotePrepared,
 } from "@soulmaker/routequote";
 import {
+  createJupiterQuoteAdapter,
+  fetchQuotesForCandidates,
+  formatRouteQuoteFetchReport,
+  type QuoteProviderAdapter,
+  type JupiterQuoteAdapterOptions,
+  type RouteQuoteFetchReport,
+} from "@soulmaker/quotefetch";
+import {
   parseMintAddress,
   normalizeSniperCandidateList,
   formatSniperCandidateList,
@@ -320,6 +328,8 @@ export interface CommandContext {
   configPath?: string;
   /** Factory for the read-only Solana client; injected in tests to avoid network. */
   createClient?: (config: ReadOnlyClientConfig) => ReadOnlySolanaClient;
+  /** Factory for the read-only quote adapter; injected in tests to avoid network. */
+  createQuoteAdapter?: (options: JupiterQuoteAdapterOptions) => QuoteProviderAdapter;
   /** Injectable clock for deterministic report timestamps. */
   now?: () => string;
 }
@@ -4963,6 +4973,237 @@ export function paperRouteQuotePrepareReport(
   } else {
     lines.push(
       "- Nothing was written (no --out). Re-run with --out <path> to produce the file paper:sniper:dry-run consumes via --routequote.",
+    );
+  }
+  return { text: redactString(lines.join("\n")), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 92 — paper:routequote:fetch
+//   The REAL read-only quote fetcher the S89/S91 stub reserved: fetch one live
+//   quote per candidate from a public quote API (Jupiter lite tier), normalize
+//   EVERY outcome into routequote.observation.input.v1 files plus an honest
+//   freshness/provenance fetch report. Network READ only — no wallet, no keys,
+//   no signing, no sending, no transaction; a quote is never an order.
+// ---------------------------------------------------------------------------
+
+/** Wrapped-SOL mint — the conventional swap input for a quote probe. */
+const WSOL_MINT = "So11111111111111111111111111111111111111112";
+
+export interface PaperRouteQuoteFetchCommandOptions {
+  /** Candidate list JSON path. Required. */
+  candidatesPath?: string;
+  /** Swap INPUT mint (defaults to wrapped SOL). */
+  inputMint?: string;
+  /** Input amount in raw base units (integer string). Exactly one of amountRaw/amountSol. */
+  amountRaw?: string;
+  /** Input amount in SOL (decimal string, up to 9 dp) — converted to lamports. */
+  amountSol?: string;
+  /** Slippage tolerance in basis points (default 50). */
+  slippageBps?: string;
+  /** Override the provider base URL (defaults to the free Jupiter lite endpoint). */
+  endpoint?: string;
+  /** Per-request timeout in milliseconds (default 10000). */
+  timeoutMs?: string;
+  /** Explicit opt-in to a network read while in PAPER mode. */
+  allowPaperRead?: boolean;
+  /** Directory to write quote.<candidateId>.json files + fetch-report.json into. */
+  outDir?: string;
+  force?: boolean;
+  json?: boolean;
+  /** Exit non-zero when any candidate's quote was not observed. */
+  failOnNotObserved?: boolean;
+}
+
+/** Convert a decimal SOL string (≤9 dp) into a lamports integer string. Refuses anything else. */
+function solToLamportsRaw(amountSol: string): string {
+  const match = /^([0-9]+)(?:\.([0-9]{1,9}))?$/.exec(amountSol.trim());
+  if (!match) {
+    throw new Error("--amount-sol must be a plain decimal with at most 9 decimal places (e.g. 0.01)");
+  }
+  const whole = match[1] ?? "0";
+  const frac = (match[2] ?? "").padEnd(9, "0");
+  const raw = `${whole}${frac}`.replace(/^0+(?=[0-9])/, "");
+  if (/^0+$/.test(raw)) throw new Error("--amount-sol must be greater than zero");
+  return raw;
+}
+
+/** A filename-safe slug from a candidate id (bounded; never trusted raw). */
+function quoteFileSlug(candidateId: string): string {
+  const slug = candidateId.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+  return slug.length > 0 ? slug : "candidate";
+}
+
+/**
+ * `soulmaker paper:routequote:fetch` — fetch a REAL read-only quote per candidate over public
+ * HTTP and emit the observation files `paper:routequote:prepare` consumes, plus a fetch report
+ * with honest freshness metadata. This command READS the network; it cannot sign, send, build,
+ * or execute anything, and a fetched quote can never unblock a blocked chain downstream.
+ */
+export async function paperRouteQuoteFetchReport(
+  ctx: CommandContext = {},
+  opts: PaperRouteQuoteFetchCommandOptions = {},
+): Promise<CliReport> {
+  if (!opts.candidatesPath) return { text: "Refusing: --candidates <path> is required.", exitCode: 1 };
+
+  // Same honesty gate as the chain-read commands: network reads in PAPER mode are an explicit
+  // opt-in, and an invalid config refuses outright (no rpcUrl needed — this is HTTP, not RPC).
+  let config: Config;
+  try {
+    config = loadConfig(toLoadOptions(ctx));
+  } catch (err) {
+    const msg = err instanceof ConfigError ? err.message : String(err);
+    return { text: redactString(`Refusing: config is invalid.\n\n${msg}`), exitCode: 1 };
+  }
+  const caps = capabilitiesFor(config.mode);
+  if (!caps.canReadChain && !(config.mode === "PAPER" && opts.allowPaperRead === true)) {
+    return {
+      text:
+        `Refusing: mode ${config.mode} does not read the network. ` +
+        "Use WATCH_ONLY/SIMULATION, or pass --allow-paper-read to fetch read-only quotes in PAPER mode.",
+      exitCode: 1,
+    };
+  }
+
+  // Candidate list: same strict normalization as the sibling routequote command.
+  let raw: unknown;
+  try {
+    raw = readJsonValue(ctx, opts.candidatesPath, "sniper candidate list");
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  if (!isPlainObject(raw)) {
+    return { text: "Refusing: candidate list must be a JSON object with a candidates array.", exitCode: 1 };
+  }
+  if (raw.schemaVersion !== undefined && raw.schemaVersion !== SNIPER_CANDIDATE_LIST_SCHEMA_VERSION) {
+    return {
+      text: redactString(`Refusing: candidate list schemaVersion must be "${SNIPER_CANDIDATE_LIST_SCHEMA_VERSION}".`),
+      exitCode: 1,
+    };
+  }
+  let list: SniperCandidateList;
+  try {
+    list = normalizeSniperCandidateList({
+      sourceLabel: typeof raw.sourceLabel === "string" ? raw.sourceLabel : opts.candidatesPath,
+      candidates: (raw.candidates ?? []) as never,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // Amount: exactly one of --amount-raw / --amount-sol.
+  if ((opts.amountRaw === undefined) === (opts.amountSol === undefined)) {
+    return {
+      text: "Refusing: pass exactly one of --amount-raw <units> or --amount-sol <sol> (the quote probe size must be explicit).",
+      exitCode: 1,
+    };
+  }
+  let amountRaw: string;
+  try {
+    amountRaw = opts.amountRaw !== undefined ? opts.amountRaw.trim() : solToLamportsRaw(opts.amountSol as string);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const slippageBps = opts.slippageBps === undefined ? 50 : Number(opts.slippageBps);
+  if (!Number.isInteger(slippageBps) || slippageBps < 0 || slippageBps > 10000) {
+    return { text: "Refusing: --slippage-bps must be an integer between 0 and 10000.", exitCode: 1 };
+  }
+  const timeoutMs = opts.timeoutMs === undefined ? 10_000 : Number(opts.timeoutMs);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 120_000) {
+    return { text: "Refusing: --timeout-ms must be an integer between 100 and 120000.", exitCode: 1 };
+  }
+
+  // Refuse a doomed --out-dir before any network read happens. The directory must exist
+  // (this command never mkdirs), and no target file may exist without --force.
+  const plannedWrites: Array<{ path: string; kind: "observation" | "report"; mint?: string; candidateId?: string }> = [];
+  if (opts.outDir) {
+    const dir = resolvePath(ctx, opts.outDir);
+    if (!existsSync(dir)) {
+      return { text: redactString(`Refusing: --out-dir ${dir} does not exist (create it first; this command never mkdirs).`), exitCode: 1 };
+    }
+    const seenMints = new Set<string>();
+    for (const candidate of list.candidates) {
+      if (seenMints.has(candidate.mint)) continue; // prepare accepts ONE observation per mint
+      seenMints.add(candidate.mint);
+      plannedWrites.push({
+        path: join(dir, `quote.${quoteFileSlug(candidate.candidateId)}.json`),
+        kind: "observation",
+        mint: candidate.mint,
+        candidateId: candidate.candidateId,
+      });
+    }
+    plannedWrites.push({ path: join(dir, "fetch-report.json"), kind: "report" });
+    if (!opts.force) {
+      for (const planned of plannedWrites) {
+        if (existsSync(planned.path)) {
+          return { text: redactString(`Refusing: ${planned.path} already exists (pass --force to overwrite).`), exitCode: 1 };
+        }
+      }
+    }
+  }
+
+  // Fetch (sequential; one candidate's failure never aborts the batch — the adapter maps
+  // every provider problem onto the closed observation status set).
+  const makeAdapter = ctx.createQuoteAdapter ?? createJupiterQuoteAdapter;
+  let adapter: QuoteProviderAdapter;
+  try {
+    adapter = makeAdapter({ baseUrl: opts.endpoint, timeoutMs, clock: ctx.now });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  let report: RouteQuoteFetchReport;
+  try {
+    report = await fetchQuotesForCandidates(adapter, list, {
+      inputMint: opts.inputMint ?? WSOL_MINT,
+      amountRaw,
+      slippageBps,
+      candidateListRef: opts.candidatesPath,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // Writes: one observation file per distinct mint + the fetch report. Redaction backstop on all.
+  const wrotePaths: string[] = [];
+  const observationPaths: string[] = [];
+  if (opts.outDir) {
+    const byMint = new Map(report.entries.map((e) => [e.mint, e.observation]));
+    for (const planned of plannedWrites) {
+      const value =
+        planned.kind === "report" ? report : byMint.get(planned.mint as string);
+      if (value === undefined) continue;
+      try {
+        writeFileSync(planned.path, JSON.stringify(redactValue(value), null, 2) + "\n");
+      } catch {
+        return { text: redactString(`Refusing: cannot write ${planned.path}`), exitCode: 1 };
+      }
+      wrotePaths.push(planned.path);
+      if (planned.kind === "observation") observationPaths.push(planned.path);
+    }
+  }
+
+  const exitCode = opts.failOnNotObserved && report.observedCount < report.entryCount ? 1 : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(report), null, 2), exitCode };
+  }
+
+  const lines = [formatRouteQuoteFetchReport(report), ""];
+  if (wrotePaths.length > 0) {
+    lines.push(`wrote ${wrotePaths.length} file(s):`);
+    for (const p of wrotePaths) lines.push(`  - ${p}`);
+    lines.push("", "Next:");
+    const quoteFlags = observationPaths.map((p) => `--quote "${p}"`).join(" ");
+    lines.push(
+      `- Pair the fetched observations to the candidates: pnpm soulmaker paper:routequote:prepare --candidates "${opts.candidatesPath}" ${quoteFlags} --out <routequote-prepared.json>`,
+      "- Then run the PAPER dry-run with quote provenance: pnpm soulmaker paper:sniper:dry-run --candidates <candidates.json> --routequote <routequote-prepared.json> --out <output-dir>",
+      "- A fetched quote is an observation with a freshness timestamp — NOT execution, NOT route readiness, and it can never unblock a blocked chain.",
+    );
+  } else {
+    lines.push(
+      "Next:",
+      "- Nothing was written (no --out-dir). Re-run with --out-dir <dir> to emit the observation files paper:routequote:prepare consumes.",
     );
   }
   return { text: redactString(lines.join("\n")), exitCode };
