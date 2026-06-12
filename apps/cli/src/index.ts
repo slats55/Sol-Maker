@@ -2383,6 +2383,8 @@ program
   .option("--request <mode>", "what to evaluate: paper (default) | readonly | devnet | mainnet-dry-run | mainnet-live")
   .option("--acknowledge-devnet-execution", "the explicit devnet acknowledgment flag (with the env flag)")
   .option("--i-understand-this-can-lose-real-money", "the explicit mainnet-live CLI acknowledgment (one of FOURTEEN required conditions; never sufficient alone)")
+  .option("--quote-report <path>", "a LIVE routequote.fetch.report.v1 whose fetchedAt provenance feeds live-gate condition 9 (operator-supplied quote artifacts are refused — hand-typed quotes can never satisfy live freshness)")
+  .option("--max-quote-age-ms <ms>", "the EXPLICIT quote age cap for condition 9 (required with --quote-report; there is no default cap by design)")
   .option("--json", "emit the status report as stable JSON")
   .option("--out <path>", "write ONLY the status report JSON to this path (refused if it exists)")
   .option("--force", "overwrite an existing --out file (refused by default)")
@@ -2391,6 +2393,8 @@ program
       request?: string;
       acknowledgeDevnetExecution?: boolean;
       iUnderstandThisCanLoseRealMoney?: boolean;
+      quoteReport?: string;
+      maxQuoteAgeMs?: string;
       json?: boolean;
       out?: string;
       force?: boolean;
@@ -2401,6 +2405,8 @@ program
           request: opts.request,
           acknowledgeDevnetExecution: Boolean(opts.acknowledgeDevnetExecution),
           iUnderstandThisCanLoseRealMoney: Boolean(opts.iUnderstandThisCanLoseRealMoney),
+          quoteReportPath: opts.quoteReport,
+          maxQuoteAgeMs: opts.maxQuoteAgeMs,
           json: Boolean(opts.json),
           outPath: opts.out,
           force: Boolean(opts.force),
@@ -2429,6 +2435,7 @@ program
   .option("--max-spend-sol <sol>", "explicit per-trade spend cap in SOL (required; must not exceed config caps)")
   .option("--slippage-cap-bps <bps>", "explicit slippage cap in basis points (refused when missing)")
   .option("--risk-score-cap <n>", "explicit advisory risk score cap (refused when missing)")
+  .option("--max-quote-age-ms <ms>", "explicit quote-age cap: a build whose fresh quote aged past it (slow provider) is refused; the envelope always carries quotedAt for downstream gates")
   .option("--endpoint <url>", "override the provider base URL")
   .option("--allow-paper-read", "explicitly allow the network read while in PAPER mode")
   .option("--json", "emit the build result as stable JSON")
@@ -2449,6 +2456,7 @@ program
       maxSpendSol?: string;
       slippageCapBps?: string;
       riskScoreCap?: string;
+      maxQuoteAgeMs?: string;
       endpoint?: string;
       allowPaperRead?: boolean;
       json?: boolean;
@@ -2471,6 +2479,7 @@ program
           maxSpendSol: opts.maxSpendSol,
           slippageCapBps: opts.slippageCapBps,
           riskScoreCap: opts.riskScoreCap,
+          maxQuoteAgeMs: opts.maxQuoteAgeMs,
           endpoint: opts.endpoint,
           allowPaperRead: Boolean(opts.allowPaperRead),
           json: Boolean(opts.json),
@@ -2494,6 +2503,7 @@ program
   .option("--acknowledge-devnet-execution", "the explicit devnet acknowledgment flag (required with the env flag)")
   .option("--audit-log <path>", "append-only JSONL audit log (required; every attempt is journaled)")
   .option("--risk-score <n>", "explicit advisory risk score for the trade context (required; a self-transfer probe is 0)")
+  .option("--max-quote-age-ms <ms>", "tighten the quote-age cap below the 60s devnet-probe ceiling; the envelope's quotedAt provenance is checked against it (a stale/missing/future quote refuses)")
   .option("--json", "emit the attempt report as stable JSON")
   .action(
     async (opts: {
@@ -2503,6 +2513,7 @@ program
       acknowledgeDevnetExecution?: boolean;
       auditLog?: string;
       riskScore?: string;
+      maxQuoteAgeMs?: string;
       json?: boolean;
     }) => {
       const { text, exitCode } = await executionDevnetSendReport(
@@ -2514,6 +2525,7 @@ program
           acknowledgeDevnetExecution: Boolean(opts.acknowledgeDevnetExecution),
           auditLog: opts.auditLog,
           riskScore: opts.riskScore,
+          maxQuoteAgeMs: opts.maxQuoteAgeMs,
           json: Boolean(opts.json),
         },
       );

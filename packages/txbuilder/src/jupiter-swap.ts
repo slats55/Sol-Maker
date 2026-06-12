@@ -15,6 +15,7 @@
  * (`paper:simulation:tx`) and gated review.
  */
 
+import { evaluateQuoteFreshness } from "@soulmaker/core";
 import { redactString } from "@soulmaker/security";
 import { validateUnsignedTxEnvelope, TX_ENVELOPE_SCHEMA_VERSION } from "@soulmaker/txpreview";
 import type { UnsignedTxEnvelope } from "@soulmaker/txpreview";
@@ -186,6 +187,16 @@ export function createJupiterSwapBuilder(options: JupiterSwapBuilderOptions = {}
         : null;
     const contextSlot = typeof quote.contextSlot === "number" && Number.isFinite(quote.contextSlot) ? quote.contextSlot : null;
 
+    // Sprint 93: when the operator supplied an explicit quote-age cap, a slow provider
+    // round-trip that aged the fresh quote past it refuses the build — never silently shipped.
+    const maxQuoteAgeMs = request.controls?.maxQuoteAgeMs;
+    if (maxQuoteAgeMs !== undefined && maxQuoteAgeMs !== null) {
+      const freshness = evaluateQuoteFreshness({ fetchedAt: quotedAt, nowMs: Date.parse(clock()), maxAgeMs: maxQuoteAgeMs });
+      if (!freshness.fresh) {
+        return { built: false, refusals: [refusal("build-refused-quote-stale", `the fresh quote aged out before the build completed: ${freshness.detail}`)] };
+      }
+    }
+
     let envelope: UnsignedTxEnvelope;
     try {
       envelope = validateUnsignedTxEnvelope({
@@ -204,6 +215,7 @@ export function createJupiterSwapBuilder(options: JupiterSwapBuilderOptions = {}
           maxSpendLamports: maxSpend,
           slippageBps: request.slippageBps as number,
         },
+        quotedAt,
         unsigned: true,
         neverSigned: true,
         phase7LiveTradingReady: false,

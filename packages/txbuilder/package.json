@@ -9,6 +9,7 @@
   "types": "./src/index.ts",
   "dependencies": {
     "@solana/web3.js": "^1.95.0",
+    "@soulmaker/core": "workspace:*",
     "@soulmaker/security": "workspace:*",
     "@soulmaker/txpreview": "workspace:*"
   }

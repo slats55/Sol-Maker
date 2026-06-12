@@ -32,6 +32,7 @@ export const BUILD_REFUSAL_CODES = [
   "build-refused-quote-error",
   "build-refused-quote-unsupported",
   "build-refused-quote-mint-mismatch",
+  "build-refused-quote-stale",
   "build-refused-provider-response-unsupported",
 ] as const;
 
@@ -68,6 +69,14 @@ export interface BuildSwapRequest {
     maxSpendLamports?: string | null;
     slippageCapBps?: number | null;
     riskScoreCap?: number | null;
+    /**
+     * Sprint 93: explicit quote-age cap in ms. OPTIONAL at build time because the builder
+     * fetches its quote fresh in-process — when supplied, a slow provider round-trip that ages
+     * the quote past this cap refuses the build (`build-refused-quote-stale`). The envelope
+     * always carries `quotedAt` so every LATER consumer enforces freshness with its own
+     * explicit cap; absence here never loosens those gates.
+     */
+    maxQuoteAgeMs?: number | null;
   } | null;
 }
 

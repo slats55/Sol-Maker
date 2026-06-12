@@ -155,8 +155,32 @@ describe("createJupiterSwapBuilder — refusal-first, then the real two-leg flow
       expect(result.envelope.routeCaveats.join("\n")).toContain("never an order");
       expect(result.quoteFacts.inAmountRaw).toBe("10000000");
       expect(result.quoteFacts.quotedAt).toBe("2026-06-12T05:45:00.000Z");
+      // Sprint 93: the envelope itself carries the quote provenance for downstream freshness gates.
+      expect(result.envelope.quotedAt).toBe("2026-06-12T05:45:00.000Z");
     }
     expect(provider.callCount()).toBe(2);
+  });
+
+  it("S93: an explicit maxQuoteAgeMs refuses a build whose quote aged out mid-flight (build-refused-quote-stale)", async () => {
+    const provider = fakeProvider();
+    // The clock advances 5s between the quote stamp and the post-swap freshness check.
+    const ticks = ["2026-06-12T05:45:00.000Z", "2026-06-12T05:45:05.000Z"];
+    const slowClock = (): string => ticks.length > 1 ? (ticks.shift() as string) : (ticks[0] as string);
+    const builder = createJupiterSwapBuilder({ fetchLike: provider.fetchLike, clock: slowClock });
+    const result = await builder.build(cleanRequest({ controls: { maxSpendLamports: "100000000", slippageCapBps: 100, riskScoreCap: 50, maxQuoteAgeMs: 1000 } }));
+    expect(result.built).toBe(false);
+    if (!result.built) {
+      expect(result.refusals).toHaveLength(1);
+      expect(result.refusals[0]?.code).toBe("build-refused-quote-stale");
+      expect(result.refusals[0]?.detail).toContain("aged out");
+    }
+  });
+
+  it("S93: a build within the explicit maxQuoteAgeMs cap succeeds (the cap only refuses, never fakes)", async () => {
+    const provider = fakeProvider();
+    const builder = createJupiterSwapBuilder({ fetchLike: provider.fetchLike, clock: FIXED_CLOCK });
+    const result = await builder.build(cleanRequest({ controls: { maxSpendLamports: "100000000", slippageCapBps: 100, riskScoreCap: 50, maxQuoteAgeMs: 1000 } }));
+    expect(result.built, JSON.stringify(result)).toBe(true);
   });
 
   it("a SIGNED provider transaction is refused (the envelope validator is the wall)", async () => {

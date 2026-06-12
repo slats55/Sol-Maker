@@ -23,11 +23,13 @@ import { basename, isAbsolute, join, normalize } from "node:path";
 import {
   loadConfig,
   evaluateLiveGate,
+  evaluateQuoteFreshness,
   describeMode,
   capabilitiesFor,
   ConfigError,
   type Config,
   type LoadConfigOptions,
+  type QuoteFreshnessResult,
 } from "@soulmaker/core";
 import { redactValue, redactString, isSensitiveKey } from "@soulmaker/security";
 import {
@@ -5824,9 +5826,73 @@ export interface ExecutionStatusCommandOptions {
   request?: string;
   acknowledgeDevnetExecution?: boolean;
   iUnderstandThisCanLoseRealMoney?: boolean;
+  /**
+   * Sprint 93: a LIVE quote fetch report (routequote.fetch.report.v1) whose fetchedAt provenance
+   * feeds live-gate condition 9 — evaluated against --max-quote-age-ms. Operator-supplied
+   * artifacts (routequote.prepared.v1 / observation inputs) are REFUSED here: hand-typed quotes
+   * can never satisfy live freshness.
+   */
+  quoteReportPath?: string;
+  /** Sprint 93: the EXPLICIT quote age cap in ms (required with --quote-report; no default). */
+  maxQuoteAgeMs?: string;
   json?: boolean;
   outPath?: string;
   force?: boolean;
+}
+
+interface StatusQuoteFreshness {
+  sourceSchema: string;
+  fetchedAt: string | null;
+  capMs: number | null;
+  verdict: string;
+  ageMs: number | null;
+  detail: string;
+}
+
+/**
+ * Resolve live-gate condition 9 inputs from an operator-named quote fetch report (S93). Returns
+ * an error string on refusal; a parsed freshness block otherwise. ONLY a live
+ * `routequote.fetch.report.v1` qualifies — operator-supplied quote artifacts are refused by
+ * schema, and a missing/invalid cap fails closed inside the evaluator.
+ */
+function resolveStatusQuoteFreshness(
+  ctx: CommandContext,
+  quoteReportPath: string,
+  maxQuoteAgeMsFlag: string | undefined,
+): { ok: true; freshness: StatusQuoteFreshness; quoteFresh: boolean } | { ok: false; message: string } {
+  let value: unknown;
+  try {
+    value = readJsonValue(ctx, quoteReportPath, "quote fetch report");
+  } catch (err) {
+    return { ok: false, message: (err as Error).message };
+  }
+  if (!isPlainObject(value) || typeof value.schemaVersion !== "string") {
+    return { ok: false, message: "--quote-report is not a schema-versioned artifact" };
+  }
+  if (value.schemaVersion !== "routequote.fetch.report.v1") {
+    return {
+      ok: false,
+      message:
+        `--quote-report has schemaVersion "${value.schemaVersion}" — only a LIVE routequote.fetch.report.v1 can feed live-gate condition 9. ` +
+        "Operator-supplied quote artifacts (routequote.prepared.v1 / observation inputs) are deliberately refused here: hand-typed quotes can never satisfy live freshness.",
+    };
+  }
+  const fetchedAt = typeof value.fetchedAt === "string" ? value.fetchedAt : null;
+  const capMs = maxQuoteAgeMsFlag === undefined ? null : Number(maxQuoteAgeMsFlag);
+  const nowMs = ctx.now ? Date.parse(ctx.now()) : Date.now();
+  const freshness: QuoteFreshnessResult = evaluateQuoteFreshness({ fetchedAt, nowMs, maxAgeMs: capMs });
+  return {
+    ok: true,
+    quoteFresh: freshness.fresh,
+    freshness: {
+      sourceSchema: "routequote.fetch.report.v1",
+      fetchedAt,
+      capMs: Number.isInteger(capMs) && (capMs as number) > 0 ? capMs : null,
+      verdict: freshness.verdict,
+      ageMs: freshness.ageMs,
+      detail: freshness.detail,
+    },
+  };
 }
 
 /**
@@ -5849,6 +5915,20 @@ export function executionStatusReport(
   const env = (ctx.env ?? process.env) as Record<string, string | undefined>;
   const stop = emergencyStopPresent(ctx);
 
+  // S93: an operator-named LIVE quote fetch report (+ explicit cap) feeds condition 9 honestly.
+  let quoteFreshness: StatusQuoteFreshness | null = null;
+  let quoteFresh: boolean | null = null; // no report named -> honestly unsatisfied
+  if (opts.quoteReportPath) {
+    const resolvedQuote = resolveStatusQuoteFreshness(ctx, opts.quoteReportPath, opts.maxQuoteAgeMs);
+    if (!resolvedQuote.ok) {
+      return { text: redactString(`Refusing: ${resolvedQuote.message}`), exitCode: 1 };
+    }
+    quoteFreshness = resolvedQuote.freshness;
+    quoteFresh = resolvedQuote.quoteFresh;
+  } else if (opts.maxQuoteAgeMs !== undefined) {
+    return { text: "Refusing: --max-quote-age-ms requires --quote-report (a cap without a quote evaluates nothing).", exitCode: 1 };
+  }
+
   const resolved: ResolvedExecutionMode = resolveExecutionMode({
     requested: opts.request ?? "paper",
     env,
@@ -5862,8 +5942,8 @@ export function executionStatusReport(
       sessionLossCapSol: config.caps.maxDailyLossSol,
       slippageCapBps: null, // no slippage cap exists in config yet — honestly unsatisfied
       killSwitchActive: config.killSwitch || stop ? true : false,
-      quoteFresh: null, // a status check carries no live quote — honestly unsatisfied
-      simulationOutcome: null, // and no simulation — honestly unsatisfied
+      quoteFresh, // S93: real verdict when a live fetch report was named; otherwise unsatisfied
+      simulationOutcome: null, // no simulation — honestly unsatisfied
       riskScore: null,
       riskScoreCap: null,
       walletPublicKeyValid: false,
@@ -5890,6 +5970,7 @@ export function executionStatusReport(
       checks: liveGate.checks,
     },
     coreLiveGate: { open: coreGate.allowed, reasons: coreGate.reasons },
+    quoteFreshness, // S93: null when no live fetch report was named
     liveTradingEnvFlag: LIVE_TRADING_ENV_FLAG,
     devnetExecutionEnvFlag: DEVNET_EXECUTION_ENV_FLAG,
     phase7LiveTradingReady: config.phase7LiveTradingReady,
@@ -5931,6 +6012,11 @@ export function executionStatusReport(
   lines.push("");
   lines.push(`core live gate:   ${coreGate.allowed ? "OPEN (!!)" : "CLOSED (safe)"}`);
   if (!coreGate.allowed) for (const reason of coreGate.reasons) lines.push(`  - ${reason}`);
+  if (quoteFreshness !== null) {
+    lines.push("");
+    lines.push(`quote freshness:  ${quoteFreshness.verdict.toUpperCase()} — ${quoteFreshness.detail}`);
+    lines.push(`  fetchedAt: ${quoteFreshness.fetchedAt ?? "missing"} | age: ${quoteFreshness.ageMs ?? "n/a"}ms | cap: ${quoteFreshness.capMs ?? "MISSING"}ms`);
+  }
   lines.push("");
   lines.push(status.note);
   return { text: redactString(lines.join("\n")) + wroteLine, exitCode: 0 };
@@ -5953,6 +6039,8 @@ export interface ExecutionBuildCommandOptions {
   maxSpendSol?: string;
   slippageCapBps?: string;
   riskScoreCap?: string;
+  /** Sprint 93: explicit quote-age cap in ms — a build whose fresh quote aged past it refuses. */
+  maxQuoteAgeMs?: string;
   endpoint?: string;
   allowPaperRead?: boolean;
   json?: boolean;
@@ -6024,6 +6112,14 @@ export async function executionBuildReport(
   const slippageBps = opts.slippageBps === undefined ? null : Number(opts.slippageBps);
   const slippageCapBps = opts.slippageCapBps === undefined ? null : Number(opts.slippageCapBps);
   const riskScoreCap = opts.riskScoreCap === undefined ? null : Number(opts.riskScoreCap);
+  let maxQuoteAgeMs: number | null = null;
+  if (opts.maxQuoteAgeMs !== undefined) {
+    const cap = Number(opts.maxQuoteAgeMs);
+    if (!Number.isInteger(cap) || cap <= 0) {
+      return { text: "Refusing: --max-quote-age-ms must be a positive integer of milliseconds.", exitCode: 1 };
+    }
+    maxQuoteAgeMs = cap;
+  }
 
   // Risk file: the candidate's token:risk --json output, mint cross-checked.
   let riskValue: unknown;
@@ -6058,7 +6154,7 @@ export async function executionBuildReport(
     executionMode: resolved.mode,
     killSwitchActive: config.killSwitch || stop,
     risk: { score: riskValue.score, decision: riskValue.decision },
-    controls: { maxSpendLamports, slippageCapBps, riskScoreCap },
+    controls: { maxSpendLamports, slippageCapBps, riskScoreCap, maxQuoteAgeMs },
   });
 
   if (!result.built) {
@@ -6074,11 +6170,18 @@ export async function executionBuildReport(
     return { text: redactString(lines.join("\n")), exitCode: 1 };
   }
 
+  // S93 fix: txBase64 is strictly-validated PUBLIC transaction bytes whose 64 zero-byte
+  // signature slot encodes to a long base64 'A' run — the base58-blob redaction backstop can
+  // false-positive on it and corrupt the envelope. Everything else stays behind the backstop;
+  // the envelope validator (closed schema, bounded redaction-stable fields) is the wall for
+  // txBase64 itself.
+  const envelopeOut = { ...(redactValue(result.envelope) as Record<string, unknown>), txBase64: result.envelope.txBase64 };
+
   let wroteLine = "";
   if (opts.outPath) {
     const resolvedPath = resolvePath(ctx, opts.outPath);
     try {
-      writeFileSync(resolvedPath, JSON.stringify(redactValue(result.envelope), null, 2) + "\n");
+      writeFileSync(resolvedPath, JSON.stringify(envelopeOut, null, 2) + "\n");
     } catch {
       return { text: redactString(`Refusing: cannot write envelope at ${resolvedPath}`), exitCode: 1 };
     }
@@ -6086,7 +6189,10 @@ export async function executionBuildReport(
   }
 
   if (opts.json) {
-    return { text: JSON.stringify(redactValue({ built: true, mode: resolved.mode, envelope: result.envelope, quoteFacts: result.quoteFacts }), null, 2), exitCode: 0 };
+    return {
+      text: JSON.stringify({ ...(redactValue({ built: true, mode: resolved.mode, quoteFacts: result.quoteFacts }) as Record<string, unknown>), envelope: envelopeOut }, null, 2),
+      exitCode: 0,
+    };
   }
   const lines = [
     "UNSIGNED SWAP ENVELOPE BUILT (nothing signed, nothing sent)",
@@ -6115,8 +6221,13 @@ export interface ExecutionDevnetSendCommandOptions {
   auditLog?: string;
   /** Explicit advisory risk score for the trade context (required; probes use 0). */
   riskScore?: string;
+  /** Sprint 93: tighten the quote-age cap (ms) below the 60s devnet-probe ceiling. */
+  maxQuoteAgeMs?: string;
   json?: boolean;
 }
+
+/** The devnet-probe quote-age ceiling (S92); --max-quote-age-ms may only TIGHTEN below it. */
+const DEVNET_SEND_QUOTE_AGE_CAP_MS = 60_000;
 
 /**
  * `soulmaker execution:devnet:send` — the ONLY send surface in Sprint 92, and it is DEVNET-ONLY
@@ -6202,6 +6313,30 @@ export async function executionDevnetSendReport(
     return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
   }
 
+  // Quote-age cap (S93): the 60s devnet-probe ceiling stands; --max-quote-age-ms only tightens.
+  let quoteAgeCapMs = DEVNET_SEND_QUOTE_AGE_CAP_MS;
+  if (opts.maxQuoteAgeMs !== undefined) {
+    const cap = Number(opts.maxQuoteAgeMs);
+    if (!Number.isInteger(cap) || cap <= 0 || cap > DEVNET_SEND_QUOTE_AGE_CAP_MS) {
+      return {
+        text: `Refusing: --max-quote-age-ms must be a positive integer of at most ${DEVNET_SEND_QUOTE_AGE_CAP_MS} (caps only tighten).`,
+        exitCode: 1,
+      };
+    }
+    quoteAgeCapMs = cap;
+  }
+
+  // Quote age (S93): a swap envelope carries its quote's fetchedAt as `quotedAt` — the REAL age
+  // is computed here and a stale/missing/future timestamp refuses at the safety wall. The ONLY
+  // quoteless exception is the self-transfer probe (sender == recipient, moves nothing).
+  const nowMs = ctx.now ? Date.parse(ctx.now()) : Date.now();
+  let quoteAgeMs: number | null;
+  if (envelope.builderId === "self-transfer-probe" && envelope.quotedAt === null) {
+    quoteAgeMs = 0;
+  } else {
+    quoteAgeMs = evaluateQuoteFreshness({ fetchedAt: envelope.quotedAt, nowMs, maxAgeMs: quoteAgeCapMs }).ageMs;
+  }
+
   // Devnet probe safety controls — explicit, tight, and honest (devnet SOL is valueless, the
   // discipline is not): one trade, tiny loss cap, cooldown 0, duplicate protection on.
   const controls: OperatorSafetyControls = {
@@ -6212,7 +6347,7 @@ export async function executionDevnetSendReport(
     sessionLossCapSol: 0.01,
     slippageCapBps: envelope.constraints.slippageBps ?? 0,
     riskScoreCap: 100,
-    quoteAgeCapMs: 60_000,
+    quoteAgeCapMs,
     allowedMints: null,
     blockedMints: [],
     allowedProviders: null,
@@ -6235,11 +6370,11 @@ export async function executionDevnetSendReport(
       spendLamports: envelope.constraints.maxSpendLamports ?? "1",
       slippageBps: envelope.constraints.slippageBps ?? 0,
       riskScore: Number(opts.riskScore),
-      quoteAgeMs: 0,
+      quoteAgeMs,
       auditLogPathProvided: true,
     },
     session: { tradesCount: 0, sessionLossSol: 0, lastTradeAtMs: null, mintsTraded: [] },
-    nowMs: Date.now(),
+    nowMs,
     clock: ctx.now,
   });
 

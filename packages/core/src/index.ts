@@ -29,3 +29,10 @@ export {
   BURNER_RISK_ENV_FLAG,
 } from "./live-gate.js";
 export type { LiveGateResult } from "./live-gate.js";
+
+export { evaluateQuoteFreshness, QUOTE_FRESHNESS_VERDICTS } from "./quote-freshness.js";
+export type {
+  QuoteFreshnessVerdict,
+  QuoteFreshnessInput,
+  QuoteFreshnessResult,
+} from "./quote-freshness.js";

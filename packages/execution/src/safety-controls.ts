@@ -161,7 +161,7 @@ export function evaluateSafetyControls(
   if (controls.quoteAgeCapMs === null || !Number.isInteger(controls.quoteAgeCapMs) || controls.quoteAgeCapMs <= 0) {
     add("safety-quote-age-cap-missing", "quoteAgeCapMs is required");
   } else if (trade.quoteAgeMs === null || !Number.isFinite(trade.quoteAgeMs) || trade.quoteAgeMs < 0) {
-    add("safety-quote-age-missing", "the quote's age is missing");
+    add("safety-quote-age-missing", "the quote's age is missing, unparsable, or negative (a future timestamp blocks)");
   } else if (trade.quoteAgeMs > controls.quoteAgeCapMs) {
     add("safety-quote-stale", `quote is ${trade.quoteAgeMs}ms old — over the ${controls.quoteAgeCapMs}ms cap`);
   }

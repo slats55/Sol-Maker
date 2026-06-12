@@ -91,6 +91,18 @@ describe("txpreview.envelope.v1 — validation (fail-closed)", () => {
       expect((err as Error).message).not.toContain(blob);
     }
   });
+
+  it("S93 quotedAt: optional on input (pre-S93 envelopes stay valid -> null), carried verbatim when present, bounded when junk", () => {
+    // Pre-S93 envelope (no quotedAt key at all) validates and normalizes to null.
+    expect(validateUnsignedTxEnvelope(envelopeValue()).quotedAt).toBeNull();
+    expect(validateUnsignedTxEnvelope(envelopeValue({ quotedAt: null })).quotedAt).toBeNull();
+    // A bounded ISO string is carried verbatim (the validator records provenance, it does not enforce freshness).
+    expect(validateUnsignedTxEnvelope(envelopeValue({ quotedAt: "2026-06-12T05:45:00.000Z" })).quotedAt).toBe("2026-06-12T05:45:00.000Z");
+    // Junk forms refuse: wrong type, empty, oversized, secret-shaped.
+    expect(() => validateUnsignedTxEnvelope(envelopeValue({ quotedAt: 12345 }))).toThrowError(/quotedAt/);
+    expect(() => validateUnsignedTxEnvelope(envelopeValue({ quotedAt: "" }))).toThrowError(/quotedAt/);
+    expect(() => validateUnsignedTxEnvelope(envelopeValue({ quotedAt: "x".repeat(41) }))).toThrowError(/quotedAt/);
+  });
 });
 
 function fakePreview(

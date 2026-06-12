@@ -49,6 +49,12 @@ export interface UnsignedTxEnvelope {
     maxSpendLamports: string | null;
     slippageBps: number | null;
   };
+  /**
+   * ISO timestamp of the quote backing this envelope (Sprint 93 freshness provenance). null for
+   * quoteless envelopes (e.g. the self-transfer probe) and for pre-S93 envelopes — downstream
+   * freshness checks treat null as "no quote", which can never satisfy a freshness gate.
+   */
+  quotedAt: string | null;
   /** Pinned honesty literals. */
   unsigned: true;
   neverSigned: true;
@@ -64,6 +70,7 @@ const ENVELOPE_KEYS: ReadonlySet<string> = new Set([
   "candidateMint",
   "routeCaveats",
   "constraints",
+  "quotedAt",
   "unsigned",
   "neverSigned",
   "phase7LiveTradingReady",
@@ -180,6 +187,21 @@ export function validateUnsignedTxEnvelope(value: unknown): UnsignedTxEnvelope {
     }
     slippageBps = value.constraints.slippageBps as number;
   }
+  // Sprint 93 freshness provenance: optional on input (pre-S93 envelopes stay valid), always
+  // present on output. A bounded, redaction-stable ISO-shaped string or null — never enforced
+  // here (freshness gates live with the consumers that hold explicit operator caps).
+  let quotedAt: string | null = null;
+  if (value.quotedAt !== undefined && value.quotedAt !== null) {
+    if (
+      typeof value.quotedAt !== "string" ||
+      value.quotedAt.length === 0 ||
+      value.quotedAt.length > 40 ||
+      redactString(value.quotedAt) !== value.quotedAt
+    ) {
+      throw new TxPreviewError("envelope.quotedAt must be a bounded ISO timestamp string or null when present");
+    }
+    quotedAt = value.quotedAt;
+  }
   for (const [literal, expected] of [
     ["unsigned", true],
     ["neverSigned", true],
@@ -199,6 +221,7 @@ export function validateUnsignedTxEnvelope(value: unknown): UnsignedTxEnvelope {
     candidateMint,
     routeCaveats,
     constraints: { maxSpendLamports, slippageBps },
+    quotedAt,
     unsigned: true,
     neverSigned: true,
     phase7LiveTradingReady: false,

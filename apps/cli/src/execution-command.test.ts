@@ -150,6 +150,16 @@ function writeRisk(tmp: string, mint: string, score: number, decision: string): 
   return "risk.json";
 }
 
+/** Mirrors fakeBuilder's transaction construction so a test can pre-check its base64 shape. */
+function unsignedSwapTxBase64ForPayer(payer: PublicKey): string {
+  const message = new TransactionMessage({
+    payerKey: payer,
+    recentBlockhash: BLOCKHASH,
+    instructions: [SystemProgram.transfer({ fromPubkey: payer, toPubkey: payer, lamports: 1 })],
+  }).compileToV0Message();
+  return Buffer.from(new VersionedTransaction(message).serialize()).toString("base64");
+}
+
 describe("execution:build — refusal-first at the CLI layer", () => {
   it("a paper request lists EVERY refusal and exits 1 without an envelope", async () => {
     await withTmpAsync(async (tmp) => {
@@ -225,6 +235,42 @@ describe("execution:build — refusal-first at the CLI layer", () => {
       expect(r.text).toContain("paper:simulation:tx");
       const envelope = validateUnsignedTxEnvelope(JSON.parse(readFileSync(join(tmp, "envelope.json"), "utf8")));
       expect(envelope.phase7LiveTradingReady).toBe(false);
+    });
+  });
+
+  it("S93 regression: a txBase64 whose zero-signature 'A' run looks base58-secret-shaped survives the write INTACT", async () => {
+    // Keypair.fromSeed(zeros) deterministically produces a transaction whose base64 contains an
+    // 80+ char base58-safe run (the unsigned 64-zero-byte signature slot encodes to ~86 'A's).
+    // Before the S93 fix, the redaction backstop corrupted that run in the written envelope.
+    const collisionWallet = Keypair.fromSeed(Buffer.alloc(32, 0) as unknown as Uint8Array);
+    const txBase64 = unsignedSwapTxBase64ForPayer(collisionWallet.publicKey);
+    expect(txBase64).toMatch(/[1-9A-HJ-NP-Za-km-z]{80,}/); // the test is vacuous unless the run exists
+    await withTmpAsync(async (tmp) => {
+      writeConfig(tmp);
+      const risk = writeRisk(tmp, USDC, 10, "PASS_FOR_PAPER_EVALUATION");
+      const r = await executionBuildReport(
+        { cwd: tmp, env: {}, createSwapBuilder: () => fakeBuilder() },
+        {
+          candidateMint: USDC,
+          amountSol: "0.01",
+          slippageBps: "50",
+          wallet: collisionWallet.publicKey.toBase58(),
+          riskPath: risk,
+          maxSpendSol: "0.02",
+          slippageCapBps: "100",
+          riskScoreCap: "30",
+          request: "mainnet-dry-run",
+          outPath: "envelope.json",
+          json: true,
+        },
+      );
+      expect(r.exitCode, r.text.slice(0, 500)).toBe(0);
+      // The written file AND the --json embed both round-trip through the strict validator.
+      const written = validateUnsignedTxEnvelope(JSON.parse(readFileSync(join(tmp, "envelope.json"), "utf8")));
+      expect(written.feePayerPublicKey).toBe(collisionWallet.publicKey.toBase58());
+      const jsonEnvelope = (JSON.parse(r.text) as { envelope: unknown }).envelope;
+      expect(() => validateUnsignedTxEnvelope(jsonEnvelope)).not.toThrow();
+      expect(r.text).not.toContain("[REDACTED]");
     });
   });
 });
