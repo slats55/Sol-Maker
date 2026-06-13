@@ -8,7 +8,14 @@
 pub const SAFETY_MODE: &str = "sidecar-read-only";
 
 /// Everything the engine CAN do today. Alphabetical for determinism.
-pub const SUPPORTED_CAPABILITIES: [&str; 3] = ["json-ipc", "schema-parity", "status"];
+/// `realtime-replay-normalize` (Sprint 98) is replay-FILE normalization over
+/// bounded stdin — it adds no network, filesystem, clock, or env capability.
+pub const SUPPORTED_CAPABILITIES: [&str; 4] = [
+    "json-ipc",
+    "realtime-replay-normalize",
+    "schema-parity",
+    "status",
+];
 
 /// Everything the engine explicitly CANNOT do. Alphabetical for determinism.
 pub const DISABLED_CAPABILITIES: [&str; 5] = [

@@ -17,7 +17,7 @@ use crate::schema::ENGINE_STATUS_SCHEMA_VERSION;
 const BANNER: &str = "RUST ENGINE STATUS — sidecar foundation report. This engine has no signing, sending, wallet, key, or network capability by construction; TypeScript validates every byte it emits before anything reads it.";
 
 const CAVEATS: [&str; 3] = [
-    "Foundation sidecar only: status, JSON IPC, and schema parity. No realtime ingestion, quoting, simulation, or execution capability exists in this engine yet.",
+    "Read-only sidecar: status, JSON IPC, schema parity, and realtime REPLAY normalization over bounded stdin. No live ingestion, quoting, simulation, or execution capability exists in this engine.",
     "The engine cannot sign, send, or load wallet/key material — those capabilities have no code path here, and capability scans on both sides enforce that.",
     "createdAt is supplied by the orchestrator (--created-at) so identical invocations stay byte-identical; the engine reads no clock.",
 ];
@@ -74,8 +74,9 @@ impl std::fmt::Display for CreatedAtError {
 
 /// Accept only an ISO-8601-shaped UTC timestamp. This is a SHAPE check, not a
 /// calendar check: its job is to keep arbitrary strings (paths, key material,
-/// shell metacharacters) out of the artifact, not to validate dates.
-fn check_created_at(value: &str) -> Result<(), CreatedAtError> {
+/// shell metacharacters) out of the artifact, not to validate dates. Shared
+/// with every other subcommand that takes `--created-at`.
+pub fn check_created_at(value: &str) -> Result<(), CreatedAtError> {
     if value.len() > 40 {
         return Err(CreatedAtError::TooLong);
     }
