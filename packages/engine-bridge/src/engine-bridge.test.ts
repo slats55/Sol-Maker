@@ -28,7 +28,7 @@ const REAL_ENGINE_OUTPUT = {
   signerSupport: "disabled",
   sendSupport: "disabled",
   mainnetSendSupport: "disabled",
-  supportedCapabilities: ["json-ipc", "realtime-replay-normalize", "routequote-score", "schema-parity", "status"],
+  supportedCapabilities: ["json-ipc", "realtime-replay-normalize", "routequote-score", "schema-parity", "sim-classification", "status", "tx-inspection"],
   disabledCapabilities: [
     "mainnet-live",
     "seed-phrase-handling",
@@ -38,7 +38,7 @@ const REAL_ENGINE_OUTPUT = {
   ],
   createdAt: "2026-06-12T00:00:00.000Z",
   caveats: [
-    "Read-only sidecar: status, JSON IPC, schema parity, realtime REPLAY normalization, and route-quote SCORING over bounded stdin. No live ingestion, live quoting, simulation, or execution capability exists in this engine.",
+    "Read-only sidecar: status, JSON IPC, schema parity, realtime REPLAY normalization, route-quote SCORING, simulation CLASSIFICATION, and unsigned-transaction SHAPE inspection over bounded stdin. No live ingestion, live quoting, signing, sending, or execution capability exists in this engine.",
     "The engine cannot sign, send, or load wallet/key material — those capabilities have no code path here, and capability scans on both sides enforce that.",
     "createdAt is supplied by the orchestrator (--created-at) so identical invocations stay byte-identical; the engine reads no clock.",
   ],

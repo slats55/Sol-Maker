@@ -11,15 +11,18 @@ export const ENGINE_STATUS_SCHEMA_VERSION = "engine.status.report.v1";
 export const ENGINE_IPC_VERSION = "engine.ipc.v1";
 
 /** The engine capabilities this bridge recognizes. CLOSED set — a capability
- * lands here only after a reviewed safety decision (S98 added replay-FILE
- * normalization, S99 added route-quote scoring — both over bounded stdin;
- * still no network/sign/send capability). */
+ * lands here only after a reviewed safety decision (S98 replay normalization,
+ * S99 route-quote scoring, S100 simulation classification + unsigned-tx shape
+ * inspection — all over bounded stdin, all READ-only; still no
+ * network/sign/send capability). */
 export const ENGINE_SUPPORTED_CAPABILITY_ALLOWLIST = [
   "json-ipc",
   "realtime-replay-normalize",
   "routequote-score",
   "schema-parity",
+  "sim-classification",
   "status",
+  "tx-inspection",
 ] as const;
 
 /** Capabilities the engine must explicitly declare disabled. */

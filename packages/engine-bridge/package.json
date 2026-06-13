@@ -11,6 +11,11 @@
     "@soulmaker/core": "workspace:*",
     "@soulmaker/realtime": "workspace:*",
     "@soulmaker/security": "workspace:*",
-    "@soulmaker/sniper": "workspace:*"
+    "@soulmaker/sniper": "workspace:*",
+    "@soulmaker/txbuilder": "workspace:*",
+    "@soulmaker/txpreview": "workspace:*"
+  },
+  "devDependencies": {
+    "@solana/web3.js": "^1.95.0"
   }
 }

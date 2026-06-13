@@ -13,6 +13,8 @@ const ALLOWED_LITERAL_ARGS = new Set([
   "status",
   "realtime-normalize",
   "quote-score",
+  "tx-inspect",
+  "sim-classify",
   "--json",
   "--created-at",
   "--scored-at",

@@ -58,3 +58,27 @@ export {
   type ScoreQuotesThroughEngineOptions,
   type EngineQuoteScoreBridgeResult,
 } from "./quote-score.js";
+export {
+  ENGINE_TX_INSPECT_SCHEMA_VERSION,
+  validateEngineTxInspectReportV1,
+  type EngineTxInspectReportV1,
+  type EngineTxInspectShape,
+  type EngineTxInspectValidation,
+} from "./validate-tx-inspect.js";
+export {
+  inspectTxThroughEngine,
+  type InspectTxThroughEngineOptions,
+  type EngineTxInspectBridgeResult,
+} from "./tx-inspect.js";
+export {
+  ENGINE_SIM_CLASSIFICATION_SCHEMA_VERSION,
+  validateEngineSimClassificationReportV1,
+  type EngineSimClassificationReportV1,
+  type EngineSimResultInput,
+  type EngineSimClassificationValidation,
+} from "./validate-sim-classify.js";
+export {
+  classifySimThroughEngine,
+  type ClassifySimThroughEngineOptions,
+  type EngineSimClassifyBridgeResult,
+} from "./sim-classify.js";
