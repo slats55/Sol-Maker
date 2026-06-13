@@ -43,6 +43,7 @@ describe("safety:scan — catches the real leak shapes", () => {
   });
 
   it("flags an explicit secret assignment to a varied value", () => {
+    // safety-scan-ignore: the next line is an intentional scanner fixture, not a real secret.
     const findings = scanContentForSecrets(`PRIVATE_KEY=ab12Cd34Ef56Gh78Ij90Kl12Mn34`, ".env.local");
     expect(findings.map((f) => f.rule)).toContain("secret-assignment");
   });
