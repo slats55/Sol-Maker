@@ -8,11 +8,13 @@
 pub const SAFETY_MODE: &str = "sidecar-read-only";
 
 /// Everything the engine CAN do today. Alphabetical for determinism.
-/// `realtime-replay-normalize` (Sprint 98) is replay-FILE normalization over
-/// bounded stdin — it adds no network, filesystem, clock, or env capability.
-pub const SUPPORTED_CAPABILITIES: [&str; 4] = [
+/// `realtime-replay-normalize` (Sprint 98) and `routequote-score` (Sprint 99)
+/// both consume operator/TS-produced documents over bounded stdin — neither
+/// adds any network, filesystem, clock, or env capability.
+pub const SUPPORTED_CAPABILITIES: [&str; 5] = [
     "json-ipc",
     "realtime-replay-normalize",
+    "routequote-score",
     "schema-parity",
     "status",
 ];

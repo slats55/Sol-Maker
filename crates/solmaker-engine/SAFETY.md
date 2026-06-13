@@ -30,18 +30,28 @@ that is enforced.
   mirroring the TypeScript replay adapter field by field (S98). Replay data is
   labeled replay on every observation; a malformed document is refused with
   exit 2.
+- `solmaker-engine quote-score [--json] --scored-at <iso> --max-quote-age-ms <n>`
+  — read ONE TypeScript-produced `routequote.fetch.report.v1` from the same
+  bounded stdin and emit `engine.routequote.score.report.v1`: quote-quality
+  INTELLIGENCE (per-entry scores, deterministic ranking, closed reason codes;
+  S99). Both arguments are REQUIRED — there is no default age cap and no
+  clock in this binary. Freshness semantics mirror the TypeScript
+  `evaluateQuoteFreshness` exactly, and the TypeScript validator re-evaluates
+  every entry; a disagreement refuses the whole artifact. A route score is
+  never a profitability claim, never readiness, never an order.
 
-## S98 network-capability review (decision: NO network)
+## S98/S99 network-capability reviews (decision: NO network, twice)
 
-Sprint 98's realtime slice explicitly reviewed whether the engine should gain
-a live feed adapter. **Decision: no.** The dual-side capability scans forbid
-every network-shaped token; weakening that load-bearing wall for an optional
-slice failed the low-risk bar. Live ingestion remains TypeScript
-(`packages/realtime`); the engine normalizes REPLAY files only. The single new
-input channel is bounded stdin — content never rides in argv, error messages
-carry indexes/lengths but never input values, and secret-shaped labels are
-dropped by the engine then independently re-checked (and refused, never
-repaired) by the TypeScript validator.
+Sprint 98 (realtime) and Sprint 99 (quote scoring) each explicitly reviewed
+whether the engine should gain network access. **Decision both times: no.**
+The dual-side capability scans forbid every network-shaped token; weakening
+that load-bearing wall for optional slices failed the low-risk bar. Live
+ingestion remains TypeScript (`packages/realtime`); live quote fetching
+remains TypeScript (`packages/quotefetch`). The engine consumes documents the
+TypeScript side already produced, over bounded stdin only — content never
+rides in argv, error messages carry indexes/lengths but never input values,
+and secret-shaped labels are dropped by the engine then independently
+re-checked (and refused, never repaired) by the TypeScript validator.
 
 ## How the boundary is enforced
 

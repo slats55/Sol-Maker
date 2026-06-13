@@ -9,6 +9,9 @@ pub const ENGINE_STATUS_SCHEMA_VERSION: &str = "engine.status.report.v1";
 pub const ENGINE_REALTIME_OBSERVATIONS_SCHEMA_VERSION: &str =
     "engine.realtime.observations.report.v1";
 
+/// Route-quote scoring intelligence (Sprint 99 quote/router hot path).
+pub const ENGINE_ROUTEQUOTE_SCORE_SCHEMA_VERSION: &str = "engine.routequote.score.report.v1";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -19,6 +22,10 @@ mod tests {
         assert_eq!(
             ENGINE_REALTIME_OBSERVATIONS_SCHEMA_VERSION,
             "engine.realtime.observations.report.v1"
+        );
+        assert_eq!(
+            ENGINE_ROUTEQUOTE_SCORE_SCHEMA_VERSION,
+            "engine.routequote.score.report.v1"
         );
     }
 }

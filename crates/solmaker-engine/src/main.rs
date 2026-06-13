@@ -1,10 +1,14 @@
-//! `solmaker-engine` binary entrypoint. Two subcommands exist:
+//! `solmaker-engine` binary entrypoint. Three subcommands exist:
 //!
 //!   solmaker-engine status [--json] [--created-at <iso-8601-utc>]
 //!   solmaker-engine realtime-normalize [--json] [--created-at <iso-8601-utc>]
+//!   solmaker-engine quote-score [--json] --scored-at <iso-8601-utc> --max-quote-age-ms <n>
 //!
 //! `realtime-normalize` reads ONE replay events JSON document from BOUNDED
 //! stdin (refused beyond 2 MiB) and emits normalized candidate observations.
+//! `quote-score` reads ONE routequote.fetch.report.v1 document from the same
+//! bounded stdin and emits route-quality intelligence (both arguments are
+//! REQUIRED — there is no default age cap and no clock in this binary).
 //! Exit codes follow the IPC contract (src/ipc.rs): 0 = report produced,
 //! 2 = invocation refused. Diagnostics go to stderr; stdout carries only the
 //! report.
@@ -12,11 +16,11 @@
 use std::io::Read;
 use std::process::ExitCode;
 
+use solmaker_engine::quote_score;
 use solmaker_engine::realtime;
 use solmaker_engine::status;
 
-const USAGE: &str =
-    "usage: solmaker-engine <status|realtime-normalize> [--json] [--created-at <iso-8601-utc>]";
+const USAGE: &str = "usage: solmaker-engine <status|realtime-normalize> [--json] [--created-at <iso-8601-utc>] | solmaker-engine quote-score [--json] --scored-at <iso-8601-utc> --max-quote-age-ms <n>";
 
 /// Hard ceiling on stdin input for realtime-normalize (a 500-event replay
 /// document is well under this; anything larger is a mistake, not a feed).
@@ -107,11 +111,59 @@ fn run_realtime_normalize(args: &[String]) -> ExitCode {
     }
 }
 
+fn run_quote_score(args: &[String]) -> ExitCode {
+    let mut json = false;
+    let mut scored_at: Option<String> = None;
+    let mut max_age: Option<u64> = None;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--json" => json = true,
+            "--scored-at" => match iter.next() {
+                Some(value) if scored_at.is_none() => scored_at = Some(value.clone()),
+                Some(_) => return refuse("--scored-at was given twice"),
+                None => return refuse("--scored-at requires a value"),
+            },
+            "--max-quote-age-ms" => match iter.next() {
+                Some(value) if max_age.is_none() => match value.parse::<u64>() {
+                    Ok(parsed) if parsed > 0 => max_age = Some(parsed),
+                    _ => return refuse("--max-quote-age-ms must be a positive integer"),
+                },
+                Some(_) => return refuse("--max-quote-age-ms was given twice"),
+                None => return refuse("--max-quote-age-ms requires a value"),
+            },
+            other => return refuse(&format!("unknown argument {other:?}")),
+        }
+    }
+    let Some(scored_at) = scored_at else {
+        return refuse("--scored-at is required (the orchestrator supplies the scoring instant)");
+    };
+    let Some(max_age) = max_age else {
+        return refuse("--max-quote-age-ms is required (no default cap exists by design)");
+    };
+    let input = match read_bounded_stdin() {
+        Ok(input) => input,
+        Err(message) => return refuse(&message),
+    };
+    match quote_score::score_fetch_report(&input, &scored_at, max_age) {
+        Ok(report) => {
+            if json {
+                print!("{}", quote_score::to_ipc_json(&report));
+            } else {
+                print!("{}", quote_score::to_text(&report));
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => refuse(&err.to_string()),
+    }
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("status") => run_status(&args[1..]),
         Some("realtime-normalize") => run_realtime_normalize(&args[1..]),
+        Some("quote-score") => run_quote_score(&args[1..]),
         Some(other) => refuse(&format!("unknown command {other:?}")),
         None => refuse("a command is required"),
     }
