@@ -9,7 +9,7 @@
 
 import { isSensitiveKey } from "@soulmaker/security";
 
-const ALLOWED_LITERAL_ARGS = new Set(["status", "--json", "--created-at"]);
+const ALLOWED_LITERAL_ARGS = new Set(["status", "realtime-normalize", "--json", "--created-at"]);
 
 const ISO_SHAPE = /^\d{4}-\d{2}-\d{2}T[0-9:.]+Z$/;
 

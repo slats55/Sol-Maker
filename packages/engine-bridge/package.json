@@ -8,6 +8,8 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "dependencies": {
-    "@soulmaker/security": "workspace:*"
+    "@soulmaker/realtime": "workspace:*",
+    "@soulmaker/security": "workspace:*",
+    "@soulmaker/sniper": "workspace:*"
   }
 }

@@ -12,6 +12,8 @@ export interface EngineProcessOptions {
   readonly maxOutputBytes: number;
   readonly cwd: string;
   readonly env: Record<string, string>;
+  /** Written to the child's stdin then closed; stdin stays closed when absent. */
+  readonly stdinData?: string;
 }
 
 export interface EngineProcessResult {
@@ -40,8 +42,14 @@ export function createEngineProcessRunner(): EngineProcessRunner {
           env: opts.env,
           shell: false,
           windowsHide: true,
-          stdio: ["ignore", "pipe", "pipe"],
+          stdio: [opts.stdinData === undefined ? "ignore" : "pipe", "pipe", "pipe"],
         });
+
+        if (opts.stdinData !== undefined && child.stdin) {
+          // EPIPE here means the child exited first; the close handler still settles.
+          child.stdin.on("error", () => {});
+          child.stdin.end(opts.stdinData);
+        }
 
         let stdoutBytes = 0;
         let stderrBytes = 0;
@@ -58,7 +66,9 @@ export function createEngineProcessRunner(): EngineProcessRunner {
           child.kill();
         }, opts.timeoutMs);
 
-        child.stdout.on("data", (chunk: Buffer) => {
+        // stdout/stderr are always "pipe" by construction; the optional chain
+        // only satisfies the typings once stdio stops being a literal tuple.
+        child.stdout?.on("data", (chunk: Buffer) => {
           stdoutBytes += chunk.length;
           if (stdoutBytes > opts.maxOutputBytes) {
             stdoutTruncated = true;
@@ -67,7 +77,7 @@ export function createEngineProcessRunner(): EngineProcessRunner {
             stdoutChunks.push(chunk);
           }
         });
-        child.stderr.on("data", (chunk: Buffer) => {
+        child.stderr?.on("data", (chunk: Buffer) => {
           stderrBytes += chunk.length;
           if (stderrBytes > opts.maxOutputBytes) {
             stderrTruncated = true;

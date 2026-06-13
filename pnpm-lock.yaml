@@ -113,9 +113,15 @@ importers:
 
   packages/engine-bridge:
     dependencies:
+      '@soulmaker/realtime':
+        specifier: workspace:*
+        version: link:../realtime
       '@soulmaker/security':
         specifier: workspace:*
         version: link:../security
+      '@soulmaker/sniper':
+        specifier: workspace:*
+        version: link:../sniper
 
   packages/execution:
     dependencies:

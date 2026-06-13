@@ -31,3 +31,16 @@ export {
   type EngineUnavailableReason,
   type EngineRefusedReason,
 } from "./status.js";
+export {
+  ENGINE_REALTIME_OBSERVATIONS_SCHEMA_VERSION,
+  ENGINE_REALTIME_MAX_EVENTS,
+  validateEngineRealtimeObservationsReportV1,
+  type EngineRealtimeObservationsReportV1,
+  type EngineRealtimeValidation,
+} from "./validate-realtime.js";
+export {
+  normalizeReplayThroughEngine,
+  type NormalizeReplayThroughEngineOptions,
+  type EngineRealtimeBridgeResult,
+  type EngineRealtimeRefusedReason,
+} from "./realtime.js";

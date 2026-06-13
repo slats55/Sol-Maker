@@ -10,9 +10,12 @@ export const ENGINE_STATUS_SCHEMA_VERSION = "engine.status.report.v1";
 /** The stdout JSON contract version the bridge speaks. */
 export const ENGINE_IPC_VERSION = "engine.ipc.v1";
 
-/** The engine capabilities this foundation recognizes. CLOSED set. */
+/** The engine capabilities this bridge recognizes. CLOSED set — a capability
+ * lands here only after a reviewed safety decision (S98 added replay-FILE
+ * normalization over bounded stdin; still no network/sign/send capability). */
 export const ENGINE_SUPPORTED_CAPABILITY_ALLOWLIST = [
   "json-ipc",
+  "realtime-replay-normalize",
   "schema-parity",
   "status",
 ] as const;
