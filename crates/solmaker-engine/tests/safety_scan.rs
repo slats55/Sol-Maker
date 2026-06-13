@@ -166,6 +166,34 @@ fn dependency_set_is_exactly_the_reviewed_allowlist() {
 }
 
 #[test]
+fn binary_reads_no_environment_secret_and_no_clock() {
+    // Parity with the TypeScript mirror (packages/engine-bridge/src/engine-safety.test.ts): the
+    // engine reads NO runtime environment variable and NO wall clock. `std::env::args` (argv) and
+    // the compile-time `env!` / `option_env!` macros are deliberately allowed — neither reads a
+    // runtime secret. The forbidden needles are composed at runtime so they never match this file.
+    let needles: Vec<String> = [
+        ("env::", "var"),     // env::var / env::vars / env::var_os
+        ("var_", "os"),       // imported std::env::var_os
+        ("gete", "nv"),       // libc getenv
+        ("System", "Time"),   // wall clock
+        ("Instant::", "now"), // monotonic clock
+    ]
+    .iter()
+    .map(|(a, b)| format!("{a}{b}"))
+    .collect();
+    let mut violations = Vec::new();
+    for file in rust_source_files(&src_dir()) {
+        let code = strip_comments(&fs::read_to_string(&file).expect("source readable"));
+        for needle in &needles {
+            if code.contains(needle.as_str()) {
+                violations.push(format!("{} reads {needle:?}", file.display()));
+            }
+        }
+    }
+    assert!(violations.is_empty(), "{}", violations.join("\n"));
+}
+
+#[test]
 fn status_artifact_pins_every_disabled_marker() {
     let report = solmaker_engine::build_status_report(None).expect("builds");
     assert_eq!(report.signer_support, "disabled");
