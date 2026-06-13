@@ -586,3 +586,26 @@ export type {
   BuildSniperOperatorDemoManifestInput,
   SniperOperatorDemoManifest,
 } from "./operator-demo-manifest.js";
+
+export {
+  normalizeSniperWatchlist,
+  validateSniperWatchlist,
+  formatSniperWatchlist,
+  SniperWatchlistError,
+  SNIPER_WATCHLIST_SCHEMA_VERSION,
+  SNIPER_WATCHLIST_BANNER,
+  SNIPER_WATCHLIST_DISCLAIMERS,
+  SNIPER_WATCHLIST_STATUSES,
+  SNIPER_WATCHLIST_NETWORKS,
+} from "./watchlist.js";
+
+export type {
+  SniperWatchlistStatus,
+  SniperWatchlistNetwork,
+  SniperWatchlistEntryInput,
+  NormalizeSniperWatchlistInput,
+  SniperWatchlistEntry,
+  SniperWatchlistStatusCounts,
+  SniperWatchlist,
+  FormatSniperWatchlistOptions,
+} from "./watchlist.js";

@@ -108,6 +108,7 @@ describe("@soulmaker/sniper — forbidden-import regression", () => {
     expect(names).toContain("secrets-policy.ts");
     expect(names).toContain("burner-isolation-spec.ts");
     expect(names).toContain("simulation-intent-diff.ts");
+    expect(names).toContain("watchlist.ts");
   });
 
   it("imports no chain/network/filesystem/socket/wallet capability module", () => {
