@@ -417,6 +417,10 @@
     <code>engine.sim.classification.report.v1</code>
   </span></td><td class="sm-td--left">engine</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
                 </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="The S101 Rust memecoin candidate scoring output: a deterministic per-candidate score (0-100) + closed verdict (watch/caution/reject/insufficient-evidence) + ranking, computed from a sniper.score.input.v1 bundle of already-collected facts (risk, token mechanics, quote quality, simulation evidence). TypeScript re-derives every component, score, verdict, reason set, and the ranking and cross-checks the echoed facts against the bundle; any disagreement refuses the artifact. A score is INTELLIGENCE only — never a buy signal, never live readiness, and a rejected risk (or a critical flag / Token-2022 blocker) stays rejected no matter the score.">
+    <code>engine.sniper.score.report.v1</code>
+  </span></td><td class="sm-td--left">engine</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
+                </tr><tr>
                   <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="The S90 read-only bridge: token:inspect / token:risk evidence paired to candidates BY MINT for the preflight stage. Cross-kind, unknown-mint, duplicate, and secret-shaped inputs are refused at prepare time. Since S94 the rehearsal&#39;s auto-risk writes one automatically.">
     <code>sniper.preflight.input.v1</code>
   </span></td><td class="sm-td--left">sniper</td><td class="sm-td--left"><span class="sm-pill sm-pill--muted">generic</span></td>

@@ -3231,6 +3231,78 @@ function renderEngineQuoteScoreView(rec: Record<string, unknown>): RawHtml {
   `;
 }
 
+function renderSniperCandidateScoreView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const candidateCount = need(missing, "candidateCount", readNumber(rec, "candidateCount"));
+  const best = readString(rec, "bestCandidateId");
+  const caveats = readStringArray(rec, "caveats");
+  const safe =
+    rec.notExecutable === true &&
+    rec.notProfitabilityClaim === true &&
+    rec.scoreIsNotLiveReadiness === true &&
+    rec.highScoreIsNotSafeToTrade === true;
+  const ranked = Array.isArray(rec.rankedCandidates)
+    ? rec.rankedCandidates.filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null && !Array.isArray(e))
+    : [];
+  return html`
+    ${RiskNotice({
+      tone: safe ? "info" : "caution",
+      title: safe
+        ? "Rust engine candidate scores — operator intelligence only, NOT live readiness"
+        : "Engine score artifact is missing its safety literals — do NOT trust this artifact",
+      body: html`A deterministic memecoin candidate ranking the S101 Rust sidecar computed from a
+        read-only facts bundle. TypeScript re-derives every component, score, verdict, and the ranking
+        and cross-checks the echoed facts before accepting the artifact. A high score is <strong>not</strong>
+        a "safe to trade" judgment, and a rejected risk (or a critical flag / Token-2022 blocker) stays
+        <strong>reject</strong> no matter the score — the score satisfies none of the mainnet live-gate
+        conditions and gates nothing.`,
+    })}
+    ${kvSection("Scoring", undefined, [
+      { term: "engine", detail: text(`${readString(rec, "engineName") ?? DASH} ${readString(rec, "engineVersion") ?? ""}`) },
+      { term: "engine source", detail: code(readString(rec, "engineSource")) },
+      { term: "mode", detail: text(`${readString(rec, "mode") ?? DASH} (${readString(rec, "network") ?? "network unspecified"})`) },
+      { term: "candidates", detail: text(num(candidateCount)) },
+      { term: "best candidate", detail: best !== null && best !== undefined ? code(best) : text("none (no candidates)") },
+      { term: "created at", detail: text(readString(rec, "createdAt") ?? DASH) },
+    ])}
+    ${tableSection({
+      title: `Ranked candidates (${String(ranked.length)})`,
+      description: "Verdict rank (watch > caution > insufficient-evidence > reject), then score desc, then candidateId. A high score never overrides a hard risk gate.",
+      columns: [{ header: "#" }, { header: "Candidate" }, { header: "Score" }, { header: "Verdict" }, { header: "Risk" }, { header: "Quote" }, { header: "Reasons" }, { header: "Next safe action" }],
+      rows: ranked.slice(0, 50).map((c) => {
+        const reasons = readStringArray(c, "reasonCodes");
+        const risk = readString(c, "riskDecision");
+        const t22 = readBoolean(c, "token2022Blocker");
+        const riskCell = `${risk ?? "—"}${t22 === true ? " · token2022-blocker" : ""}`;
+        const quote = readBoolean(c, "quoteObserved") === true ? (readString(c, "quoteFreshness") ?? "observed") : "—";
+        return [
+          text(num(readNumber(c, "rank"))),
+          code(readString(c, "candidateId")),
+          text(num(readNumber(c, "score"))),
+          text(readString(c, "verdict") ?? DASH),
+          text(riskCell),
+          text(quote),
+          text(reasons.items.length > 0 ? reasons.items.join(", ") : DASH),
+          text(readString(c, "nextSafeAction") ?? DASH),
+        ];
+      }),
+      empty: "No candidates (the input bundle held none).",
+    })}
+    ${
+      caveats.total > 0
+        ? Section({
+            title: `Caveats (${String(caveats.total)})`,
+            description: "Carried by every engine candidate-score artifact.",
+            body: html`<ul class="sm-bullets sm-bullets--plain">
+              ${caveats.items.map((c) => html`<li>${c}</li>`)}
+            </ul>`,
+          })
+        : ""
+    }
+    ${partialNotice(missing)}
+  `;
+}
+
 function renderEngineTxInspectView(rec: Record<string, unknown>): RawHtml {
   const missing: string[] = [];
   const network = need(missing, "network", readString(rec, "network"));
@@ -3428,6 +3500,8 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderEngineTxInspectView(rec);
     case "engine.sim.classification.report.v1":
       return renderEngineSimClassificationView(rec);
+    case "engine.sniper.score.report.v1":
+      return renderSniperCandidateScoreView(rec);
     default:
       return null;
   }

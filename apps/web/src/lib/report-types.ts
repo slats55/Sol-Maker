@@ -480,6 +480,15 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
     cli: "engine:sim:classify",
   },
   {
+    id: "engine.sniper.score.report.v1",
+    title: "Rust engine candidate scores",
+    family: "engine",
+    stability: "stable",
+    description:
+      "The S101 Rust memecoin candidate scoring output: a deterministic per-candidate score (0-100) + closed verdict (watch/caution/reject/insufficient-evidence) + ranking, computed from a sniper.score.input.v1 bundle of already-collected facts (risk, token mechanics, quote quality, simulation evidence). TypeScript re-derives every component, score, verdict, reason set, and the ranking and cross-checks the echoed facts against the bundle; any disagreement refuses the artifact. A score is INTELLIGENCE only — never a buy signal, never live readiness, and a rejected risk (or a critical flag / Token-2022 blocker) stays rejected no matter the score.",
+    cli: "engine:sniper:score",
+  },
+  {
     id: "sniper.preflight.input.v1",
     title: "Sniper preflight input bridge",
     family: "sniper",

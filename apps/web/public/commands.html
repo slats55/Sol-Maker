@@ -931,6 +931,16 @@
   </span>
           </div>
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker engine:sniper:score</code>
+    <p class="sm-cmd__summary">S101 Rust memecoin candidate scoring: rank a sniper.score.input.v1 bundle of already-collected facts through the Rust sidecar into engine.sniper.score.report.v1 — a per-candidate score (0-100) + closed verdict (watch/caution/reject/insufficient-evidence) + ranking. TypeScript re-derives every component, score, verdict, reason set, and the ranking and cross-checks the echoed facts against the bundle, refusing on disagreement. A score is INTELLIGENCE only — never a buy signal, never live readiness, and a rejected risk stays rejected no matter the score.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="The S101 Rust memecoin candidate scoring output: a deterministic per-candidate score (0-100) + closed verdict (watch/caution/reject/insufficient-evidence) + ranking, computed from a sniper.score.input.v1 bundle of already-collected facts (risk, token mechanics, quote quality, simulation evidence). TypeScript re-derives every component, score, verdict, reason set, and the ranking and cross-checks the echoed facts against the bundle; any disagreement refuses the artifact. A score is INTELLIGENCE only — never a buy signal, never live readiness, and a rejected risk (or a critical flag / Token-2022 blocker) stays rejected no matter the score.">
+    <code>engine.sniper.score.report.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article>
         </div></div>
   </section>

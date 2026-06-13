@@ -552,6 +552,13 @@ export const COMMANDS: readonly CommandRef[] = [
     group: "Rust engine (sidecar)",
     readsChain: false,
   },
+  {
+    command: "engine:sniper:score",
+    summary:
+      "S101 Rust memecoin candidate scoring: rank a sniper.score.input.v1 bundle of already-collected facts through the Rust sidecar into engine.sniper.score.report.v1 — a per-candidate score (0-100) + closed verdict (watch/caution/reject/insufficient-evidence) + ranking. TypeScript re-derives every component, score, verdict, reason set, and the ranking and cross-checks the echoed facts against the bundle, refusing on disagreement. A score is INTELLIGENCE only — never a buy signal, never live readiness, and a rejected risk stays rejected no matter the score.",
+    group: "Rust engine (sidecar)",
+    readsChain: false,
+  },
 ];
 
 /** Commands in a given group, in declared order. */

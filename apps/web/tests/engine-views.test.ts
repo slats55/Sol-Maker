@@ -425,3 +425,105 @@ describe("engine.sim.classification.report.v1 typed view", () => {
     expect(html).not.toContain("<script>alert");
   });
 });
+
+// ---------------------------------------------------------------------------
+// S101 — engine.sniper.score.report.v1 (memecoin candidate scoring + ranking)
+// ---------------------------------------------------------------------------
+
+const candidateScoreFactKeys = {
+  riskDecision: null, riskScore: null, riskCriticalFlagCount: null, riskHighFlagCount: null,
+  freezeAuthorityPresent: null, mintAuthorityPresent: null, token2022Blocker: null, holderConcentrationRisk: null,
+  metadataMutable: null, liquidityHint: null, quoteObserved: null, quoteScore: null, quoteFreshness: null,
+  priceImpactHigh: null, simulationOutcome: null, simulationClassification: null, txBuildRefused: null,
+};
+
+const candidateScoreBase = {
+  schemaVersion: "engine.sniper.score.report.v1",
+  banner: "RUST ENGINE SNIPER CANDIDATE SCORES — fixture banner.",
+  engineName: "solmaker-engine",
+  engineVersion: "0.1.0",
+  ipcVersion: "engine.ipc.v1",
+  createdAt: "2026-06-13T12:00:00.000Z",
+  scoringEngine: "solmaker-engine",
+  engineSource: "rust",
+  mode: "mainnet-dry-run",
+  network: "mainnet-beta-readonly",
+  candidateCount: 2,
+  rankedCandidates: [
+    {
+      ...candidateScoreFactKeys, candidateId: "clean", mint: "So11111111111111111111111111111111111111112", source: "jupiter-recent-tokens",
+      rank: 1, score: 97, verdict: "watch", reasonCodes: ["paper-only", "mainnet-live-disabled"],
+      components: { riskSafety: 40, quoteQuality: 22, quoteFreshness: 10, liquidity: 10, tokenMechanics: 10, simulationEvidence: 5 },
+      nextSafeAction: "watch-and-paper-dry-run",
+      riskDecision: "PASS_FOR_PAPER_EVALUATION", quoteObserved: true, quoteScore: 90, quoteFreshness: "fresh", caveats: [],
+    },
+    {
+      ...candidateScoreFactKeys, candidateId: "rejected", mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", source: "operator",
+      rank: 2, score: 55, verdict: "reject", reasonCodes: ["paper-only", "mainnet-live-disabled", "risk-rejected"],
+      components: { riskSafety: 0, quoteQuality: 25, quoteFreshness: 10, liquidity: 10, tokenMechanics: 5, simulationEvidence: 5 },
+      nextSafeAction: "do-not-proceed-risk-gate",
+      riskDecision: "REJECT", freezeAuthorityPresent: true, quoteObserved: true, quoteScore: 100, quoteFreshness: "fresh", caveats: ["real freeze authority"],
+    },
+  ],
+  ranking: ["clean", "rejected"],
+  bestCandidateId: "clean",
+  caveats: ["A candidate score is INTELLIGENCE about a candidate — fixture caveat."],
+  redactionApplied: true,
+  notExecutable: true,
+  notProfitabilityClaim: true,
+  neverSigns: true,
+  neverSends: true,
+  phase7LiveTradingReady: false,
+  scoreIsNotLiveReadiness: true,
+  highScoreIsNotSafeToTrade: true,
+};
+
+describe("S101 engine.sniper.score.report.v1 registry parity", () => {
+  it("is registered with a typed view in the engine family", () => {
+    expect(isKnownSchema("engine.sniper.score.report.v1")).toBe(true);
+    expect(hasTypedView("engine.sniper.score.report.v1")).toBe(true);
+    const info = knownSchema("engine.sniper.score.report.v1");
+    expect(info?.family).toBe("engine");
+    expect(info?.stability).toBe("stable");
+    expect(info?.cli).toBe("engine:sniper:score");
+    expect(schemaForCli("engine:sniper:score")?.id).toBe("engine.sniper.score.report.v1");
+  });
+
+  it("the command reference lists engine:sniper:score in the Rust engine group, never chain-reading", () => {
+    const ref = COMMANDS.find((c) => c.command === "engine:sniper:score");
+    expect(ref).toBeDefined();
+    expect(ref?.group).toBe("Rust engine (sidecar)");
+    expect(ref?.readsChain).toBe(false);
+  });
+
+  it("every catalogued schema id stays unique after the S101 addition", () => {
+    const ids = KNOWN_REPORT_SCHEMAS.map((s) => s.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("engine.sniper.score.report.v1 typed view", () => {
+  it("renders the intelligence-only framing, ranking, verdicts, and caveats", () => {
+    const html = typed(candidateScoreBase);
+    expect(html).toContain("operator intelligence only");
+    expect(html).toContain("clean");
+    expect(html).toContain("rejected");
+    expect(html).toContain("watch");
+    expect(html).toContain("reject");
+    expect(html).toContain("97");
+    expect(html).toContain("watch-and-paper-dry-run");
+    expect(html).toContain("risk-rejected");
+    expect(html).toContain("A candidate score is INTELLIGENCE about a candidate");
+  });
+
+  it("flips to do-NOT-trust framing when a safety literal is missing", () => {
+    expect(typed({ ...candidateScoreBase, scoreIsNotLiveReadiness: false })).toContain("do NOT trust this artifact");
+    expect(typed({ ...candidateScoreBase, highScoreIsNotSafeToTrade: false })).toContain("do NOT trust this artifact");
+  });
+
+  it("never throws on hostile shapes and never lets a hostile string escape", () => {
+    expect(() => typed({ schemaVersion: "engine.sniper.score.report.v1", rankedCandidates: "nope" })).not.toThrow();
+    const html = typed({ ...candidateScoreBase, network: "<script>alert(1)</script>" });
+    expect(html).not.toContain("<script>alert");
+  });
+});
