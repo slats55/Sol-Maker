@@ -1085,7 +1085,22 @@ end-to-end; live trading does not begin until Sprint 104, separately authorized 
   fresh quote 92/100 ranked best, stale quote honestly EXCLUDED [stale] (spawn ~22ms, IPC
   overhead only); real-spawn parity tests in-suite. Web registry 48 schemas + typed view. A
   route score is intelligence only — never a profitability claim, never readiness.
-- **S100** — Rust transaction simulate/devnet execution core.
+- **S100** ✅ (2026-06-12) — Rust transaction inspection + simulation classification (devnet send
+  core DECLINED). Actuals: the engine gained `tx-inspect` (decode a strictly-UNSIGNED
+  txpreview.envelope.v1 over bounded stdin → `engine.tx.inspect.report.v1` SHAPE facts; the
+  Solana transaction wire format is parsed BYTE BY BYTE in pure Rust — base58/base64 hand-written,
+  NO solana-sdk, dependency allowlist stays serde+serde_json; a signed transaction is refused)
+  and `sim-classify` (map a simulation result onto the S95 closed set → `engine.sim.classification.report.v1`,
+  guidance verbatim from the S95 table). PARITY WALLS are the heart: the bridge re-derives shape
+  facts with the REAL @solana/web3.js decoder and re-runs the REAL classifySimulationFailure,
+  refusing the artifact on any disagreement. CLI `engine:tx:inspect` + `engine:sim:classify`; web
+  registry 50 schemas + 2 typed views. **The Rust devnet SEND core (Slice 4) was reviewed and
+  DECLINED** — adding network/signer/keypair capability to the one component the architecture
+  guarantees cannot have them fails the safety bar; the send path stays in TypeScript behind all
+  S92–S96 gates (decision + S101 preconditions recorded in RUST_ENGINE.md / EXECUTION_SAFETY.md).
+  REAL evidence: the actual binary decoded a real v0 web3.js transaction (System Program correctly
+  resolved) and classified a real Jupiter slippage error (spawn ~21ms); real-spawn parity tests
+  in-suite cover every S95 case. No mainnet send surface, in TypeScript or Rust.
 - **S101** — Axiom-style command center features; wallet/social monitoring ONLY where
   legally and API-supported (Axiom Pro stays a UX benchmark, never a dependency).
 - **S102** — full mainnet dry-run release candidate: one command, complete evidence chain,

@@ -306,3 +306,122 @@ describe("engine.routequote.score.report.v1 typed view", () => {
     expect(html).not.toContain("<script>alert");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 100 — engine.tx.inspect.report.v1 + engine.sim.classification.report.v1
+// ---------------------------------------------------------------------------
+
+const txInspectBase = {
+  schemaVersion: "engine.tx.inspect.report.v1",
+  banner: "RUST ENGINE TX INSPECT — shape facts.",
+  engineName: "solmaker-engine",
+  engineVersion: "0.1.0",
+  ipcVersion: "engine.ipc.v1",
+  network: "devnet",
+  feePayerPublicKey: "So11111111111111111111111111111111111111112",
+  builderId: "test-builder",
+  candidateMint: null,
+  shape: {
+    version: 0,
+    versionSupported: true,
+    blockhashPresent: true,
+    instructionCount: 1,
+    accountKeyCount: 2,
+    staticProgramIds: ["11111111111111111111111111111111"],
+    addressTableLookupCount: 0,
+    unresolvableProgramIdCount: 0,
+  },
+  unsigned: true,
+  createdAt: "2026-06-12T00:00:00.000Z",
+  caveats: ["Shape facts only — the transaction body is never echoed."],
+  notExecutable: true,
+  neverSigns: true,
+  neverSends: true,
+  phase7LiveTradingReady: false,
+};
+
+const simClassBase = {
+  schemaVersion: "engine.sim.classification.report.v1",
+  banner: "RUST ENGINE SIM CLASSIFY — classification.",
+  engineName: "solmaker-engine",
+  engineVersion: "0.1.0",
+  ipcVersion: "engine.ipc.v1",
+  classification: "account-error",
+  classificationMessage: "An account the transaction needs is missing, invalid, or underfunded.",
+  classificationNextAction: "Check the wallet's balance and the token accounts involved, then rebuild.",
+  errLabelPresent: true,
+  logLineCount: 2,
+  createdAt: "2026-06-12T00:00:00.000Z",
+  caveats: ["Classification is derived ONLY from the error label and logs."],
+  notExecutable: true,
+  neverSigns: true,
+  neverSends: true,
+  phase7LiveTradingReady: false,
+};
+
+describe("S100 engine tx/sim schema registry parity", () => {
+  it("both S100 schemas are registered (family engine, stable) with typed views", () => {
+    for (const [id, cli] of [
+      ["engine.tx.inspect.report.v1", "engine:tx:inspect"],
+      ["engine.sim.classification.report.v1", "engine:sim:classify"],
+    ] as const) {
+      expect(isKnownSchema(id)).toBe(true);
+      expect(hasTypedView(id)).toBe(true);
+      const info = knownSchema(id);
+      expect(info?.family).toBe("engine");
+      expect(info?.stability).toBe("stable");
+      expect(info?.cli).toBe(cli);
+      expect(schemaForCli(cli)?.id).toBe(id);
+    }
+  });
+
+  it("the command reference lists both S100 commands in the Rust engine group, never chain-reading", () => {
+    for (const cmd of ["engine:tx:inspect", "engine:sim:classify"]) {
+      const ref = COMMANDS.find((c) => c.command === cmd);
+      expect(ref, cmd).toBeDefined();
+      expect(ref?.group).toBe("Rust engine (sidecar)");
+      expect(ref?.readsChain).toBe(false);
+    }
+  });
+});
+
+describe("engine.tx.inspect.report.v1 typed view", () => {
+  it("renders the shape facts, fee payer, program ids, and caveats", () => {
+    const html = typed(txInspectBase);
+    expect(html).toContain("read-only");
+    expect(html).toContain("So11111111111111111111111111111111111111112");
+    expect(html).toContain("11111111111111111111111111111111");
+    expect(html).toContain("supported");
+    expect(html).toContain("present");
+  });
+
+  it("an unsupported version or not-proven-unsigned artifact renders the do-not-trust framing", () => {
+    expect(typed({ ...txInspectBase, shape: { ...txInspectBase.shape, versionSupported: false } })).toContain("do NOT trust this artifact");
+    expect(typed({ ...txInspectBase, unsigned: false })).toContain("do NOT trust this artifact");
+  });
+
+  it("hostile shapes never throw; hostile strings stay escaped", () => {
+    expect(() => typed({ schemaVersion: "engine.tx.inspect.report.v1", shape: "nope" })).not.toThrow();
+    const html = typed({ ...txInspectBase, builderId: "<script>alert(1)</script>" });
+    expect(html).not.toContain("<script>alert");
+  });
+});
+
+describe("engine.sim.classification.report.v1 typed view", () => {
+  it("renders the classification, guidance, and caveats", () => {
+    const html = typed(simClassBase);
+    expect(html).toContain("never an execution signal");
+    expect(html).toContain("account-error");
+    expect(html).toContain("missing, invalid, or underfunded");
+  });
+
+  it("an artifact missing its safety literals renders the do-not-trust framing", () => {
+    expect(typed({ ...simClassBase, neverSends: false })).toContain("do NOT trust this artifact");
+  });
+
+  it("hostile shapes never throw; hostile strings stay escaped", () => {
+    expect(() => typed({ schemaVersion: "engine.sim.classification.report.v1", classification: 7 })).not.toThrow();
+    const html = typed({ ...simClassBase, classificationMessage: "<script>alert(1)</script>" });
+    expect(html).not.toContain("<script>alert");
+  });
+});

@@ -911,6 +911,26 @@
   </span>
           </div>
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker engine:tx:inspect</code>
+    <p class="sm-cmd__summary">S100 Rust unsigned-transaction shape inspection: decode a strictly-UNSIGNED txpreview.envelope.v1 through the Rust sidecar into engine.tx.inspect.report.v1 (version, blockhash presence, instruction/account counts, static program ids, ALT counts). The transaction wire format is parsed in pure Rust; the bridge re-derives the facts with the real @solana/web3.js decoder and refuses unless they match. A signed transaction is refused. Read-only — never signs, never sends.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="The S100 Rust transaction inspection output: SHAPE facts decoded from a strictly-UNSIGNED txpreview.envelope.v1 (version, blockhash presence, instruction/account counts, static program ids, ALT counts) — parsed byte by byte in pure Rust. The bridge re-derives the facts with the real @solana/web3.js decoder and refuses unless they match; a signed transaction is refused. Read-only: never signs, never sends.">
+    <code>engine.tx.inspect.report.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker engine:sim:classify</code>
+    <p class="sm-cmd__summary">S100 Rust simulation-failure classification: map a simulation result onto the S95 CLOSED set through the Rust sidecar into engine.sim.classification.report.v1. TypeScript re-runs the real classifySimulationFailure and refuses on disagreement. A classification explains WHY a simulation failed — never an execution signal, never suggests bypassing a gate.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="The S100 Rust simulation-classification output: a simulation result mapped onto the S95 CLOSED set (slippage/compute/blockhash/account/program/unclassified) with the verbatim operator guidance. TypeScript re-runs the real classifySimulationFailure and refuses on disagreement. A classification explains WHY a simulation failed — never an execution signal.">
+    <code>engine.sim.classification.report.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article>
         </div></div>
   </section>

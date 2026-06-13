@@ -458,6 +458,14 @@
     <code>engine.routequote.score.report.v1</code>
   </span></td><td class="sm-td--left">engine</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>engine:quote:score</code></td>
                 </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="The S100 Rust transaction inspection output: SHAPE facts decoded from a strictly-UNSIGNED txpreview.envelope.v1 (version, blockhash presence, instruction/account counts, static program ids, ALT counts) — parsed byte by byte in pure Rust. The bridge re-derives the facts with the real @solana/web3.js decoder and refuses unless they match; a signed transaction is refused. Read-only: never signs, never sends.">
+    <code>engine.tx.inspect.report.v1</code>
+  </span></td><td class="sm-td--left">engine</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>engine:tx:inspect</code></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="The S100 Rust simulation-classification output: a simulation result mapped onto the S95 CLOSED set (slippage/compute/blockhash/account/program/unclassified) with the verbatim operator guidance. TypeScript re-runs the real classifySimulationFailure and refuses on disagreement. A classification explains WHY a simulation failed — never an execution signal.">
+    <code>engine.sim.classification.report.v1</code>
+  </span></td><td class="sm-td--left">engine</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>engine:sim:classify</code></td>
+                </tr><tr>
                   <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="The S90 read-only bridge: token:inspect / token:risk evidence paired to candidates BY MINT for the preflight stage. Cross-kind, unknown-mint, duplicate, and secret-shaped inputs are refused at prepare time. Since S94 the rehearsal&#39;s auto-risk writes one automatically.">
     <code>sniper.preflight.input.v1</code>
   </span></td><td class="sm-td--left">sniper</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">stable</span></td><td class="sm-td--left"><code>paper:sniper:preflight:input:prepare</code></td>

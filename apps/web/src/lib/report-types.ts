@@ -462,6 +462,24 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
     cli: "engine:quote:score",
   },
   {
+    id: "engine.tx.inspect.report.v1",
+    title: "Rust engine tx inspect",
+    family: "engine",
+    stability: "stable",
+    description:
+      "The S100 Rust transaction inspection output: SHAPE facts decoded from a strictly-UNSIGNED txpreview.envelope.v1 (version, blockhash presence, instruction/account counts, static program ids, ALT counts) — parsed byte by byte in pure Rust. The bridge re-derives the facts with the real @solana/web3.js decoder and refuses unless they match; a signed transaction is refused. Read-only: never signs, never sends.",
+    cli: "engine:tx:inspect",
+  },
+  {
+    id: "engine.sim.classification.report.v1",
+    title: "Rust engine sim classification",
+    family: "engine",
+    stability: "stable",
+    description:
+      "The S100 Rust simulation-classification output: a simulation result mapped onto the S95 CLOSED set (slippage/compute/blockhash/account/program/unclassified) with the verbatim operator guidance. TypeScript re-runs the real classifySimulationFailure and refuses on disagreement. A classification explains WHY a simulation failed — never an execution signal.",
+    cli: "engine:sim:classify",
+  },
+  {
     id: "sniper.preflight.input.v1",
     title: "Sniper preflight input bridge",
     family: "sniper",

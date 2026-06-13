@@ -3231,6 +3231,110 @@ function renderEngineQuoteScoreView(rec: Record<string, unknown>): RawHtml {
   `;
 }
 
+function renderEngineTxInspectView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const network = need(missing, "network", readString(rec, "network"));
+  const builderId = readString(rec, "builderId");
+  const feePayer = need(missing, "feePayerPublicKey", readString(rec, "feePayerPublicKey"));
+  const unsigned = rec.unsigned === true;
+  const caveats = readStringArray(rec, "caveats");
+  const shape = (typeof rec.shape === "object" && rec.shape !== null ? rec.shape : {}) as Record<string, unknown>;
+  const versionRaw = shape.version;
+  const versionText = typeof versionRaw === "string" || typeof versionRaw === "number" ? String(versionRaw) : DASH;
+  const versionSupported = shape.versionSupported === true;
+  const blockhashPresent = shape.blockhashPresent === true;
+  const programIds = readStringArray(shape, "staticProgramIds");
+  const trustworthy = unsigned && versionSupported;
+  return html`
+    ${RiskNotice({
+      tone: trustworthy ? "info" : "caution",
+      title: trustworthy
+        ? "Rust engine tx inspect — shape facts from a strictly-unsigned envelope, read-only"
+        : "Engine tx artifact is unsupported or not proven unsigned — do NOT trust this artifact",
+      body: html`SHAPE facts the S100 Rust sidecar decoded from an unsigned transaction envelope.
+        The transaction wire format is parsed in pure Rust, and the bridge re-derives the facts
+        with the real <code>@solana/web3.js</code> decoder, refusing unless every fact matches. A
+        signed transaction is refused. Nothing here signs, sends, or proves a transaction would land.`,
+    })}
+    ${kvSection("Envelope", undefined, [
+      { term: "engine", detail: text(`${readString(rec, "engineName") ?? DASH} ${readString(rec, "engineVersion") ?? ""}`) },
+      { term: "network", detail: code(network) },
+      { term: "builder", detail: code(builderId) },
+      { term: "fee payer", detail: code(feePayer) },
+      { term: "candidate mint", detail: readString(rec, "candidateMint") !== null ? code(readString(rec, "candidateMint")) : text("none") },
+      { term: "unsigned proof", detail: boolText(unsigned) },
+    ])}
+    ${kvSection("Shape", undefined, [
+      { term: "version", detail: text(`${versionText} (${versionSupported ? "supported" : "UNSUPPORTED"})`) },
+      { term: "recent blockhash", detail: text(blockhashPresent ? "present" : "MISSING (zero)") },
+      { term: "instructions", detail: text(num(readNumber(shape, "instructionCount"))) },
+      { term: "account keys", detail: text(num(readNumber(shape, "accountKeyCount"))) },
+      { term: "address-lookup tables", detail: text(num(readNumber(shape, "addressTableLookupCount"))) },
+      { term: "unresolvable program ids", detail: text(num(readNumber(shape, "unresolvableProgramIdCount"))) },
+    ])}
+    ${tableSection({
+      title: `Static program ids (${String(programIds.total)})`,
+      description: "Program ids resolvable from the STATIC account keys; ALT-loaded programs cannot be verified offline.",
+      columns: [{ header: "Program id" }],
+      rows: programIds.items.map((id) => [code(id)]),
+      empty: "No statically-resolvable program ids.",
+    })}
+    ${
+      caveats.total > 0
+        ? Section({
+            title: `Caveats (${String(caveats.total)})`,
+            description: "Carried by every engine tx inspect artifact.",
+            body: html`<ul class="sm-bullets sm-bullets--plain">
+              ${caveats.items.map((c) => html`<li>${c}</li>`)}
+            </ul>`,
+          })
+        : ""
+    }
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderEngineSimClassificationView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const classification = need(missing, "classification", readString(rec, "classification"));
+  const message = readString(rec, "classificationMessage");
+  const nextAction = readString(rec, "classificationNextAction");
+  const caveats = readStringArray(rec, "caveats");
+  const safe = rec.notExecutable === true && rec.neverSends === true;
+  return html`
+    ${RiskNotice({
+      tone: safe ? "info" : "caution",
+      title: safe
+        ? "Rust engine sim classification — explains a failure, never an execution signal"
+        : "Engine sim artifact is missing its safety literals — do NOT trust this artifact",
+      body: html`A simulation failure mapped onto the S95 CLOSED classification set by the S100 Rust
+        sidecar. TypeScript re-runs the real classifier on the same input and refuses on any
+        disagreement. A classification explains WHY a simulation failed; it is never readiness and
+        never an execution signal.`,
+    })}
+    ${kvSection("Classification", undefined, [
+      { term: "engine", detail: text(`${readString(rec, "engineName") ?? DASH} ${readString(rec, "engineVersion") ?? ""}`) },
+      { term: "classification", detail: code(classification) },
+      { term: "meaning", detail: text(message ?? DASH) },
+      { term: "next safe action", detail: text(nextAction ?? DASH) },
+      { term: "errLabel present", detail: boolText(readBoolean(rec, "errLabelPresent")) },
+      { term: "log lines", detail: text(num(readNumber(rec, "logLineCount"))) },
+    ])}
+    ${
+      caveats.total > 0
+        ? Section({
+            title: `Caveats (${String(caveats.total)})`,
+            description: "Carried by every engine sim classification artifact.",
+            body: html`<ul class="sm-bullets sm-bullets--plain">
+              ${caveats.items.map((c) => html`<li>${c}</li>`)}
+            </ul>`,
+          })
+        : ""
+    }
+    ${partialNotice(missing)}
+  `;
+}
+
 /* ------------------------------------------------------------------ *
  * Dispatch.
  * ------------------------------------------------------------------ */
@@ -3320,6 +3424,10 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderEngineRealtimeObservationsView(rec);
     case "engine.routequote.score.report.v1":
       return renderEngineQuoteScoreView(rec);
+    case "engine.tx.inspect.report.v1":
+      return renderEngineTxInspectView(rec);
+    case "engine.sim.classification.report.v1":
+      return renderEngineSimClassificationView(rec);
     default:
       return null;
   }

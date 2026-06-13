@@ -538,6 +538,20 @@ export const COMMANDS: readonly CommandRef[] = [
     group: "Rust engine (sidecar)",
     readsChain: false,
   },
+  {
+    command: "engine:tx:inspect",
+    summary:
+      "S100 Rust unsigned-transaction shape inspection: decode a strictly-UNSIGNED txpreview.envelope.v1 through the Rust sidecar into engine.tx.inspect.report.v1 (version, blockhash presence, instruction/account counts, static program ids, ALT counts). The transaction wire format is parsed in pure Rust; the bridge re-derives the facts with the real @solana/web3.js decoder and refuses unless they match. A signed transaction is refused. Read-only — never signs, never sends.",
+    group: "Rust engine (sidecar)",
+    readsChain: false,
+  },
+  {
+    command: "engine:sim:classify",
+    summary:
+      "S100 Rust simulation-failure classification: map a simulation result onto the S95 CLOSED set through the Rust sidecar into engine.sim.classification.report.v1. TypeScript re-runs the real classifySimulationFailure and refuses on disagreement. A classification explains WHY a simulation failed — never an execution signal, never suggests bypassing a gate.",
+    group: "Rust engine (sidecar)",
+    readsChain: false,
+  },
 ];
 
 /** Commands in a given group, in declared order. */
