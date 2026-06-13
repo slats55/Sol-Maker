@@ -1181,13 +1181,35 @@ end-to-end; live trading does not begin until Sprint 104, separately authorized 
   this repo stays `authorized-for-design-only` (devnet broadcast still externally faucet-blocked; no
   written human sign-off exists). Runbooks: [`EXECUTION_SAFETY.md`](EXECUTION_SAFETY.md),
   [`MAINNET_DRY_RUN.md`](MAINNET_DRY_RUN.md), [`PHASE7_AUTHORIZATION_DOSSIER.md`](PHASE7_AUTHORIZATION_DOSSIER.md).
-- **Before S104 (gate):** do NOT start S104 while either prerequisite is open. A real funded devnet
-  broadcast must confirm + reconcile, and a written human Phase 7 sign-off must be recorded, BEFORE the
-  audit can read `ready-for-separate-microtrade-authorization`. Until both land, continue operator/demo
-  hardening or wait for explicit funding/sign-off. Even when both are present, S104 still needs a
-  separate, explicit written user authorization — the audit never authorizes live by itself.
+- **S104-A** ✅ (2026-06-13) — Phase 7 sign-off intake hardening + the S104 controlled micro-trade
+  PREFLIGHT harness, no-mainnet-send throughout. Actuals: (1) sign-off intake hardening tests
+  (no autonomous scope anywhere in the closed sets; a blank operator label can never sign; a malformed
+  control-char / secret-shaped signed-at is refused). (2) `phase7.microtrade.preflight.v1`
+  (`@soulmaker/execution`) — a pure builder/validator that folds the sign-off, the reconciled devnet
+  proof, a complete mainnet dry-run release candidate, a public burner wallet, a bounded max-spend, a
+  manual-confirmation label, and the release candidate's risk/quote/simulation posture into one
+  re-derived verdict; `liveExecutionAuthorized`/`authorizesLiveTrading` false, `neverSends`/`neverSigns`/
+  `notExecutable` true, `requiresSeparateExecutionApproval` true, `phase7LiveTradingReady` false; the
+  closed schema refuses any send result/signature; burner validated as a 32-byte PUBLIC key only.
+  (3) `paper:phase7:microtrade:preflight` — reads/validates the evidence artifacts, never signs/sends/
+  loads a key, adds NO mainnet send surface; the best verdict, `ready-for-separate-execution-authorization`,
+  authorizes nothing. (4) Web: typed view + registry, `/sniper` S104 preflight note. The preflight on
+  this repo reports `blocked-missing-signoff` — the written human sign-off is the only open prerequisite.
+- **Before S104 (gate):** the devnet-broadcast prerequisite is **MET** (S103-C funded broadcast,
+  reconciled). The **written human Phase 7 sign-off remains the only open prerequisite**; until it is
+  recorded the audit cannot read `ready-for-separate-microtrade-authorization` and the preflight stays
+  `blocked-missing-signoff`. Even when both land, S104 still needs a separate, explicit written user
+  authorization — neither the audit nor the preflight authorizes live by itself.
+- **Next sprint (conditional):**
+  - **If the human sign-off is still missing** (today's state): do NOT advance the live path. Continue
+    UI / operator / product hardening (e.g. the operator demo, the command center, docs), and wait for an
+    explicit human sign-off.
+  - **If a `signed-for-controlled-microtrade` sign-off exists AND the audit + preflight read ready:**
+    **S104-B** may DESIGN the controlled mainnet send surface (the `execution:mainnet:microtrade:*`
+    commands proposed in the S104 plan) — but it must still be a separate, reviewed sprint and still
+    requires an explicit, written user execution authorization. No agent self-authorizes.
 - **S104** — separately approved controlled mainnet MICRO-trade (burner wallet, micro cap,
-  manual confirmation; see the design review's exact conditions). **Blocked on the S103-B gate above.**
+  manual confirmation; see the design review's exact conditions). **Blocked on the sign-off gate above.**
 - **S105** — bounded live sniper session (attended, loss-capped, kill-switch rehearsed).
 - **S106+** — production hardening: latency, provider failover, strategy optimization.
 

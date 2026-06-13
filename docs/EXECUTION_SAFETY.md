@@ -343,3 +343,20 @@ both, the verdict can reach `ready-for-separate-microtrade-authorization`, which
 nothing. A controlled micro-trade additionally requires a separate, explicit, written user authorization
 and a new, reviewed S104 sprint. None of these commands sends, signs on mainnet, or opens a Rust
 signer/send/network path.
+
+## Sprint 104-A — the S104 micro-trade preflight does not sign, send, or load keys
+
+`phase7.microtrade.preflight.v1` (`paper:phase7:microtrade:preflight`) is a read-only readiness check
+for a FUTURE, separately-authorized controlled micro-trade. It folds the Phase 7 audit, the sign-off
+record, the mainnet dry-run release candidate, the devnet reconciliation, a public burner wallet, a
+bounded max-spend, and a manual-confirmation label into one re-derived verdict.
+
+It **executes nothing**: the command never signs, never sends, never loads a private key, and adds no
+mainnet send surface (proven by `command-surface-audit.test.ts`). The artifact pins
+`liveExecutionAuthorized` / `authorizesLiveTrading` false, `neverSends` / `neverSigns` / `notExecutable`
+true, `requiresSeparateExecutionApproval` true, and `phase7LiveTradingReady` false. The closed schema
+refuses any send result or signature, and the burner wallet is validated as a 32-byte **public** key
+only — a secret key or a signature-shaped string is refused before it is ever decoded. The best verdict
+it can reach, `ready-for-separate-execution-authorization`, means every structural input is present —
+never that a trade is approved. A controlled micro-trade still requires the fourteen-condition live
+gate, a separate explicit written authorization, and a reviewed S104 execution sprint.

@@ -193,14 +193,38 @@ Only with BOTH does the verdict read `ready-for-separate-microtrade-authorizatio
 STILL pins `liveExecutionAuthorized: false`, `authorizesLiveTrading: false`, `requiresSeparateApproval:
 true`, `neverSends: true`. The audit never authorizes live trading by itself.
 
+### Sign-off → preflight sequence (Sprint 104-A)
+
+Once a human records a `signed-for-controlled-microtrade` sign-off and the devnet proof is reconciled,
+the **S104 micro-trade preflight** (`paper:phase7:microtrade:preflight`, artifact
+`phase7.microtrade.preflight.v1`) is the next read-only step. It folds the same evidence — the audit,
+the sign-off, the mainnet dry-run release candidate, the devnet reconciliation — plus a public burner
+wallet, a bounded max-spend, and a manual-confirmation label into one re-derived verdict whose best
+state is `ready-for-separate-execution-authorization`. The full sequence is:
+
+1. `paper:phase7:authorization:audit` reaches `ready-for-separate-microtrade-authorization` (needs the
+   reconciled devnet proof **and** the signed sign-off).
+2. `paper:phase7:microtrade:preflight` reaches `ready-for-separate-execution-authorization` (needs the
+   above **plus** a public burner wallet, a bounded max-spend, and a manual-confirmation label).
+3. A **separate, explicit, written user authorization** for S104 (see §11) — neither the audit nor the
+   preflight is that authorization; both pin `liveExecutionAuthorized: false` and never send.
+
+The preflight executes nothing: it never signs, never sends, never loads a private key, and registers
+no mainnet send surface. Its closed schema refuses any send result or signature, and the burner wallet
+is validated as a 32-byte public key only.
+
 ## 10. Exact conditions required before an S104 micro-trade
 
 1. This dossier's prerequisites (§9) are met and the audit reads
    `ready-for-separate-microtrade-authorization`.
-2. A **separate, explicit, written user authorization** for S104 exists (see §11).
-3. The full fourteen-condition live gate is satisfiable with real evidence (fresh quote, passing
+2. The S104 micro-trade preflight (`paper:phase7:microtrade:preflight`) reads
+   `ready-for-separate-execution-authorization` — every structural input (sign-off, devnet proof,
+   complete release candidate, public burner wallet, bounded max-spend, manual-confirmation label) is
+   present. This still authorizes nothing.
+3. A **separate, explicit, written user authorization** for S104 exists (see §11).
+4. The full fourteen-condition live gate is satisfiable with real evidence (fresh quote, passing
    simulation, risk under cap, validated wallet, signer boundary, audit + zero redaction findings).
-4. The micro-trade safety proposal (§12) is implemented and tested as a *new, separately reviewed*
+5. The micro-trade safety proposal (§12) is implemented and tested as a *new, separately reviewed*
    sprint — **not** as part of this audit.
 
 ## 11. This document authorizes nothing

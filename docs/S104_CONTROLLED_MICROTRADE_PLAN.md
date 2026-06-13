@@ -36,6 +36,52 @@ from being designable* — not from being executed.
 
 ---
 
+## 0.5 The S104 micro-trade PREFLIGHT harness (BUILT in Sprint 104-A — NO-SEND)
+
+Sprint 104-A added a **read-only preflight harness** that answers one question and only that question:
+*if a human later gives a separate, explicit S104 execution authorization, are the required structural
+inputs already present?* It is the safe, repeatable "are we ready to be *considered*?" check — it
+**executes nothing**.
+
+- **Artifact:** `phase7.microtrade.preflight.v1` (in `@soulmaker/execution`) — a pure builder/validator.
+  `mode` is pinned `controlled-mainnet-microtrade-preflight`, `network` `mainnet-beta`,
+  `liveExecutionAuthorized` / `authorizesLiveTrading` false, `neverSends` / `neverSigns` /
+  `notExecutable` true, `requiresSeparateExecutionApproval` true, `phase7LiveTradingReady` false. The
+  closed schema refuses any send result or signature; the burner wallet is validated as a 32-byte
+  **public** key only (a secret key is refused before it is ever decoded).
+- **Command:** `paper:phase7:microtrade:preflight` — reads and strictly validates the Phase 7 audit,
+  the sign-off record, the mainnet dry-run release candidate, and the devnet reconciliation; validates
+  a public burner wallet and a bounded `--max-spend-sol` (≤ the micro ceiling and ≤ the signed cap);
+  requires a `--manual-confirmation-label`. It never signs, never sends, never loads a private key, and
+  registers **no mainnet send surface**.
+
+```
+pnpm soulmaker paper:phase7:microtrade:preflight \
+  --phase7-audit runs/audit.json \
+  --sign-off-record runs/signoff.json \
+  --release-candidate runs/release-candidate.json \
+  --devnet-reconciliation runs/reconciliation.json \
+  --burner-wallet <PUBLIC_KEY> \
+  --max-spend-sol 0.01 \
+  --manual-confirmation-label "operator confirms the single trade by hand" \
+  --json
+```
+
+The verdict is **re-derived from the structured statuses** (the release candidate's verdict is itself
+re-derived from stage evidence, never a candidate score), in precedence order:
+`blocked-missing-signoff` → `blocked-missing-devnet-proof` → `blocked-missing-release-candidate` →
+`blocked-risk` → `blocked-quote` → `blocked-simulation` → `blocked-missing-burner-wallet` →
+`blocked-missing-manual-confirmation` → `ready-for-separate-execution-authorization`.
+
+**`ready-for-separate-execution-authorization` is the BEST possible verdict, and it authorizes
+nothing.** It means every structural input is present — never that a trade is approved, never that live
+trading is enabled. Reaching it does **not** start S104: entry condition #6 below (a separate, explicit,
+written user authorization) still applies, as does the fourteen-condition live gate and a reviewed
+execution sprint. On this repo today the preflight reports `blocked-missing-signoff` — the written human
+Phase 7 sign-off is the only open prerequisite.
+
+---
+
 ## 1. Required entry conditions (ALL must hold before S104 may begin)
 
 S104 must not start — not even as code — until every one of these is independently true:
