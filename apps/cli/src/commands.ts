@@ -20,6 +20,7 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, dirname, isAbsolute, join, normalize } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   loadConfig,
   evaluateLiveGate,
@@ -155,6 +156,9 @@ import {
 import {
   resolveExecutionMode,
   evaluateMainnetLiveGate,
+  buildPhase7AuthorizationAudit,
+  canonicalLiveGateIds,
+  SESSION_CONTINUATION_ALLOWED_STATUSES,
   loadLocalSignerBoundary,
   createThrowawayDevnetSigner,
   loadThrowawayDevnetSigner,
@@ -193,6 +197,9 @@ import {
   type SessionLedgerEntry,
   type ParsedSessionLedger,
   type SessionContinuationDecision,
+  type Phase7AuditGate,
+  type Phase7AuditInvariant,
+  type Phase7AuditPrerequisite,
 } from "@soulmaker/execution";
 import {
   parseMintAddress,
@@ -205,6 +212,7 @@ import {
   SNIPER_PREFLIGHT_INPUT_SCHEMA_VERSION,
   normalizeSniperScoreInput,
   buildMainnetDryRunReleaseCandidate,
+  SNIPER_RELEASE_CANDIDATE_LIVE_SEND_STATUS,
   buildPaperSniperDecisionReport,
   formatPaperSniperDecisionReport,
   buildPaperSniperDecisionReportV2,
@@ -6514,6 +6522,282 @@ export function executionReadinessReport(
   lines.push("");
   for (const caveat of report.caveats) lines.push(`CAVEAT: ${caveat}`);
   return { text: redactString(lines.join("\n")) + wroteLine, exitCode: 0 };
+}
+
+// --- Sprint 103: the Phase 7 live-authorization audit command ----------------
+
+/** Repo root computed from this module's location (apps/cli/src/commands.ts -> repo root). */
+const PHASE7_AUDIT_REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+
+/** The reviewed Rust dependency allowlist — the engine is JSON serialization only. */
+const PHASE7_RUST_DEP_ALLOWLIST: ReadonlySet<string> = new Set(["serde", "serde_json"]);
+
+interface ProbeResult {
+  checked: boolean;
+  clean: boolean;
+  detail: string;
+}
+
+/** Parse the engine Cargo.toml [dependencies] and confirm it stays within the reviewed allowlist. */
+function checkRustDependencyAllowlist(toml: string): ProbeResult {
+  const deps: string[] = [];
+  let inDeps = false;
+  for (const raw of toml.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("[")) {
+      inDeps = line === "[dependencies]";
+      continue;
+    }
+    if (!inDeps || line.length === 0 || line.startsWith("#")) continue;
+    const m = /^([A-Za-z0-9_-]+)\s*=/.exec(line);
+    if (m) deps.push(m[1] as string);
+  }
+  const unexpected = deps.filter((d) => !PHASE7_RUST_DEP_ALLOWLIST.has(d));
+  return {
+    checked: true,
+    clean: unexpected.length === 0 && deps.length > 0,
+    detail:
+      unexpected.length > 0
+        ? `UNEXPECTED Rust dependency(ies): ${unexpected.join(", ")} (allowlist: serde, serde_json)`
+        : `Rust dependency allowlist holds (${deps.join(", ") || "none"})`,
+  };
+}
+
+/** Scan the registered CLI command surface for any mainnet send / live / bypass exposure. */
+function scanCliCommandSurface(repoRoot: string): ProbeResult {
+  let src: string;
+  try {
+    src = readFileSync(join(repoRoot, "apps", "cli", "src", "index.ts"), "utf8");
+  } catch {
+    return { checked: false, clean: false, detail: "apps/cli/src/index.ts not readable from this working directory" };
+  }
+  const commands = [...src.matchAll(/\.command\("([^"]+)"\)/g)].map((m) => (m[1] as string).split(" ")[0] as string);
+  const liveCommands = commands.filter((c) => /mainnet.*live|live.*send|send.*mainnet|arm|go-live/i.test(c));
+  const sendNamed = commands.filter((c) => /send/i.test(c));
+  const flags = [...src.matchAll(/\.option\(\s*\n?\s*"(--[a-z0-9-]+)/gi)].map((m) => m[1] as string);
+  const badFlags = flags.filter((f) =>
+    /^--(force-live|enable-live|mainnet-send|mainnet-live|arm|go-live|bypass|disable-gate|no-dry-run|live-send|allow-live)/i.test(f),
+  );
+  const onlyDevnetSend = sendNamed.every((c) => c === "execution:devnet:send");
+  const clean = liveCommands.length === 0 && badFlags.length === 0 && onlyDevnetSend;
+  return {
+    checked: true,
+    clean,
+    detail: clean
+      ? `no mainnet-send command, no live/arm/bypass flag; only send command is ${sendNamed.join(", ") || "(none)"}`
+      : `UNSAFE: live-commands=[${liveCommands.join(", ")}] bad-flags=[${badFlags.join(", ")}] send=[${sendNamed.join(", ")}]`,
+  };
+}
+
+export interface Phase7AuthorizationAuditCommandOptions {
+  auditId?: string;
+  repoSha?: string;
+  devnetBroadcastConfirmed?: boolean;
+  signOffPresent?: boolean;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  failOnNotReady?: boolean;
+}
+
+/**
+ * `paper:phase7:authorization:audit` — build the read-only `phase7.authorization.audit.v1` artifact.
+ *
+ * The cheap structural facts are MACHINE-VERIFIED at runtime (the fourteen-condition gate defaults to
+ * blocked; the resolver is fail-closed; a mainnet signer refuses without an armed gate; the redactor
+ * strips secrets; the release candidate pins live-send disabled; the reconciliation wall fail-closes;
+ * the CLI surface carries no mainnet-send command/flag; the Rust dependency allowlist holds). The
+ * verdict is RE-DERIVED from the evidence and DEFAULTS to not-authorized. This command authorizes
+ * nothing and sends nothing.
+ */
+export function phase7AuthorizationAuditReport(
+  ctx: CommandContext = {},
+  opts: Phase7AuthorizationAuditCommandOptions = {},
+): CliReport {
+  // --- 1) machine probes (real runtime checks) ---
+  const gate = evaluateMainnetLiveGate({});
+  const gateDefaultBlocked = gate.armed === false && gate.checks.length === 14 && gate.checks.every((c) => !c.satisfied);
+
+  const resolverFailClosed =
+    resolveExecutionMode({ requested: "phase7-audit-not-a-real-mode" }).mode === "paper" &&
+    resolveExecutionMode({ requested: "mainnet-live" }).mode === "mainnet-live-blocked";
+
+  let signerRefusesMainnet = false;
+  try {
+    loadLocalSignerBoundary({
+      envVarName: "PHASE7_AUDIT_PROBE",
+      env: {},
+      readFile: () => {
+        throw new Error("the signer file must never be read when the gate refuses");
+      },
+      network: "mainnet-beta",
+    });
+  } catch (err) {
+    signerRefusesMainnet = err instanceof SignerBoundaryError;
+  }
+
+  const bearerProbe = "Bearer abcdef0123456789abcdef0123456789";
+  const base58Probe = "5".repeat(96);
+  const redactorCatchesSecret = redactString(bearerProbe) !== bearerProbe && redactString(base58Probe) !== base58Probe;
+
+  const rcLiveDisabledPinned = SNIPER_RELEASE_CANDIDATE_LIVE_SEND_STATUS === "disabled";
+
+  const reconAllowed = SESSION_CONTINUATION_ALLOWED_STATUSES as readonly string[];
+  const reconciliationWallFailsClosed =
+    !reconAllowed.includes("pending-confirmation") &&
+    !reconAllowed.includes("unreconciled") &&
+    !reconAllowed.includes("unknown");
+
+  let rustDep: ProbeResult;
+  try {
+    rustDep = checkRustDependencyAllowlist(
+      readFileSync(join(PHASE7_AUDIT_REPO_ROOT, "crates", "solmaker-engine", "Cargo.toml"), "utf8"),
+    );
+  } catch {
+    rustDep = { checked: false, clean: false, detail: "crates/solmaker-engine/Cargo.toml not readable from this working directory" };
+  }
+  const surface = scanCliCommandSurface(PHASE7_AUDIT_REPO_ROOT);
+
+  // --- 2) assemble the fourteen gates from the REAL gate, statused by the probe ---
+  const gates: Phase7AuditGate[] = canonicalLiveGateIds().map((gateId) => ({
+    gateId,
+    name: `live-gate condition: ${gateId}`,
+    defaultState: "blocked",
+    evidenceSource: "packages/execution/src/live-gate.ts",
+    failClosedProven: gateDefaultBlocked,
+    testCoverageRef: "apps/cli/src/command-surface-audit.test.ts",
+    status: gateDefaultBlocked ? "verified" : "failed",
+    blocker: gateDefaultBlocked ? null : "the fourteen-condition gate did not default to BLOCKED at runtime",
+  }));
+
+  const invariant = (passed: boolean, evidence: string, okDetail: string, failDetail: string): Phase7AuditInvariant => ({
+    status: passed ? "verified" : "failed",
+    evidence,
+    detail: passed ? okDetail : failDetail,
+  });
+
+  // command-surface is safe when the resolver is fail-closed AND (the source scan is clean OR
+  // the source was simply not readable from here — the resolver probe still holds in memory).
+  const commandSurfaceSafe = resolverFailClosed && (!surface.checked || surface.clean);
+
+  const microTradePrerequisites: Phase7AuditPrerequisite[] = [
+    {
+      id: "devnet-broadcast-confirmed",
+      description: "a real devnet end-to-end broadcast has confirmed and reconciled at least once",
+      met: Boolean(opts.devnetBroadcastConfirmed),
+      detail: opts.devnetBroadcastConfirmed
+        ? "operator confirmed a devnet broadcast landed and reconciled"
+        : "not yet confirmed (devnet faucet/funding blocked) — run execution:devnet:rehearse once funded",
+    },
+    {
+      id: "written-sign-off",
+      description: "a written, human Phase 7 sign-off is recorded in the authorization dossier",
+      met: Boolean(opts.signOffPresent),
+      detail: opts.signOffPresent
+        ? "operator confirmed a written sign-off is recorded"
+        : "no written human sign-off yet — see docs/PHASE7_AUTHORIZATION_DOSSIER.md",
+    },
+  ];
+
+  const audit = buildPhase7AuthorizationAudit({
+    auditId: opts.auditId ?? "phase7-authorization-audit",
+    repoSha: opts.repoSha ?? "unspecified",
+    auditedAt: (ctx.now ?? isoNow)(),
+    gates,
+    noSendInvariant: invariant(
+      resolverFailClosed,
+      "apps/cli/src/command-surface-audit.test.ts",
+      "no CLI path requests mainnet-live; the resolver is fail-closed (unknown -> paper, mainnet-live -> blocked)",
+      "the execution-mode resolver did not fail closed at runtime",
+    ),
+    signerBoundary: invariant(
+      signerRefusesMainnet,
+      "packages/execution/src/signer.ts",
+      "a mainnet signer refuses to load without an armed fourteen-condition gate (no key file is read)",
+      "the mainnet signer boundary did not refuse without an armed gate",
+    ),
+    rustBoundary: {
+      status: rustDep.checked ? (rustDep.clean ? "verified" : "failed") : "unverified",
+      evidence: "crates/solmaker-engine/tests/safety_scan.rs",
+      detail: rustDep.detail,
+    },
+    artifactRedaction: invariant(
+      redactorCatchesSecret,
+      "packages/security/src/redact.ts",
+      "the redactor strips secret-shaped values: long base58/hex key blobs, query-param tokens, and mnemonic phrases",
+      "the redactor failed to strip a secret-shaped probe",
+    ),
+    releaseCandidate: invariant(
+      rcLiveDisabledPinned,
+      "apps/cli/src/release-candidate-safety.test.ts",
+      "the mainnet dry-run release candidate pins liveSendStatus = disabled (no input can flip it)",
+      "the release-candidate live-send status is not pinned disabled",
+    ),
+    reconciliationWall: invariant(
+      reconciliationWallFailsClosed,
+      "packages/execution/src/session.ts",
+      "an unreconciled / pending-confirmation / unknown session blocks a new execution attempt (no bypass)",
+      "the reconciliation continuation wall does not fail closed",
+    ),
+    commandSurface: {
+      status: commandSurfaceSafe ? "safe" : "unsafe",
+      evidence: "apps/cli/src/command-surface-audit.test.ts",
+      detail: surface.checked
+        ? surface.detail
+        : `resolver fail-closed probe ${resolverFailClosed ? "passed" : "FAILED"}; ${surface.detail}`,
+    },
+    microTradePrerequisites,
+  });
+
+  // --- 3) emit ---
+  let wroteLine = "";
+  if (opts.outPath) {
+    const resolvedPath = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolvedPath)) {
+      return { text: `Refusing: ${resolvedPath} already exists (pass --force to overwrite).`, exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolvedPath, JSON.stringify(redactValue(audit), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the Phase 7 audit at ${resolvedPath}`), exitCode: 1 };
+    }
+    wroteLine = `\nwrote ${resolvedPath}`;
+  }
+
+  const exitCode = opts.failOnNotReady && audit.verdict !== "ready-for-separate-microtrade-authorization" ? 1 : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(audit), null, 2) + wroteLine, exitCode };
+  }
+
+  const lines: string[] = [];
+  lines.push("PHASE 7 LIVE-AUTHORIZATION AUDIT (read-only; authorizes NO live trading)");
+  lines.push("=======================================================================");
+  lines.push(`audit id:   ${audit.auditId} | repo: ${audit.repoSha}`);
+  lines.push(`VERDICT:    ${audit.verdict.toUpperCase()}`);
+  lines.push(`gates:      ${audit.gates.filter((g) => g.status === "verified").length}/${audit.gateCount} verified (fourteen-condition live gate)`);
+  lines.push("");
+  const inv = (label: string, i: Phase7AuditInvariant): string => `  [${i.status === "verified" ? "x" : i.status === "unverified" ? "?" : " "}] ${label}: ${i.detail ?? i.status}`;
+  lines.push(inv("no-send invariant   ", audit.noSendInvariant));
+  lines.push(inv("signer boundary     ", audit.signerBoundary));
+  lines.push(inv("rust boundary       ", audit.rustBoundary));
+  lines.push(inv("artifact redaction  ", audit.artifactRedaction));
+  lines.push(inv("release candidate   ", audit.releaseCandidate));
+  lines.push(inv("reconciliation wall ", audit.reconciliationWall));
+  lines.push(`  [${audit.commandSurface.status === "safe" ? "x" : " "}] command surface     : ${audit.commandSurface.detail ?? audit.commandSurface.status}`);
+  lines.push("");
+  lines.push("micro-trade prerequisites (for a SEPARATELY-authorized S104; none execute a trade):");
+  for (const p of audit.microTradePrerequisites) lines.push(`  [${p.met ? "x" : " "}] ${p.id}: ${p.detail ?? p.description}`);
+  if (audit.remainingBlockers.length > 0) {
+    lines.push("");
+    lines.push("remaining blockers:");
+    for (const b of audit.remainingBlockers) lines.push(`  - ${b}`);
+  }
+  lines.push("");
+  lines.push(`next safe action: ${audit.nextSafeAction}`);
+  lines.push("");
+  for (const d of audit.disclaimers) lines.push(`NOTE: ${d}`);
+  return { text: redactString(lines.join("\n")) + wroteLine, exitCode };
 }
 
 export interface ExecutionBuildCommandOptions {

@@ -125,6 +125,33 @@ export type {
 } from "./session.js";
 
 export {
+  PHASE7_AUTHORIZATION_AUDIT_SCHEMA_VERSION,
+  PHASE7_AUTHORIZATION_AUDIT_BANNER,
+  PHASE7_AUTHORIZATION_AUDIT_MODE,
+  PHASE7_AUTHORIZATION_AUDIT_DISCLAIMERS,
+  PHASE7_AUTHORIZATION_AUDIT_VERDICTS,
+  PHASE7_AUDIT_CHECK_STATUSES,
+  PHASE7_AUDIT_SURFACE_STATUSES,
+  Phase7AuthorizationAuditError,
+  buildPhase7AuthorizationAudit,
+  validatePhase7AuthorizationAudit,
+  derivePhase7AuthorizationVerdict,
+  canonicalLiveGateIds,
+} from "./phase7-authorization-audit.js";
+export type {
+  Phase7AuthorizationAuditVerdict,
+  Phase7AuditCheckStatus,
+  Phase7AuditSurfaceStatus,
+  Phase7AuditGate,
+  Phase7AuditInvariant,
+  Phase7AuditCommandSurface,
+  Phase7AuditPrerequisite,
+  Phase7VerdictEvidence,
+  BuildPhase7AuthorizationAuditInput,
+  Phase7AuthorizationAudit,
+} from "./phase7-authorization-audit.js";
+
+export {
   DEVNET_REHEARSAL_REPORT_SCHEMA_VERSION,
   DEVNET_REHEARSAL_BANNER,
   DEVNET_REHEARSAL_DEFAULT_AIRDROP_LAMPORTS,

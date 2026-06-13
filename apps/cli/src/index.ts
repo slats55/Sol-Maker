@@ -61,6 +61,7 @@ import {
   executionDevnetSendReport,
   executionDevnetRehearseReport,
   executionReadinessReport,
+  phase7AuthorizationAuditReport,
   executionSessionStatusReport,
   executionSessionReconcileReport,
   executionSessionAcknowledgeReport,
@@ -3168,6 +3169,48 @@ program
           outPath: opts.out,
           force: Boolean(opts.force),
           failOnDiff: Boolean(opts.failOnDiff),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:phase7:authorization:audit")
+  .description(
+    "Build the READ-ONLY `phase7.authorization.audit.v1` — the written, versioned answer to 'is the repo ready to be CONSIDERED for a separately-authorized S104 controlled micro-trade?'. The cheap structural facts are MACHINE-VERIFIED at runtime (the fourteen-condition live gate defaults to BLOCKED; the mode resolver is fail-closed; a mainnet signer refuses without an armed gate; the redactor strips secrets; the release candidate pins live-send disabled; the reconciliation wall fail-closes; the CLI surface carries no mainnet-send command/flag; the Rust dependency allowlist holds). The verdict is RE-DERIVED from the evidence and DEFAULTS to not-authorized. This command authorizes NOTHING and sends NOTHING; a controlled micro-trade still needs a separate, explicit, written authorization",
+  )
+  .option("--audit-id <label>", "operator label echoed into the audit (default: phase7-authorization-audit)")
+  .option("--repo-sha <sha>", "the repo SHA the audit was run against (recorded verbatim)")
+  .option("--devnet-broadcast-confirmed", "assert a real devnet end-to-end broadcast has confirmed + reconciled (a micro-trade prerequisite; default false)")
+  .option("--sign-off-present", "assert a written human Phase 7 sign-off is recorded in the dossier (a micro-trade prerequisite; default false)")
+  .option("--json", "emit the audit artifact as stable JSON")
+  .option("--out <path>", "write ONLY the audit JSON to this path (refused if it exists without --force)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-not-ready", "exit non-zero unless the verdict is ready-for-separate-microtrade-authorization")
+  .action(
+    (opts: {
+      auditId?: string;
+      repoSha?: string;
+      devnetBroadcastConfirmed?: boolean;
+      signOffPresent?: boolean;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnNotReady?: boolean;
+    }) => {
+      const { text, exitCode } = phase7AuthorizationAuditReport(
+        {},
+        {
+          auditId: opts.auditId,
+          repoSha: opts.repoSha,
+          devnetBroadcastConfirmed: Boolean(opts.devnetBroadcastConfirmed),
+          signOffPresent: Boolean(opts.signOffPresent),
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnNotReady: Boolean(opts.failOnNotReady),
         },
       );
       console.log(text);

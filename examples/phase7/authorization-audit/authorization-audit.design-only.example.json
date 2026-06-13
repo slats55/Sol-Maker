@@ -1,0 +1,220 @@
+{
+  "schemaVersion": "phase7.authorization.audit.v1",
+  "banner": "PHASE 7 LIVE-AUTHORIZATION AUDIT — a read-only security review. THIS DOCUMENT AUTHORIZES NO LIVE TRADING.",
+  "disclaimers": [
+    "PHASE 7 LIVE-AUTHORIZATION AUDIT — a read-only review of the repository's no-send invariant, execution gates, and boundaries.",
+    "This artifact authorizes NO live trading and executes NO trade. It is structurally incapable of arming, signing, or sending.",
+    "The best possible verdict, 'ready-for-separate-microtrade-authorization', means the repo is ready to be CONSIDERED for a micro-trade — never that one is approved.",
+    "A controlled S104 mainnet micro-trade requires a separate, explicit, written user authorization AFTER this audit; this document is not that authorization.",
+    "Not a live result. Not a trade signal. Not financial advice. Not a profitability claim."
+  ],
+  "auditId": "example-design-only",
+  "repoSha": "e607238",
+  "auditedAt": "2026-06-13T00:00:00.000Z",
+  "auditedMode": "phase7-live-authorization-review",
+  "verdict": "authorized-for-design-only",
+  "gateCount": 14,
+  "gates": [
+    {
+      "gateId": "env-acknowledgment",
+      "name": "live-gate condition: env-acknowledgment",
+      "defaultState": "blocked",
+      "evidenceSource": "packages/execution/src/live-gate.ts",
+      "failClosedProven": true,
+      "testCoverageRef": "apps/cli/src/command-surface-audit.test.ts",
+      "status": "verified",
+      "blocker": null
+    },
+    {
+      "gateId": "config-phase7-ready",
+      "name": "live-gate condition: config-phase7-ready",
+      "defaultState": "blocked",
+      "evidenceSource": "packages/execution/src/live-gate.ts",
+      "failClosedProven": true,
+      "testCoverageRef": "apps/cli/src/command-surface-audit.test.ts",
+      "status": "verified",
+      "blocker": null
+    },
+    {
+      "gateId": "cli-acknowledgment",
+      "name": "live-gate condition: cli-acknowledgment",
+      "defaultState": "blocked",
+      "evidenceSource": "packages/execution/src/live-gate.ts",
+      "failClosedProven": true,
+      "testCoverageRef": "apps/cli/src/command-surface-audit.test.ts",
+      "status": "verified",
+      "blocker": null
+    },
+    {
+      "gateId": "network-mainnet-beta",
+      "name": "live-gate condition: network-mainnet-beta",
+      "defaultState": "blocked",
+      "evidenceSource": "packages/execution/src/live-gate.ts",
+      "failClosedProven": true,
+      "testCoverageRef": "apps/cli/src/command-surface-audit.test.ts",
+      "status": "verified",
+      "blocker": null
+    },
+    {
+      "gateId": "max-spend-cap",
+      "name": "live-gate condition: max-spend-cap",
+      "defaultState": "blocked",
+      "evidenceSource": "packages/execution/src/live-gate.ts",
+      "failClosedProven": true,
+      "testCoverageRef": "apps/cli/src/command-surface-audit.test.ts",
+      "status": "verified",
+      "blocker": null
+    },
+    {
+      "gateId": "session-loss-cap",
+      "name": "live-gate condition: session-loss-cap",
+      "defaultState": "blocked",
+      "evidenceSource": "packages/execution/src/live-gate.ts",
+      "failClosedProven": true,
+      "testCoverageRef": "apps/cli/src/command-surface-audit.test.ts",
+      "status": "verified",
+      "blocker": null
+    },
+    {
+      "gateId": "slippage-cap",
+      "name": "live-gate condition: slippage-cap",
+      "defaultState": "blocked",
+      "evidenceSource": "packages/execution/src/live-gate.ts",
+      "failClosedProven": true,
+      "testCoverageRef": "apps/cli/src/command-surface-audit.test.ts",
+      "status": "verified",
+      "blocker": null
+    },
+    {
+      "gateId": "kill-switch-clear",
+      "name": "live-gate condition: kill-switch-clear",
+      "defaultState": "blocked",
+      "evidenceSource": "packages/execution/src/live-gate.ts",
+      "failClosedProven": true,
+      "testCoverageRef": "apps/cli/src/command-surface-audit.test.ts",
+      "status": "verified",
+      "blocker": null
+    },
+    {
+      "gateId": "quote-fresh",
+      "name": "live-gate condition: quote-fresh",
+      "defaultState": "blocked",
+      "evidenceSource": "packages/execution/src/live-gate.ts",
+      "failClosedProven": true,
+      "testCoverageRef": "apps/cli/src/command-surface-audit.test.ts",
+      "status": "verified",
+      "blocker": null
+    },
+    {
+      "gateId": "simulation-ok",
+      "name": "live-gate condition: simulation-ok",
+      "defaultState": "blocked",
+      "evidenceSource": "packages/execution/src/live-gate.ts",
+      "failClosedProven": true,
+      "testCoverageRef": "apps/cli/src/command-surface-audit.test.ts",
+      "status": "verified",
+      "blocker": null
+    },
+    {
+      "gateId": "risk-under-threshold",
+      "name": "live-gate condition: risk-under-threshold",
+      "defaultState": "blocked",
+      "evidenceSource": "packages/execution/src/live-gate.ts",
+      "failClosedProven": true,
+      "testCoverageRef": "apps/cli/src/command-surface-audit.test.ts",
+      "status": "verified",
+      "blocker": null
+    },
+    {
+      "gateId": "wallet-validated",
+      "name": "live-gate condition: wallet-validated",
+      "defaultState": "blocked",
+      "evidenceSource": "packages/execution/src/live-gate.ts",
+      "failClosedProven": true,
+      "testCoverageRef": "apps/cli/src/command-surface-audit.test.ts",
+      "status": "verified",
+      "blocker": null
+    },
+    {
+      "gateId": "signer-boundary",
+      "name": "live-gate condition: signer-boundary",
+      "defaultState": "blocked",
+      "evidenceSource": "packages/execution/src/live-gate.ts",
+      "failClosedProven": true,
+      "testCoverageRef": "apps/cli/src/command-surface-audit.test.ts",
+      "status": "verified",
+      "blocker": null
+    },
+    {
+      "gateId": "audit-and-redaction",
+      "name": "live-gate condition: audit-and-redaction",
+      "defaultState": "blocked",
+      "evidenceSource": "packages/execution/src/live-gate.ts",
+      "failClosedProven": true,
+      "testCoverageRef": "apps/cli/src/command-surface-audit.test.ts",
+      "status": "verified",
+      "blocker": null
+    }
+  ],
+  "noSendInvariant": {
+    "status": "verified",
+    "evidence": "apps/cli/src/command-surface-audit.test.ts",
+    "detail": "no CLI path requests mainnet-live; the resolver is fail-closed (unknown -> paper, mainnet-live -> blocked)"
+  },
+  "signerBoundary": {
+    "status": "verified",
+    "evidence": "packages/execution/src/signer.ts",
+    "detail": "a mainnet signer refuses to load without an armed fourteen-condition gate (no key file is read)"
+  },
+  "rustBoundary": {
+    "status": "verified",
+    "evidence": "crates/solmaker-engine/tests/safety_scan.rs",
+    "detail": "the Rust dependency allowlist holds (serde, serde_json) and the engine carries no signer/send/network capability"
+  },
+  "artifactRedaction": {
+    "status": "verified",
+    "evidence": "packages/security/src/redact.ts",
+    "detail": "the redactor strips secret-shaped values: long base58/hex key blobs, query-param tokens, and mnemonic phrases"
+  },
+  "releaseCandidate": {
+    "status": "verified",
+    "evidence": "apps/cli/src/release-candidate-safety.test.ts",
+    "detail": "the mainnet dry-run release candidate pins liveSendStatus = disabled (no input can flip it)"
+  },
+  "reconciliationWall": {
+    "status": "verified",
+    "evidence": "packages/execution/src/session.ts",
+    "detail": "an unreconciled / pending-confirmation / unknown session blocks a new execution attempt (no bypass)"
+  },
+  "commandSurface": {
+    "status": "safe",
+    "evidence": "apps/cli/src/command-surface-audit.test.ts",
+    "detail": "no mainnet-send command, no live/arm/bypass flag; only send command is execution:devnet:send (devnet)"
+  },
+  "microTradePrerequisites": [
+    {
+      "id": "devnet-broadcast-confirmed",
+      "description": "a real devnet end-to-end broadcast has confirmed and reconciled at least once",
+      "met": false,
+      "detail": "not yet confirmed (devnet faucet/funding blocked) — run execution:devnet:rehearse once funded"
+    },
+    {
+      "id": "written-sign-off",
+      "description": "a written, human Phase 7 sign-off is recorded in the authorization dossier",
+      "met": false,
+      "detail": "no written human sign-off yet — see docs/PHASE7_AUTHORIZATION_DOSSIER.md"
+    }
+  ],
+  "remainingBlockers": [],
+  "nextSafeAction": "The safety architecture is verified, but 2 operational prerequisite(s) remain open (devnet-broadcast-confirmed, written-sign-off). Close them; Phase 7 live execution stays unauthorized.",
+  "caveats": [
+    "Every gate/invariant status here is a declaration plus the cheap structural fact the auditor could machine-check; read the named test references for the full proof.",
+    "A 'verified' status means the structural check passed and the named test guards it — it is never a claim that live trading is safe.",
+    "Even the best verdict authorizes nothing: a controlled S104 micro-trade needs a separate, explicit, written authorization."
+  ],
+  "liveExecutionAuthorized": false,
+  "authorizesLiveTrading": false,
+  "requiresSeparateApproval": true,
+  "neverSends": true,
+  "phase7LiveTradingReady": false
+}
