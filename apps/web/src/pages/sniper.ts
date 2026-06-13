@@ -184,9 +184,12 @@ function livePostureSection(): RawHtml {
         title: "Live trading is DISABLED and unauthorized.",
         body: html`The fourteen-condition mainnet live gate defaults <strong>blocked</strong>, no CLI command can
           send on mainnet, and the Phase 7 authorization audit verdict is
-          <code>authorized-for-design-only</code>. Two prerequisites remain open before a controlled
-          micro-trade could even be <em>considered</em>: a confirmed devnet broadcast and a written human
-          sign-off. Neither is granted here, and no flag in this repo can substitute for that human decision.`,
+          <code>authorized-for-design-only</code>. Of the two prerequisites before a controlled micro-trade
+          could even be <em>considered</em>, the devnet broadcast is now <strong>met</strong> — a real funded
+          devnet broadcast confirmed and reconciled (devnet slot <code>469219488</code>, verdict
+          <code>reconciled</code>). A written human Phase 7 sign-off remains the <em>only</em> open
+          prerequisite. Even so, nothing is authorized here, and no flag in this repo can substitute for that
+          human decision.`,
       })}
       <div class="sm-cmdgrid">
         ${commands.map(
