@@ -5,6 +5,7 @@
 //!   solmaker-engine quote-score [--json] --scored-at <iso-8601-utc> --max-quote-age-ms <n>
 //!   solmaker-engine tx-inspect [--json] [--created-at <iso-8601-utc>]
 //!   solmaker-engine sim-classify [--json] [--created-at <iso-8601-utc>]
+//!   solmaker-engine sniper-score [--json] [--created-at <iso-8601-utc>]
 //!
 //! `realtime-normalize` reads ONE replay events JSON document from BOUNDED
 //! stdin (refused beyond 2 MiB) and emits normalized candidate observations.
@@ -23,10 +24,11 @@ use std::process::ExitCode;
 use solmaker_engine::quote_score;
 use solmaker_engine::realtime;
 use solmaker_engine::sim_classify;
+use solmaker_engine::sniper_score;
 use solmaker_engine::status;
 use solmaker_engine::tx_inspect;
 
-const USAGE: &str = "usage: solmaker-engine <status|realtime-normalize|tx-inspect|sim-classify> [--json] [--created-at <iso-8601-utc>] | solmaker-engine quote-score [--json] --scored-at <iso-8601-utc> --max-quote-age-ms <n>";
+const USAGE: &str = "usage: solmaker-engine <status|realtime-normalize|tx-inspect|sim-classify|sniper-score> [--json] [--created-at <iso-8601-utc>] | solmaker-engine quote-score [--json] --scored-at <iso-8601-utc> --max-quote-age-ms <n>";
 
 /// Hard ceiling on stdin input for realtime-normalize (a 500-event replay
 /// document is well under this; anything larger is a mistake, not a feed).
@@ -208,6 +210,28 @@ fn run_sim_classify(args: &[String]) -> ExitCode {
     }
 }
 
+fn run_sniper_score(args: &[String]) -> ExitCode {
+    let common = match parse_common_args(args) {
+        Ok(common) => common,
+        Err(message) => return refuse(&message),
+    };
+    let input = match read_bounded_stdin() {
+        Ok(input) => input,
+        Err(message) => return refuse(&message),
+    };
+    match sniper_score::score_input(&input, common.created_at.as_deref()) {
+        Ok(report) => {
+            if common.json {
+                print!("{}", sniper_score::to_ipc_json(&report));
+            } else {
+                print!("{}", sniper_score::to_text(&report));
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => refuse(&err.to_string()),
+    }
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
@@ -216,6 +240,7 @@ fn main() -> ExitCode {
         Some("quote-score") => run_quote_score(&args[1..]),
         Some("tx-inspect") => run_tx_inspect(&args[1..]),
         Some("sim-classify") => run_sim_classify(&args[1..]),
+        Some("sniper-score") => run_sniper_score(&args[1..]),
         Some(other) => refuse(&format!("unknown command {other:?}")),
         None => refuse("a command is required"),
     }

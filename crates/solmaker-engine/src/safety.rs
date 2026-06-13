@@ -13,13 +13,15 @@ pub const SAFETY_MODE: &str = "sidecar-read-only";
 ///   - `realtime-replay-normalize` (S98) — replay candidate normalization
 ///   - `routequote-score` (S99) — route-quote scoring intelligence
 ///   - `sim-classification` (S100) — simulation-failure classification parity
+///   - `sniper-candidate-score` (S101) — memecoin candidate scoring + ranking
 ///   - `tx-inspection` (S100) — unsigned transaction SHAPE inspection
-pub const SUPPORTED_CAPABILITIES: [&str; 7] = [
+pub const SUPPORTED_CAPABILITIES: [&str; 8] = [
     "json-ipc",
     "realtime-replay-normalize",
     "routequote-score",
     "schema-parity",
     "sim-classification",
+    "sniper-candidate-score",
     "status",
     "tx-inspection",
 ];

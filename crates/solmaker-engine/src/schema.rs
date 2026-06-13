@@ -18,6 +18,10 @@ pub const ENGINE_TX_INSPECT_SCHEMA_VERSION: &str = "engine.tx.inspect.report.v1"
 /// Simulation-failure classification parity (Sprint 100).
 pub const ENGINE_SIM_CLASSIFICATION_SCHEMA_VERSION: &str = "engine.sim.classification.report.v1";
 
+/// Memecoin candidate scoring + operator ranking (Sprint 101). The input bundle
+/// is a TypeScript-produced `sniper.score.input.v1`.
+pub const ENGINE_SNIPER_SCORE_SCHEMA_VERSION: &str = "engine.sniper.score.report.v1";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -40,6 +44,10 @@ mod tests {
         assert_eq!(
             ENGINE_SIM_CLASSIFICATION_SCHEMA_VERSION,
             "engine.sim.classification.report.v1"
+        );
+        assert_eq!(
+            ENGINE_SNIPER_SCORE_SCHEMA_VERSION,
+            "engine.sniper.score.report.v1"
         );
     }
 }

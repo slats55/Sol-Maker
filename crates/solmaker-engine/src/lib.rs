@@ -33,11 +33,13 @@ pub mod realtime;
 pub mod safety;
 pub mod schema;
 pub mod sim_classify;
+pub mod sniper_score;
 pub mod status;
 pub mod tx_inspect;
 
 pub use quote_score::{score_fetch_report, QuoteScoreReport};
 pub use realtime::{normalize_replay_events, RealtimeObservationsReport};
 pub use sim_classify::{classify_document, SimClassificationReport};
+pub use sniper_score::{score_input, SniperScoreReport};
 pub use status::{build_status_report, StatusReport};
 pub use tx_inspect::{inspect_envelope, TxInspectReport};
