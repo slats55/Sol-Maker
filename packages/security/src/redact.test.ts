@@ -7,7 +7,7 @@ import {
 } from "./redact.js";
 
 // A realistic-looking but entirely fake 64-byte base58 secret key (~88 chars).
-const FAKE_BASE58_SECRET =
+const FAKE_BASE58_SECRET = // safety-scan-ignore: intentional redactor test fixture, not a real key.
   "4wBqpZM9xaSheZzJSMawUHDgZ7miWfSsxmV1DxAVN1rJ8sPT3v9nQk7mRsV2yZ8bC4dE6fG1hJ3kL5mN7pQ9rS";
 const FAKE_HEX_SECRET = "a".repeat(64);
 const FAKE_MNEMONIC =

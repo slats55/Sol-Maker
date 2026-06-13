@@ -17,6 +17,7 @@
     "test:watch": "vitest",
     "web:build": "tsx apps/web/src/build.ts",
     "web:inspect": "tsx apps/web/src/inspect.ts",
+    "safety:scan": "tsx scripts/safety-scan.ts",
     "rust:check": "cargo check --workspace",
     "rust:build": "cargo build --workspace",
     "rust:test": "cargo test --workspace",
