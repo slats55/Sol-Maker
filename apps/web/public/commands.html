@@ -852,6 +852,16 @@
           </div>
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:phase7:authorization:audit</code>
+    <p class="sm-cmd__summary">The S103 read-only Phase 7 authorization audit (phase7.authorization.audit.v1): machine-verifies the no-send invariant, the fourteen-gate default-blocked path, the signer/Rust/redaction/reconciliation boundaries, and the command surface, then re-derives a verdict that DEFAULTS to not-authorized. Authorizes NOTHING and sends NOTHING; a controlled micro-trade still needs a separate, explicit, written authorization.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="The S103 read-only security review: is the repo ready to be CONSIDERED for a separately-authorized S104 controlled micro-trade? It folds the fourteen-condition live gate, the no-send invariant, the signer/Rust/redaction/reconciliation boundaries, the release candidate, and the command surface into one verdict that is RE-DERIVED from the evidence and DEFAULTS to not-authorized. The best verdict, &#39;ready-for-separate-microtrade-authorization&#39;, authorizes NOTHING; live execution is pinned false and the artifact is structurally incapable of arming, signing, or sending. Produced by paper:phase7:authorization:audit.">
+    <code>phase7.authorization.audit.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker execution:session:status</code>
     <p class="sm-cmd__summary">S96 read-only session accounting status: the latest execution session&#39;s ledger entries and the continuation decision a NEW devnet attempt would face (allowed only after reconciled / not-sent / funding-blocked / an explicit audited acknowledgment). Writes nothing unless --out.</p>
     <div class="sm-cmd__artifact">

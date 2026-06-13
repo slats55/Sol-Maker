@@ -503,6 +503,13 @@ export const COMMANDS: readonly CommandRef[] = [
     readsChain: false,
   },
   {
+    command: "paper:phase7:authorization:audit",
+    summary:
+      "The S103 read-only Phase 7 authorization audit (phase7.authorization.audit.v1): machine-verifies the no-send invariant, the fourteen-gate default-blocked path, the signer/Rust/redaction/reconciliation boundaries, and the command surface, then re-derives a verdict that DEFAULTS to not-authorized. Authorizes NOTHING and sends NOTHING; a controlled micro-trade still needs a separate, explicit, written authorization.",
+    group: "Execution (gated)",
+    readsChain: false,
+  },
+  {
     command: "execution:session:status",
     summary:
       "S96 read-only session accounting status: the latest execution session's ledger entries and the continuation decision a NEW devnet attempt would face (allowed only after reconciled / not-sent / funding-blocked / an explicit audited acknowledgment). Writes nothing unless --out.",

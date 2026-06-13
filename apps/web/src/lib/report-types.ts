@@ -515,6 +515,15 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
       "The S102 no-send release candidate: one mainnet dry-run rehearsal folded into an auditable summary (candidate scoring + ranking, deep risk, Token-2022 blockers, quote + freshness + Rust quote score, unsigned tx build, Rust tx inspection, real simulation, readiness checklist). The verdict is RE-DERIVED from the structured stage evidence (never from a candidate score), the live-send status is the literal \"disabled\", and the closed schema refuses any send-result field. 'dryrun-complete-blocked-live' means dry-run evidence complete and live STILL disabled — never live-trading readiness. Produced by paper:sniper:rehearse --mode mainnet-dry-run.",
     cli: "paper:sniper:rehearse",
   },
+  {
+    id: "phase7.authorization.audit.v1",
+    title: "Phase 7 authorization audit",
+    family: "execution",
+    stability: "stable",
+    description:
+      "The S103 read-only security review: is the repo ready to be CONSIDERED for a separately-authorized S104 controlled micro-trade? It folds the fourteen-condition live gate, the no-send invariant, the signer/Rust/redaction/reconciliation boundaries, the release candidate, and the command surface into one verdict that is RE-DERIVED from the evidence and DEFAULTS to not-authorized. The best verdict, 'ready-for-separate-microtrade-authorization', authorizes NOTHING; live execution is pinned false and the artifact is structurally incapable of arming, signing, or sending. Produced by paper:phase7:authorization:audit.",
+    cli: "paper:phase7:authorization:audit",
+  },
 ];
 
 /** Look up schema metadata by id, or `undefined` for an unknown schema. */

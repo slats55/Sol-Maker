@@ -3412,6 +3412,101 @@ function renderMainnetDryRunReleaseCandidateView(rec: Record<string, unknown>): 
   `;
 }
 
+function renderPhase7AuthorizationAuditView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const verdict = need(missing, "verdict", readString(rec, "verdict"));
+  const gates = Array.isArray(rec["gates"])
+    ? (rec["gates"] as unknown[]).filter((g): g is Record<string, unknown> => typeof g === "object" && g !== null && !Array.isArray(g))
+    : [];
+  const gatesVerified = gates.filter((g) => readString(g, "status") === "verified").length;
+  const prereqs = Array.isArray(rec["microTradePrerequisites"])
+    ? (rec["microTradePrerequisites"] as unknown[]).filter((p): p is Record<string, unknown> => typeof p === "object" && p !== null && !Array.isArray(p))
+    : [];
+  const blockers = readStringArray(rec, "remainingBlockers");
+  const caveats = readStringArray(rec, "caveats");
+  const commandSurface = asRecord(rec["commandSurface"]);
+  // The single most important fact: this artifact authorizes nothing and executes nothing.
+  const safe =
+    rec.liveExecutionAuthorized === false &&
+    rec.authorizesLiveTrading === false &&
+    rec.neverSends === true &&
+    rec.phase7LiveTradingReady === false &&
+    rec.requiresSeparateApproval === true &&
+    readString(rec, "auditedMode") === "phase7-live-authorization-review";
+
+  const invariant = (label: string, key: string): { term: string; detail: string } => {
+    const inv = asRecord(rec[key]);
+    const status = inv === null ? DASH : readString(inv, "status") ?? DASH;
+    const detail = inv === null ? "" : readString(inv, "detail") ?? "";
+    const mark = status === "verified" ? "✓" : status === "unverified" ? "?" : "✗";
+    return { term: label, detail: `${mark} ${status}${detail ? ` — ${detail}` : ""}` };
+  };
+
+  return html`
+    ${RiskNotice({
+      tone: safe ? "info" : "caution",
+      title: safe
+        ? `Phase 7 authorization audit — verdict ${verdict}. This does NOT execute trades.`
+        : "Phase 7 audit is missing its no-authorization safety literals — do NOT trust this artifact",
+      body: html`A read-only security review of the repository's no-send invariant, execution gates,
+        and boundaries. <strong>This document authorizes no live trading and executes no trade.</strong>
+        The verdict is re-derived from the evidence and defaults to <code>not-authorized</code>; the best
+        possible verdict, <code>ready-for-separate-microtrade-authorization</code>, still authorizes
+        nothing — a controlled micro-trade requires a separate, explicit, written user authorization.`,
+    })}
+    ${kvSection("Audit", undefined, [
+      { term: "verdict", detail: code(verdict) },
+      { term: "audit id", detail: text(readString(rec, "auditId") ?? DASH) },
+      { term: "repo sha", detail: text(readString(rec, "repoSha") ?? DASH) },
+      { term: "audited at / mode", detail: text(`${readString(rec, "auditedAt") ?? DASH} / ${readString(rec, "auditedMode") ?? DASH}`) },
+      { term: "gates verified", detail: text(`${String(gatesVerified)} / ${num(readNumber(rec, "gateCount"))} (fourteen-condition live gate)`) },
+      { term: "live execution authorized", detail: text(boolText(readBoolean(rec, "liveExecutionAuthorized"))) },
+      { term: "requires separate approval", detail: text(boolText(readBoolean(rec, "requiresSeparateApproval"))) },
+    ])}
+    ${kvSection("Safety invariants", "Each is machine-verified by the audit command; ✓ verified, ? unverified, ✗ failed.", [
+      invariant("no-send invariant", "noSendInvariant"),
+      invariant("signer boundary", "signerBoundary"),
+      invariant("rust boundary", "rustBoundary"),
+      invariant("artifact redaction", "artifactRedaction"),
+      invariant("release candidate", "releaseCandidate"),
+      invariant("reconciliation wall", "reconciliationWall"),
+      {
+        term: "command surface",
+        detail: text(
+          commandSurface === null
+            ? DASH
+            : `${readString(commandSurface, "status") === "safe" ? "✓ safe" : "✗ unsafe"}${readString(commandSurface, "detail") ? ` — ${readString(commandSurface, "detail")}` : ""}`,
+        ),
+      },
+    ])}
+    ${tableSection({
+      title: `Micro-trade prerequisites (${String(prereqs.length)})`,
+      description: "Operational prerequisites for a SEPARATELY-authorized S104 micro-trade. None of these executes a trade.",
+      columns: [{ header: "Met" }, { header: "Prerequisite" }, { header: "Detail" }],
+      rows: prereqs.map((p) => [
+        text(readBoolean(p, "met") === true ? "✓" : "✗"),
+        code(readString(p, "id")),
+        text(readString(p, "detail") ?? readString(p, "description") ?? DASH),
+      ]),
+      empty: "No prerequisites recorded.",
+    })}
+    ${blockers.total === 0 ? "" : Section({
+      title: `Remaining blockers (${String(blockers.total)})`,
+      description: "Every unverified/failed safety check and open blocker keeping Phase 7 not authorized.",
+      body: html`<ul class="sm-bullets sm-bullets--plain">${blockers.items.map((b) => html`<li>${b}</li>`)}</ul>`,
+    })}
+    ${Section({
+      title: "Next safe action",
+      body: html`<p>${readString(rec, "nextSafeAction") ?? DASH}</p>`,
+    })}
+    ${caveats.total === 0 ? "" : Section({
+      title: `Caveats (${String(caveats.total)})`,
+      body: html`<ul class="sm-bullets sm-bullets--plain">${caveats.items.map((c) => html`<li>${c}</li>`)}</ul>`,
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
 function renderEngineTxInspectView(rec: Record<string, unknown>): RawHtml {
   const missing: string[] = [];
   const network = need(missing, "network", readString(rec, "network"));
@@ -3589,6 +3684,8 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderSniperRehearsalView(rec);
     case "sniper.mainnet_dryrun.release_candidate.v1":
       return renderMainnetDryRunReleaseCandidateView(rec);
+    case "phase7.authorization.audit.v1":
+      return renderPhase7AuthorizationAuditView(rec);
     case "execution.readiness.report.v1":
       return renderExecutionReadinessView(rec);
     case "execution.devnet.rehearsal.report.v1":
