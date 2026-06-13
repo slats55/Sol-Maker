@@ -1146,11 +1146,21 @@ end-to-end; live trading does not begin until Sprint 104, separately authorized 
   one. Devnet broadcast is still externally faucet-blocked. Workflow in
   [`MAINNET_DRY_RUN.md`](MAINNET_DRY_RUN.md); safety boundary in
   [`EXECUTION_SAFETY.md`](EXECUTION_SAFETY.md).
-- **S103** — final security audit + live authorization review (written sign-off required).
-  (Recommended next: an independent line-by-line audit of the no-send invariant + the fourteen-gate
-  default-blocked path, producing the written sign-off S104's controlled micro-trade requires. An
-  operator watchlist / live-candidate-feed UX pass is the alternative if operator ergonomics is
-  prioritized over the audit.)
+- **S103** ✅ (2026-06-13) — final security audit + Phase 7 authorization dossier. Actuals: a new
+  `phase7.authorization.audit.v1` builder + strict validator in `@soulmaker/execution` and a
+  read-only `paper:phase7:authorization:audit` command that MACHINE-VERIFIES the cheap structural
+  facts (the fourteen-gate default-blocked, the resolver fail-closed, a mainnet signer refusing
+  without an armed gate, the redactor stripping a probe, the RC pinning live-disabled, the
+  reconciliation wall fail-closing, the CLI surface carrying no mainnet-send command/flag, the Rust
+  dependency allowlist) and re-derives a verdict that DEFAULTS to `not-authorized`. A whole-CLI
+  command-surface audit test, an artifact red-team (control chars / NUL / BOM / blobs / tamper), a
+  Rust-side env/clock parity test, and a repo-wide `pnpm safety:scan` (no tracked keys/.env/seed
+  leaks; `.gitignore` coverage) were added. The audit verdict on this repo is
+  `authorized-for-design-only` — every safety invariant verifies; the devnet-broadcast and written
+  sign-off prerequisites remain open. This sprint implemented NO mainnet send, NO live trading, NO
+  Rust signing/sending. The written sign-off S104 requires is a separate human decision recorded in
+  [`PHASE7_AUTHORIZATION_DOSSIER.md`](PHASE7_AUTHORIZATION_DOSSIER.md). Devnet broadcast remains
+  externally faucet-blocked.
 - **S104** — separately approved controlled mainnet MICRO-trade (burner wallet, micro cap,
   manual confirmation; see the design review's exact conditions).
 - **S105** — bounded live sniper session (attended, loss-capped, kill-switch rehearsed).

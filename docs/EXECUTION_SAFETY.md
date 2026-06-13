@@ -309,3 +309,16 @@ redaction-safe, and every CLI output passes through the redaction backstop.
   first-class honest artifacts).
 - Start a new execution attempt on top of an unaccounted one (the S96 session wall refuses; the
   only exits are a real reconciliation or an explicit audited acknowledgment).
+
+## Sprint 103 — Phase 7 authorization audit + safety scan
+
+The no-send invariant, the fourteen-condition gate, the signer/Rust/redaction boundaries, the
+release candidate, and the reconciliation wall are folded into one written, versioned, machine-checked
+artifact: `phase7.authorization.audit.v1` (`pnpm soulmaker paper:phase7:authorization:audit`,
+read-only). The audit re-derives a verdict that DEFAULTS to `not-authorized`; on this repo it reads
+`authorized-for-design-only` (every safety invariant verifies; the devnet-broadcast and written
+sign-off prerequisites remain open). A whole-CLI command-surface audit
+(`apps/cli/src/command-surface-audit.test.ts`) and a repo-wide secret/wallet/filesystem scan
+(`pnpm safety:scan`) guard the surface and the tree. The audit authorizes nothing; the full
+decision and the controlled-micro-trade safety proposal live in
+[`PHASE7_AUTHORIZATION_DOSSIER.md`](PHASE7_AUTHORIZATION_DOSSIER.md).

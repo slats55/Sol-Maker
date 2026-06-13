@@ -263,3 +263,15 @@ See [`../crates/solmaker-engine/SAFETY.md`](../crates/solmaker-engine/SAFETY.md)
 
 Rust never becomes the source of truth for safety decisions: every artifact
 crosses the bridge through the TypeScript validator first.
+
+## Sprint 103 — Rust boundary in the Phase 7 audit
+
+The Rust boundary is one of the invariants the Sprint 103 Phase 7 authorization audit verifies
+(`phase7.authorization.audit.v1`). The capability scan now exists symmetrically on both sides: the
+TypeScript mirror (`packages/engine-bridge/src/engine-safety.test.ts`) and the Rust-side
+`crates/solmaker-engine/tests/safety_scan.rs` both forbid signer/send/key/subprocess/network tokens
+AND runtime environment-variable / wall-clock reads (`env::var`, `var_os`, `getenv`, `SystemTime`,
+`Instant::now`) — while allowing `std::env::args` (argv) and the compile-time `env!`/`option_env!`
+macros, neither of which reads a runtime secret. The dependency allowlist stays exactly
+`serde` + `serde_json`. Rust intelligence can never override a gate; live execution stays TypeScript
+and default-blocked. See [`PHASE7_AUTHORIZATION_DOSSIER.md`](PHASE7_AUTHORIZATION_DOSSIER.md).

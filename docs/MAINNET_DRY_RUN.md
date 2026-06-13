@@ -218,3 +218,13 @@ returned `account-error` (the unfunded fee payer — exactly the honest signal),
 (version supported), a Rust candidate score (BONK 86/caution), readiness 8/14, and
 `liveSendStatus: disabled`. Nothing was signed or sent; the chain produced a complete operator view
 and correctly refused to proceed.
+
+## Sprint 103 — Phase 7 authorization audit
+
+The mainnet dry-run release candidate is one input to the Sprint 103 Phase 7 authorization audit
+(`phase7.authorization.audit.v1`, `pnpm soulmaker paper:phase7:authorization:audit`). A complete
+`dryrun-complete-blocked-live` release candidate proves the dry-run evidence chain is whole — it does
+**not** authorize live trading, and the audit treats it as exactly that: one verified invariant among
+many, never a path to a send. The audit's best verdict,
+`ready-for-separate-microtrade-authorization`, still authorizes nothing. See
+[`PHASE7_AUTHORIZATION_DOSSIER.md`](PHASE7_AUTHORIZATION_DOSSIER.md).
