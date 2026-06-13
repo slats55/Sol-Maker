@@ -55,6 +55,7 @@ import {
   engineQuoteScoreReport,
   engineTxInspectReport,
   engineSimClassifyReport,
+  engineSniperScoreReport,
   executionStatusReport,
   executionBuildReport,
   executionDevnetSendReport,
@@ -2834,6 +2835,31 @@ program
     const { text, exitCode } = await engineSimClassifyReport(
       {},
       { reportPath: opts.report, errLabel: opts.errLabel, logs: opts.log, json: Boolean(opts.json), failOnUnavailable: Boolean(opts.failOnUnavailable) },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("engine:sniper:score")
+  .description(
+    "S101 Rust memecoin candidate scoring: rank a sniper.score.input.v1 bundle of already-collected facts (risk, token mechanics, quote quality, simulation evidence) into a deterministic per-candidate score (0-100) + closed verdict (watch/caution/reject/insufficient-evidence) through the Rust sidecar. TypeScript re-derives every component, score, verdict, reason set, and the ranking and cross-checks the echoed facts against the bundle, refusing on any disagreement. A score is INTELLIGENCE only — never a buy signal, never readiness, and a rejected risk stays rejected no matter the score (honest report, exit 0)",
+  )
+  .requiredOption("--input <path>", "sniper.score.input.v1 bundle file to score")
+  .option("--json", "emit the validated score artifact as stable JSON")
+  .option("--out <path>", "write ONLY the validated artifact JSON to this path (refused if it exists)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-unavailable", "exit 1 when no Rust engine is available (default: honest report, exit 0)")
+  .action(async (opts: { input?: string; json?: boolean; out?: string; force?: boolean; failOnUnavailable?: boolean }) => {
+    const { text, exitCode } = await engineSniperScoreReport(
+      {},
+      {
+        inputPath: opts.input,
+        json: Boolean(opts.json),
+        outPath: opts.out,
+        force: Boolean(opts.force),
+        failOnUnavailable: Boolean(opts.failOnUnavailable),
+      },
     );
     console.log(text);
     if (exitCode !== 0) process.exitCode = exitCode;

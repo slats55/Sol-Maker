@@ -130,16 +130,19 @@ import {
   scoreQuotesThroughEngine,
   inspectTxThroughEngine,
   classifySimThroughEngine,
+  scoreCandidatesThroughEngine,
   ENGINE_STATUS_SCHEMA_VERSION,
   ENGINE_QUOTE_SCORE_SCHEMA_VERSION,
   ENGINE_TX_INSPECT_SCHEMA_VERSION,
   ENGINE_SIM_CLASSIFICATION_SCHEMA_VERSION,
+  ENGINE_SNIPER_SCORE_SCHEMA_VERSION,
   type EngineProcessRunner,
   type EngineStatusBridgeResult,
   type EngineRealtimeBridgeResult,
   type EngineQuoteScoreBridgeResult,
   type EngineTxInspectBridgeResult,
   type EngineSimClassifyBridgeResult,
+  type EngineSniperScoreBridgeResult,
 } from "@soulmaker/engine-bridge";
 import {
   createJupiterSwapBuilder,
@@ -12071,4 +12074,115 @@ export async function engineSimClassifyReport(
     ...report.caveats.map((c) => `CAVEAT: ${c}`),
   ];
   return { text: redactString(lines.join("\n")), exitCode: 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 101 — engine:sniper:score (Rust memecoin candidate scoring + ranking)
+//   Score a sniper.score.input.v1 bundle of already-collected facts through the
+//   Rust sidecar into a deterministic per-candidate score + closed verdict
+//   (watch / caution / reject / insufficient-evidence) + ranking. TypeScript
+//   re-derives every component, score, verdict, reason set, and the ranking and
+//   cross-checks the echoed facts against the bundle — a disagreement refuses
+//   the artifact. A score is INTELLIGENCE only: never a buy signal, never
+//   readiness, and a rejected risk stays rejected no matter the score.
+// ---------------------------------------------------------------------------
+
+export interface EngineSniperScoreCommandOptions {
+  /** Path to a sniper.score.input.v1 file (e.g. from paper:sniper:score:input:prepare or a dry-run run dir). */
+  inputPath?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit 1 when the Rust engine is unavailable (CI gating; default exit 0). */
+  failOnUnavailable?: boolean;
+}
+
+/** `soulmaker engine:sniper:score` — rank candidates from a facts bundle through the Rust sidecar. */
+export async function engineSniperScoreReport(
+  ctx: CommandContext = {},
+  opts: EngineSniperScoreCommandOptions = {},
+): Promise<CliReport> {
+  if (!opts.inputPath) {
+    return { text: "Refusing: --input <path> is required (a sniper.score.input.v1 bundle of already-collected facts).", exitCode: 1 };
+  }
+  let scoreInputJson: string;
+  try {
+    scoreInputJson = readFileSync(resolvePath(ctx, opts.inputPath), "utf8");
+  } catch {
+    return { text: redactString(`Refusing: cannot read the score input bundle at ${opts.inputPath}`), exitCode: 1 };
+  }
+
+  const result: EngineSniperScoreBridgeResult = await scoreCandidatesThroughEngine({
+    cwd: ctx.cwd ?? process.cwd(),
+    scoreInputJson,
+    createdAt: (ctx.now ?? isoNow)(),
+    runner: ctx.createEngineRunner?.(),
+    exists: ctx.engineBinaryExists,
+    env: ctx.env,
+  });
+
+  if (result.kind !== "ok") {
+    const exitCode = result.kind === "refused" || opts.failOnUnavailable ? 1 : 0;
+    if (opts.json) {
+      const payload = {
+        engineSniperScore: result.kind,
+        reason: result.reason,
+        detail: result.detail,
+        nextSafeAction:
+          result.kind === "unavailable"
+            ? "install Rust via https://rustup.rs and run pnpm rust:build — candidate scoring is Rust-only intelligence; the paper pipeline is fully functional without it"
+            : "inspect the engine output/exit detail above; the artifact was refused, never trusted",
+      };
+      return { text: redactString(JSON.stringify(payload, null, 2)), exitCode };
+    }
+    const lines = [
+      "RUST ENGINE SNIPER CANDIDATE SCORES",
+      result.kind === "unavailable" ? `engine: UNAVAILABLE — ${result.reason}` : `engine: REFUSED — ${result.reason}`,
+      `detail: ${result.detail}`,
+      result.kind === "unavailable"
+        ? "NEXT: install Rust via https://rustup.rs and run pnpm rust:build — candidate scoring is Rust-only intelligence; the paper pipeline is fully functional without it."
+        : "NEXT: the engine answered but the artifact was refused (never trusted); inspect the detail above.",
+    ];
+    return { text: redactString(lines.join("\n")), exitCode };
+  }
+
+  const report = result.report;
+  let wroteLine = "";
+  if (opts.outPath) {
+    const resolvedPath = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolvedPath)) {
+      return { text: redactString(`Refusing: ${resolvedPath} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolvedPath, JSON.stringify(report, null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the candidate score artifact at ${resolvedPath}`), exitCode: 1 };
+    }
+    wroteLine = `\nwrote ${resolvedPath}`;
+  }
+  if (opts.json) {
+    // VERBATIM as validated — schemaVersion engine.sniper.score.report.v1.
+    return { text: JSON.stringify(report, null, 2) + wroteLine, exitCode: 0 };
+  }
+  const lines = [
+    "RUST ENGINE SNIPER CANDIDATE SCORES",
+    `schema:    ${ENGINE_SNIPER_SCORE_SCHEMA_VERSION} via ${result.via}`,
+    `mode:      ${report.mode} (${report.network ?? "network unspecified"}) — ${report.candidateCount} candidate(s)`,
+    `ipc:       spawn ${result.timing.spawnMs}ms, parse ${result.timing.parseMs}ms, validate ${result.timing.validateMs}ms (IPC overhead only, never a trading-latency claim)`,
+    "",
+  ];
+  for (const c of report.rankedCandidates) {
+    const reasons = c.reasonCodes.length > 0 ? ` [${c.reasonCodes.join(", ")}]` : "";
+    lines.push(`  #${String(c.rank).padEnd(2)} ${String(c.score).padStart(3)}  ${c.verdict.padEnd(22)} ${c.candidateId}${reasons}`);
+    lines.push(`        next: ${c.nextSafeAction}`);
+  }
+  lines.push("");
+  if (report.bestCandidateId !== null) {
+    lines.push(`best:      ${report.bestCandidateId} (intelligence only — never a buy signal, never readiness, never 'safe to trade')`);
+  } else {
+    lines.push("best:      none (no candidates)");
+  }
+  lines.push("", "A high score is NOT a 'safe to trade' judgment; a rejected risk stays rejected; the score satisfies none of the mainnet live-gate conditions.", "");
+  lines.push(...report.caveats.map((c) => `CAVEAT: ${c}`));
+  return { text: redactString(lines.join("\n")) + wroteLine, exitCode: 0 };
 }
