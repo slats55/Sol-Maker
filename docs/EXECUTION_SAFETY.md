@@ -223,6 +223,35 @@ CLI injects it through a seam, which is how tests prove provider-never-called pr
    [`MAINNET_DRY_RUN.md`](MAINNET_DRY_RUN.md) for the end-to-end workflow and the real
    2026-06-12 evidence).
 
+## Rust transaction inspection — read-only, send core declined (Sprint 100)
+
+The Rust sidecar (`crates/solmaker-engine`) gained two READ-only transaction
+capabilities in S100, both behind bounded stdin and strict TypeScript
+re-validation (see [`RUST_ENGINE.md`](RUST_ENGINE.md)):
+
+- `engine:tx:inspect` decodes a strictly-UNSIGNED `txpreview.envelope.v1` and
+  reports its SHAPE facts (version, blockhash presence, instruction/account
+  counts, static program ids, ALT counts). The transaction wire format is parsed
+  in pure Rust; a **signed** transaction is refused. The bridge re-runs the real
+  `@solana/web3.js` decoder and refuses unless the facts match exactly.
+- `engine:sim:classify` maps a simulation `{ errLabel, logs }` onto the same S95
+  CLOSED classification set; the bridge re-runs the real
+  `classifySimulationFailure` and refuses on disagreement.
+
+Neither path signs, sends, opens a socket, or loads key material — the engine's
+dependency allowlist stays exactly `serde + serde_json`, and the dual-side
+capability scans still forbid every network/signer/keypair token.
+
+**The Rust devnet SEND core was reviewed and DECLINED this sprint.** Moving the
+send path into Rust would require adding network, signer, and keypair-loading
+capability to the one component the architecture guarantees cannot have them.
+The send path stays in TypeScript (`packages/execution`), behind
+`resolveExecutionMode`, the signer boundary, the fourteen-condition gate, and
+the S96 session/reconciliation wall — all unchanged. The exact preconditions a
+future (separately authorized) Rust devnet-send core would have to meet are
+recorded in [`RUST_ENGINE.md`](RUST_ENGINE.md) under the S100 decision. **No
+mainnet send surface exists in TypeScript or Rust.**
+
 ## Audit requirements
 
 Every send-capable path journals every attempt — refused or submitted — to an append-only JSONL

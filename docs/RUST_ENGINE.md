@@ -69,6 +69,73 @@ overhead itself (process spawn + JSON parse + validation), printed by
 - The S99 network review again decided **NO Rust network access** — live
   quote fetching stays in TypeScript (`packages/quotefetch`).
 
+## S100 transaction inspection + simulation classification
+
+Sprint 100 is the first sprint where Rust touches transaction *bytes* — but
+still only to READ them. Two new subcommands, both pure functions over their
+input, both behind the same bounded-stdin + strict-TypeScript-validation
+boundary:
+
+- `solmaker-engine tx-inspect [--json] [--created-at <iso>]` — decode a
+  strictly-UNSIGNED `txpreview.envelope.v1` from bounded stdin and emit
+  `engine.tx.inspect.report.v1`: the same SHAPE facts the TypeScript
+  `inspectUnsignedTransactionShape` produces (version + supported flag, real
+  recent-blockhash presence, instruction count, account count, the
+  statically-resolvable program ids, address-lookup-table count, and the count
+  of instructions whose program id is ALT-loaded). The base64 decode and the
+  Solana transaction wire-format parse are **hand-written in pure Rust** (no
+  `solana-sdk`, no `bincode` — the dependency allowlist stays exactly
+  `serde + serde_json`); a signed transaction (any non-zero signature slot) is
+  refused with exit 2, mirroring the TypeScript envelope boundary.
+- `solmaker-engine sim-classify [--json] [--created-at <iso>]` — read a bounded
+  `{ errLabel, logs }` simulation result from stdin and emit
+  `engine.sim.classification.report.v1`: the S95 CLOSED classification
+  (`slippage-or-route-error`, `compute-exceeded`, `blockhash-error`,
+  `account-error`, `program-error`, `unclassified-error`) plus the verbatim
+  operator guidance. The pattern set mirrors `classifySimulationFailure` byte
+  for byte.
+
+**The TypeScript parity wall (authoritative).** Rust output is never trusted:
+
+- for `tx-inspect`, the bridge independently re-runs the REAL
+  `validateUnsignedTxEnvelope` + `inspectUnsignedTransactionShape`
+  (`@solana/web3.js` decoder) on the same envelope and refuses the artifact
+  unless every shape fact matches — so an artifact survives only when the
+  hand-written Rust parser and the battle-tested web3.js decoder AGREE;
+- for `sim-classify`, the bridge re-runs the REAL `classifySimulationFailure`
+  on the same input and refuses on any disagreement.
+
+A signed envelope, an unsupported version, or any envelope the TypeScript
+authority rejects makes the bridge return `refused` — the Rust report is
+discarded, never surfaced as truth.
+
+**Decision — the Rust devnet SEND core is DECLINED this sprint.** Slice 4 of
+the S100 plan (a Rust devnet-only execution/send core) was reviewed and
+**not built**. Rationale, recorded here and in
+[`EXECUTION_SAFETY.md`](EXECUTION_SAFETY.md):
+
+- The engine's entire safety guarantee is that it *cannot* sign, send, open a
+  socket, or load key material — enforced by a `serde + serde_json`-only
+  dependency allowlist and dual-side capability scans. A devnet send core would
+  require adding an RPC client (network), a signer, and keypair loading to the
+  crate — dismantling that wall for an optional slice.
+- The send path already exists, fully gated, in TypeScript
+  (`packages/execution` — `resolveExecutionMode`, the signer boundary, the
+  fourteen-condition live gate, the S96 session/reconciliation wall). Moving it
+  into Rust would create a second send surface to audit, with no safety upside.
+- The real devnet broadcast is still externally faucet-blocked, so there is no
+  funded path to even exercise a Rust send core today.
+
+**S101 preconditions** a future Rust devnet-send core would have to meet before
+it could be reconsidered: a dedicated safety review expanding the dependency
+allowlist with a written decision per crate; a Rust signer boundary that is
+devnet-cluster-pinned and structurally cannot accept a mainnet endpoint;
+keypair paths gitignored and never logged; invocation ONLY after the
+TypeScript execution gate + session wall pass; reconciliation still through the
+S96 layer; and capability-scan exceptions narrowed to the exact new tokens with
+tests proving no mainnet reachability. Until all of that exists and is
+authorized, the engine stays read-only.
+
 ## S98 realtime hot path — how it flows
 
 ```
@@ -136,6 +203,8 @@ See [`../crates/solmaker-engine/SAFETY.md`](../crates/solmaker-engine/SAFETY.md)
 | `pnpm soulmaker engine:status` | Invoke the sidecar, validate, render (also `--json`, `--out <path>`, `--force`, `--fail-on-unavailable`) |
 | `pnpm soulmaker paper:realtime:snapshot --engine rust` | S98: replay normalization through the Rust sidecar (`--source replay` only; byte-identical snapshot; honest refusal when no engine exists) |
 | `pnpm soulmaker engine:quote:score --report <f> --max-quote-age-ms <n>` | S99: route-quote scoring intelligence over a fetch report (scores recomputed + freshness re-evaluated by TypeScript before acceptance) |
+| `pnpm soulmaker engine:tx:inspect --envelope <f>` | S100: unsigned-transaction SHAPE inspection (facts re-derived by the real @solana/web3.js decoder before acceptance; a signed envelope is refused) |
+| `pnpm soulmaker engine:sim:classify --report <f> \| --err-label <label>` | S100: simulation-failure classification into the S95 closed set (re-run by the real classifier before acceptance) |
 | `pnpm rust:check` / `rust:build` / `rust:test` | Cargo passthroughs over the workspace |
 | `pnpm rust:fmt` / `rust:fmt:check` / `rust:clippy` | Formatting + lints (clippy runs `-D warnings`) |
 

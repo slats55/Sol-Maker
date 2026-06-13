@@ -17,7 +17,7 @@ use crate::schema::ENGINE_STATUS_SCHEMA_VERSION;
 const BANNER: &str = "RUST ENGINE STATUS — sidecar foundation report. This engine has no signing, sending, wallet, key, or network capability by construction; TypeScript validates every byte it emits before anything reads it.";
 
 const CAVEATS: [&str; 3] = [
-    "Read-only sidecar: status, JSON IPC, schema parity, realtime REPLAY normalization, and route-quote SCORING over bounded stdin. No live ingestion, live quoting, simulation, or execution capability exists in this engine.",
+    "Read-only sidecar: status, JSON IPC, schema parity, realtime REPLAY normalization, route-quote SCORING, simulation CLASSIFICATION, and unsigned-transaction SHAPE inspection over bounded stdin. No live ingestion, live quoting, signing, sending, or execution capability exists in this engine.",
     "The engine cannot sign, send, or load wallet/key material — those capabilities have no code path here, and capability scans on both sides enforce that.",
     "createdAt is supplied by the orchestrator (--created-at) so identical invocations stay byte-identical; the engine reads no clock.",
 ];

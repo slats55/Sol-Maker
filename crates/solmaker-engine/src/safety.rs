@@ -7,16 +7,21 @@
 /// The only safety mode the foundation engine has.
 pub const SAFETY_MODE: &str = "sidecar-read-only";
 
-/// Everything the engine CAN do today. Alphabetical for determinism.
-/// `realtime-replay-normalize` (Sprint 98) and `routequote-score` (Sprint 99)
-/// both consume operator/TS-produced documents over bounded stdin — neither
-/// adds any network, filesystem, clock, or env capability.
-pub const SUPPORTED_CAPABILITIES: [&str; 5] = [
+/// Everything the engine CAN do today. Alphabetical for determinism. Every
+/// capability consumes a document over bounded stdin and READS it; none adds
+/// network, filesystem, clock, env, signing, or sending capability.
+///   - `realtime-replay-normalize` (S98) — replay candidate normalization
+///   - `routequote-score` (S99) — route-quote scoring intelligence
+///   - `sim-classification` (S100) — simulation-failure classification parity
+///   - `tx-inspection` (S100) — unsigned transaction SHAPE inspection
+pub const SUPPORTED_CAPABILITIES: [&str; 7] = [
     "json-ipc",
     "realtime-replay-normalize",
     "routequote-score",
     "schema-parity",
+    "sim-classification",
     "status",
+    "tx-inspection",
 ];
 
 /// Everything the engine explicitly CANNOT do. Alphabetical for determinism.

@@ -1,26 +1,32 @@
-//! `solmaker-engine` binary entrypoint. Three subcommands exist:
+//! `solmaker-engine` binary entrypoint. Subcommands:
 //!
 //!   solmaker-engine status [--json] [--created-at <iso-8601-utc>]
 //!   solmaker-engine realtime-normalize [--json] [--created-at <iso-8601-utc>]
 //!   solmaker-engine quote-score [--json] --scored-at <iso-8601-utc> --max-quote-age-ms <n>
+//!   solmaker-engine tx-inspect [--json] [--created-at <iso-8601-utc>]
+//!   solmaker-engine sim-classify [--json] [--created-at <iso-8601-utc>]
 //!
 //! `realtime-normalize` reads ONE replay events JSON document from BOUNDED
 //! stdin (refused beyond 2 MiB) and emits normalized candidate observations.
 //! `quote-score` reads ONE routequote.fetch.report.v1 document from the same
 //! bounded stdin and emits route-quality intelligence (both arguments are
 //! REQUIRED — there is no default age cap and no clock in this binary).
-//! Exit codes follow the IPC contract (src/ipc.rs): 0 = report produced,
-//! 2 = invocation refused. Diagnostics go to stderr; stdout carries only the
-//! report.
+//! `tx-inspect` reads ONE strictly-UNSIGNED txpreview.envelope.v1 and emits its
+//! decoded SHAPE facts (a signed transaction is refused). `sim-classify` reads
+//! ONE simulation result and emits the S95 closed classification. Exit codes
+//! follow the IPC contract (src/ipc.rs): 0 = report produced, 2 = invocation
+//! refused. Diagnostics go to stderr; stdout carries only the report.
 
 use std::io::Read;
 use std::process::ExitCode;
 
 use solmaker_engine::quote_score;
 use solmaker_engine::realtime;
+use solmaker_engine::sim_classify;
 use solmaker_engine::status;
+use solmaker_engine::tx_inspect;
 
-const USAGE: &str = "usage: solmaker-engine <status|realtime-normalize> [--json] [--created-at <iso-8601-utc>] | solmaker-engine quote-score [--json] --scored-at <iso-8601-utc> --max-quote-age-ms <n>";
+const USAGE: &str = "usage: solmaker-engine <status|realtime-normalize|tx-inspect|sim-classify> [--json] [--created-at <iso-8601-utc>] | solmaker-engine quote-score [--json] --scored-at <iso-8601-utc> --max-quote-age-ms <n>";
 
 /// Hard ceiling on stdin input for realtime-normalize (a 500-event replay
 /// document is well under this; anything larger is a mistake, not a feed).
@@ -84,7 +90,7 @@ fn read_bounded_stdin() -> Result<String, String> {
         return Err(format!("stdin exceeds the {MAX_STDIN_BYTES}-byte ceiling"));
     }
     if input.trim().is_empty() {
-        return Err("stdin is empty — pipe a replay events JSON document".to_string());
+        return Err("stdin is empty — pipe the command's JSON input document".to_string());
     }
     Ok(input)
 }
@@ -158,12 +164,58 @@ fn run_quote_score(args: &[String]) -> ExitCode {
     }
 }
 
+fn run_tx_inspect(args: &[String]) -> ExitCode {
+    let common = match parse_common_args(args) {
+        Ok(common) => common,
+        Err(message) => return refuse(&message),
+    };
+    let input = match read_bounded_stdin() {
+        Ok(input) => input,
+        Err(message) => return refuse(&message),
+    };
+    match tx_inspect::inspect_envelope(&input, common.created_at.as_deref()) {
+        Ok(report) => {
+            if common.json {
+                print!("{}", tx_inspect::to_ipc_json(&report));
+            } else {
+                print!("{}", tx_inspect::to_text(&report));
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => refuse(&err.to_string()),
+    }
+}
+
+fn run_sim_classify(args: &[String]) -> ExitCode {
+    let common = match parse_common_args(args) {
+        Ok(common) => common,
+        Err(message) => return refuse(&message),
+    };
+    let input = match read_bounded_stdin() {
+        Ok(input) => input,
+        Err(message) => return refuse(&message),
+    };
+    match sim_classify::classify_document(&input, common.created_at.as_deref()) {
+        Ok(report) => {
+            if common.json {
+                print!("{}", sim_classify::to_ipc_json(&report));
+            } else {
+                print!("{}", sim_classify::to_text(&report));
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => refuse(&err.to_string()),
+    }
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("status") => run_status(&args[1..]),
         Some("realtime-normalize") => run_realtime_normalize(&args[1..]),
         Some("quote-score") => run_quote_score(&args[1..]),
+        Some("tx-inspect") => run_tx_inspect(&args[1..]),
+        Some("sim-classify") => run_sim_classify(&args[1..]),
         Some(other) => refuse(&format!("unknown command {other:?}")),
         None => refuse("a command is required"),
     }

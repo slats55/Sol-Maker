@@ -4,40 +4,11 @@
 //! to ~88 base58 chars and must never travel further than this check. Error
 //! messages never echo the rejected value.
 
+use crate::base58;
+
 const MIN_MINT_BASE58_LEN: usize = 32;
 const MAX_MINT_BASE58_LEN: usize = 44;
 const MINT_BYTE_LENGTH: usize = 32;
-
-const BASE58_ALPHABET: &[u8; 58] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
-fn base58_digit(b: u8) -> Option<u32> {
-    BASE58_ALPHABET
-        .iter()
-        .position(|c| *c == b)
-        .map(|i| i as u32)
-}
-
-/// Decode a base58 string to bytes; `None` on any non-alphabet character.
-fn base58_decode(input: &str) -> Option<Vec<u8>> {
-    let mut bytes: Vec<u8> = Vec::new();
-    for &c in input.as_bytes() {
-        let digit = base58_digit(c)?;
-        let mut carry = digit;
-        for byte in bytes.iter_mut() {
-            let value = (*byte as u32) * 58 + carry;
-            *byte = (value & 0xff) as u8;
-            carry = value >> 8;
-        }
-        while carry > 0 {
-            bytes.push((carry & 0xff) as u8);
-            carry >>= 8;
-        }
-    }
-    let leading_zeros = input.bytes().take_while(|b| *b == b'1').count();
-    bytes.extend(std::iter::repeat_n(0u8, leading_zeros));
-    bytes.reverse();
-    Some(bytes)
-}
 
 /// Why a mint value was refused. Messages deliberately carry the LENGTH, never
 /// the value itself.
@@ -90,7 +61,7 @@ pub fn parse_mint(input: &str) -> Result<String, MintError> {
     if len < MIN_MINT_BASE58_LEN {
         return Err(MintError::TooShort(len));
     }
-    let decoded = base58_decode(trimmed).ok_or(MintError::NotBase58)?;
+    let decoded = base58::decode(trimmed).ok_or(MintError::NotBase58)?;
     if decoded.len() != MINT_BYTE_LENGTH {
         return Err(MintError::NotPublicKeySized(decoded.len()));
     }
