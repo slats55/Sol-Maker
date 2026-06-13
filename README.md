@@ -786,6 +786,18 @@ SOLMAKER_ENABLE_DEVNET_EXECUTION=devnet-only pnpm soulmaker execution:devnet:reh
 pnpm soulmaker paper:sniper:rehearse --candidates candidates.json --out runs/rehearsal-today
 pnpm soulmaker paper:sniper:rehearse --mode mainnet-dry-run --candidates candidates.json --build-wallet <pubkey> --risk risk.json --amount-sol 0.01 --slippage-bps 50 --max-spend-sol 0.02 --slippage-cap-bps 100 --risk-score-cap 30 --allow-paper-read --out runs/rehearsal-dry-run
 
+# Sprint 103-B — DEVNET PROOF UNBLOCKER + PHASE 7 SIGN-OFF + OPERATOR DEMO (live trading stays DISABLED).
+# execution:devnet:funding-status reads a throwaway devnet key's balance once and emits the honest
+# execution.devnet.funding_status.v1 (funded re-derived from the observed lamports; mainnet refused; no
+# secret serialized); --complete-if-funded chains the rehearsal --skip-airdrop. paper:phase7:signoff:template
+# is the FUTURE-human-authorization mechanism (a blank template-only checklist; even a fully-signed record
+# authorizes no live trade). paper:sniper:operator-demo assembles a SAFE, showable demo folder + manifest
+# (every artifact labelled by provenance; live pinned disabled). The Phase 7 audit can consume a
+# funding-status / reconciliation / sign-off record as evidence. None of these sends, signs, or trades:
+pnpm soulmaker execution:devnet:funding-status --public-key <KEY> --out runs/funding
+pnpm soulmaker paper:phase7:signoff:template --out runs/signoff.json
+pnpm soulmaker paper:sniper:operator-demo --out runs/demo
+
 # Sprint 27 — PAPER SNIPER DECISIONS: fold the candidate list + preflight + optional operator rules
 # into a per-candidate SIMULATED decision — skip / watch / paper-enter / paper-reject / unknown — with
 # reasons. A paper-enter is a PAPER-ONLY decision, NOT a buy/sell order, NOT a transaction, NOT live
