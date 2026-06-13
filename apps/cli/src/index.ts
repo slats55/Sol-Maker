@@ -64,6 +64,7 @@ import {
   executionReadinessReport,
   phase7AuthorizationAuditReport,
   phase7SignoffTemplateReport,
+  phase7MicrotradePreflightReport,
   paperSniperOperatorDemoReport,
   executionSessionStatusReport,
   executionSessionReconcileReport,
@@ -3352,6 +3353,60 @@ program
           outPath: opts.out,
           force: Boolean(opts.force),
           requireSigned: Boolean(opts.requireSigned),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:phase7:microtrade:preflight")
+  .description(
+    "Sprint 104-A: build the READ-ONLY `phase7.microtrade.preflight.v1` — the structural answer to 'IF a human later gives a separate, explicit S104 execution authorization, are the required inputs present?'. It reads and strictly validates the Phase 7 audit, the sign-off record, the mainnet dry-run release candidate, and the devnet reconciliation, validates a PUBLIC burner wallet (a secret key is refused) and a bounded max-spend, and folds them into one re-derived verdict. It DOES NOT execute a trade: it never signs, never sends, never loads a private key, registers no mainnet send surface, and the best verdict it can reach, ready-for-separate-execution-authorization, authorizes NOTHING — a separate, explicit, written S104 execution authorization, the fourteen-condition live gate, and a reviewed sprint are still required",
+  )
+  .option("--preflight-id <label>", "operator label echoed into the artifact (default phase7-microtrade-preflight)")
+  .option("--repo-sha <sha>", "the repo SHA the preflight was run against (recorded verbatim)")
+  .option("--phase7-audit <path>", "evidence: a phase7.authorization.audit.v1 (a not-authorized audit is refused)")
+  .option("--sign-off-record <path>", "evidence: a phase7.human_signoff.record.v1 (signed-for-controlled-microtrade satisfies the gate)")
+  .option("--release-candidate <path>", "evidence: a sniper.mainnet_dryrun.release_candidate.v1 (dryrun-complete-blocked-live satisfies the gate)")
+  .option("--devnet-reconciliation <path>", "evidence: a devnet execution.reconciliation.report.v1 (verdict 'reconciled' proves the broadcast)")
+  .option("--burner-wallet <pubkey>", "a dedicated PUBLIC burner wallet address (32-byte public key only; a secret key is refused)")
+  .option("--max-spend-sol <sol>", "a bounded per-trade max spend in SOL (micro ceiling enforced; must not exceed the signed cap)")
+  .option("--manual-confirmation-label <label>", "an explicit manual-confirmation label (the operator will confirm the single trade by hand)")
+  .option("--json", "emit the preflight artifact as stable JSON")
+  .option("--out <path>", "write ONLY the preflight JSON to this path (refused if it exists without --force)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .action(
+    (opts: {
+      preflightId?: string;
+      repoSha?: string;
+      phase7Audit?: string;
+      signOffRecord?: string;
+      releaseCandidate?: string;
+      devnetReconciliation?: string;
+      burnerWallet?: string;
+      maxSpendSol?: string;
+      manualConfirmationLabel?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+    }) => {
+      const { text, exitCode } = phase7MicrotradePreflightReport(
+        {},
+        {
+          preflightId: opts.preflightId,
+          repoSha: opts.repoSha,
+          phase7AuditPath: opts.phase7Audit,
+          signOffRecordPath: opts.signOffRecord,
+          releaseCandidatePath: opts.releaseCandidate,
+          devnetReconciliationPath: opts.devnetReconciliation,
+          burnerWallet: opts.burnerWallet,
+          maxSpendSol: opts.maxSpendSol,
+          manualConfirmationLabel: opts.manualConfirmationLabel,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
         },
       );
       console.log(text);

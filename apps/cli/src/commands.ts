@@ -180,6 +180,8 @@ import {
   buildDevnetFundingStatus,
   validateDevnetFundingStatus,
   validatePhase7HumanSignoff,
+  buildPhase7MicrotradePreflight,
+  PHASE7_MICROTRADE_PREFLIGHT_MAX_SPEND_LAMPORTS,
   EXECUTION_RECONCILIATION_REPORT_SCHEMA_VERSION,
   DEVNET_FUNDING_DEFAULT_MIN_LAMPORTS,
   LAMPORTS_PER_SOL,
@@ -212,6 +214,14 @@ import {
   type Phase7AuditInvariant,
   type Phase7AuditPrerequisite,
   type Phase7SignoffTargetScope,
+  type Phase7PreflightAuditStatus,
+  type Phase7PreflightSignoffStatus,
+  type Phase7PreflightDevnetStatus,
+  type Phase7PreflightRcStatus,
+  type Phase7PreflightRiskStatus,
+  type Phase7PreflightToken2022Status,
+  type Phase7PreflightQuoteStatus,
+  type Phase7PreflightSimulationStatus,
 } from "@soulmaker/execution";
 import {
   parseMintAddress,
@@ -6907,6 +6917,273 @@ export function phase7SignoffTemplateReport(
   lines.push("");
   for (const d of record.disclaimers) lines.push(`NOTE: ${d}`);
   return { text: redactString(lines.join("\n")) + wroteLine, exitCode };
+}
+
+// --- Sprint 104-A: the S104 controlled micro-trade PREFLIGHT command ----------
+// Reads the evidence artifacts (Phase 7 audit, sign-off record, mainnet dry-run
+// release candidate, devnet reconciliation), validates a PUBLIC burner wallet
+// and a bounded max-spend, and emits the no-send phase7.microtrade.preflight.v1
+// artifact. It never signs, never sends, never loads a private key, and the best
+// verdict it can reach is ready-for-separate-execution-authorization — which
+// authorizes nothing. There is no mainnet send command anywhere in this file.
+
+/** Map the release-candidate verdict onto the preflight's RC status enum. */
+function mapReleaseCandidateStatus(verdict: string): Phase7PreflightRcStatus {
+  switch (verdict) {
+    case "dryrun-complete-blocked-live":
+      return "complete-blocked-live";
+    case "dryrun-blocked-risk":
+      return "blocked-risk";
+    case "dryrun-blocked-quote":
+      return "blocked-quote";
+    case "dryrun-blocked-build":
+      return "blocked-build";
+    case "dryrun-blocked-simulation":
+      return "blocked-simulation";
+    case "dryrun-error":
+      return "error";
+    default:
+      // dryrun-insufficient-evidence (or any unexpected value) — not a complete RC.
+      return "incomplete";
+  }
+}
+
+export interface Phase7MicrotradePreflightCommandOptions {
+  preflightId?: string;
+  repoSha?: string;
+  phase7AuditPath?: string;
+  signOffRecordPath?: string;
+  releaseCandidatePath?: string;
+  devnetReconciliationPath?: string;
+  burnerWallet?: string;
+  maxSpendSol?: string;
+  manualConfirmationLabel?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+}
+
+/**
+ * `paper:phase7:microtrade:preflight` — build the read-only `phase7.microtrade.preflight.v1`. It
+ * folds the written sign-off, the reconciled devnet proof, a complete mainnet dry-run release
+ * candidate, a public burner wallet, a bounded max-spend, and a manual-confirmation label into a
+ * single re-derived verdict. It never signs, never sends, never loads a private key; a supplied-but-
+ * invalid artifact or an over-cap / over-long input is refused, never silently ignored. The best
+ * verdict, ready-for-separate-execution-authorization, authorizes NOTHING.
+ */
+export function phase7MicrotradePreflightReport(
+  ctx: CommandContext = {},
+  opts: Phase7MicrotradePreflightCommandOptions = {},
+): CliReport {
+  // --- Phase 7 audit (optional corroboration; a not-authorized audit is a hard refusal) ---
+  let phase7AuditStatus: Phase7PreflightAuditStatus = "not-supplied";
+  if (opts.phase7AuditPath) {
+    let raw: unknown;
+    try {
+      raw = readJsonValue(ctx, opts.phase7AuditPath, "Phase 7 audit");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    let auditVerdict: string;
+    try {
+      auditVerdict = validatePhase7AuthorizationAudit(raw).verdict;
+    } catch (err) {
+      return { text: redactString(`Refusing: invalid Phase 7 audit evidence — ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (auditVerdict === "not-authorized") {
+      return {
+        text: "Refusing: the supplied Phase 7 audit verdict is not-authorized — resolve the safety architecture before any micro-trade preflight.",
+        exitCode: 1,
+      };
+    }
+    phase7AuditStatus = auditVerdict === "ready-for-separate-microtrade-authorization" ? "verified-ready" : "verified-design-only";
+  }
+
+  // --- sign-off (only signed-for-controlled-microtrade satisfies the gate) ---
+  let signoffStatus: Phase7PreflightSignoffStatus = "absent";
+  let signoffCapLamports: number | null = null;
+  if (opts.signOffRecordPath) {
+    let raw: unknown;
+    try {
+      raw = readJsonValue(ctx, opts.signOffRecordPath, "Phase 7 sign-off record");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    try {
+      const rec = validatePhase7HumanSignoff(raw);
+      if (rec.signoffStatus === "signed-for-controlled-microtrade") {
+        signoffStatus = "signed-for-controlled-microtrade";
+        signoffCapLamports = rec.maxSpendLamports;
+      } else {
+        signoffStatus = "present-not-signed";
+      }
+    } catch (err) {
+      return { text: redactString(`Refusing: invalid Phase 7 sign-off evidence — ${(err as Error).message}`), exitCode: 1 };
+    }
+  }
+
+  // --- devnet proof (only a reconciled devnet broadcast satisfies the gate) ---
+  let devnetProofStatus: Phase7PreflightDevnetStatus = "absent";
+  if (opts.devnetReconciliationPath) {
+    let raw: unknown;
+    try {
+      raw = readJsonValue(ctx, opts.devnetReconciliationPath, "devnet reconciliation");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    const obj = isPlainObject(raw) ? raw : null;
+    if (obj === null || obj.schemaVersion !== EXECUTION_RECONCILIATION_REPORT_SCHEMA_VERSION) {
+      return { text: "Refusing: --devnet-reconciliation is not an execution.reconciliation.report.v1 artifact.", exitCode: 1 };
+    }
+    if (obj.network !== "devnet") {
+      return { text: "Refusing: --devnet-reconciliation must be a devnet reconciliation (network is not devnet).", exitCode: 1 };
+    }
+    const verdict = typeof obj.verdict === "string" ? obj.verdict : "unknown";
+    const signature = typeof obj.signature === "string" && obj.signature.length > 0 ? obj.signature : null;
+    devnetProofStatus = verdict === "reconciled" && signature !== null ? "confirmed-reconciled" : "present-not-confirmed";
+  }
+
+  // --- release candidate (only dryrun-complete-blocked-live satisfies the gate) ---
+  let releaseCandidateStatus: Phase7PreflightRcStatus = "absent";
+  let riskStatus: Phase7PreflightRiskStatus = "not-assessed";
+  let token2022BlockerStatus: Phase7PreflightToken2022Status = "unknown";
+  let quoteFreshnessStatus: Phase7PreflightQuoteStatus = "not-applicable";
+  let simulationStatus: Phase7PreflightSimulationStatus = "not-run";
+  if (opts.releaseCandidatePath) {
+    let raw: unknown;
+    try {
+      raw = readJsonValue(ctx, opts.releaseCandidatePath, "release candidate");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    let rc;
+    try {
+      rc = validateMainnetDryRunReleaseCandidate(raw);
+    } catch (err) {
+      return { text: redactString(`Refusing: invalid mainnet dry-run release candidate — ${(err as Error).message}`), exitCode: 1 };
+    }
+    releaseCandidateStatus = mapReleaseCandidateStatus(rc.verdict);
+    // Echo the risk / quote / simulation posture VERBATIM from the release candidate.
+    riskStatus = rc.risk.rejected
+      ? "rejected"
+      : rc.risk.token2022Blocker
+        ? "token2022-blocker"
+        : (rc.risk.criticalFlagCount ?? 0) > 0
+          ? "critical-flag"
+          : rc.risk.assessed
+            ? "clear"
+            : "not-assessed";
+    token2022BlockerStatus = rc.risk.token2022Blocker ? "present" : rc.risk.assessed ? "none" : "unknown";
+    quoteFreshnessStatus = !rc.quote.attempted
+      ? "not-applicable"
+      : rc.quote.observed && rc.quote.freshness === "fresh"
+        ? "fresh"
+        : !rc.quote.observed
+          ? "missing"
+          : "stale";
+    simulationStatus = !rc.simulation.attempted
+      ? "not-run"
+      : rc.simulation.failed
+        ? "failed"
+        : rc.simulation.outcome === "simulated-ok"
+          ? "simulated-ok"
+          : "not-run";
+  }
+
+  // --- max-spend cap: the signed cap is authoritative; --max-spend-sol cross-checks ---
+  let providedCapLamports: number | null = null;
+  if (opts.maxSpendSol !== undefined) {
+    const sol = Number(opts.maxSpendSol);
+    if (!Number.isFinite(sol) || sol <= 0) {
+      return { text: "Refusing: --max-spend-sol must be a positive number of SOL.", exitCode: 1 };
+    }
+    providedCapLamports = Math.round(sol * LAMPORTS_PER_SOL);
+    if (providedCapLamports > PHASE7_MICROTRADE_PREFLIGHT_MAX_SPEND_LAMPORTS) {
+      return {
+        text: `Refusing: --max-spend-sol exceeds the micro-trade ceiling of ${PHASE7_MICROTRADE_PREFLIGHT_MAX_SPEND_LAMPORTS / LAMPORTS_PER_SOL} SOL.`,
+        exitCode: 1,
+      };
+    }
+  }
+  let maxSpendCapLamports: number | null = signoffCapLamports;
+  if (providedCapLamports !== null) {
+    if (signoffCapLamports !== null && providedCapLamports > signoffCapLamports) {
+      return { text: "Refusing: --max-spend-sol exceeds the cap recorded in the signed sign-off record.", exitCode: 1 };
+    }
+    if (signoffCapLamports === null) maxSpendCapLamports = providedCapLamports;
+  }
+
+  // --- build (the builder validates the burner key + cap; nothing is signed or sent) ---
+  let preflight;
+  try {
+    preflight = buildPhase7MicrotradePreflight({
+      preflightId: opts.preflightId,
+      repoSha: opts.repoSha ?? "unspecified",
+      generatedAt: (ctx.now ?? isoNow)(),
+      phase7AuditStatus,
+      signoffStatus,
+      devnetProofStatus,
+      releaseCandidateStatus,
+      burnerWalletAddress: opts.burnerWallet ?? null,
+      maxSpendCapLamports,
+      manualConfirmationLabel: opts.manualConfirmationLabel ?? null,
+      quoteFreshnessStatus,
+      riskStatus,
+      token2022BlockerStatus,
+      simulationStatus,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // --- emit ---
+  let wroteLine = "";
+  if (opts.outPath) {
+    const resolvedPath = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolvedPath)) {
+      return { text: `Refusing: ${resolvedPath} already exists (pass --force to overwrite).`, exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolvedPath, JSON.stringify(redactValue(preflight), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the preflight at ${resolvedPath}`), exitCode: 1 };
+    }
+    wroteLine = `\nwrote ${resolvedPath}`;
+  }
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(preflight), null, 2) + wroteLine, exitCode: 0 };
+  }
+
+  const lines: string[] = [];
+  lines.push("S104 CONTROLLED MICRO-TRADE PREFLIGHT (read-only; DOES NOT execute trades)");
+  lines.push("=========================================================================");
+  lines.push(`preflight id: ${preflight.preflightId} | repo: ${preflight.repoSha}`);
+  lines.push(`VERDICT:      ${preflight.preflightVerdict.toUpperCase()}`);
+  lines.push("");
+  lines.push("structural inputs (none of these executes a trade):");
+  lines.push(`  [${preflight.signoffStatus === "signed-for-controlled-microtrade" ? "x" : " "}] written human sign-off : ${preflight.signoffStatus}`);
+  lines.push(`  [${preflight.devnetProofStatus === "confirmed-reconciled" ? "x" : " "}] reconciled devnet proof : ${preflight.devnetProofStatus}`);
+  lines.push(`  [${preflight.releaseCandidateStatus === "complete-blocked-live" ? "x" : " "}] mainnet dry-run RC      : ${preflight.releaseCandidateStatus}`);
+  lines.push(
+    `  [${preflight.burnerWalletStatus === "valid-public-key" ? "x" : " "}] public burner wallet    : ${preflight.burnerWalletStatus}${preflight.burnerWalletAddress ? ` (${preflight.burnerWalletAddress})` : ""}`,
+  );
+  lines.push(`  [${preflight.manualConfirmationStatus === "present" ? "x" : " "}] manual confirmation     : ${preflight.manualConfirmationStatus}`);
+  lines.push(
+    `  max spend cap          : ${preflight.maxSpendCapLamports === null ? "(none)" : `${preflight.maxSpendCapLamports} lamports (${preflight.maxSpendCapSol} SOL)`}`,
+  );
+  lines.push(`  risk / quote / sim     : ${preflight.riskStatus} / ${preflight.quoteFreshnessStatus} / ${preflight.simulationStatus}`);
+  lines.push(`  kill switch / reconcile: ${preflight.killSwitchStatus} / ${preflight.reconciliationRequirement}`);
+  if (preflight.missingRequirements.length > 0) {
+    lines.push("");
+    lines.push("missing requirements:");
+    for (const m of preflight.missingRequirements) lines.push(`  - ${m}`);
+  }
+  lines.push("");
+  lines.push(`next safe action: ${preflight.nextSafeAction}`);
+  lines.push("");
+  for (const d of preflight.disclaimers) lines.push(`NOTE: ${d}`);
+  return { text: redactString(lines.join("\n")) + wroteLine, exitCode: 0 };
 }
 
 // --- Sprint 103-B: the operator demo workbench -------------------------------
