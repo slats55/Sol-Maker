@@ -150,13 +150,22 @@ describe("phase7 audit — evidence integration", () => {
     });
   });
 
-  it("a reconciled broadcast WITHOUT a sign-off is still design-only", () => {
+  it("a reconciled broadcast WITHOUT a sign-off is still design-only — and every live lock holds", () => {
     withTmp((tmp) => {
+      // Sprint 103-C: the real funded devnet proof satisfies the devnet prerequisite, but the
+      // written human sign-off is still open. The verdict must stay design-only and NO live lock
+      // may flip just because the devnet broadcast landed.
       const path = writeJson(tmp, "recon.json", reconciledReport());
       const a = validatePhase7AuthorizationAudit(JSON.parse(audit({ devnetReconciliationPath: path }).text));
       expect(a.verdict).toBe("authorized-for-design-only");
       expect(a.microTradePrerequisites.find((p) => p.id === "devnet-broadcast-confirmed")!.met).toBe(true);
       expect(a.microTradePrerequisites.find((p) => p.id === "written-sign-off")!.met).toBe(false);
+      // The intermediate state (devnet met, sign-off missing) keeps every live-execution lock down.
+      expect(a.liveExecutionAuthorized).toBe(false);
+      expect(a.authorizesLiveTrading).toBe(false);
+      expect(a.requiresSeparateApproval).toBe(true);
+      expect(a.neverSends).toBe(true);
+      expect(a.phase7LiveTradingReady).toBe(false);
     });
   });
 

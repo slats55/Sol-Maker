@@ -101,6 +101,24 @@ describe("phase7 human sign-off — controlled micro-trade", () => {
     expect(r.signoffStatus).toBe("not-signed");
   });
 
+  it("stays not-signed when ANY single required element is missing (cannot fake a signed record)", () => {
+    // signed-for-controlled-microtrade is conjunctive: every ack + operator + signed-at + max-spend.
+    // Drop exactly one and the status must fall back to not-signed with scope none and no max-spend.
+    const variants: Array<[string, Record<string, unknown>]> = [
+      ["one missing acknowledgement", { acknowledgedIds: MICRO_ACK_IDS.slice(0, -1) }],
+      ["missing operator label", { operatorLabel: null }],
+      ["missing signed-at label", { signedAtLabel: null }],
+      ["missing max-spend", { maxSpendLamports: null }],
+    ];
+    for (const [label, override] of variants) {
+      const r = buildPhase7HumanSignoff(fullMicroInput(override));
+      expect(r.signoffStatus, label).toBe("not-signed");
+      expect(r.grantedScope, label).toBe("none");
+      expect(r.maxSpendLamports, label).toBeNull();
+      expect(() => validatePhase7HumanSignoff(r), label).not.toThrow();
+    }
+  });
+
   it("refuses a max-spend above the micro ceiling", () => {
     expect(() => buildPhase7HumanSignoff(fullMicroInput({ maxSpendLamports: PHASE7_MICROTRADE_MAX_SPEND_LAMPORTS + 1 }))).toThrow(/ceiling/);
   });

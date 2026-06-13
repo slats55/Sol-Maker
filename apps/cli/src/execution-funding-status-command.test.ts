@@ -191,6 +191,26 @@ describe("execution:devnet:funding-status — complete-if-funded", () => {
     expect(r.text).toContain("cannot sign");
   });
 
+  it("a funded --public-key with --out but NO keypair file still REFUSES (the funded key cannot sign)", async () => {
+    // Sprint 103-C: the matching local keypair is what makes a funded key usable. With the public
+    // key funded on-chain but no throwaway keypair in the out dir, --complete-if-funded must refuse
+    // and broadcast NOTHING — a funded public key alone can never sign.
+    await withTmpAsync(async (tmp) => {
+      writeConfig(tmp);
+      const outDir = join("runs", "funded-no-keypair");
+      mkdirSync(join(tmp, outDir), { recursive: true }); // out dir exists but holds no throwaway keypair
+      const r = await executionDevnetFundingStatusReport(
+        { cwd: tmp, env: FULL_ENV, createRehearsalRpc: () => fakeRpc({ lamports: 1_000_000_000 }), now: () => "2026-06-13T00:00:00.000Z" },
+        { publicKey: PUBKEY, outDir, completeIfFunded: true, acknowledgeDevnetExecution: true },
+      );
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toContain("cannot sign");
+      // Nothing was read-completed or broadcast: no funding-status artifact, no rehearsal report.
+      expect(existsSync(join(tmp, outDir, "devnet-funding-status.json"))).toBe(false);
+      expect(existsSync(join(tmp, outDir, "devnet-rehearsal-report.json"))).toBe(false);
+    });
+  });
+
   it("a funded throwaway key completes the proof by chaining the devnet rehearsal (--skip-airdrop)", async () => {
     await withTmpAsync(async (tmp) => {
       writeConfig(tmp);
