@@ -3146,7 +3146,7 @@ function renderEngineRealtimeObservationsView(rec: Record<string, unknown>): Raw
         text(readString(obs, "symbol") ?? DASH),
         code(readString(obs, "mint")),
         text(readString(obs, "launchpadLabel") ?? DASH),
-        text(readNumber(obs, "liquidityUsdHint") !== undefined ? num(readNumber(obs, "liquidityUsdHint")) : DASH),
+        text(readNumber(obs, "liquidityUsdHint") !== null ? num(readNumber(obs, "liquidityUsdHint")) : DASH),
       ]),
       empty: "No observations (the replay file held no usable events).",
     })}
@@ -3155,6 +3155,72 @@ function renderEngineRealtimeObservationsView(rec: Record<string, unknown>): Raw
         ? Section({
             title: `Caveats (${String(caveats.total)})`,
             description: "Carried by every engine realtime artifact.",
+            body: html`<ul class="sm-bullets sm-bullets--plain">
+              ${caveats.items.map((c) => html`<li>${c}</li>`)}
+            </ul>`,
+          })
+        : ""
+    }
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderEngineQuoteScoreView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const scoredAt = need(missing, "scoredAt", readString(rec, "scoredAt"));
+  const maxAge = need(missing, "maxQuoteAgeMs", readNumber(rec, "maxQuoteAgeMs"));
+  const includedCount = need(missing, "includedCount", readNumber(rec, "includedCount"));
+  const excludedCount = readNumber(rec, "excludedCount");
+  const best = readString(rec, "bestCandidateId");
+  const caveats = readStringArray(rec, "caveats");
+  const profitClaim = rec.notProfitabilityClaim === true && rec.notExecutable === true;
+  const entries = Array.isArray(rec.entries)
+    ? rec.entries.filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null && !Array.isArray(e))
+    : [];
+  return html`
+    ${RiskNotice({
+      tone: profitClaim ? "info" : "caution",
+      title: profitClaim
+        ? "Rust engine route quote scores — intelligence only, never a profitability claim"
+        : "Engine score artifact is missing its safety literals — do NOT trust this artifact",
+      body: html`Quote-quality scores the S99 Rust sidecar computed from a read-only fetch report.
+        TypeScript recomputes every score and re-evaluates every freshness verdict with the real
+        evaluator before accepting the artifact. A score ranks quote quality (impact, hops, age) —
+        it is never readiness, never an order, never execution.`,
+    })}
+    ${kvSection("Scoring", undefined, [
+      { term: "engine", detail: text(`${readString(rec, "engineName") ?? DASH} ${readString(rec, "engineVersion") ?? ""}`) },
+      { term: "provider", detail: code(readString(rec, "providerId")) },
+      { term: "report fetched", detail: text(readString(rec, "reportFetchedAt") ?? DASH) },
+      { term: "scored at", detail: text(scoredAt ?? DASH) },
+      { term: "explicit age cap", detail: text(maxAge !== null && maxAge !== undefined ? `${num(maxAge)} ms (operator-supplied; no default exists)` : DASH) },
+      { term: "entries", detail: text(`${num(includedCount)} included / ${num(excludedCount)} excluded`) },
+      { term: "best candidate", detail: best !== null && best !== undefined ? code(best) : text("none (no entry was both observed and fresh)") },
+    ])}
+    ${tableSection({
+      title: `Scored entries (${String(entries.length)})`,
+      description: "Score = 100 minus impact/hop/age penalties; excluded entries always carry a closed reason code.",
+      columns: [{ header: "Candidate" }, { header: "Score" }, { header: "Freshness" }, { header: "Impact %" }, { header: "Route" }, { header: "Reasons" }],
+      rows: entries.slice(0, 50).map((entry) => {
+        const facts = (typeof entry.facts === "object" && entry.facts !== null ? entry.facts : {}) as Record<string, unknown>;
+        const reasons = readStringArray(entry, "reasons");
+        const route = readStringArray(facts, "routeLabels");
+        return [
+          code(readString(entry, "candidateId")),
+          text(entry.included === true ? num(readNumber(entry, "score")) : "excluded"),
+          code(readString(facts, "freshnessVerdict")),
+          text(readString(facts, "priceImpactPct") ?? DASH),
+          text(route.items.length > 0 ? route.items.join(" > ") : DASH),
+          text(reasons.items.length > 0 ? reasons.items.join(", ") : DASH),
+        ];
+      }),
+      empty: "No entries (the fetch report held none).",
+    })}
+    ${
+      caveats.total > 0
+        ? Section({
+            title: `Caveats (${String(caveats.total)})`,
+            description: "Carried by every engine score artifact.",
             body: html`<ul class="sm-bullets sm-bullets--plain">
               ${caveats.items.map((c) => html`<li>${c}</li>`)}
             </ul>`,
@@ -3252,6 +3318,8 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderEngineStatusView(rec);
     case "engine.realtime.observations.report.v1":
       return renderEngineRealtimeObservationsView(rec);
+    case "engine.routequote.score.report.v1":
+      return renderEngineQuoteScoreView(rec);
     default:
       return null;
   }

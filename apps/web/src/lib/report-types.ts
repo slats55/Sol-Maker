@@ -453,6 +453,15 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
     cli: "paper:realtime:snapshot",
   },
   {
+    id: "engine.routequote.score.report.v1",
+    title: "Rust engine route quote scores",
+    family: "engine",
+    stability: "stable",
+    description:
+      "The S99 Rust quote/router hot path's output: quote-quality INTELLIGENCE (impact, hops, age) over a TypeScript-produced routequote.fetch.report.v1 — per-entry scores with penalty components, a deterministic ranking, and closed reason codes. TypeScript recomputes every score and RE-EVALUATES every freshness verdict with the real evaluateQuoteFreshness; any disagreement refuses the artifact. Never a profitability claim, never readiness, never an order — and the engine still has no network capability.",
+    cli: "engine:quote:score",
+  },
+  {
     id: "sniper.preflight.input.v1",
     title: "Sniper preflight input bridge",
     family: "sniper",

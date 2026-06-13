@@ -130,3 +130,14 @@ What still matters as dry-run evidence:
   `execution.reconciliation.report.v1` and an unaccounted session refuses the next attempt
   (see [`EXECUTION_SAFETY.md`](EXECUTION_SAFETY.md), "Post-trade reconciliation and the session
   wall").
+
+## Optional quote-quality intelligence (S99)
+
+The quote artifacts a dry-run consumes can additionally be SCORED through the Rust sidecar:
+`pnpm soulmaker engine:quote:score --report <routequote.fetch.report.v1> --max-quote-age-ms <ms>`
+produces `engine.routequote.score.report.v1` - per-quote quality scores (impact, hops, age), a
+deterministic ranking, and closed reason codes. This is read-only ANALYSIS of an existing fetch
+report: it feeds nothing downstream, gates nothing, and changes nothing in the dry-run evidence
+chain (a deliberate low-risk decision). TypeScript recomputes every score and re-evaluates every
+freshness verdict with the real `evaluateQuoteFreshness` before accepting the artifact. A route
+score is never a profitability claim and never readiness. See [`RUST_ENGINE.md`](RUST_ENGINE.md).

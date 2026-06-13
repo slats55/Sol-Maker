@@ -185,3 +185,124 @@ describe("engine.realtime.observations.report.v1 typed view", () => {
     expect(html).not.toContain("<script>alert");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 99 — engine.routequote.score.report.v1 (route-quote scoring)
+// ---------------------------------------------------------------------------
+
+const scoreBase = {
+  schemaVersion: "engine.routequote.score.report.v1",
+  banner: "RUST ENGINE ROUTE QUOTE SCORES — quote-quality intelligence.",
+  engineName: "solmaker-engine",
+  engineVersion: "0.1.0",
+  ipcVersion: "engine.ipc.v1",
+  scoredAt: "2026-06-12T12:00:00.000Z",
+  maxQuoteAgeMs: 60000,
+  providerId: "jupiter-lite-api",
+  endpointHost: "lite-api.jup.ag",
+  reportFetchedAt: "2026-06-12T11:59:30.000Z",
+  requestedInputMint: "So11111111111111111111111111111111111111112",
+  requestedAmountRaw: "10000000",
+  requestedSlippageBps: 50,
+  entryCount: 2,
+  includedCount: 1,
+  excludedCount: 1,
+  entries: [
+    {
+      candidateId: "cand-usdc",
+      mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      status: "quote-observed",
+      included: true,
+      score: 85,
+      components: { impactPenalty: 5, hopPenalty: 0, agePenalty: 10 },
+      facts: {
+        priceImpactPct: "0.5",
+        hopCount: 1,
+        routeLabels: ["Raydium"],
+        fetchedAt: "2026-06-12T11:59:30.000Z",
+        ageMs: 30000,
+        freshnessVerdict: "fresh",
+        contextSlot: 426052463,
+      },
+      reasons: [],
+    },
+    {
+      candidateId: "cand-stale",
+      mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+      status: "quote-observed",
+      included: false,
+      score: null,
+      components: null,
+      facts: {
+        priceImpactPct: "0.1",
+        hopCount: 1,
+        routeLabels: ["Orca"],
+        fetchedAt: "2026-06-12T11:00:00.000Z",
+        ageMs: 3600000,
+        freshnessVerdict: "stale",
+        contextSlot: null,
+      },
+      reasons: ["stale"],
+    },
+  ],
+  ranking: ["cand-usdc"],
+  bestCandidateId: "cand-usdc",
+  caveats: ["A route score is INTELLIGENCE about quote quality — never a profitability claim."],
+  notExecutable: true,
+  notProfitabilityClaim: true,
+  neverSigns: true,
+  neverSends: true,
+  phase7LiveTradingReady: false,
+};
+
+describe("S99 engine quote score schema registry parity", () => {
+  it("engine.routequote.score.report.v1 is registered (family engine, stable) with a typed view", () => {
+    expect(isKnownSchema("engine.routequote.score.report.v1")).toBe(true);
+    expect(hasTypedView("engine.routequote.score.report.v1")).toBe(true);
+    const info = knownSchema("engine.routequote.score.report.v1");
+    expect(info?.family).toBe("engine");
+    expect(info?.stability).toBe("stable");
+    expect(info?.cli).toBe("engine:quote:score");
+    expect(schemaForCli("engine:quote:score")?.id).toBe("engine.routequote.score.report.v1");
+  });
+
+  it("the command reference lists engine:quote:score in the Rust engine group, never chain-reading", () => {
+    const ref = COMMANDS.find((c) => c.command === "engine:quote:score");
+    expect(ref).toBeDefined();
+    expect(ref?.group).toBe("Rust engine (sidecar)");
+    expect(ref?.readsChain).toBe(false);
+    expect(ref?.summary).toContain("never a profitability claim");
+  });
+});
+
+describe("engine.routequote.score.report.v1 typed view", () => {
+  it("renders the intelligence framing, scoring facts, entry table, and caveats", () => {
+    const html = typed(scoreBase);
+    expect(html).toContain("never a profitability claim");
+    expect(html).toContain("cand-usdc");
+    expect(html).toContain("85");
+    expect(html).toContain("excluded");
+    expect(html).toContain("stale");
+    expect(html).toContain("no default exists");
+    expect(html).toContain("Raydium");
+  });
+
+  it("an artifact missing its safety literals renders the do-not-trust framing", () => {
+    const html = typed({ ...scoreBase, notProfitabilityClaim: false });
+    expect(html).toContain("do NOT trust this artifact");
+  });
+
+  it("a null best candidate renders honestly", () => {
+    const html = typed({ ...scoreBase, bestCandidateId: null, ranking: [] });
+    expect(html).toContain("none (no entry was both observed and fresh)");
+  });
+
+  it("hostile shapes never throw; hostile strings stay escaped", () => {
+    expect(() => typed({ schemaVersion: "engine.routequote.score.report.v1", entries: "nope" })).not.toThrow();
+    const html = typed({
+      ...scoreBase,
+      entries: [{ ...scoreBase.entries[0], candidateId: "<script>alert(1)</script>" }],
+    });
+    expect(html).not.toContain("<script>alert");
+  });
+});

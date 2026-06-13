@@ -41,6 +41,34 @@ overhead itself (process spawn + JSON parse + validation), printed by
   filesystem**; `--created-at` is supplied by the TypeScript orchestrator, so
   identical invocations produce byte-identical output.
 
+## S99 quote/router scoring hot path
+
+- `solmaker-engine quote-score [--json] --scored-at <iso> --max-quote-age-ms <n>`
+  consumes a TypeScript-produced `routequote.fetch.report.v1` over the same
+  bounded stdin and emits `engine.routequote.score.report.v1`: per-entry
+  quote-quality scores (base 100 minus impact/hop/age penalties), a
+  deterministic ranking (score desc → age asc → candidateId asc), and CLOSED
+  reason codes (`not-observed`, `stale`, `future-timestamp`,
+  `price-impact-high`, `impact-unavailable`, `hop-count-high/unknown`, …).
+- **Freshness parity is a wall, not a test**: the engine mirrors
+  `evaluateQuoteFreshness` (same closed verdict set, hand-built ISO-8601
+  epoch arithmetic cross-checked against `Date.parse`), and the TypeScript
+  validator RE-EVALUATES every entry with the real evaluator plus RECOMPUTES
+  every score from its components and the full ranking — any disagreement
+  refuses the whole artifact (`schema-mismatch`).
+- The age cap is an EXPLICIT operator argument (`--max-quote-age-ms`,
+  mirroring the no-default-cap principle of the freshness evaluator); the
+  scoring instant is orchestrator-supplied (`--scored-at`) — the engine still
+  reads no clock.
+- A route score is INTELLIGENCE about quote quality — the artifact pins
+  `notExecutable`, `notProfitabilityClaim`, `neverSigns`, `neverSends`,
+  `phase7LiveTradingReady:false`, and the existing TypeScript quote path,
+  freshness gates, and dry-run evidence chain are UNCHANGED (deliberate
+  low-risk decision: the scorer is a standalone read-only analysis command,
+  `engine:quote:score`, fed by `paper:routequote:fetch --out-dir` artifacts).
+- The S99 network review again decided **NO Rust network access** — live
+  quote fetching stays in TypeScript (`packages/quotefetch`).
+
 ## S98 realtime hot path — how it flows
 
 ```
@@ -107,6 +135,7 @@ See [`../crates/solmaker-engine/SAFETY.md`](../crates/solmaker-engine/SAFETY.md)
 | --- | --- |
 | `pnpm soulmaker engine:status` | Invoke the sidecar, validate, render (also `--json`, `--out <path>`, `--force`, `--fail-on-unavailable`) |
 | `pnpm soulmaker paper:realtime:snapshot --engine rust` | S98: replay normalization through the Rust sidecar (`--source replay` only; byte-identical snapshot; honest refusal when no engine exists) |
+| `pnpm soulmaker engine:quote:score --report <f> --max-quote-age-ms <n>` | S99: route-quote scoring intelligence over a fetch report (scores recomputed + freshness re-evaluated by TypeScript before acceptance) |
 | `pnpm rust:check` / `rust:build` / `rust:test` | Cargo passthroughs over the workspace |
 | `pnpm rust:fmt` / `rust:fmt:check` / `rust:clippy` | Formatting + lints (clippy runs `-D warnings`) |
 
@@ -114,8 +143,8 @@ See [`../crates/solmaker-engine/SAFETY.md`](../crates/solmaker-engine/SAFETY.md)
 
 - **S98** realtime ingestion — DONE (replay normalization; live feed stays
   TypeScript by reviewed decision).
-- **S99** quote routing/scoring over operator-supplied/fetched quote
-  artifacts.
+- **S99** quote routing/scoring — DONE (scoring intelligence over fetched
+  quote artifacts; live fetching stays TypeScript by reviewed decision).
 - **S100** transaction simulate/devnet execution core — only with a reviewed
   expansion of the safety boundary and scans on both sides.
 

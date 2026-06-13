@@ -531,6 +531,13 @@ export const COMMANDS: readonly CommandRef[] = [
     group: "Rust engine (sidecar)",
     readsChain: false,
   },
+  {
+    command: "engine:quote:score",
+    summary:
+      "S99 Rust route-quote scoring: run a routequote.fetch.report.v1 through the Rust sidecar into engine.routequote.score.report.v1 — per-entry quote-quality scores, a deterministic ranking, closed reason codes. TypeScript RECOMPUTES every score and RE-EVALUATES every freshness verdict with the real evaluator; disagreement refuses the artifact. Requires an EXPLICIT --max-quote-age-ms (no default cap). Intelligence only — never a profitability claim, never readiness, never an order.",
+    group: "Rust engine (sidecar)",
+    readsChain: false,
+  },
 ];
 
 /** Commands in a given group, in declared order. */

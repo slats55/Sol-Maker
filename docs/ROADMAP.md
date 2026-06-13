@@ -1070,7 +1070,21 @@ end-to-end; live trading does not begin until Sprint 104, separately authorized 
   spawn ~21ms — IPC overhead only, never a trading-latency claim); REAL spawn parity tests
   in-suite (skipped honestly without a binary). Web registry 47 schemas + typed view. Still no
   signing, no sending, no network, no filesystem in Rust.
-- **S99** — Rust quote/router scorer.
+- **S99** ✅ (2026-06-12) — Rust quote/router scorer. Actuals: the engine gained `quote-score`
+  — a TS-produced `routequote.fetch.report.v1` over BOUNDED stdin + REQUIRED `--scored-at` /
+  `--max-quote-age-ms` (no default cap, mirroring the freshness evaluator's principle) →
+  `engine.routequote.score.report.v1`: per-entry scores (base 100 minus impact/hop/age
+  penalties), deterministic ranking (score desc → age asc → candidateId asc), CLOSED reason
+  codes. Freshness semantics mirror `evaluateQuoteFreshness` exactly (hand-built ISO-8601 epoch
+  arithmetic cross-checked against Date.parse); the TypeScript validator RE-EVALUATES every
+  verdict with the real evaluator AND RECOMPUTES every score + the full ranking — disagreement
+  refuses the artifact. The S99 network review again decided **NO Rust network access** (live
+  quote fetching stays `packages/quotefetch`); the dry-run/rehearsal evidence chain is UNCHANGED
+  (the scorer is a standalone CLI, `engine:quote:score`, fed by `paper:routequote:fetch
+  --out-dir` artifacts). REAL evidence: actual binary scored a mixed fresh/stale fixture —
+  fresh quote 92/100 ranked best, stale quote honestly EXCLUDED [stale] (spawn ~22ms, IPC
+  overhead only); real-spawn parity tests in-suite. Web registry 48 schemas + typed view. A
+  route score is intelligence only — never a profitability claim, never readiness.
 - **S100** — Rust transaction simulate/devnet execution core.
 - **S101** — Axiom-style command center features; wallet/social monitoring ONLY where
   legally and API-supported (Axiom Pro stays a UX benchmark, never a dependency).

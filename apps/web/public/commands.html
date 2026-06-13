@@ -901,6 +901,16 @@
   </span>
           </div>
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker engine:quote:score</code>
+    <p class="sm-cmd__summary">S99 Rust route-quote scoring: run a routequote.fetch.report.v1 through the Rust sidecar into engine.routequote.score.report.v1 — per-entry quote-quality scores, a deterministic ranking, closed reason codes. TypeScript RECOMPUTES every score and RE-EVALUATES every freshness verdict with the real evaluator; disagreement refuses the artifact. Requires an EXPLICIT --max-quote-age-ms (no default cap). Intelligence only — never a profitability claim, never readiness, never an order.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="The S99 Rust quote/router hot path&#39;s output: quote-quality INTELLIGENCE (impact, hops, age) over a TypeScript-produced routequote.fetch.report.v1 — per-entry scores with penalty components, a deterministic ranking, and closed reason codes. TypeScript recomputes every score and RE-EVALUATES every freshness verdict with the real evaluateQuoteFreshness; any disagreement refuses the artifact. Never a profitability claim, never readiness, never an order — and the engine still has no network capability.">
+    <code>engine.routequote.score.report.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article>
         </div></div>
   </section>
