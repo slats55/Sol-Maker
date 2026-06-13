@@ -44,3 +44,17 @@ export {
   type EngineRealtimeBridgeResult,
   type EngineRealtimeRefusedReason,
 } from "./realtime.js";
+export {
+  ENGINE_QUOTE_SCORE_SCHEMA_VERSION,
+  ENGINE_QUOTE_SCORE_MAX_ENTRIES,
+  ENGINE_QUOTE_SCORE_REASON_CODES,
+  validateEngineQuoteScoreReportV1,
+  type EngineQuoteScoreReportV1,
+  type EngineQuoteScoreEntry,
+  type EngineQuoteScoreValidation,
+} from "./validate-quote-score.js";
+export {
+  scoreQuotesThroughEngine,
+  type ScoreQuotesThroughEngineOptions,
+  type EngineQuoteScoreBridgeResult,
+} from "./quote-score.js";

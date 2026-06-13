@@ -9,9 +9,18 @@
 
 import { isSensitiveKey } from "@soulmaker/security";
 
-const ALLOWED_LITERAL_ARGS = new Set(["status", "realtime-normalize", "--json", "--created-at"]);
+const ALLOWED_LITERAL_ARGS = new Set([
+  "status",
+  "realtime-normalize",
+  "quote-score",
+  "--json",
+  "--created-at",
+  "--scored-at",
+  "--max-quote-age-ms",
+]);
 
 const ISO_SHAPE = /^\d{4}-\d{2}-\d{2}T[0-9:.]+Z$/;
+const POSITIVE_INT_SHAPE = /^[1-9]\d{0,8}$/;
 
 /** Value shapes that look like key material; refused even though the closed allowlist already excludes them (defense in depth). */
 const SECRET_SHAPES: readonly RegExp[] = [
@@ -33,9 +42,11 @@ export function checkEngineArgs(args: readonly string[]): string | null {
     for (const shape of SECRET_SHAPES) {
       if (shape.test(arg)) return `argument ${i} is secret-shaped and is refused`;
     }
-    const isCreatedAtValue = i > 0 && args[i - 1] === "--created-at";
-    if (isCreatedAtValue) {
-      if (!ISO_SHAPE.test(arg)) return `argument ${i} (--created-at value) must be ISO-8601-shaped`;
+    const previous = i > 0 ? args[i - 1] : undefined;
+    if (previous === "--created-at" || previous === "--scored-at") {
+      if (!ISO_SHAPE.test(arg)) return `argument ${i} (${previous} value) must be ISO-8601-shaped`;
+    } else if (previous === "--max-quote-age-ms") {
+      if (!POSITIVE_INT_SHAPE.test(arg)) return `argument ${i} (--max-quote-age-ms value) must be a positive integer`;
     } else if (!ALLOWED_LITERAL_ARGS.has(arg)) {
       return `argument ${i} (${JSON.stringify(arg)}) is not in the closed argument vocabulary`;
     }

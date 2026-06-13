@@ -113,6 +113,9 @@ importers:
 
   packages/engine-bridge:
     dependencies:
+      '@soulmaker/core':
+        specifier: workspace:*
+        version: link:../core
       '@soulmaker/realtime':
         specifier: workspace:*
         version: link:../realtime
