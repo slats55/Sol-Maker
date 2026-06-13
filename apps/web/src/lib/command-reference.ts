@@ -366,7 +366,7 @@ export const COMMANDS: readonly CommandRef[] = [
   {
     command: "paper:realtime:snapshot",
     summary:
-      "One bounded poll of a public new-token feed (or a local replay file) normalized into the candidate-list contract (realtime.candidates.snapshot.v1). Watch-only observation; market figures are provider-reported HINTS.",
+      "One bounded poll of a public new-token feed (or a local replay file) normalized into the candidate-list contract (realtime.candidates.snapshot.v1). Watch-only observation; market figures are provider-reported HINTS. S98: --engine rust runs replay normalization through the Rust sidecar (strictly validated; byte-identical snapshot; honest refusal when no engine exists).",
     group: "Sniper (paper-only)",
     readsChain: true,
   },

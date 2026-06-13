@@ -18,18 +18,51 @@ No performance claim is made yet. The only latency measured today is the IPC
 overhead itself (process spawn + JSON parse + validation), printed by
 `engine:status` and explicitly labelled as never a trading-latency claim.
 
-## What Rust does now (S97)
+## What Rust does now (S97 foundation + S98 realtime replay)
 
 - `crates/solmaker-engine` — a Cargo workspace member with exactly two
   dependencies (`serde`, `serde_json`; a tested allowlist refuses drift).
 - `solmaker-engine status [--json] [--created-at <iso>]` — emits the
   `engine.status.report.v1` artifact: engine identity, build profile, rustc
   version (embedded at build time), IPC version, the CLOSED supported
-  capability list (`status`, `json-ipc`, `schema-parity`), the explicit
-  disabled list, and safety markers.
-- Determinism: the engine reads **no clock and no environment variables**;
-  `--created-at` is supplied by the TypeScript orchestrator, so identical
-  invocations produce byte-identical output.
+  capability list (`status`, `json-ipc`, `schema-parity`,
+  `realtime-replay-normalize`), the explicit disabled list, and safety
+  markers.
+- `solmaker-engine realtime-normalize [--json] [--created-at <iso>]` (S98) —
+  reads ONE replay events document from BOUNDED stdin (2 MiB ceiling) and
+  emits `engine.realtime.observations.report.v1`: candidate observations
+  normalized exactly as `packages/realtime`'s replay adapter normalizes them
+  (mint re-validation via a pure base58 decode, bounded labels, secret-shape
+  dropping that mirrors `redactString`, duplicate-mint dedup keeping the
+  first, provider-reported hints kept verbatim, replay caveats pinned byte
+  for byte). A malformed document is refused with exit 2 — error messages
+  carry indexes and lengths, never input values.
+- Determinism: the engine reads **no clock, no environment variables, and no
+  filesystem**; `--created-at` is supplied by the TypeScript orchestrator, so
+  identical invocations produce byte-identical output.
+
+## S98 realtime hot path — how it flows
+
+```
+replay file ──(CLI reads, bounded)──▶ engine-bridge ──stdin──▶ solmaker-engine realtime-normalize
+                                                                      │ stdout (one JSON doc)
+   realtime.candidates.snapshot.v1 ◀── buildRealtimeCandidatesSnapshot ◀── STRICT TypeScript validation
+```
+
+- `pnpm soulmaker paper:realtime:snapshot --source replay --replay-file <f> --engine rust`
+  runs the Rust normalizer; **the snapshot artifact is byte-identical to the
+  TypeScript path's** for the same file (proven by tests and by a real run:
+  `snapshot.json`/`candidates.json` byte-equal across engines).
+- TypeScript never repairs Rust output: the validator re-parses every mint,
+  re-checks every label with the real `redactString`, pins the caveats byte
+  for byte, recomputes the count identities, and refuses the whole artifact
+  on any mismatch (`schema-mismatch`).
+- A machine without a Rust engine gets an honest refusal (exit 1) telling the
+  operator to install Rust or rerun with `--engine ts` — never a silent
+  fallback, never a fake.
+- The **network-capability review decided NO Rust network access** this
+  sprint: the live Jupiter feed stays in TypeScript. See
+  `crates/solmaker-engine/SAFETY.md` for the recorded decision.
 
 ## What Rust cannot do yet (and how that is enforced)
 
@@ -54,9 +87,10 @@ See [`../crates/solmaker-engine/SAFETY.md`](../crates/solmaker-engine/SAFETY.md)
 
 - The orchestrator (`packages/engine-bridge`) invokes the engine with an
   **argument array** — never a shell string (`shell: false`, always).
-- The argument vocabulary is a CLOSED allowlist (`status`, `--json`,
-  `--created-at <iso>`); anything secret-shaped, path-shaped, or
-  metacharacter-bearing is refused before a process exists.
+- The argument vocabulary is a CLOSED allowlist (`status`,
+  `realtime-normalize`, `--json`, `--created-at <iso>`); anything
+  secret-shaped, path-shaped, or metacharacter-bearing is refused before a
+  process exists. Replay content travels over stdin, never argv.
 - The child environment is rebuilt from a NAME allowlist (PATH/cargo/rustup
   homes and Windows process basics); secret-shaped variables are never
   forwarded.
@@ -72,13 +106,14 @@ See [`../crates/solmaker-engine/SAFETY.md`](../crates/solmaker-engine/SAFETY.md)
 | Command | What it does |
 | --- | --- |
 | `pnpm soulmaker engine:status` | Invoke the sidecar, validate, render (also `--json`, `--out <path>`, `--force`, `--fail-on-unavailable`) |
+| `pnpm soulmaker paper:realtime:snapshot --engine rust` | S98: replay normalization through the Rust sidecar (`--source replay` only; byte-identical snapshot; honest refusal when no engine exists) |
 | `pnpm rust:check` / `rust:build` / `rust:test` | Cargo passthroughs over the workspace |
 | `pnpm rust:fmt` / `rust:fmt:check` / `rust:clippy` | Formatting + lints (clippy runs `-D warnings`) |
 
 ## Future hot paths (each its own sprint, each behind this boundary)
 
-- **S98** realtime ingestion: Rust candidate feed with parity tests against
-  the TypeScript adapter's `realtime.candidates.snapshot.v1`.
+- **S98** realtime ingestion — DONE (replay normalization; live feed stays
+  TypeScript by reviewed decision).
 - **S99** quote routing/scoring over operator-supplied/fetched quote
   artifacts.
 - **S100** transaction simulate/devnet execution core — only with a reviewed

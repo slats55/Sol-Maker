@@ -1056,7 +1056,20 @@ end-to-end; live trading does not begin until Sprint 104, separately authorized 
   `pnpm soulmaker engine:status` → prebuilt debug binary → validated artifact (spawn ~21ms warm,
   IPC overhead only — no trading-latency claim). No hot path, no signing, no sending, no network
   capability in Rust. See [`RUST_ENGINE.md`](RUST_ENGINE.md).
-- **S98** — Rust realtime ingestion hot path (candidate feed parity against the TS adapter).
+- **S98** ✅ (2026-06-12) — Rust realtime ingestion hot path (replay). Actuals: the engine
+  gained `realtime-normalize` — replay events over BOUNDED stdin (2 MiB ceiling; content never
+  in argv) → `engine.realtime.observations.report.v1`, mirroring the TS replay adapter field by
+  field (pure base58 mint re-validation, bounded labels, secret-shape dropping that mirrors
+  `redactString`, dup-mint dedup keeping the first, verbatim caveats). The network-capability
+  review decided **NO Rust network access** — the live Jupiter feed stays TypeScript; decision
+  recorded in `crates/solmaker-engine/SAFETY.md`. TypeScript validates strictly and never
+  repairs (mints re-parsed, labels re-checked with the real redactor, caveats pinned byte for
+  byte, count identities recomputed); `paper:realtime:snapshot --engine rust` folds validated
+  observations into the EXISTING snapshot builder. REAL evidence: `snapshot.json` +
+  `candidates.json` byte-identical across engines on a real CLI run (prebuilt debug binary,
+  spawn ~21ms — IPC overhead only, never a trading-latency claim); REAL spawn parity tests
+  in-suite (skipped honestly without a binary). Web registry 47 schemas + typed view. Still no
+  signing, no sending, no network, no filesystem in Rust.
 - **S99** — Rust quote/router scorer.
 - **S100** — Rust transaction simulate/devnet execution core.
 - **S101** — Axiom-style command center features; wallet/social monitoring ONLY where

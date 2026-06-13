@@ -3105,6 +3105,66 @@ function renderEngineStatusView(rec: Record<string, unknown>): RawHtml {
   `;
 }
 
+function renderEngineRealtimeObservationsView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const sourceKind = need(missing, "sourceKind", readString(rec, "sourceKind"));
+  const status = need(missing, "status", readString(rec, "status"));
+  const eventCount = need(missing, "eventCount", readNumber(rec, "eventCount"));
+  const observationCount = need(missing, "observationCount", readNumber(rec, "observationCount"));
+  const duplicateMintCount = readNumber(rec, "duplicateMintCount");
+  const caveats = readStringArray(rec, "caveats");
+  const isReplay = sourceKind === "replay";
+  const observations = Array.isArray(rec.observations)
+    ? rec.observations.filter((o): o is Record<string, unknown> => typeof o === "object" && o !== null && !Array.isArray(o))
+    : [];
+  return html`
+    ${RiskNotice({
+      tone: isReplay ? "info" : "caution",
+      title: isReplay
+        ? "Rust engine replay observations — NOT live market data, never an order"
+        : "Engine realtime artifact claims a non-replay source — do NOT trust this artifact",
+      body: html`Candidate observations the S98 Rust sidecar normalized from an operator-supplied
+        REPLAY file over bounded stdin. TypeScript strictly validates every observation before
+        anything reads it and folds them into the existing realtime snapshot; the engine has no
+        network, signing, or sending code path by construction.`,
+    })}
+    ${kvSection("Normalization", undefined, [
+      { term: "engine", detail: text(`${readString(rec, "engineName") ?? DASH} ${readString(rec, "engineVersion") ?? ""}`) },
+      { term: "ipc version", detail: code(readString(rec, "ipcVersion")) },
+      { term: "provider", detail: code(readString(rec, "providerId")) },
+      { term: "source kind", detail: code(sourceKind) },
+      { term: "status", detail: code(status) },
+      { term: "events", detail: text(`${num(eventCount)} replayed → ${num(observationCount)} observations (${num(duplicateMintCount)} duplicate mints skipped)`) },
+      { term: "created at", detail: text(readString(rec, "createdAt") ?? "none (orchestrator supplied none)") },
+    ])}
+    ${tableSection({
+      title: `Observations (${String(observations.length)})`,
+      description: "Market figures are provider-reported HINTS (unverified); every observation carries the replay caveat.",
+      columns: [{ header: "Candidate" }, { header: "Symbol" }, { header: "Mint" }, { header: "Launchpad" }, { header: "Liquidity hint (USD)" }],
+      rows: observations.slice(0, 50).map((obs) => [
+        code(readString(obs, "candidateId")),
+        text(readString(obs, "symbol") ?? DASH),
+        code(readString(obs, "mint")),
+        text(readString(obs, "launchpadLabel") ?? DASH),
+        text(readNumber(obs, "liquidityUsdHint") !== undefined ? num(readNumber(obs, "liquidityUsdHint")) : DASH),
+      ]),
+      empty: "No observations (the replay file held no usable events).",
+    })}
+    ${
+      caveats.total > 0
+        ? Section({
+            title: `Caveats (${String(caveats.total)})`,
+            description: "Carried by every engine realtime artifact.",
+            body: html`<ul class="sm-bullets sm-bullets--plain">
+              ${caveats.items.map((c) => html`<li>${c}</li>`)}
+            </ul>`,
+          })
+        : ""
+    }
+    ${partialNotice(missing)}
+  `;
+}
+
 /* ------------------------------------------------------------------ *
  * Dispatch.
  * ------------------------------------------------------------------ */
@@ -3190,6 +3250,8 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderSessionStatusView(rec);
     case "engine.status.report.v1":
       return renderEngineStatusView(rec);
+    case "engine.realtime.observations.report.v1":
+      return renderEngineRealtimeObservationsView(rec);
     default:
       return null;
   }

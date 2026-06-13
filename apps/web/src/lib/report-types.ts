@@ -440,8 +440,17 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
     family: "engine",
     stability: "stable",
     description:
-      "The S97 Rust sidecar foundation's self-description over JSON IPC: capabilities (CLOSED allowlist — status, json-ipc, schema-parity), explicit disabled list, and signer/send/mainnet-send markers that must all literally be disabled or the TypeScript validator refuses the artifact. Deterministic — the engine reads no clock; the orchestrator supplies createdAt.",
+      "The S97 Rust sidecar foundation's self-description over JSON IPC: capabilities (CLOSED allowlist — status, json-ipc, schema-parity, and since S98 realtime-replay-normalize), explicit disabled list, and signer/send/mainnet-send markers that must all literally be disabled or the TypeScript validator refuses the artifact. Deterministic — the engine reads no clock; the orchestrator supplies createdAt.",
     cli: "engine:status",
+  },
+  {
+    id: "engine.realtime.observations.report.v1",
+    title: "Rust engine replay observations",
+    family: "engine",
+    stability: "stable",
+    description:
+      "The S98 Rust realtime hot path's output: candidate observations normalized from an operator-supplied REPLAY file over bounded stdin (never live data, never an order). TypeScript re-validates every observation — mints re-parsed, labels re-checked for secret shapes, caveats pinned byte for byte — then folds them into the existing realtime.candidates.snapshot.v1, byte-identical to the TypeScript normalizer's output. The engine still has no network, signing, or sending capability.",
+    cli: "paper:realtime:snapshot",
   },
   {
     id: "sniper.preflight.input.v1",

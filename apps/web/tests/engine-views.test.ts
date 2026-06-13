@@ -101,3 +101,87 @@ describe("engine.status.report.v1 typed view", () => {
     expect(html).not.toContain("<img src=x");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 98 — engine.realtime.observations.report.v1 (replay normalization)
+// ---------------------------------------------------------------------------
+
+const realtimeBase = {
+  schemaVersion: "engine.realtime.observations.report.v1",
+  banner: "RUST ENGINE REALTIME REPLAY — candidate observations normalized from an operator-supplied replay file.",
+  engineName: "solmaker-engine",
+  engineVersion: "0.1.0",
+  ipcVersion: "engine.ipc.v1",
+  providerId: "replay-file",
+  sourceKind: "replay",
+  endpointHost: "local-replay-file",
+  fetchedAt: "replay",
+  status: "observed",
+  statusDetail: null,
+  eventCount: 3,
+  observationCount: 2,
+  duplicateMintCount: 1,
+  observations: [
+    {
+      candidateId: "rt-so111111",
+      mint: "So11111111111111111111111111111111111111112",
+      symbol: "SOL",
+      name: "Wrapped SOL",
+      sourceProviderId: "replay-file",
+      sourceKind: "replay",
+      observedAtLabel: "t0",
+      launchpadLabel: "pump.fun",
+      liquidityUsdHint: 1250.5,
+      marketCapUsdHint: null,
+      holderCountHint: null,
+      caveats: ["A watched candidate is an OBSERVATION — never an order, never a trade, never execution."],
+    },
+  ],
+  createdAt: "2026-06-12T00:00:00.000Z",
+  caveats: ["Replay normalization only: every observation comes from an operator-supplied replay file and is NEVER live market data."],
+  neverSends: true,
+  phase7LiveTradingReady: false,
+};
+
+describe("S98 engine realtime schema registry parity", () => {
+  it("engine.realtime.observations.report.v1 is registered (family engine, stable) with a typed view", () => {
+    expect(isKnownSchema("engine.realtime.observations.report.v1")).toBe(true);
+    expect(hasTypedView("engine.realtime.observations.report.v1")).toBe(true);
+    const info = knownSchema("engine.realtime.observations.report.v1");
+    expect(info?.family).toBe("engine");
+    expect(info?.stability).toBe("stable");
+    expect(info?.cli).toBe("paper:realtime:snapshot");
+  });
+
+  it("schemaForCli keeps resolving paper:realtime:snapshot to the SNAPSHOT schema (the command's primary artifact)", () => {
+    expect(schemaForCli("paper:realtime:snapshot")?.id).toBe("realtime.candidates.snapshot.v1");
+  });
+});
+
+describe("engine.realtime.observations.report.v1 typed view", () => {
+  it("renders the replay framing, counts, observation table, and caveats", () => {
+    const html = typed(realtimeBase);
+    expect(html).toContain("NOT live market data");
+    expect(html).toContain("solmaker-engine 0.1.0");
+    expect(html).toContain("replay-file");
+    expect(html).toContain("rt-so111111");
+    expect(html).toContain("So11111111111111111111111111111111111111112");
+    expect(html).toContain("pump.fun");
+    expect(html).toContain("duplicate mints skipped");
+    expect(html).toContain("NEVER live market data");
+  });
+
+  it("an artifact claiming a live sourceKind renders the do-not-trust framing", () => {
+    const html = typed({ ...realtimeBase, sourceKind: "live" });
+    expect(html).toContain("do NOT trust this artifact");
+  });
+
+  it("hostile shapes never throw; hostile strings stay escaped", () => {
+    expect(() => typed({ schemaVersion: "engine.realtime.observations.report.v1", observations: 7 })).not.toThrow();
+    const html = typed({
+      ...realtimeBase,
+      observations: [{ ...realtimeBase.observations[0], symbol: "<script>alert(1)</script>" }],
+    });
+    expect(html).not.toContain("<script>alert");
+  });
+});
