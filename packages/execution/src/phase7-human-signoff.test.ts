@@ -19,6 +19,8 @@ import {
   grantedScopeFor,
   Phase7HumanSignoffError,
   PHASE7_MICROTRADE_MAX_SPEND_LAMPORTS,
+  PHASE7_SIGNOFF_SCOPES,
+  PHASE7_SIGNOFF_TARGET_SCOPES,
 } from "./phase7-human-signoff.js";
 
 const MICRO_ACK_IDS = requiredAcknowledgementsFor("controlled-mainnet-microtrade-only").map((a) => a.id);
@@ -191,5 +193,49 @@ describe("phase7 human sign-off — input safety + validator parity wall", () =>
     v["maxSpendLamports"] = 1_000_000;
     v["maxSpendSol"] = 0.001;
     expect(() => validatePhase7HumanSignoff(v)).toThrow(Phase7HumanSignoffError);
+  });
+});
+
+describe("phase7 human sign-off — Sprint 104-A intake hardening", () => {
+  function fullMicro(overrides: Record<string, unknown> = {}) {
+    return {
+      targetScope: "controlled-mainnet-microtrade-only" as const,
+      acknowledgedIds: MICRO_ACK_IDS,
+      operatorLabel: "operator-a",
+      signedAtLabel: "2026-06-13",
+      maxSpendLamports: 1_000_000,
+      ...overrides,
+    };
+  }
+
+  it("no scope in the closed sets names an autonomous / looped / unbounded trading mode", () => {
+    for (const scope of [...PHASE7_SIGNOFF_SCOPES, ...PHASE7_SIGNOFF_TARGET_SCOPES]) {
+      expect(scope, scope).not.toMatch(/auto|loop|continuous|unbounded|unlimited|broad|full|always/i);
+    }
+    // The strongest signed record still pins the no-autonomous / one-trade safety locks.
+    const r = buildPhase7HumanSignoff(fullMicro());
+    expect(r.signoffStatus).toBe("signed-for-controlled-microtrade");
+    expect(r.noAutonomousTrading).toBe(true);
+    expect(r.oneTradeOnly).toBe(true);
+    expect(r.authorizesLiveExecution).toBe(false);
+    expect(r.neverSends).toBe(true);
+  });
+
+  it("a blank / whitespace operator label can never reach a signed status", () => {
+    const r = buildPhase7HumanSignoff(fullMicro({ operatorLabel: "   " }));
+    expect(r.operatorLabel).toBeNull();
+    expect(r.signoffStatus).toBe("not-signed");
+    expect(r.grantedScope).toBe("none");
+    expect(r.maxSpendLamports).toBeNull();
+  });
+
+  it("a malformed (control-character) signed-at label is refused outright", () => {
+    // \u0007 (BEL) is a control character; never type a literal control byte into source.
+    expect(() => buildPhase7HumanSignoff(fullMicro({ signedAtLabel: "2026-06-13\u0007" }))).toThrow(Phase7HumanSignoffError);
+  });
+
+  it("a secret-shaped signed-at label is refused (no key/token can ride in as a timestamp)", () => {
+    // "Bearer <token>" is secret-shaped and fits under the 40-char signed-at ceiling.
+    expect(() => buildPhase7HumanSignoff(fullMicro({ signedAtLabel: `Bearer ${"a".repeat(20)}` }))).toThrow(/secret-shaped/);
   });
 });
