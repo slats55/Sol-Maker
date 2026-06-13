@@ -63,6 +63,7 @@ import {
   executionDevnetFundingStatusReport,
   executionReadinessReport,
   phase7AuthorizationAuditReport,
+  phase7SignoffTemplateReport,
   executionSessionStatusReport,
   executionSessionReconcileReport,
   executionSessionAcknowledgeReport,
@@ -3269,6 +3270,60 @@ program
           outPath: opts.out,
           force: Boolean(opts.force),
           failOnNotReady: Boolean(opts.failOnNotReady),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:phase7:signoff:template")
+  .description(
+    "Sprint 103-B: generate the READ-ONLY `phase7.human_signoff.record.v1` — the clean mechanism for a FUTURE explicit human Phase 7 authorization. With no acknowledgements it is a blank `template-only` checklist; supplying every required acknowledgement for the target scope plus --operator-label, --signed-at, and (for a micro-trade) --max-spend-sol produces a SIGNED record. The status/scope are RE-DERIVED — the command cannot fake a signature, the granted scope can never exceed controlled-microtrade, and even a fully-signed record authorizes NO live trade and creates NO mainnet send (it is evidence only; the fourteen-condition live gate and a separate S104 sprint are still required)",
+  )
+  .option("--record-id <label>", "operator label echoed into the record (default phase7-human-signoff-template)")
+  .option("--repo-sha <sha>", "the repo SHA the sign-off applies to (recorded verbatim)")
+  .option("--audit-ref <ref>", "a reference to the phase7.authorization.audit.v1 this sign-off accompanies")
+  .option("--scope <scope>", "target scope: design-review-only | controlled-mainnet-microtrade-only (default the latter)")
+  .option("--acknowledge <id...>", "an acknowledgement id the human explicitly checks (repeatable)")
+  .option("--operator-label <label>", "operator label for a signed record (not a legal identity)")
+  .option("--signed-at <label>", "a signed-at label for a signed record")
+  .option("--max-spend-sol <sol>", "bounded per-trade max spend in SOL (required to fully sign a micro-trade; micro ceiling enforced)")
+  .option("--json", "emit the sign-off record as stable JSON")
+  .option("--out <path>", "write ONLY the record JSON to this path (refused if it exists without --force)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--require-signed", "exit non-zero unless the record reached a signed status")
+  .action(
+    (opts: {
+      recordId?: string;
+      repoSha?: string;
+      auditRef?: string;
+      scope?: string;
+      acknowledge?: string[];
+      operatorLabel?: string;
+      signedAt?: string;
+      maxSpendSol?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      requireSigned?: boolean;
+    }) => {
+      const { text, exitCode } = phase7SignoffTemplateReport(
+        {},
+        {
+          recordId: opts.recordId,
+          repoSha: opts.repoSha,
+          auditRef: opts.auditRef,
+          scope: opts.scope,
+          acknowledge: opts.acknowledge,
+          operatorLabel: opts.operatorLabel,
+          signedAt: opts.signedAt,
+          maxSpendSol: opts.maxSpendSol,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          requireSigned: Boolean(opts.requireSigned),
         },
       );
       console.log(text);

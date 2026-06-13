@@ -157,6 +157,7 @@ import {
   resolveExecutionMode,
   evaluateMainnetLiveGate,
   buildPhase7AuthorizationAudit,
+  buildPhase7HumanSignoff,
   canonicalLiveGateIds,
   loadLocalSignerBoundary,
   createThrowawayDevnetSigner,
@@ -205,6 +206,7 @@ import {
   type Phase7AuditGate,
   type Phase7AuditInvariant,
   type Phase7AuditPrerequisite,
+  type Phase7SignoffTargetScope,
 } from "@soulmaker/execution";
 import {
   parseMintAddress,
@@ -6708,6 +6710,114 @@ export function phase7AuthorizationAuditReport(
   lines.push(`next safe action: ${audit.nextSafeAction}`);
   lines.push("");
   for (const d of audit.disclaimers) lines.push(`NOTE: ${d}`);
+  return { text: redactString(lines.join("\n")) + wroteLine, exitCode };
+}
+
+// --- Sprint 103-B: the Phase 7 human sign-off template/record command --------
+// The clean mechanism for a FUTURE explicit human authorization. The default is a
+// blank `template-only` record; a SIGNED status requires every acknowledgement,
+// an operator label, a signed-at label, and (for a micro-trade) a bounded
+// max-spend. Even a fully-signed record authorizes no live trade and creates no
+// mainnet send — it is evidence only.
+
+export interface Phase7SignoffTemplateCommandOptions {
+  recordId?: string;
+  repoSha?: string;
+  auditRef?: string;
+  /** Target scope: design-review-only | controlled-mainnet-microtrade-only (default the latter). */
+  scope?: string;
+  /** Acknowledgement ids the human explicitly checked (repeatable). */
+  acknowledge?: string[];
+  operatorLabel?: string;
+  signedAt?: string;
+  maxSpendSol?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit non-zero unless the record reached a signed status (for scripted gating). */
+  requireSigned?: boolean;
+}
+
+/**
+ * `paper:phase7:signoff:template` — generate the read-only `phase7.human_signoff.record.v1`. With no
+ * acknowledgements it is a blank `template-only` checklist; supplying every required acknowledgement
+ * for the target scope plus an operator label, a signed-at label, and (for a micro-trade) a bounded
+ * max-spend produces a SIGNED record. The status/scope are RE-DERIVED — the command cannot fake a
+ * signature. Even a fully-signed record authorizes no live trade and creates no mainnet send.
+ */
+export function phase7SignoffTemplateReport(
+  ctx: CommandContext = {},
+  opts: Phase7SignoffTemplateCommandOptions = {},
+): CliReport {
+  let maxSpendLamports: number | null = null;
+  if (opts.maxSpendSol !== undefined) {
+    const sol = Number(opts.maxSpendSol);
+    if (!Number.isFinite(sol) || sol <= 0) {
+      return { text: "Refusing: --max-spend-sol must be a positive number of SOL.", exitCode: 1 };
+    }
+    maxSpendLamports = Math.round(sol * LAMPORTS_PER_SOL);
+  }
+
+  let record;
+  try {
+    record = buildPhase7HumanSignoff({
+      recordId: opts.recordId,
+      repoSha: opts.repoSha,
+      auditArtifactRef: opts.auditRef ?? null,
+      targetScope: opts.scope as Phase7SignoffTargetScope | undefined,
+      acknowledgedIds: opts.acknowledge,
+      operatorLabel: opts.operatorLabel ?? null,
+      signedAtLabel: opts.signedAt ?? null,
+      maxSpendLamports,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let wroteLine = "";
+  if (opts.outPath) {
+    const resolvedPath = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolvedPath)) {
+      return { text: `Refusing: ${resolvedPath} already exists (pass --force to overwrite).`, exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolvedPath, JSON.stringify(redactValue(record), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the Phase 7 sign-off record at ${resolvedPath}`), exitCode: 1 };
+    }
+    wroteLine = `\nwrote ${resolvedPath}`;
+  }
+
+  const signed = record.signoffStatus === "signed-for-s104-design" || record.signoffStatus === "signed-for-controlled-microtrade";
+  const exitCode = opts.requireSigned && !signed ? 1 : 0;
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(record), null, 2) + wroteLine, exitCode };
+  }
+
+  const acked = new Set(record.acknowledgedAcknowledgementIds);
+  const lines: string[] = [];
+  lines.push("PHASE 7 HUMAN SIGN-OFF (a written authorization RECORD — authorizes NO live trade by itself)");
+  lines.push("============================================================================================");
+  lines.push(`record id:  ${record.recordId} | repo: ${record.repoSha}`);
+  lines.push(`STATUS:     ${record.signoffStatus.toUpperCase()} | granted scope: ${record.grantedScope} | target: ${record.targetScope}`);
+  lines.push(`operator:   ${record.operatorLabel ?? "(unsigned)"} | signed at: ${record.signedAtLabel ?? "(none)"}`);
+  if (record.maxSpendLamports !== null) {
+    lines.push(`max spend:  ${record.maxSpendLamports} lamports (${record.maxSpendSol} SOL) — micro-trade ceiling enforced`);
+  }
+  lines.push("");
+  lines.push("required acknowledgements (a human must explicitly check EACH for the target scope):");
+  for (const ack of record.requiredAcknowledgements) {
+    lines.push(`  [${acked.has(ack.id) ? "x" : " "}] ${ack.id}: ${ack.text}`);
+  }
+  if (record.missingAcknowledgements.length > 0) {
+    lines.push("");
+    lines.push(`missing:    ${record.missingAcknowledgements.join(", ")}`);
+  }
+  lines.push("");
+  lines.push(`next safe action: ${record.nextSafeAction}`);
+  lines.push("");
+  for (const d of record.disclaimers) lines.push(`NOTE: ${d}`);
   return { text: redactString(lines.join("\n")) + wroteLine, exitCode };
 }
 
