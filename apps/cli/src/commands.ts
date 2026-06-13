@@ -176,6 +176,9 @@ import {
   trackConfirmation,
   buildReconciliationReport,
   buildDevnetFundingStatus,
+  validateDevnetFundingStatus,
+  validatePhase7HumanSignoff,
+  EXECUTION_RECONCILIATION_REPORT_SCHEMA_VERSION,
   DEVNET_FUNDING_DEFAULT_MIN_LAMPORTS,
   LAMPORTS_PER_SOL,
   CONFIRMATION_GUIDANCE,
@@ -6539,6 +6542,12 @@ export interface Phase7AuthorizationAuditCommandOptions {
   repoSha?: string;
   devnetBroadcastConfirmed?: boolean;
   signOffPresent?: boolean;
+  /** Optional evidence: a devnet funding-status artifact (context for the broadcast prerequisite). */
+  devnetFundingStatusPath?: string;
+  /** Optional evidence: a devnet reconciliation report (verdict "reconciled" proves the broadcast). */
+  devnetReconciliationPath?: string;
+  /** Optional evidence: a Phase 7 human sign-off record (signed-for-controlled-microtrade proves it). */
+  signOffRecordPath?: string;
   json?: boolean;
   outPath?: string;
   force?: boolean;
@@ -6593,22 +6602,95 @@ export function phase7AuthorizationAuditReport(
   // the source was simply not readable from here — the resolver probe still holds in memory).
   const commandSurfaceSafe = resolverFailClosed && (!surface.checked || surface.clean);
 
+  // --- micro-trade prerequisite evidence (optional artifacts; honest evidence dominates a flag) ---
+  // A funding-status artifact is CONTEXT only — funding is necessary but NOT a broadcast. A
+  // reconciliation report with verdict "reconciled" + a signature is the authoritative proof a real
+  // devnet broadcast landed. A sign-off record only satisfies the prerequisite when it is
+  // signed-for-controlled-microtrade. When no artifact is supplied, the legacy assertion flag is the
+  // fallback. A supplied-but-invalid artifact is refused (never silently ignored).
+  let fundingContext: string | null = null;
+  if (opts.devnetFundingStatusPath) {
+    let raw: unknown;
+    try {
+      raw = readJsonValue(ctx, opts.devnetFundingStatusPath, "devnet funding-status");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    try {
+      const fs = validateDevnetFundingStatus(raw);
+      fundingContext = `funding-status ${fs.fundingSourceStatus} (${fs.lamports ?? "?"} lamports, min ${fs.minimumRequiredLamports})`;
+    } catch (err) {
+      return { text: redactString(`Refusing: invalid devnet funding-status evidence — ${(err as Error).message}`), exitCode: 1 };
+    }
+  }
+
+  let devnetBroadcastConfirmed: boolean;
+  let devnetDetail: string;
+  if (opts.devnetReconciliationPath) {
+    let raw: unknown;
+    try {
+      raw = readJsonValue(ctx, opts.devnetReconciliationPath, "devnet reconciliation");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    const obj = isPlainObject(raw) ? raw : null;
+    if (obj === null || obj.schemaVersion !== EXECUTION_RECONCILIATION_REPORT_SCHEMA_VERSION) {
+      return { text: "Refusing: --devnet-reconciliation is not an execution.reconciliation.report.v1 artifact.", exitCode: 1 };
+    }
+    if (obj.network !== "devnet") {
+      return { text: "Refusing: --devnet-reconciliation must be a devnet reconciliation (network is not devnet).", exitCode: 1 };
+    }
+    const verdict = typeof obj.verdict === "string" ? obj.verdict : "unknown";
+    const signature = typeof obj.signature === "string" && obj.signature.length > 0 ? obj.signature : null;
+    const reconciled = verdict === "reconciled" && signature !== null;
+    devnetBroadcastConfirmed = reconciled;
+    devnetDetail = reconciled
+      ? `devnet broadcast confirmed + reconciled (signature ${signature}, verdict reconciled)${fundingContext ? `; ${fundingContext}` : ""}`
+      : `reconciliation evidence present but verdict=${verdict} — broadcast NOT confirmed${fundingContext ? `; ${fundingContext}` : ""}`;
+  } else {
+    devnetBroadcastConfirmed = Boolean(opts.devnetBroadcastConfirmed);
+    devnetDetail = devnetBroadcastConfirmed
+      ? `operator asserted a devnet broadcast confirmed + reconciled (no reconciliation artifact supplied)${fundingContext ? `; ${fundingContext}` : ""}`
+      : `not yet confirmed${fundingContext ? ` — ${fundingContext}` : " (devnet faucet/funding blocked)"} — run execution:devnet:funding-status --complete-if-funded once funded`;
+  }
+
+  let signOffPresent: boolean;
+  let signoffDetail: string;
+  if (opts.signOffRecordPath) {
+    let raw: unknown;
+    try {
+      raw = readJsonValue(ctx, opts.signOffRecordPath, "Phase 7 sign-off record");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    try {
+      const rec = validatePhase7HumanSignoff(raw);
+      signOffPresent = rec.signoffStatus === "signed-for-controlled-microtrade";
+      signoffDetail = signOffPresent
+        ? `written human sign-off recorded (signed-for-controlled-microtrade; granted scope ${rec.grantedScope})`
+        : `sign-off record present but status=${rec.signoffStatus} — a controlled micro-trade needs signed-for-controlled-microtrade`;
+    } catch (err) {
+      return { text: redactString(`Refusing: invalid Phase 7 sign-off evidence — ${(err as Error).message}`), exitCode: 1 };
+    }
+  } else {
+    signOffPresent = Boolean(opts.signOffPresent);
+    signoffDetail = signOffPresent
+      ? "operator asserted a written sign-off is recorded (no sign-off record supplied)"
+      : "no written human sign-off yet — generate one with paper:phase7:signoff:template; see docs/PHASE7_AUTHORIZATION_DOSSIER.md";
+  }
+
   const microTradePrerequisites: Phase7AuditPrerequisite[] = [
     {
       id: "devnet-broadcast-confirmed",
       description: "a real devnet end-to-end broadcast has confirmed and reconciled at least once",
-      met: Boolean(opts.devnetBroadcastConfirmed),
-      detail: opts.devnetBroadcastConfirmed
-        ? "operator confirmed a devnet broadcast landed and reconciled"
-        : "not yet confirmed (devnet faucet/funding blocked) — run execution:devnet:rehearse once funded",
+      met: devnetBroadcastConfirmed,
+      detail: devnetDetail,
     },
     {
       id: "written-sign-off",
       description: "a written, human Phase 7 sign-off is recorded in the authorization dossier",
-      met: Boolean(opts.signOffPresent),
-      detail: opts.signOffPresent
-        ? "operator confirmed a written sign-off is recorded"
-        : "no written human sign-off yet — see docs/PHASE7_AUTHORIZATION_DOSSIER.md",
+      met: signOffPresent,
+      detail: signoffDetail,
     },
   ];
 

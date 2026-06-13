@@ -3244,6 +3244,9 @@ program
   .option("--repo-sha <sha>", "the repo SHA the audit was run against (recorded verbatim)")
   .option("--devnet-broadcast-confirmed", "assert a real devnet end-to-end broadcast has confirmed + reconciled (a micro-trade prerequisite; default false)")
   .option("--sign-off-present", "assert a written human Phase 7 sign-off is recorded in the dossier (a micro-trade prerequisite; default false)")
+  .option("--devnet-funding-status <path>", "optional evidence: a devnet funding-status artifact (context for the broadcast prerequisite)")
+  .option("--devnet-reconciliation <path>", "optional evidence: a devnet reconciliation report (verdict 'reconciled' proves the broadcast; authoritative over the flag)")
+  .option("--sign-off-record <path>", "optional evidence: a Phase 7 sign-off record (signed-for-controlled-microtrade proves it; authoritative over the flag)")
   .option("--json", "emit the audit artifact as stable JSON")
   .option("--out <path>", "write ONLY the audit JSON to this path (refused if it exists without --force)")
   .option("--force", "overwrite an existing --out file (refused by default)")
@@ -3254,6 +3257,9 @@ program
       repoSha?: string;
       devnetBroadcastConfirmed?: boolean;
       signOffPresent?: boolean;
+      devnetFundingStatus?: string;
+      devnetReconciliation?: string;
+      signOffRecord?: string;
       json?: boolean;
       out?: string;
       force?: boolean;
@@ -3266,6 +3272,9 @@ program
           repoSha: opts.repoSha,
           devnetBroadcastConfirmed: Boolean(opts.devnetBroadcastConfirmed),
           signOffPresent: Boolean(opts.signOffPresent),
+          devnetFundingStatusPath: opts.devnetFundingStatus,
+          devnetReconciliationPath: opts.devnetReconciliation,
+          signOffRecordPath: opts.signOffRecord,
           json: Boolean(opts.json),
           outPath: opts.out,
           force: Boolean(opts.force),
