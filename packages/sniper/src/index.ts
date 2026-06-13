@@ -43,11 +43,38 @@ export {
   buildSniperTokenPreflightReport,
   validateSniperTokenPreflightReport,
   formatSniperTokenPreflightReport,
+  projectSniperPreflightRisk,
+  projectSniperPreflightInspection,
   SniperTokenPreflightReportError,
   SNIPER_TOKEN_PREFLIGHT_REPORT_SCHEMA_VERSION,
   SNIPER_TOKEN_PREFLIGHT_REPORT_BANNER,
   SNIPER_TOKEN_PREFLIGHT_REPORT_DISCLAIMERS,
 } from "./token-preflight.js";
+
+export {
+  normalizeSniperScoreInput,
+  validateSniperScoreInput,
+  SniperScoreInputError,
+  SNIPER_SCORE_INPUT_SCHEMA_VERSION,
+  SNIPER_SCORE_INPUT_BANNER,
+  SNIPER_SCORE_INPUT_DISCLAIMERS,
+  SNIPER_SCORE_INPUT_MAX_CANDIDATES,
+  SNIPER_SCORE_MODES,
+  SNIPER_SCORE_FACT_KEYS,
+} from "./sniper-score-input.js";
+
+export type {
+  SniperScoreMode,
+  SniperScoreLiquidityHint,
+  SniperScoreQuoteFreshness,
+  SniperScoreSimulationOutcome,
+  SniperScoreSimulationClassification,
+  SniperScoreFacts,
+  SniperScoreInputEntryInput,
+  NormalizeSniperScoreInputInput,
+  SniperScoreInputEntry,
+  SniperScoreInput,
+} from "./sniper-score-input.js";
 
 export type {
   SniperPreflightCandidateData,
