@@ -141,3 +141,18 @@ report: it feeds nothing downstream, gates nothing, and changes nothing in the d
 chain (a deliberate low-risk decision). TypeScript recomputes every score and re-evaluates every
 freshness verdict with the real `evaluateQuoteFreshness` before accepting the artifact. A route
 score is never a profitability claim and never readiness. See [`RUST_ENGINE.md`](RUST_ENGINE.md).
+
+## Optional candidate scoring + ranking (S101)
+
+The facts a dry-run already collects (advisory risk, token mechanics, quote quality, simulation
+evidence) can be folded into ONE `sniper.score.input.v1` bundle and ranked through the Rust sidecar:
+`pnpm soulmaker engine:sniper:score --input <sniper.score.input.v1>` produces
+`engine.sniper.score.report.v1` - a per-candidate score (0-100), a closed verdict
+(watch/caution/reject/insufficient-evidence), and a deterministic ranking. Like the S99 quote score,
+this is read-only operator INTELLIGENCE that **feeds nothing downstream, gates nothing, and changes
+nothing in the dry-run evidence chain**. It does not send, does not sign, and cannot fund a build:
+TypeScript re-derives every component/score/verdict/ranking and cross-checks the echoed facts against
+the bundle before accepting the artifact. A high score is NOT "safe to trade", a rejected risk stays
+`reject` no matter the score, and the score satisfies none of the fourteen mainnet live-gate
+conditions - the dry-run's terminal verdict remains `blocked / live-not-authorized`. See
+[`SNIPER_SCORING.md`](SNIPER_SCORING.md) and [`RUST_ENGINE.md`](RUST_ENGINE.md).

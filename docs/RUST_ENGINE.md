@@ -136,6 +136,42 @@ S96 layer; and capability-scan exceptions narrowed to the exact new tokens with
 tests proving no mainnet reachability. Until all of that exists and is
 authorized, the engine stays read-only.
 
+## S101 sniper candidate scoring hot path
+
+- `solmaker-engine sniper-score [--json] [--created-at <iso>]` consumes a
+  TypeScript-produced `sniper.score.input.v1` bundle of already-collected
+  facts over the same bounded stdin and emits `engine.sniper.score.report.v1`:
+  a deterministic per-candidate score (0–100, the clamped sum of six published
+  component buckets — risk safety, quote quality, quote freshness, liquidity,
+  token mechanics, simulation evidence), a CLOSED verdict (`watch` / `caution`
+  / `reject` / `insufficient-evidence`), CLOSED reason codes, and a
+  deterministic ranking (verdict rank desc → score desc → candidateId asc).
+- **Scoring parity is a wall, not a test**: the TypeScript validator RE-DERIVES
+  every component, the score, the verdict, the ordered reason set, and the full
+  ranking from the echoed facts, AND cross-checks every echoed fact against the
+  exact input bundle bytes — Rust can neither fabricate, drop, nor alter a
+  candidate's facts. Any disagreement refuses the whole artifact
+  (`schema-mismatch`). The validator also enforces the HARD gates
+  independently: a `REJECT` risk decision, a critical risk flag, or a
+  Token-2022 blocker can never be `watch`; a stale quote can never be `watch`.
+- The scoring instant is orchestrator-supplied (`--created-at`); the engine
+  reads no clock. Missing facts produce `insufficient-evidence`, never a fake
+  green.
+- A candidate score is INTELLIGENCE only — the artifact pins `notExecutable`,
+  `notProfitabilityClaim`, `neverSigns`, `neverSends`,
+  `phase7LiveTradingReady:false`, plus `scoreIsNotLiveReadiness:true` and
+  `highScoreIsNotSafeToTrade:true`. A high score never overrides a risk gate, a
+  rejected risk stays rejected, and the score satisfies none of the fourteen
+  mainnet live-gate conditions and gates nothing. The existing risk,
+  execution, and dry-run evidence chains are UNCHANGED (deliberate low-risk
+  decision: scoring is a standalone read-only command, `engine:sniper:score`,
+  fed by a `sniper.score.input.v1` bundle). See
+  [`SNIPER_SCORING.md`](SNIPER_SCORING.md) for the full design + safety
+  boundary.
+- The dependency allowlist stays exactly `serde + serde_json`; the S101 review
+  again decided **NO Rust network access** — feeds, risk, and quote fetching
+  all stay in TypeScript.
+
 ## S98 realtime hot path — how it flows
 
 ```
@@ -205,6 +241,7 @@ See [`../crates/solmaker-engine/SAFETY.md`](../crates/solmaker-engine/SAFETY.md)
 | `pnpm soulmaker engine:quote:score --report <f> --max-quote-age-ms <n>` | S99: route-quote scoring intelligence over a fetch report (scores recomputed + freshness re-evaluated by TypeScript before acceptance) |
 | `pnpm soulmaker engine:tx:inspect --envelope <f>` | S100: unsigned-transaction SHAPE inspection (facts re-derived by the real @solana/web3.js decoder before acceptance; a signed envelope is refused) |
 | `pnpm soulmaker engine:sim:classify --report <f> \| --err-label <label>` | S100: simulation-failure classification into the S95 closed set (re-run by the real classifier before acceptance) |
+| `pnpm soulmaker engine:sniper:score --input <f>` | S101: memecoin candidate scoring + ranking over a `sniper.score.input.v1` facts bundle (every component/score/verdict/ranking re-derived and the echoed facts cross-checked against the bundle before acceptance; a rejected risk stays rejected) |
 | `pnpm rust:check` / `rust:build` / `rust:test` | Cargo passthroughs over the workspace |
 | `pnpm rust:fmt` / `rust:fmt:check` / `rust:clippy` | Formatting + lints (clippy runs `-D warnings`) |
 
@@ -214,8 +251,15 @@ See [`../crates/solmaker-engine/SAFETY.md`](../crates/solmaker-engine/SAFETY.md)
   TypeScript by reviewed decision).
 - **S99** quote routing/scoring — DONE (scoring intelligence over fetched
   quote artifacts; live fetching stays TypeScript by reviewed decision).
-- **S100** transaction simulate/devnet execution core — only with a reviewed
-  expansion of the safety boundary and scans on both sides.
+- **S100** transaction inspection + simulation classification — DONE (reads
+  transaction *bytes* only; the Rust devnet send core was reviewed and
+  DECLINED). The send path stays in TypeScript.
+- **S101** memecoin candidate scoring + operator ranking — DONE (deterministic
+  intelligence over a facts bundle; no network, no send, rejected risk stays
+  rejected; live execution stays TypeScript and default-blocked).
+- A Rust devnet/mainnet execution core remains DECLINED — only with a reviewed
+  expansion of the safety boundary and scans on both sides (see the S101
+  preconditions above).
 
 Rust never becomes the source of truth for safety decisions: every artifact
 crosses the bridge through the TypeScript validator first.

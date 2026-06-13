@@ -1101,10 +1101,34 @@ end-to-end; live trading does not begin until Sprint 104, separately authorized 
   REAL evidence: the actual binary decoded a real v0 web3.js transaction (System Program correctly
   resolved) and classified a real Jupiter slippage error (spawn ~21ms); real-spawn parity tests
   in-suite cover every S95 case. No mainnet send surface, in TypeScript or Rust.
-- **S101** — Axiom-style command center features; wallet/social monitoring ONLY where
-  legally and API-supported (Axiom Pro stays a UX benchmark, never a dependency).
+- **S101** ✅ (2026-06-13) — Rust memecoin candidate scoring + operator ranking (the first sniper
+  INTELLIGENCE layer). Actuals: a new `@soulmaker/sniper` `sniper.score.input.v1` bundle normalizes
+  already-collected facts (advisory risk via the existing token:risk projections, token mechanics,
+  quote quality, simulation/build evidence) per candidate; the Rust engine gained `sniper-score`
+  (consume the bundle over bounded stdin → `engine.sniper.score.report.v1`: a deterministic score
+  0–100 = clamped sum of six published component buckets, a CLOSED verdict
+  watch/caution/reject/insufficient-evidence, CLOSED reason codes, and a deterministic ranking;
+  dependency allowlist stays serde+serde_json, NO network/signer/send). The PARITY WALL is the
+  heart: TypeScript RE-DERIVES every component, score, verdict, ordered reason set, and the full
+  ranking AND cross-checks every echoed fact against the exact input bundle bytes — Rust can neither
+  fabricate, drop, nor alter a fact — plus enforces the HARD gates independently (a REJECT decision,
+  a critical risk flag, or a Token-2022 blocker can never be `watch`; a stale quote can never be
+  `watch`). CLI `engine:sniper:score` (--input/--json/--out/--force/--fail-on-unavailable); web
+  registry 51 schemas + 1 typed view; the engine capability list grew to 8
+  (`sniper-candidate-score`). A candidate score is INTELLIGENCE ONLY — never a buy signal, never live
+  readiness, and the artifact pins scoreIsNotLiveReadiness + highScoreIsNotSafeToTrade; a rejected
+  risk stays rejected no matter the score, and scoring gates nothing in the live path. REAL evidence:
+  the actual binary scored a real-shaped mainnet-dry-run bundle (WSOL → watch 97 #1; USDC with a real
+  freeze authority + risk REJECT → reject #2, the perfect fresh quote unable to rescue it) and the
+  artifact survived the full re-derivation + cross-check (spawn ~20ms, validate <1ms). The rehearse
+  integration (optional Slice 6) was deferred to keep the pinned `paper:sniper:rehearse` orchestrator
+  stable. Axiom Pro remains a UX benchmark only — never a dependency. Devnet broadcast is still
+  externally faucet-blocked. No mainnet send surface, no Rust signer/send/network, in this sprint or
+  any prior one. Design + safety boundary in docs/SNIPER_SCORING.md.
 - **S102** — full mainnet dry-run release candidate: one command, complete evidence chain,
-  zero manual artifacts.
+  zero manual artifacts. (Recommended next: assemble the dry-run release-candidate bundle now that
+  the scoring intelligence layer exists; an Axiom-style command-center / watchlist UI pass is the
+  alternative if operator UX is prioritized over the release candidate.)
 - **S103** — final security audit + live authorization review (written sign-off required).
 - **S104** — separately approved controlled mainnet MICRO-trade (burner wallet, micro cap,
   manual confirmation; see the design review's exact conditions).

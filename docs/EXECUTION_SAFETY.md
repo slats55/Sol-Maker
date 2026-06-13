@@ -252,6 +252,21 @@ future (separately authorized) Rust devnet-send core would have to meet are
 recorded in [`RUST_ENGINE.md`](RUST_ENGINE.md) under the S100 decision. **No
 mainnet send surface exists in TypeScript or Rust.**
 
+## Rust candidate scoring — intelligence only, never a gate (Sprint 101)
+
+The Rust sidecar gained `sniper-score` in S101: it ranks a `sniper.score.input.v1`
+bundle of already-collected facts into `engine.sniper.score.report.v1` (a per-candidate
+score + closed verdict + ranking). A candidate score is **operator intelligence, not an
+authorization**: it is not one of the fourteen live-gate conditions, satisfies none of
+them, feeds nothing downstream, and gates nothing. The artifact pins
+`scoreIsNotLiveReadiness:true` and `highScoreIsNotSafeToTrade:true`, and the score never
+re-derives or overturns risk — a `REJECT` decision, a critical risk flag, or a Token-2022
+blocker keeps a candidate `reject` no matter how high the component sum is (the validator
+enforces this independently of the engine). Like every other engine path it adds no
+network/signer/send capability and is re-derived + cross-checked by the TypeScript parity
+wall before anything trusts it. The default state of every gate stays **blocked**; scoring
+does not change that. Design + safety boundary in [`SNIPER_SCORING.md`](SNIPER_SCORING.md).
+
 ## Audit requirements
 
 Every send-capable path journals every attempt — refused or submitted — to an append-only JSONL
