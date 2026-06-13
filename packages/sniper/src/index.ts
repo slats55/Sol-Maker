@@ -568,3 +568,21 @@ export type {
   BuildMainnetDryRunReleaseCandidateInput,
   SniperMainnetDryRunReleaseCandidate,
 } from "./mainnet-dryrun-release-candidate.js";
+
+export {
+  SNIPER_OPERATOR_DEMO_MANIFEST_SCHEMA_VERSION,
+  SNIPER_OPERATOR_DEMO_BANNER,
+  SNIPER_OPERATOR_DEMO_DISCLAIMERS,
+  SNIPER_OPERATOR_DEMO_WHY_LIVE_DISABLED,
+  OPERATOR_DEMO_EVIDENCE_CLASSES,
+  SniperOperatorDemoManifestError,
+  buildSniperOperatorDemoManifest,
+  validateSniperOperatorDemoManifest,
+} from "./operator-demo-manifest.js";
+export type {
+  OperatorDemoEvidenceClass,
+  OperatorDemoArtifactRef,
+  OperatorDemoStage,
+  BuildSniperOperatorDemoManifestInput,
+  SniperOperatorDemoManifest,
+} from "./operator-demo-manifest.js";

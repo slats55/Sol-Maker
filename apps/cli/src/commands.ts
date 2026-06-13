@@ -20,6 +20,7 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, dirname, isAbsolute, join, normalize } from "node:path";
+import { fileURLToPath } from "node:url";
 import { gatherPhase7AuditProbes } from "./phase7-audit-probes.js";
 import {
   loadConfig,
@@ -157,6 +158,7 @@ import {
   resolveExecutionMode,
   evaluateMainnetLiveGate,
   buildPhase7AuthorizationAudit,
+  validatePhase7AuthorizationAudit,
   buildPhase7HumanSignoff,
   canonicalLiveGateIds,
   loadLocalSignerBoundary,
@@ -222,6 +224,10 @@ import {
   SNIPER_PREFLIGHT_INPUT_SCHEMA_VERSION,
   normalizeSniperScoreInput,
   buildMainnetDryRunReleaseCandidate,
+  validateMainnetDryRunReleaseCandidate,
+  buildSniperOperatorDemoManifest,
+  type OperatorDemoArtifactRef,
+  type OperatorDemoStage,
   buildPaperSniperDecisionReport,
   formatPaperSniperDecisionReport,
   buildPaperSniperDecisionReportV2,
@@ -6901,6 +6907,301 @@ export function phase7SignoffTemplateReport(
   lines.push("");
   for (const d of record.disclaimers) lines.push(`NOTE: ${d}`);
   return { text: redactString(lines.join("\n")) + wroteLine, exitCode };
+}
+
+// --- Sprint 103-B: the operator demo workbench -------------------------------
+// One command assembles a SAFE, showable demo folder of Sol Maker's paper /
+// dry-run pipeline: the real read-only Phase 7 audit + sign-off template, an
+// honest devnet funding-status fixture, and the byte-pinned fictional candidate
+// + release-candidate examples (which fold in candidate ranking, risk, quote
+// score, tx build, tx inspection, simulation, and readiness). Every artifact is
+// labelled by provenance; nothing sends, signs, or trades; live stays disabled.
+
+const OPERATOR_DEMO_MANIFEST_FILE = "operator-demo-manifest.json";
+const OPERATOR_DEMO_README_FILE = "README.md";
+/** The known historical S103 throwaway devnet PUBLIC key (public data; used only as a demo fixture). */
+const DEMO_THROWAWAY_PUBKEY = "8FenZasyRe3HeUEm4X8iTAufaamnryU2JB8cRzWyHgwm";
+
+export interface PaperSniperOperatorDemoCommandOptions {
+  outDir?: string;
+  demoId?: string;
+  json?: boolean;
+  force?: boolean;
+}
+
+/** Copy a byte-pinned committed example into the demo folder, validating + labelling it honestly. */
+function copyDemoExample(
+  examplesRoot: string,
+  srcRel: string,
+  outDir: string,
+  destName: string,
+  artifacts: OperatorDemoArtifactRef[],
+  role: string,
+  validate: (value: unknown) => void,
+  summary: string,
+): void {
+  let present = false;
+  let valid = false;
+  let schemaVersion: string | null = null;
+  try {
+    const raw = stripJsonBom(readFileSync(join(examplesRoot, ...srcRel.split("/")), "utf8"));
+    writeFileSync(join(outDir, destName), raw.endsWith("\n") ? raw : raw + "\n");
+    present = true;
+    const parsed = JSON.parse(raw);
+    schemaVersion = isPlainObject(parsed) && typeof parsed.schemaVersion === "string" ? parsed.schemaVersion : null;
+    try {
+      validate(parsed);
+      valid = true;
+    } catch {
+      valid = false;
+    }
+  } catch {
+    present = false;
+  }
+  artifacts.push({ role, fileName: destName, schemaVersion, evidenceClass: "fictional-example", present, valid, summary });
+}
+
+/**
+ * `paper:sniper:operator-demo` — assemble a SAFE, showable demo folder + `sniper.operator_demo.manifest.v1`.
+ * Real read-only artifacts (the Phase 7 audit, the sign-off template), an honest devnet funding-status
+ * fixture, and the byte-pinned fictional candidate + release-candidate examples are written into one
+ * directory with a manifest that labels every artifact by provenance and pins live execution disabled.
+ * Nothing here signs, sends, or trades.
+ */
+export function paperSniperOperatorDemoReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperOperatorDemoCommandOptions = {},
+): CliReport {
+  if (!opts.outDir) return { text: "Refusing: --out <dir> is required (the demo folder).", exitCode: 1 };
+  const outDir = resolvePath(ctx, opts.outDir);
+
+  const demoFiles = [
+    "phase7-authorization-audit.json",
+    "phase7-signoff-template.json",
+    "devnet-funding-status.json",
+    "candidates.json",
+    "release-candidate.json",
+    OPERATOR_DEMO_MANIFEST_FILE,
+    OPERATOR_DEMO_README_FILE,
+  ];
+  if (!opts.force) {
+    for (const f of demoFiles) {
+      if (existsSync(join(outDir, f))) {
+        return { text: redactString(`Refusing: ${join(outDir, f)} already exists (pass --force to overwrite).`), exitCode: 1 };
+      }
+    }
+  }
+  try {
+    mkdirSync(outDir, { recursive: true });
+  } catch {
+    return { text: redactString(`Refusing: cannot create the demo directory at ${outDir}`), exitCode: 1 };
+  }
+
+  const inner: CommandContext = { ...ctx, cwd: outDir };
+  const now = (ctx.now ?? isoNow)();
+  const artifacts: OperatorDemoArtifactRef[] = [];
+  const examplesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "examples");
+
+  // a) Phase 7 authorization audit — REAL read-only (the probes machine-check the live repo).
+  const auditRep = phase7AuthorizationAuditReport(inner, {
+    auditId: "operator-demo-audit",
+    repoSha: "operator-demo",
+    outPath: "phase7-authorization-audit.json",
+    force: true,
+  });
+  if (auditRep.exitCode !== 0) {
+    return { text: redactString(`Refusing: the Phase 7 audit step failed:\n${auditRep.text}`), exitCode: 1 };
+  }
+  {
+    let valid = false;
+    let schemaVersion: string | null = null;
+    let verdict = "unknown";
+    try {
+      const a = validatePhase7AuthorizationAudit(readJsonValue(inner, "phase7-authorization-audit.json", "demo audit"));
+      valid = true;
+      schemaVersion = a.schemaVersion;
+      verdict = a.verdict;
+    } catch {
+      valid = false;
+    }
+    artifacts.push({
+      role: "phase7-authorization-audit",
+      fileName: "phase7-authorization-audit.json",
+      schemaVersion,
+      evidenceClass: "real-readonly",
+      present: true,
+      valid,
+      summary: `read-only Phase 7 authorization audit — verdict ${verdict} (authorizes nothing)`,
+    });
+  }
+
+  // b) Phase 7 human sign-off template — REAL (a blank checklist; status template-only).
+  {
+    const record = buildPhase7HumanSignoff({ recordId: "operator-demo-signoff-template", repoSha: "operator-demo" });
+    let valid = false;
+    let schemaVersion: string | null = null;
+    try {
+      writeFileSync(join(outDir, "phase7-signoff-template.json"), JSON.stringify(redactValue(record), null, 2) + "\n");
+      const r = validatePhase7HumanSignoff(readJsonValue(inner, "phase7-signoff-template.json", "demo signoff"));
+      valid = true;
+      schemaVersion = r.schemaVersion;
+    } catch {
+      valid = false;
+    }
+    artifacts.push({
+      role: "phase7-human-signoff",
+      fileName: "phase7-signoff-template.json",
+      schemaVersion,
+      evidenceClass: "real-readonly",
+      present: true,
+      valid,
+      summary: "a blank Phase 7 human sign-off template (status template-only; authorizes nothing)",
+    });
+  }
+
+  // c) Devnet funding status — FIXTURE (the known funding-blocked state; no network read in the demo).
+  {
+    const fundingStatus = buildDevnetFundingStatus({
+      publicKey: DEMO_THROWAWAY_PUBKEY,
+      checkedAt: now,
+      balance: { status: "observed", lamports: 0 },
+      caveats: [
+        "DEMO FIXTURE — not a live read. Run execution:devnet:funding-status --public-key <key> for a real devnet balance.",
+        "Devnet SOL is valueless; the real faucet has been rate-limited (HTTP 429) across attempts.",
+        "A funded key still authorizes nothing — live trading stays disabled.",
+      ],
+    });
+    let valid = false;
+    let schemaVersion: string | null = null;
+    try {
+      writeFileSync(join(outDir, "devnet-funding-status.json"), JSON.stringify(redactValue(fundingStatus), null, 2) + "\n");
+      const r = validateDevnetFundingStatus(readJsonValue(inner, "devnet-funding-status.json", "demo funding-status"));
+      valid = true;
+      schemaVersion = r.schemaVersion;
+    } catch {
+      valid = false;
+    }
+    artifacts.push({
+      role: "devnet-funding-status",
+      fileName: "devnet-funding-status.json",
+      schemaVersion,
+      evidenceClass: "fixture",
+      present: true,
+      valid,
+      summary: "an honest funding-blocked fixture (unfunded; not a live read)",
+    });
+  }
+
+  // d) Candidate input — FICTIONAL-EXAMPLE (invented mints).
+  copyDemoExample(
+    examplesRoot,
+    "sniper/candidates.fictional.json",
+    outDir,
+    "candidates.json",
+    artifacts,
+    "candidate-input",
+    (v) => {
+      if (!isPlainObject(v) || !Array.isArray(v.candidates)) throw new Error("not a candidate list");
+    },
+    "a fictional candidate list (invented mints) — the ranking input",
+  );
+
+  // e) Mainnet dry-run release candidate — FICTIONAL-EXAMPLE (folds in the full pipeline).
+  copyDemoExample(
+    examplesRoot,
+    "sniper/mainnet-dryrun-release-candidate/release-candidate.complete.example.json",
+    outDir,
+    "release-candidate.json",
+    artifacts,
+    "mainnet-dry-run-release-candidate",
+    (v) => {
+      validateMainnetDryRunReleaseCandidate(v);
+    },
+    "a no-send mainnet dry-run release candidate (fictional mints) folding in candidate ranking, risk, quote score, tx build, tx inspection, simulation, and readiness",
+  );
+
+  // The pipeline stages the demo showcases, each evidenced by one of the artifacts above.
+  const stages: OperatorDemoStage[] = [
+    { stage: "candidate-ranking", description: "candidates scored 0-100 and ranked (intelligence only; never a buy signal)", evidencedBy: "mainnet-dry-run-release-candidate" },
+    { stage: "risk", description: "deep read-only risk assessment (freeze authority, Token-2022 blockers, concentration)", evidencedBy: "mainnet-dry-run-release-candidate" },
+    { stage: "quote-score", description: "live-quote quality scoring with honest freshness provenance", evidencedBy: "mainnet-dry-run-release-candidate" },
+    { stage: "tx-build-dry-run", description: "refusal-first UNSIGNED swap build (never signs, never sends)", evidencedBy: "mainnet-dry-run-release-candidate" },
+    { stage: "tx-inspection", description: "decoded transaction SHAPE facts from the unsigned envelope", evidencedBy: "mainnet-dry-run-release-candidate" },
+    { stage: "simulation", description: "real simulateTransaction (sigVerify:false) classification", evidencedBy: "mainnet-dry-run-release-candidate" },
+    { stage: "readiness", description: "the fourteen-condition readiness checklist (verdict always blocked)", evidencedBy: "mainnet-dry-run-release-candidate" },
+    { stage: "release-candidate", description: "the no-send release candidate verdict (live-send pinned disabled)", evidencedBy: "mainnet-dry-run-release-candidate" },
+    { stage: "candidate-input", description: "the fictional candidate list that seeds the ranking", evidencedBy: "candidate-input" },
+    { stage: "phase7-authorization-audit", description: "the read-only Phase 7 authorization audit verdict", evidencedBy: "phase7-authorization-audit" },
+    { stage: "phase7-signoff", description: "the blank human sign-off template (the future authorization mechanism)", evidencedBy: "phase7-human-signoff" },
+    { stage: "devnet-funding-status", description: "the devnet funding/proof status for the throwaway key", evidencedBy: "devnet-funding-status" },
+    { stage: "live-disabled", description: "live execution is disabled — proven by the Phase 7 audit's pinned locks", evidencedBy: "phase7-authorization-audit" },
+  ];
+
+  let manifest;
+  try {
+    manifest = buildSniperOperatorDemoManifest({ demoId: opts.demoId, generatedAt: now, artifacts, stages });
+  } catch (err) {
+    return { text: redactString(`Refusing: cannot assemble the demo manifest — ${(err as Error).message}`), exitCode: 1 };
+  }
+  const manifestPath = join(outDir, OPERATOR_DEMO_MANIFEST_FILE);
+  try {
+    writeFileSync(manifestPath, JSON.stringify(redactValue(manifest), null, 2) + "\n");
+  } catch {
+    return { text: redactString(`Refusing: cannot write the demo manifest at ${manifestPath}`), exitCode: 1 };
+  }
+
+  // A human-readable README for the demo folder.
+  const readmeLines = [
+    "# Sol Maker — Operator Demo Workbench",
+    "",
+    "> **SAFE DEMO — paper / dry-run only.** Nothing here signs, sends, or trades. Live execution is DISABLED.",
+    "",
+    `- **Demo id:** ${manifest.demoId}`,
+    `- **Generated at:** ${manifest.generatedAt ?? "(unset)"}`,
+    `- **Artifacts:** ${manifest.artifactCount} (${manifest.realReadonlyCount} real read-only, ${manifest.fixtureCount} fixture, ${manifest.fictionalExampleCount} fictional example)`,
+    `- **All artifacts valid:** ${manifest.allArtifactsValid ? "yes" : "NO — regenerate with --force"}`,
+    "",
+    "## Why live trading is disabled",
+    "",
+    manifest.whyLiveDisabled,
+    "",
+    "## Artifacts",
+    "",
+    "| role | file | provenance | schema | valid |",
+    "| --- | --- | --- | --- | --- |",
+    ...manifest.artifacts.map((a) => `| ${a.role} | ${a.fileName} | ${a.evidenceClass} | ${a.schemaVersion ?? "—"} | ${a.present ? (a.valid ? "yes" : "INVALID") : "missing"} |`),
+    "",
+    "## Inspect",
+    "",
+    "```",
+    "pnpm web:inspect --dir <this-folder>",
+    "```",
+    "",
+    `next safe action: ${manifest.nextSafeAction}`,
+    "",
+  ];
+  try {
+    writeFileSync(join(outDir, OPERATOR_DEMO_README_FILE), redactString(readmeLines.join("\n")));
+  } catch {
+    return { text: redactString(`Refusing: cannot write the demo README under ${outDir}`), exitCode: 1 };
+  }
+
+  const exitCode = manifest.allArtifactsValid ? 0 : 1;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(manifest), null, 2), exitCode };
+  }
+  const lines = [
+    "OPERATOR DEMO WORKBENCH — SAFE paper / dry-run showcase (nothing signs, sends, or trades; live DISABLED)",
+    `demo id:    ${manifest.demoId}`,
+    `artifacts:  ${manifest.artifactCount} (${manifest.realReadonlyCount} real read-only, ${manifest.fixtureCount} fixture, ${manifest.fictionalExampleCount} fictional example) — all valid: ${manifest.allArtifactsValid ? "yes" : "NO"}`,
+    `stages:     ${manifest.stageCount} pipeline stages showcased`,
+    "",
+    ...manifest.artifacts.map((a) => `  [${a.present ? (a.valid ? "x" : "!") : " "}] ${a.role} (${a.evidenceClass}): ${join(outDir, a.fileName)}`),
+    "",
+    `manifest:   ${manifestPath}`,
+    `next:       ${manifest.nextSafeAction}`,
+  ];
+  return { text: redactString(lines.join("\n")), exitCode };
 }
 
 export interface ExecutionBuildCommandOptions {

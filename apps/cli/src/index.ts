@@ -64,6 +64,7 @@ import {
   executionReadinessReport,
   phase7AuthorizationAuditReport,
   phase7SignoffTemplateReport,
+  paperSniperOperatorDemoReport,
   executionSessionStatusReport,
   executionSessionReconcileReport,
   executionSessionAcknowledgeReport,
@@ -3285,6 +3286,24 @@ program
       if (exitCode !== 0) process.exitCode = exitCode;
     },
   );
+
+program
+  .command("paper:sniper:operator-demo")
+  .description(
+    "Sprint 103-B operator demo workbench: assemble a SAFE, showable demo folder + sniper.operator_demo.manifest.v1. Writes the REAL read-only Phase 7 audit + a blank sign-off template, an honest devnet funding-status FIXTURE, and the byte-pinned FICTIONAL candidate + mainnet dry-run release-candidate examples (which fold in candidate ranking, risk, quote score, tx build, tx inspection, simulation, and readiness). Every artifact is labelled by provenance (real-readonly / fixture / fictional-example) and the manifest pins live execution disabled. Nothing here signs, sends, or trades — it is a 'look what Sol Maker can do' exhibit, not a live bot",
+  )
+  .requiredOption("--out <dir>", "output DIRECTORY for the demo artifacts + manifest")
+  .option("--demo-id <label>", "operator label echoed into the manifest (default sniper-operator-demo)")
+  .option("--json", "emit the demo manifest as stable JSON")
+  .option("--force", "overwrite existing demo artifacts in the output directory")
+  .action((opts: { out?: string; demoId?: string; json?: boolean; force?: boolean }) => {
+    const { text, exitCode } = paperSniperOperatorDemoReport(
+      {},
+      { outDir: opts.out, demoId: opts.demoId, json: Boolean(opts.json), force: Boolean(opts.force) },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
 
 program
   .command("paper:phase7:signoff:template")
