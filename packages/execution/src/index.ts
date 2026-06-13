@@ -173,3 +173,26 @@ export type {
   DevnetRehearsalReport,
   RunDevnetRehearsalInput,
 } from "./rehearsal.js";
+
+export {
+  DEVNET_FUNDING_STATUS_SCHEMA_VERSION,
+  DEVNET_FUNDING_STATUS_BANNER,
+  LAMPORTS_PER_SOL,
+  DEVNET_FUNDING_DEFAULT_MIN_LAMPORTS,
+  DEVNET_FUNDING_SOURCE_STATUSES,
+  DEVNET_BALANCE_READ_STATUSES,
+  DEVNET_FAUCET_ATTEMPT_OUTCOMES,
+  DevnetFundingStatusError,
+  buildDevnetFundingStatus,
+  validateDevnetFundingStatus,
+  deriveDevnetFundingSourceStatus,
+} from "./devnet-funding-status.js";
+export type {
+  DevnetFundingSourceStatus,
+  DevnetBalanceReadStatus,
+  DevnetFaucetAttemptOutcome,
+  DevnetFaucetAttemptSummary,
+  DevnetBalanceObservation,
+  BuildDevnetFundingStatusInput,
+  DevnetFundingStatusReport,
+} from "./devnet-funding-status.js";
