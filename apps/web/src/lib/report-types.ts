@@ -506,6 +506,15 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
       "The S93 unified rehearsal workflow's honest per-stage record (candidates → risk bridge → quote fetch/prepare → dry-run → build → simulate → optional devnet broadcast → readiness). Closed mode set paper | devnet | mainnet-dry-run; no mode can send on mainnet.",
     cli: "paper:sniper:rehearse",
   },
+  {
+    id: "sniper.mainnet_dryrun.release_candidate.v1",
+    title: "Mainnet dry-run release candidate",
+    family: "sniper",
+    stability: "stable",
+    description:
+      "The S102 no-send release candidate: one mainnet dry-run rehearsal folded into an auditable summary (candidate scoring + ranking, deep risk, Token-2022 blockers, quote + freshness + Rust quote score, unsigned tx build, Rust tx inspection, real simulation, readiness checklist). The verdict is RE-DERIVED from the structured stage evidence (never from a candidate score), the live-send status is the literal \"disabled\", and the closed schema refuses any send-result field. 'dryrun-complete-blocked-live' means dry-run evidence complete and live STILL disabled — never live-trading readiness. Produced by paper:sniper:rehearse --mode mainnet-dry-run.",
+    cli: "paper:sniper:rehearse",
+  },
 ];
 
 /** Look up schema metadata by id, or `undefined` for an unknown schema. */

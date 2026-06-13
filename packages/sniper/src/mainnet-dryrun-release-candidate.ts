@@ -500,7 +500,7 @@ function deriveNextSafeActions(verdict: SniperReleaseCandidateVerdict, a: BuildM
       actions.push(
         a.scoring.available
           ? "Supply the missing evidence (deep risk / a fresh quote / the build + simulation) and re-run the rehearsal."
-          : "Install Rust (https://rustup.rs) + pnpm rust:build for candidate scoring, and supply the missing risk/quote/build/simulation evidence; the paper pipeline still runs without Rust.",
+          : "Install Rust + run pnpm rust:build for candidate scoring, and supply the missing risk/quote/build/simulation evidence; the paper pipeline still runs without Rust.",
       );
       break;
     case "dryrun-complete-blocked-live":

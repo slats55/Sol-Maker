@@ -222,6 +222,32 @@ describe("typed views — per schema (inline minimal shapes)", () => {
       },
       expect: "Compared campaigns",
     },
+    {
+      schema: "sniper.mainnet_dryrun.release_candidate.v1",
+      raw: {
+        schemaVersion: "sniper.mainnet_dryrun.release_candidate.v1",
+        verdict: "dryrun-blocked-risk",
+        liveSendStatus: "disabled",
+        network: "mainnet-beta",
+        mode: "mainnet-dry-run",
+        phase7LiveTradingReady: false,
+        neverSends: true,
+        neverSigns: true,
+        candidateSource: { kind: "file", label: "candidates.json" },
+        scoring: { available: true, engineSource: "rust", candidateCount: 1, bestCandidateId: "c1", rankedCandidates: [{ candidateId: "c1", mint: "So11111111111111111111111111111111111111112", rank: 1, score: 50, verdict: "reject", reasonCodes: ["risk-rejected"] }] },
+        risk: { assessed: true, source: "automatic", worstDecision: "REJECT", rejected: true, criticalFlagCount: 1, highFlagCount: 0, token2022Blocker: false, token2022BlockerMints: [] },
+        quote: { attempted: true, observed: true, freshness: "fresh", scoreAvailable: true, score: 90 },
+        build: { attempted: false, refused: false, succeeded: false, refusalCodes: [] },
+        txInspection: { available: false, versionSupported: null, blockhashPresent: null, instructionCount: null, unresolvableProgramIdCount: null },
+        simulation: { attempted: false, outcome: null, classification: null, failed: false },
+        readiness: { available: true, verdict: "blocked", satisfiedCount: 8, totalChecks: 14 },
+        whyLiveBlocked: ["live disabled by policy"],
+        nextSafeActions: ["drop the rejected candidate"],
+        caveats: ["intelligence only"],
+        artifactRefs: ["candidate-scores.json"],
+      },
+      expect: "LIVE SENDING DISABLED",
+    },
   ];
 
   for (const c of cases) {

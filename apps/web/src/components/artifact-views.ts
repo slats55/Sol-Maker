@@ -3303,6 +3303,115 @@ function renderSniperCandidateScoreView(rec: Record<string, unknown>): RawHtml {
   `;
 }
 
+function renderMainnetDryRunReleaseCandidateView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const verdict = need(missing, "verdict", readString(rec, "verdict"));
+  const liveSendStatus = need(missing, "liveSendStatus", readString(rec, "liveSendStatus"));
+  const scoring = asRecord(rec["scoring"]);
+  const risk = asRecord(rec["risk"]);
+  const quote = asRecord(rec["quote"]);
+  const build = asRecord(rec["build"]);
+  const txInspection = asRecord(rec["txInspection"]);
+  const simulation = asRecord(rec["simulation"]);
+  const readiness = asRecord(rec["readiness"]);
+  const source = asRecord(rec["candidateSource"]);
+  const whyBlocked = readStringArray(rec, "whyLiveBlocked");
+  const nextActions = readStringArray(rec, "nextSafeActions");
+  const caveats = readStringArray(rec, "caveats");
+  const refs = readStringArray(rec, "artifactRefs");
+  // The single most important safety fact: this artifact can never report a live send.
+  const safe =
+    liveSendStatus === "disabled" &&
+    rec.phase7LiveTradingReady === false &&
+    rec.neverSends === true &&
+    rec.neverSigns === true &&
+    rec.network === "mainnet-beta" &&
+    rec.mode === "mainnet-dry-run";
+  const ranked = scoring !== null && Array.isArray(scoring["rankedCandidates"])
+    ? (scoring["rankedCandidates"] as unknown[]).filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null && !Array.isArray(e))
+    : [];
+  return html`
+    ${RiskNotice({
+      tone: safe && verdict === "dryrun-complete-blocked-live" ? "info" : "caution",
+      title: safe
+        ? `Mainnet dry-run release candidate — verdict ${verdict}; LIVE SENDING DISABLED`
+        : "Release candidate is missing its no-send safety literals — do NOT trust this artifact",
+      body: html`A no-send rehearsal summary folded from one mainnet dry-run run. Live sending is
+        <strong>${liveSendStatus}</strong> by policy; this artifact is structurally incapable of
+        reporting a live send, a signature, or an armed state. The verdict is re-derived from the
+        stage evidence (risk, quote, build, simulation) — a candidate score can <strong>never</strong>
+        move a blocked verdict. <code>dryrun-complete-blocked-live</code> means the dry-run evidence is
+        complete and live is <strong>still disabled</strong> — it is never live-trading readiness.`,
+    })}
+    ${kvSection("Release candidate", undefined, [
+      { term: "verdict", detail: code(verdict) },
+      { term: "live-send status", detail: text(liveSendStatus) },
+      { term: "network / mode", detail: text(`${readString(rec, "network") ?? DASH} / ${readString(rec, "mode") ?? DASH}`) },
+      { term: "candidate source", detail: source === null ? text(DASH) : text(`${readString(source, "kind") ?? DASH}: ${readString(source, "label") ?? DASH}`) },
+      { term: "run id", detail: text(readString(rec, "runId") ?? DASH) },
+      { term: "generated at", detail: text(readString(rec, "generatedAt") ?? DASH) },
+      { term: "phase-7 live trading ready", detail: text(boolText(readBoolean(rec, "phase7LiveTradingReady"))) },
+    ])}
+    ${tableSection({
+      title: `Ranked candidates (${String(ranked.length)})`,
+      description: "From the Rust candidate scorer — intelligence only, never a buy signal. A high score never unblocks the verdict.",
+      columns: [{ header: "#" }, { header: "Candidate" }, { header: "Score" }, { header: "Verdict" }, { header: "Reasons" }],
+      rows: ranked.slice(0, 50).map((c) => {
+        const reasons = readStringArray(c, "reasonCodes");
+        return [
+          text(num(readNumber(c, "rank"))),
+          code(readString(c, "candidateId")),
+          text(num(readNumber(c, "score"))),
+          text(readString(c, "verdict") ?? DASH),
+          text(reasons.items.length > 0 ? reasons.items.join(", ") : DASH),
+        ];
+      }),
+      empty: scoring !== null && readBoolean(scoring, "available") === false ? "Candidate scoring unavailable (Rust engine not built)." : "No candidates scored.",
+    })}
+    ${risk === null ? "" : kvSection("Deep risk", "Advisory, read-only. A rejected risk (or critical flag / Token-2022 blocker) forces dryrun-blocked-risk no matter the score.", [
+      { term: "assessed / source", detail: text(`${boolText(readBoolean(risk, "assessed"))} / ${readString(risk, "source") ?? DASH}`) },
+      { term: "worst decision", detail: text(readString(risk, "worstDecision") ?? DASH) },
+      { term: "rejected", detail: text(boolText(readBoolean(risk, "rejected"))) },
+      { term: "critical / high flags", detail: text(`${num(readNumber(risk, "criticalFlagCount"))} / ${num(readNumber(risk, "highFlagCount"))}`) },
+      { term: "Token-2022 blocker", detail: text(boolText(readBoolean(risk, "token2022Blocker"))) },
+    ])}
+    ${quote === null ? "" : kvSection("Quote", undefined, [
+      { term: "attempted / observed", detail: text(`${boolText(readBoolean(quote, "attempted"))} / ${boolText(readBoolean(quote, "observed"))}`) },
+      { term: "freshness", detail: text(readString(quote, "freshness") ?? DASH) },
+      { term: "Rust quote score", detail: readBoolean(quote, "scoreAvailable") === true ? text(num(readNumber(quote, "score"))) : text("unavailable") },
+    ])}
+    ${build === null && txInspection === null && simulation === null ? "" : kvSection("Build · inspection · simulation", undefined, [
+      { term: "build attempted / refused / built", detail: build === null ? text(DASH) : text(`${boolText(readBoolean(build, "attempted"))} / ${boolText(readBoolean(build, "refused"))} / ${boolText(readBoolean(build, "succeeded"))}`) },
+      { term: "build refusal codes", detail: text(build === null ? DASH : (readStringArray(build, "refusalCodes").items.join(", ") || DASH)) },
+      { term: "tx inspection", detail: txInspection === null || readBoolean(txInspection, "available") !== true ? text("unavailable") : text(`v-supported ${boolText(readBoolean(txInspection, "versionSupported"))}, ${num(readNumber(txInspection, "instructionCount"))} instr, ${num(readNumber(txInspection, "unresolvableProgramIdCount"))} unresolvable`) },
+      { term: "simulation", detail: simulation === null ? text(DASH) : text(`${readString(simulation, "outcome") ?? DASH}${readString(simulation, "classification") !== null ? ` (${readString(simulation, "classification")})` : ""}`) },
+    ])}
+    ${readiness === null ? "" : kvSection("Readiness", "The mainnet live gate — verdict is always blocked by design.", [
+      { term: "verdict", detail: text(readString(readiness, "verdict") ?? DASH) },
+      { term: "conditions satisfied", detail: text(`${num(readNumber(readiness, "satisfiedCount"))} / ${num(readNumber(readiness, "totalChecks"))}`) },
+    ])}
+    ${whyBlocked.total === 0 ? "" : Section({
+      title: "Why live is blocked",
+      description: "The standing no-send policy plus this run's verdict-specific reason.",
+      body: html`<ul class="sm-bullets sm-bullets--plain">${whyBlocked.items.map((l) => html`<li>${l}</li>`)}</ul>`,
+    })}
+    ${nextActions.total === 0 ? "" : Section({
+      title: "Next safe actions",
+      body: html`<ul class="sm-bullets sm-bullets--plain">${nextActions.items.map((l) => html`<li>${l}</li>`)}</ul>`,
+    })}
+    ${refs.total === 0 ? "" : Section({
+      title: `Artifact references (${String(refs.total)})`,
+      description: "The per-stage artifacts this summary folds — read them standalone for the full detail.",
+      body: html`<ul class="sm-bullets sm-bullets--plain">${refs.items.map((l) => html`<li>${code(l)}</li>`)}</ul>`,
+    })}
+    ${caveats.total === 0 ? "" : Section({
+      title: `Caveats (${String(caveats.total)})`,
+      body: html`<ul class="sm-bullets sm-bullets--plain">${caveats.items.map((c) => html`<li>${c}</li>`)}</ul>`,
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
 function renderEngineTxInspectView(rec: Record<string, unknown>): RawHtml {
   const missing: string[] = [];
   const network = need(missing, "network", readString(rec, "network"));
@@ -3478,6 +3587,8 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderPhase6OperatorBundleView(rec);
     case "sniper.rehearsal.report.v1":
       return renderSniperRehearsalView(rec);
+    case "sniper.mainnet_dryrun.release_candidate.v1":
+      return renderMainnetDryRunReleaseCandidateView(rec);
     case "execution.readiness.report.v1":
       return renderExecutionReadinessView(rec);
     case "execution.devnet.rehearsal.report.v1":

@@ -428,6 +428,10 @@
                   <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="The S93 unified rehearsal workflow&#39;s honest per-stage record (candidates → risk bridge → quote fetch/prepare → dry-run → build → simulate → optional devnet broadcast → readiness). Closed mode set paper | devnet | mainnet-dry-run; no mode can send on mainnet.">
     <code>sniper.rehearsal.report.v1</code>
   </span></td><td class="sm-td--left">sniper</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
+                </tr><tr>
+                  <td class="sm-td--left"><span class="sm-schema sm-schema--stable" title="The S102 no-send release candidate: one mainnet dry-run rehearsal folded into an auditable summary (candidate scoring + ranking, deep risk, Token-2022 blockers, quote + freshness + Rust quote score, unsigned tx build, Rust tx inspection, real simulation, readiness checklist). The verdict is RE-DERIVED from the structured stage evidence (never from a candidate score), the live-send status is the literal &quot;disabled&quot;, and the closed schema refuses any send-result field. &#39;dryrun-complete-blocked-live&#39; means dry-run evidence complete and live STILL disabled — never live-trading readiness. Produced by paper:sniper:rehearse --mode mainnet-dry-run.">
+    <code>sniper.mainnet_dryrun.release_candidate.v1</code>
+  </span></td><td class="sm-td--left">sniper</td><td class="sm-td--left"><span class="sm-pill sm-pill--safe">typed view</span></td>
                 </tr>
       </tbody>
     </table>
