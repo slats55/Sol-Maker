@@ -174,6 +174,9 @@ import {
   readBalanceSnapshot,
   trackConfirmation,
   buildReconciliationReport,
+  buildDevnetFundingStatus,
+  DEVNET_FUNDING_DEFAULT_MIN_LAMPORTS,
+  LAMPORTS_PER_SOL,
   CONFIRMATION_GUIDANCE,
   RECONCILIATION_CONTINUATION_SAFE_VERDICTS,
   SESSION_LEDGER_FILE_NAME,
@@ -188,6 +191,9 @@ import {
   type RehearsalSignerSource,
   type TransactionSigningBoundary,
   type DevnetRehearsalReport,
+  type DevnetFundingStatusReport,
+  type DevnetBalanceObservation,
+  type DevnetFaucetAttemptSummary,
   type ReconciliationRpc,
   type ReconciliationReport,
   type ConfirmationTrackResult,
@@ -7622,6 +7628,296 @@ export async function executionDevnetRehearseReport(
     ...report.caveats.map((c) => `CAVEAT: ${c}`),
   ];
   return { text: redactString(lines.filter((l) => l !== "").join("\n")), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 103-B — execution:devnet:funding-status (the devnet proof unblocker)
+//   A READ-ONLY devnet balance check for the throwaway rehearsal key, retained
+//   as an honest execution.devnet.funding_status.v1 artifact instead of being
+//   re-discovered every run. Optional bounded faucet airdrop (devnet only) and,
+//   when the key is funded, an opt-in chain into the existing devnet rehearsal
+//   with --skip-airdrop. It never sends a trade, never touches mainnet, and
+//   never serializes a secret key.
+// ---------------------------------------------------------------------------
+
+const FUNDING_STATUS_FILE = "devnet-funding-status.json";
+
+export interface ExecutionDevnetFundingStatusCommandOptions {
+  /** PUBLIC key to check (status only; cannot complete the proof on its own). */
+  publicKey?: string;
+  /** Reuse an existing devnet keypair: the NAME of the env var holding its file PATH (can complete). */
+  signerEnvVar?: string;
+  /** Output DIRECTORY for the funding-status artifact (+ rehearsal artifacts when completing). */
+  outDir?: string;
+  rpcUrl?: string;
+  /** Override the broadcast-ready minimum in lamports (default the rehearsal probe minimum). */
+  minLamports?: string;
+  /** Attempt a BOUNDED devnet faucet airdrop when the key is short (devnet only; never spammed). */
+  attemptAirdrop?: boolean;
+  airdropSol?: string;
+  airdropAttempts?: string;
+  /** When the key is funded, chain the existing devnet rehearsal (--skip-airdrop) to land the proof. */
+  completeIfFunded?: boolean;
+  acknowledgeDevnetExecution?: boolean;
+  sessionLedger?: string;
+  json?: boolean;
+  force?: boolean;
+}
+
+/** Read one devnet balance, classifying a thrown read as rpc-unavailable and a non-integer as unknown. */
+async function readDevnetBalanceObservation(
+  faucet: RehearsalRpc["faucet"],
+  publicKey: string,
+): Promise<DevnetBalanceObservation> {
+  let lamports: number;
+  try {
+    lamports = await faucet.getBalanceLamports(publicKey);
+  } catch (err) {
+    return { status: "rpc-unavailable", detail: redactString((err as Error).message ?? "balance read failed").slice(0, 200) };
+  }
+  if (typeof lamports !== "number" || !Number.isFinite(lamports) || !Number.isInteger(lamports) || lamports < 0) {
+    return { status: "unknown", detail: `the devnet RPC returned a non-integer balance (${redactString(String(lamports)).slice(0, 80)})` };
+  }
+  return { status: "observed", lamports };
+}
+
+/** One bounded devnet faucet airdrop attempt loop (devnet only; classified honestly; never spammed). */
+async function attemptBoundedDevnetAirdrop(
+  faucet: RehearsalRpc["faucet"],
+  publicKey: string,
+  lamports: number,
+  maxAttempts: number,
+  sleep: (ms: number) => Promise<void>,
+): Promise<DevnetFaucetAttemptSummary> {
+  let attempts = 0;
+  let rateLimited = false;
+  let lastError = "unknown";
+  let signature: string | null = null;
+  for (let i = 1; i <= maxAttempts && signature === null; i += 1) {
+    attempts = i;
+    try {
+      signature = await faucet.requestAirdrop(publicKey, lamports);
+    } catch (err) {
+      lastError = redactString((err as Error).message ?? "unknown").slice(0, 160);
+      if (/429|rate.?limit|too many/i.test(lastError)) rateLimited = true;
+      if (i < maxAttempts) await sleep(2000);
+    }
+  }
+  if (signature !== null) {
+    // Brief bounded wait for the airdrop to land before the balance is re-read by the caller.
+    for (let i = 0; i < 10; i += 1) {
+      let confirmed = false;
+      try {
+        confirmed = (await faucet.getSignatureStatus(signature)).confirmed;
+      } catch {
+        break;
+      }
+      if (confirmed) break;
+      await sleep(2000);
+    }
+    return { attempted: true, attempts, maxAttempts, outcome: "submitted", detail: "devnet airdrop submitted; re-reading balance" };
+  }
+  return {
+    attempted: true,
+    attempts,
+    maxAttempts,
+    outcome: rateLimited ? "rate-limited" : "unavailable",
+    detail: rateLimited
+      ? `devnet faucet rate-limited after ${attempts} bounded attempt(s): ${lastError}`
+      : `devnet faucet unavailable after ${attempts} bounded attempt(s): ${lastError}`,
+  };
+}
+
+/**
+ * `soulmaker execution:devnet:funding-status` — the Sprint 103-B devnet proof unblocker. Resolve a
+ * PUBLIC key (from --public-key, --signer-env, or a reused throwaway under --out), read its DEVNET
+ * balance once through the read-only seam, and emit the honest `execution.devnet.funding_status.v1`
+ * artifact. Optionally attempt a bounded devnet faucet airdrop. When the key is funded and
+ * --complete-if-funded is set, chain the existing devnet rehearsal with --skip-airdrop to land the
+ * real broadcast + reconciliation. Mainnet endpoints are refused; no trade is ever sent; no secret
+ * key is ever serialized.
+ */
+export async function executionDevnetFundingStatusReport(
+  ctx: CommandContext = {},
+  opts: ExecutionDevnetFundingStatusCommandOptions = {},
+): Promise<CliReport> {
+  const rpcUrl = opts.rpcUrl ?? "https://api.devnet.solana.com";
+  if (rpcUrl.toLowerCase().includes("mainnet")) {
+    return { text: "Refusing: execution:devnet:funding-status never talks to a mainnet endpoint.", exitCode: 1 };
+  }
+
+  let minLamports = DEVNET_FUNDING_DEFAULT_MIN_LAMPORTS;
+  if (opts.minLamports !== undefined) {
+    const n = Number(opts.minLamports);
+    if (!Number.isInteger(n) || n < 1 || n > 2 * LAMPORTS_PER_SOL) {
+      return { text: "Refusing: --min-lamports must be an integer between 1 and 2000000000.", exitCode: 1 };
+    }
+    minLamports = n;
+  }
+
+  let airdropLamports = LAMPORTS_PER_SOL;
+  if (opts.airdropSol !== undefined) {
+    const sol = Number(opts.airdropSol);
+    if (!Number.isFinite(sol) || sol <= 0 || sol > 2) {
+      return { text: "Refusing: --airdrop-sol must be a positive number of devnet SOL (at most 2).", exitCode: 1 };
+    }
+    airdropLamports = Math.round(sol * LAMPORTS_PER_SOL);
+  }
+  let maxAirdropAttempts = 3;
+  if (opts.airdropAttempts !== undefined) {
+    const n = Number(opts.airdropAttempts);
+    if (!Number.isInteger(n) || n < 1 || n > DEVNET_REHEARSAL_MAX_AIRDROP_ATTEMPTS) {
+      return { text: `Refusing: --airdrop-attempts must be an integer between 1 and ${DEVNET_REHEARSAL_MAX_AIRDROP_ATTEMPTS} (the faucet is never spammed).`, exitCode: 1 };
+    }
+    maxAirdropAttempts = n;
+  }
+
+  const env = (ctx.env ?? process.env) as Record<string, string | undefined>;
+
+  // Resolve the PUBLIC key. A signer (env var or reused throwaway) is required to COMPLETE the proof;
+  // a bare --public-key can only ever read the balance (it cannot sign).
+  let publicKey: string | null = null;
+  let signerCapable = false;
+  if (opts.signerEnvVar) {
+    try {
+      const boundary = loadLocalSignerBoundary({
+        envVarName: opts.signerEnvVar,
+        env,
+        readFile: (path: string) => readFileSync(path, "utf8"),
+        network: "devnet",
+      });
+      publicKey = boundary.publicKeyBase58;
+      signerCapable = true;
+    } catch (err) {
+      const msg = err instanceof SignerBoundaryError ? err.message : "signer boundary failed";
+      return { text: redactString(`Refusing: ${msg}`), exitCode: 1 };
+    }
+  } else if (opts.outDir) {
+    const throwawayPath = join(resolvePath(ctx, opts.outDir), REHEARSAL_KEYPAIR_FILE);
+    if (existsSync(throwawayPath)) {
+      try {
+        const reused = loadThrowawayDevnetSigner({ keypairPath: throwawayPath, readFile: (path: string) => readFileSync(path, "utf8") });
+        publicKey = reused.boundary.publicKeyBase58;
+        signerCapable = true;
+      } catch (err) {
+        const msg = err instanceof SignerBoundaryError ? err.message : "throwaway signer load failed";
+        return { text: redactString(`Refusing: ${msg}`), exitCode: 1 };
+      }
+    }
+  }
+  if (publicKey === null && opts.publicKey) {
+    try {
+      parsePublicKey(opts.publicKey);
+    } catch {
+      return { text: "Refusing: --public-key is not a valid base58 Solana public key.", exitCode: 1 };
+    }
+    publicKey = opts.publicKey;
+    signerCapable = false;
+  }
+  if (publicKey === null) {
+    return {
+      text: "Refusing: provide --public-key (status only), --signer-env <ENV_VAR>, or an --out dir holding a throwaway keypair.",
+      exitCode: 1,
+    };
+  }
+  if (opts.completeIfFunded && !signerCapable) {
+    return {
+      text: "Refusing: --complete-if-funded needs a signer — pass --signer-env <ENV_VAR> or an --out runs/ dir holding a throwaway keypair (a bare --public-key cannot sign).",
+      exitCode: 1,
+    };
+  }
+  if (opts.completeIfFunded && !opts.outDir) {
+    return { text: "Refusing: --complete-if-funded needs --out <dir> (the devnet rehearsal artifacts live there).", exitCode: 1 };
+  }
+
+  // Read the devnet balance once (read-only seam), then optionally attempt a bounded airdrop.
+  const makeRpc = ctx.createRehearsalRpc ?? createRehearsalRpc;
+  let rpc: RehearsalRpc;
+  try {
+    rpc = makeRpc(rpcUrl);
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  const sleep = ctx.sleep ?? ((ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms)));
+
+  let observation = await readDevnetBalanceObservation(rpc.faucet, publicKey);
+  let faucetAttempt: DevnetFaucetAttemptSummary | null = null;
+  if (opts.attemptAirdrop && observation.status === "observed" && observation.lamports < minLamports) {
+    faucetAttempt = await attemptBoundedDevnetAirdrop(rpc.faucet, publicKey, airdropLamports, maxAirdropAttempts, sleep);
+    if (faucetAttempt.outcome === "submitted") {
+      observation = await readDevnetBalanceObservation(rpc.faucet, publicKey);
+    }
+  }
+
+  let report: DevnetFundingStatusReport;
+  try {
+    report = buildDevnetFundingStatus({
+      publicKey,
+      checkedAt: (ctx.now ?? isoNow)(),
+      minimumRequiredLamports: minLamports,
+      balance: observation,
+      faucetAttempt,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // Write the funding-status artifact when an output directory is given.
+  let wroteLine = "";
+  if (opts.outDir) {
+    const outDir = resolvePath(ctx, opts.outDir);
+    const statusPath = join(outDir, FUNDING_STATUS_FILE);
+    if (!opts.force && existsSync(statusPath)) {
+      return { text: redactString(`Refusing: ${statusPath} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      mkdirSync(outDir, { recursive: true });
+      writeFileSync(statusPath, JSON.stringify(redactValue(report), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the funding-status artifact under ${outDir}`), exitCode: 1 };
+    }
+    wroteLine = `\nwrote ${statusPath}`;
+  }
+
+  // When funded and asked to complete, chain the existing devnet rehearsal with --skip-airdrop.
+  if (opts.completeIfFunded && report.funded) {
+    const rehearsal = await executionDevnetRehearseReport(ctx, {
+      outDir: opts.outDir,
+      rpcUrl: opts.rpcUrl,
+      acknowledgeDevnetExecution: Boolean(opts.acknowledgeDevnetExecution),
+      signerEnvVar: opts.signerEnvVar,
+      skipAirdrop: true,
+      sessionLedger: opts.sessionLedger,
+      force: Boolean(opts.force),
+      json: opts.json,
+    });
+    if (opts.json) return rehearsal; // the rehearsal report JSON is the proof itself
+    const header = [
+      "DEVNET FUNDING STATUS: FUNDED — completing the devnet proof (rehearsal, --skip-airdrop)",
+      `public key: ${report.publicKey} | balance ${report.lamports ?? "?"} lamports (min ${report.minimumRequiredLamports})${wroteLine}`,
+      "",
+    ].join("\n");
+    return { text: header + rehearsal.text, exitCode: rehearsal.exitCode };
+  }
+
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(report), null, 2) + wroteLine, exitCode: 0 };
+  }
+  const lines = [
+    `DEVNET FUNDING STATUS: ${report.fundingSourceStatus.toUpperCase()}`,
+    `network:    devnet (${rpc.endpointHost})`,
+    `public key: ${report.publicKey}`,
+    `balance:    ${report.lamports === null ? "unknown" : `${report.lamports} lamports (${report.solBalance ?? "?"} SOL)`} | minimum ${report.minimumRequiredLamports} lamports`,
+    `funded:     ${report.funded ? "yes" : "no"} | can broadcast devnet probe: ${report.canBroadcastDevnetProbe ? "yes" : "no"}`,
+    ...(report.faucetAttemptSummary !== null
+      ? [`faucet:     ${report.faucetAttemptSummary.outcome} after ${report.faucetAttemptSummary.attempts}/${report.faucetAttemptSummary.maxAttempts} attempt(s)`]
+      : []),
+    "",
+    `NEXT: ${report.nextSafeAction}`,
+    "",
+    ...report.caveats.map((c) => `CAVEAT: ${c}`),
+  ];
+  return { text: redactString(lines.join("\n")) + wroteLine, exitCode: 0 };
 }
 
 // ---------------------------------------------------------------------------

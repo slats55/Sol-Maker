@@ -60,6 +60,7 @@ import {
   executionBuildReport,
   executionDevnetSendReport,
   executionDevnetRehearseReport,
+  executionDevnetFundingStatusReport,
   executionReadinessReport,
   phase7AuthorizationAuditReport,
   executionSessionStatusReport,
@@ -2748,6 +2749,63 @@ program
           airdropAttempts: opts.airdropAttempts,
           skipAirdrop: Boolean(opts.skipAirdrop),
           skipSimulation: Boolean(opts.skipSimulation),
+          sessionLedger: opts.sessionLedger,
+          json: Boolean(opts.json),
+          force: Boolean(opts.force),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("execution:devnet:funding-status")
+  .description(
+    "Sprint 103-B devnet proof unblocker: READ a throwaway devnet key's balance once and emit the honest execution.devnet.funding_status.v1 artifact (funded / unfunded / faucet-rate-limited / faucet-unavailable / rpc-unavailable / unknown). Resolve the PUBLIC key from --public-key (status only), --signer-env, or a reused throwaway under --out. Optionally attempt a BOUNDED devnet faucet airdrop. When the key is funded, --complete-if-funded chains the existing devnet rehearsal with --skip-airdrop to land the real broadcast + reconciliation. Mainnet endpoints are refused; no trade is ever sent; no secret key is serialized",
+  )
+  .option("--public-key <base58>", "PUBLIC key to check (status only; cannot complete the proof on its own)")
+  .option("--signer-env <ENV_VAR_NAME>", "reuse an existing devnet keypair: the NAME of the env var holding its file PATH (can complete)")
+  .option("--out <dir>", "output DIRECTORY for the funding-status artifact (and the rehearsal artifacts when completing)")
+  .option("--rpc-url <url>", "devnet RPC endpoint (default https://api.devnet.solana.com; mainnet endpoints refused)")
+  .option("--min-lamports <n>", "broadcast-ready minimum in lamports (default the rehearsal probe minimum)")
+  .option("--attempt-airdrop", "attempt a BOUNDED devnet faucet airdrop when the key is short (devnet only; never spammed)")
+  .option("--airdrop-sol <sol>", "devnet airdrop request in SOL (default 1; at most 2; valueless devnet SOL)")
+  .option("--airdrop-attempts <n>", "bounded faucet retries (default 3; hard cap 5)")
+  .option("--complete-if-funded", "when funded, chain the devnet rehearsal (--skip-airdrop) to land the proof (needs a signer + --out)")
+  .option("--acknowledge-devnet-execution", "the explicit devnet acknowledgment flag (required to complete)")
+  .option("--session-ledger <path>", "S96 session ledger path (default runs/execution-sessions.jsonl)")
+  .option("--json", "emit the funding-status artifact as stable JSON")
+  .option("--force", "overwrite an existing funding-status artifact in the output directory")
+  .action(
+    async (opts: {
+      publicKey?: string;
+      signerEnv?: string;
+      out?: string;
+      rpcUrl?: string;
+      minLamports?: string;
+      attemptAirdrop?: boolean;
+      airdropSol?: string;
+      airdropAttempts?: string;
+      completeIfFunded?: boolean;
+      acknowledgeDevnetExecution?: boolean;
+      sessionLedger?: string;
+      json?: boolean;
+      force?: boolean;
+    }) => {
+      const { text, exitCode } = await executionDevnetFundingStatusReport(
+        {},
+        {
+          publicKey: opts.publicKey,
+          signerEnvVar: opts.signerEnv,
+          outDir: opts.out,
+          rpcUrl: opts.rpcUrl,
+          minLamports: opts.minLamports,
+          attemptAirdrop: Boolean(opts.attemptAirdrop),
+          airdropSol: opts.airdropSol,
+          airdropAttempts: opts.airdropAttempts,
+          completeIfFunded: Boolean(opts.completeIfFunded),
+          acknowledgeDevnetExecution: Boolean(opts.acknowledgeDevnetExecution),
           sessionLedger: opts.sessionLedger,
           json: Boolean(opts.json),
           force: Boolean(opts.force),
