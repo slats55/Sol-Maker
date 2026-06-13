@@ -175,12 +175,29 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/**
+ * Reject any string carrying a control character / NUL / DEL / C1 control / BOM / line-or-paragraph
+ * separator (terminal-injection + corruption vectors). Implemented with charCodeAt rather than a
+ * regex literal so no control byte is ever embedded in this source file.
+ */
+function rejectControlChars(value: string, name: string): void {
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    const isControl = code <= 0x1f || (code >= 0x7f && code <= 0x9f);
+    const isBomOrSeparator = code === 0xfeff || code === 0x2028 || code === 0x2029;
+    if (isControl || isBomOrSeparator) {
+      throw new Phase7AuthorizationAuditError(`${name} contains a control character, NUL, or BOM and is refused`);
+    }
+  }
+}
+
 function safeLabel(value: unknown, name: string, max: number, nullable: boolean): string | null {
   if (value === undefined || value === null) {
     if (nullable) return null;
     throw new Phase7AuthorizationAuditError(`${name} is required`);
   }
   if (typeof value !== "string") throw new Phase7AuthorizationAuditError(`${name} must be a string`);
+  rejectControlChars(value, name);
   const trimmed = value.trim();
   if (trimmed.length === 0) {
     if (nullable) return null;
@@ -202,6 +219,7 @@ function safeProse(value: unknown, name: string, max: number, nullable: boolean)
     throw new Phase7AuthorizationAuditError(`${name} is required`);
   }
   if (typeof value !== "string") throw new Phase7AuthorizationAuditError(`${name} must be a string`);
+  rejectControlChars(value, name);
   const trimmed = value.trim();
   if (trimmed.length === 0) {
     if (nullable) return null;
@@ -532,6 +550,12 @@ export function validatePhase7AuthorizationAudit(value: unknown): Phase7Authoriz
   if (!(PHASE7_AUTHORIZATION_AUDIT_VERDICTS as readonly string[]).includes(value.verdict as string)) {
     throw new Phase7AuthorizationAuditError(`verdict must be one of: ${PHASE7_AUTHORIZATION_AUDIT_VERDICTS.join(", ")}`);
   }
+
+  // Re-validate the top-level identifier/metadata fields (control chars / secret-shaped / length)
+  // so a post-build tamper cannot ride in under auditId / repoSha / auditedAt.
+  safeLabel(value.auditId, "auditId", 128, false);
+  safeLabel(value.repoSha, "repoSha", 64, false);
+  safeLabel(value.auditedAt, "auditedAt", 40, true);
 
   // Re-normalize every nested structure (validates each field) and re-derive the verdict.
   if (!Array.isArray(value.gates)) throw new Phase7AuthorizationAuditError("gates must be an array");
