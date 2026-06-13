@@ -53,6 +53,8 @@ import {
   paperSimulationTxReport,
   engineStatusReport,
   engineQuoteScoreReport,
+  engineTxInspectReport,
+  engineSimClassifyReport,
   executionStatusReport,
   executionBuildReport,
   executionDevnetSendReport,
@@ -2794,6 +2796,44 @@ program
         force: Boolean(opts.force),
         failOnUnavailable: Boolean(opts.failOnUnavailable),
       },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("engine:tx:inspect")
+  .description(
+    "S100 Rust unsigned-transaction shape inspection: decode a strictly-UNSIGNED txpreview.envelope.v1 through the Rust sidecar and STRICTLY validate engine.tx.inspect.report.v1. The bridge re-derives the shape facts with the real @solana/web3.js decoder and refuses unless every fact matches; a SIGNED transaction is refused. Read-only — never signs, never sends. No Rust engine reports UNAVAILABLE honestly (exit 0 unless --fail-on-unavailable)",
+  )
+  .requiredOption("--envelope <path>", "txpreview.envelope.v1 file to inspect (strictly unsigned)")
+  .option("--json", "emit the validated inspect artifact as stable JSON")
+  .option("--out <path>", "write ONLY the validated artifact JSON to this path (refused if it exists)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-unavailable", "exit 1 when no Rust engine is available (default: honest report, exit 0)")
+  .action(async (opts: { envelope?: string; json?: boolean; out?: string; force?: boolean; failOnUnavailable?: boolean }) => {
+    const { text, exitCode } = await engineTxInspectReport(
+      {},
+      { envelopePath: opts.envelope, json: Boolean(opts.json), outPath: opts.out, force: Boolean(opts.force), failOnUnavailable: Boolean(opts.failOnUnavailable) },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("engine:sim:classify")
+  .description(
+    "S100 Rust simulation-failure classification: map a simulation result onto the S95 CLOSED set (slippage/compute/blockhash/account/program/unclassified) through the Rust sidecar. TypeScript re-runs the real classifySimulationFailure and refuses on disagreement. A classification explains WHY a simulation failed — never an execution signal. Pass --report <txpreview.simulation.report.v1> or --err-label <label> with optional --log entries",
+  )
+  .option("--report <path>", "txpreview.simulation.report.v1 file (uses its errLabel + logs)")
+  .option("--err-label <label>", "classify a literal program error label directly")
+  .option("--log <line...>", "log line(s) to include when using --err-label (repeatable)")
+  .option("--json", "emit the validated classification artifact as stable JSON")
+  .option("--fail-on-unavailable", "exit 1 when no Rust engine is available (default: honest report, exit 0)")
+  .action(async (opts: { report?: string; errLabel?: string; log?: string[]; json?: boolean; failOnUnavailable?: boolean }) => {
+    const { text, exitCode } = await engineSimClassifyReport(
+      {},
+      { reportPath: opts.report, errLabel: opts.errLabel, logs: opts.log, json: Boolean(opts.json), failOnUnavailable: Boolean(opts.failOnUnavailable) },
     );
     console.log(text);
     if (exitCode !== 0) process.exitCode = exitCode;

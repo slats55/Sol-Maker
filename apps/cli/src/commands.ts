@@ -128,12 +128,18 @@ import {
   fetchEngineStatus,
   normalizeReplayThroughEngine,
   scoreQuotesThroughEngine,
+  inspectTxThroughEngine,
+  classifySimThroughEngine,
   ENGINE_STATUS_SCHEMA_VERSION,
   ENGINE_QUOTE_SCORE_SCHEMA_VERSION,
+  ENGINE_TX_INSPECT_SCHEMA_VERSION,
+  ENGINE_SIM_CLASSIFICATION_SCHEMA_VERSION,
   type EngineProcessRunner,
   type EngineStatusBridgeResult,
   type EngineRealtimeBridgeResult,
   type EngineQuoteScoreBridgeResult,
+  type EngineTxInspectBridgeResult,
+  type EngineSimClassifyBridgeResult,
 } from "@soulmaker/engine-bridge";
 import {
   createJupiterSwapBuilder,
@@ -11865,4 +11871,204 @@ export async function engineQuoteScoreReport(
   }
   lines.push("", ...report.caveats.map((c) => `CAVEAT: ${c}`));
   return { text: redactString(lines.join("\n")) + wroteLine, exitCode: 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 100 — engine:tx:inspect (Rust unsigned-transaction shape inspection)
+//   Decode a strictly-UNSIGNED txpreview.envelope.v1 through the Rust sidecar
+//   and report its SHAPE facts. TypeScript stays the authority — the bridge
+//   re-derives the facts with the real @solana/web3.js decoder and refuses
+//   unless they match. Read-only: never signs, never sends.
+// ---------------------------------------------------------------------------
+
+export interface EngineTxInspectCommandOptions {
+  /** Path to a txpreview.envelope.v1 file (e.g. from execution:build --report-out). */
+  envelopePath?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  failOnUnavailable?: boolean;
+}
+
+/** `soulmaker engine:tx:inspect` — inspect an unsigned transaction envelope through the Rust sidecar. */
+export async function engineTxInspectReport(
+  ctx: CommandContext = {},
+  opts: EngineTxInspectCommandOptions = {},
+): Promise<CliReport> {
+  if (!opts.envelopePath) {
+    return { text: "Refusing: --envelope <path> is required (a txpreview.envelope.v1 file — strictly unsigned).", exitCode: 1 };
+  }
+  let envelopeJson: string;
+  try {
+    envelopeJson = readFileSync(resolvePath(ctx, opts.envelopePath), "utf8");
+  } catch {
+    return { text: redactString(`Refusing: cannot read the envelope at ${opts.envelopePath}`), exitCode: 1 };
+  }
+
+  const result: EngineTxInspectBridgeResult = await inspectTxThroughEngine({
+    cwd: ctx.cwd ?? process.cwd(),
+    envelopeJson,
+    createdAt: (ctx.now ?? isoNow)(),
+    runner: ctx.createEngineRunner?.(),
+    exists: ctx.engineBinaryExists,
+    env: ctx.env,
+  });
+
+  if (result.kind !== "ok") {
+    const exitCode = result.kind === "refused" || opts.failOnUnavailable ? 1 : 0;
+    if (opts.json) {
+      const payload = {
+        engineTxInspect: result.kind,
+        reason: result.reason,
+        detail: result.detail,
+        nextSafeAction:
+          result.kind === "unavailable"
+            ? "install Rust via https://rustup.rs and run pnpm rust:build — tx inspection is Rust-only; the TypeScript pipeline still inspects shapes without it"
+            : "inspect the engine output/exit detail above; the artifact was refused, never trusted (a signed envelope is refused by design)",
+      };
+      return { text: redactString(JSON.stringify(payload, null, 2)), exitCode };
+    }
+    const lines = [
+      "RUST ENGINE TX INSPECT",
+      result.kind === "unavailable" ? `engine: UNAVAILABLE — ${result.reason}` : `engine: REFUSED — ${result.reason}`,
+      `detail: ${result.detail}`,
+      result.kind === "unavailable"
+        ? "NEXT: install Rust via https://rustup.rs and run pnpm rust:build — tx inspection is Rust-only; the TypeScript pipeline still inspects shapes without it."
+        : "NEXT: the engine answered but the artifact was refused (never trusted); a signed envelope or a decoder mismatch is refused by design.",
+    ];
+    return { text: redactString(lines.join("\n")), exitCode };
+  }
+
+  const report = result.report;
+  let wroteLine = "";
+  if (opts.outPath) {
+    const resolvedPath = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolvedPath)) {
+      return { text: redactString(`Refusing: ${resolvedPath} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolvedPath, JSON.stringify(report, null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the tx inspect artifact at ${resolvedPath}`), exitCode: 1 };
+    }
+    wroteLine = `\nwrote ${resolvedPath}`;
+  }
+  if (opts.json) {
+    // VERBATIM as validated — schemaVersion engine.tx.inspect.report.v1.
+    return { text: JSON.stringify(report, null, 2) + wroteLine, exitCode: 0 };
+  }
+  const shape = report.shape;
+  const lines = [
+    "RUST ENGINE TX INSPECT",
+    `schema:    ${ENGINE_TX_INSPECT_SCHEMA_VERSION} via ${result.via}`,
+    `network:   ${report.network} (builder ${report.builderId})`,
+    `fee payer: ${report.feePayerPublicKey} (public key)`,
+    `version:   ${String(shape.version)} (${shape.versionSupported ? "supported" : "UNSUPPORTED"})`,
+    `blockhash: ${shape.blockhashPresent ? "present" : "MISSING (zero)"}`,
+    `counts:    ${shape.instructionCount} instruction(s), ${shape.accountKeyCount} account key(s), ${shape.addressTableLookupCount} ALT lookup(s), ${shape.unresolvableProgramIdCount} unresolvable program id(s)`,
+    `programs:  ${shape.staticProgramIds.join(", ") || "(none statically resolvable)"}`,
+    `ipc:       spawn ${result.timing.spawnMs}ms, parse ${result.timing.parseMs}ms, validate ${result.timing.validateMs}ms (IPC overhead only, never a trading-latency claim)`,
+    "",
+    ...report.caveats.map((c) => `CAVEAT: ${c}`),
+  ];
+  return { text: redactString(lines.join("\n")) + wroteLine, exitCode: 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 100 — engine:sim:classify (Rust simulation classification parity)
+//   Classify a simulation result { errLabel, logs } through the Rust sidecar
+//   into the S95 closed set. TypeScript re-runs the real classifier and
+//   refuses on disagreement. A classification explains a failure; it is never
+//   an execution signal.
+// ---------------------------------------------------------------------------
+
+export interface EngineSimClassifyCommandOptions {
+  /** Path to a txpreview.simulation.report.v1 file (uses its errLabel + logs). */
+  reportPath?: string;
+  /** OR: classify a literal error label directly (with optional --log entries). */
+  errLabel?: string;
+  logs?: string[];
+  json?: boolean;
+  failOnUnavailable?: boolean;
+}
+
+/** `soulmaker engine:sim:classify` — classify a simulation failure through the Rust sidecar. */
+export async function engineSimClassifyReport(
+  ctx: CommandContext = {},
+  opts: EngineSimClassifyCommandOptions = {},
+): Promise<CliReport> {
+  let errLabel: string | null;
+  let logs: string[];
+  if (opts.reportPath) {
+    let value: unknown;
+    try {
+      value = readJsonValue(ctx, opts.reportPath, "simulation report");
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return { text: "Refusing: the simulation report must be a JSON object with errLabel + logs.", exitCode: 1 };
+    }
+    const rec = value as Record<string, unknown>;
+    errLabel = typeof rec.errLabel === "string" ? rec.errLabel : null;
+    logs = Array.isArray(rec.logs) ? rec.logs.filter((l): l is string => typeof l === "string").slice(0, 50) : [];
+  } else if (opts.errLabel !== undefined) {
+    errLabel = opts.errLabel;
+    logs = (opts.logs ?? []).slice(0, 50);
+  } else {
+    return { text: "Refusing: pass --report <txpreview.simulation.report.v1> or --err-label <label> (with optional --log entries).", exitCode: 1 };
+  }
+
+  const result: EngineSimClassifyBridgeResult = await classifySimThroughEngine({
+    cwd: ctx.cwd ?? process.cwd(),
+    errLabel,
+    logs,
+    createdAt: (ctx.now ?? isoNow)(),
+    runner: ctx.createEngineRunner?.(),
+    exists: ctx.engineBinaryExists,
+    env: ctx.env,
+  });
+
+  if (result.kind !== "ok") {
+    const exitCode = result.kind === "refused" || opts.failOnUnavailable ? 1 : 0;
+    if (opts.json) {
+      const payload = {
+        engineSimClassify: result.kind,
+        reason: result.reason,
+        detail: result.detail,
+        nextSafeAction:
+          result.kind === "unavailable"
+            ? "install Rust via https://rustup.rs and run pnpm rust:build — classification is Rust-only here; the TypeScript classifier still runs in the simulation pipeline"
+            : "inspect the engine output/exit detail above; the artifact was refused, never trusted",
+      };
+      return { text: redactString(JSON.stringify(payload, null, 2)), exitCode };
+    }
+    const lines = [
+      "RUST ENGINE SIM CLASSIFY",
+      result.kind === "unavailable" ? `engine: UNAVAILABLE — ${result.reason}` : `engine: REFUSED — ${result.reason}`,
+      `detail: ${result.detail}`,
+      result.kind === "unavailable"
+        ? "NEXT: install Rust via https://rustup.rs and run pnpm rust:build — classification is Rust-only here; the TypeScript classifier still runs in the simulation pipeline."
+        : "NEXT: the engine answered but the artifact was refused (never trusted); inspect the detail above.",
+    ];
+    return { text: redactString(lines.join("\n")), exitCode };
+  }
+
+  const report = result.report;
+  if (opts.json) {
+    // VERBATIM as validated — schemaVersion engine.sim.classification.report.v1.
+    return { text: JSON.stringify(report, null, 2), exitCode: 0 };
+  }
+  const lines = [
+    "RUST ENGINE SIM CLASSIFY",
+    `schema:         ${ENGINE_SIM_CLASSIFICATION_SCHEMA_VERSION} via ${result.via}`,
+    `classification: ${report.classification}`,
+    `meaning:        ${report.classificationMessage}`,
+    `next:           ${report.classificationNextAction}`,
+    `input:          errLabel ${report.errLabelPresent ? "present" : "absent"}, ${report.logLineCount} log line(s)`,
+    `ipc:            spawn ${result.timing.spawnMs}ms, parse ${result.timing.parseMs}ms, validate ${result.timing.validateMs}ms (IPC overhead only, never a trading-latency claim)`,
+    "",
+    ...report.caveats.map((c) => `CAVEAT: ${c}`),
+  ];
+  return { text: redactString(lines.join("\n")), exitCode: 0 };
 }
