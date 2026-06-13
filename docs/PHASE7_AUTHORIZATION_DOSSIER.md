@@ -74,15 +74,32 @@ is re-derived on the TypeScript side and refused on disagreement. An absent tool
 ## 6. Devnet status
 
 **Funding-blocked.** The throwaway-key rehearsal path works end-to-end up to the faucet; the faucet
-returns 429, so the rehearsal stops at `devnet-funding-blocked` and sends nothing. To finish: fund
-the throwaway public key the rehearsal prints with valueless devnet SOL, then rerun:
+returns 429, so the rehearsal stops at `devnet-funding-blocked` and sends nothing.
+
+**S103-B: the devnet proof runner.** Instead of re-discovering the funding state every run,
+`execution:devnet:funding-status` reads the throwaway key's balance once and emits the honest,
+retained `execution.devnet.funding_status.v1` artifact (`funded` / `unfunded` / `faucet-rate-limited`
+/ `faucet-unavailable` / `rpc-unavailable` / `unknown`; `funded` is re-derived from the observed
+lamports, so an unobserved or short balance can never read as funded). It is public-key only, never
+reads a secret key, and refuses any mainnet endpoint. When the key is funded it can complete the
+proof in one command (chaining the rehearsal with `--skip-airdrop`):
 
 ```
+# Check (read-only; never sends):
+pnpm soulmaker execution:devnet:funding-status --public-key <KEY> --out runs/funding
+
+# Once funded, complete the proof (needs a signer + the runs/ dir holding the throwaway keypair):
+SOLMAKER_ENABLE_DEVNET_EXECUTION=devnet-only pnpm soulmaker execution:devnet:funding-status \
+  --out runs/s103-devnet-rehearsal --complete-if-funded --acknowledge-devnet-execution
+
+# Or the rehearsal directly, if already funded:
 SOLMAKER_ENABLE_DEVNET_EXECUTION=devnet-only pnpm soulmaker execution:devnet:rehearse \
-  --out runs/s103-devnet-rehearsal --acknowledge-devnet-execution --force
+  --out runs/s103-devnet-rehearsal --acknowledge-devnet-execution --skip-airdrop --force
 ```
 
-(Throwaway keys + run artifacts live under the gitignored `runs/` and are never committed.)
+A confirmed broadcast leaves a `reconciliation-report.json` with verdict `reconciled`; feed it to the
+audit (§9) to satisfy the devnet-broadcast prerequisite. (Throwaway keys + run artifacts live under
+the gitignored `runs/` and are never committed.)
 
 ## 7. Mainnet dry-run status
 
@@ -106,9 +123,56 @@ The audit's `authorized-for-design-only` verdict will only become
 
 1. **A real devnet end-to-end broadcast has confirmed and reconciled at least once** — proving the
    live send/sign/confirm/reconcile link on a real cluster with valueless funds.
-2. **A written human Phase 7 sign-off is recorded** in this dossier.
+2. **A written human Phase 7 sign-off is recorded** (the S103-B mechanism below).
 
 Even then, that verdict authorizes **nothing**: it only states the repo is ready to be *considered*.
+
+### S103-B: the written sign-off mechanism
+
+`paper:phase7:signoff:template` produces `phase7.human_signoff.record.v1`. The default is a blank
+`template-only` checklist; a human reaches a SIGNED status only by explicitly supplying EVERY required
+acknowledgement for the target scope plus operator + signed-at labels and (for a micro-trade) a
+bounded `--max-spend-sol`. The status and the granted scope are RE-DERIVED — the command cannot fake a
+signature — and the granted scope can never exceed `controlled-mainnet-microtrade-only`. **Even a
+fully-signed record authorizes no live trade and creates no mainnet send; it is evidence only.** The
+acknowledgements mirror the §12 controls (burner wallet only, one trade / tiny / manual, quote+sim+risk
+gates, kill-switch + reconciliation, and the understanding that a controlled micro-trade still needs the
+full fourteen-gate and a separate execution sprint).
+
+```
+# A blank checklist (template-only; authorizes nothing):
+pnpm soulmaker paper:phase7:signoff:template --out runs/signoff.json
+
+# A signed micro-trade record (every acknowledgement must be supplied explicitly):
+pnpm soulmaker paper:phase7:signoff:template --scope controlled-mainnet-microtrade-only \
+  --acknowledge read-dossier --acknowledge authorizes-nothing-by-itself \
+  --acknowledge no-autonomous-trading --acknowledge burner-wallet-only \
+  --acknowledge one-trade-tiny-manual --acknowledge quote-sim-risk-gates \
+  --acknowledge kill-switch-and-reconcile \
+  --operator-label "<you>" --signed-at "<date>" --max-spend-sol 0.01 \
+  --out runs/signoff.json --require-signed
+```
+
+### How the audit consumes the evidence
+
+`paper:phase7:authorization:audit` optionally reads the evidence and gates honestly — real evidence
+dominates the legacy assertion flags, and a supplied-but-invalid artifact is refused:
+
+- `--devnet-funding-status <path>` is **context only** (funding is necessary but is NOT a broadcast).
+- `--devnet-reconciliation <path>` satisfies the devnet-broadcast prerequisite **only** when its
+  verdict is `reconciled` with a signature on `devnet`.
+- `--sign-off-record <path>` satisfies the sign-off prerequisite **only** when its status is
+  `signed-for-controlled-microtrade` (a `signed-for-s104-design` record does not).
+
+```
+pnpm soulmaker paper:phase7:authorization:audit --repo-sha <sha> \
+  --devnet-reconciliation runs/s103-devnet-rehearsal/reconciliation-report.json \
+  --sign-off-record runs/signoff.json
+```
+
+Only with BOTH does the verdict read `ready-for-separate-microtrade-authorization` — and the artifact
+STILL pins `liveExecutionAuthorized: false`, `authorizesLiveTrading: false`, `requiresSeparateApproval:
+true`, `neverSends: true`. The audit never authorizes live trading by itself.
 
 ## 10. Exact conditions required before an S104 micro-trade
 
@@ -153,5 +217,7 @@ as its own sprint, and must enforce ALL of the following:
 
 ---
 
-*Generated for Sprint 103. Re-run `pnpm soulmaker paper:phase7:authorization:audit` to refresh the
-machine-checked artifact. Examples: `examples/phase7/authorization-audit/`.*
+*Generated for Sprint 103; the sign-off mechanism, the devnet proof runner, and the audit's evidence
+intake were added in Sprint 103-B. Re-run `pnpm soulmaker paper:phase7:authorization:audit` to refresh
+the machine-checked artifact. Examples: `examples/phase7/authorization-audit/`. A safe, showable demo
+folder of the whole pipeline: `pnpm soulmaker paper:sniper:operator-demo --out runs/demo`.*

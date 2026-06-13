@@ -322,3 +322,24 @@ sign-off prerequisites remain open). A whole-CLI command-surface audit
 (`pnpm safety:scan`) guard the surface and the tree. The audit authorizes nothing; the full
 decision and the controlled-micro-trade safety proposal live in
 [`PHASE7_AUTHORIZATION_DOSSIER.md`](PHASE7_AUTHORIZATION_DOSSIER.md).
+
+## Sprint 103-B — devnet funding-status / proof runner + sign-off evidence
+
+**The devnet proof runner.** `execution:devnet:funding-status` reads a throwaway devnet key's balance
+once and emits `execution.devnet.funding_status.v1` — public-key only, never a secret key, mainnet
+endpoints refused. `funded` / `canBroadcastDevnetProbe` / `fundingSourceStatus` are RE-DERIVED from the
+observed lamports, so an unobserved or short balance can never read as funded. A status-only check never
+sends. `--complete-if-funded` (with a signer + the runs/ dir) chains the existing devnet rehearsal with
+`--skip-airdrop` — it does NOT introduce a new send path; it reuses the same refusal-first send seam,
+which still refuses anything but `devnet-execution`.
+
+**Sign-off evidence is not live authorization.** `phase7.human_signoff.record.v1`
+(`paper:phase7:signoff:template`) records a FUTURE human authorization. Even a fully-signed
+`signed-for-controlled-microtrade` record pins `authorizesLiveExecution: false`,
+`requiresSeparateExecutionSprint: true`, and `neverSends: true` — it is EVIDENCE only and creates no
+mainnet send. The audit consumes a reconciliation report (verdict `reconciled` proves the devnet
+broadcast) and a sign-off record (only `signed-for-controlled-microtrade` proves the sign-off); with
+both, the verdict can reach `ready-for-separate-microtrade-authorization`, which still authorizes
+nothing. A controlled micro-trade additionally requires a separate, explicit, written user authorization
+and a new, reviewed S104 sprint. None of these commands sends, signs on mainnet, or opens a Rust
+signer/send/network path.

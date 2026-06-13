@@ -1161,8 +1161,33 @@ end-to-end; live trading does not begin until Sprint 104, separately authorized 
   Rust signing/sending. The written sign-off S104 requires is a separate human decision recorded in
   [`PHASE7_AUTHORIZATION_DOSSIER.md`](PHASE7_AUTHORIZATION_DOSSIER.md). Devnet broadcast remains
   externally faucet-blocked.
+- **S103-B** ✅ (2026-06-13) — devnet proof unblocker + Phase 7 sign-off pack + operator demo
+  workbench, all while live trading stays disabled. Actuals: (1) `execution.devnet.funding_status.v1`
+  (read-only, public-key-only; `funded`/`canBroadcastDevnetProbe`/`fundingSourceStatus` re-derived
+  from the observed lamports) + `execution:devnet:funding-status` (optional bounded faucet airdrop;
+  `--complete-if-funded` chains the rehearsal `--skip-airdrop` to land the real broadcast; mainnet
+  refused, no secret serialized). (2) `phase7.human_signoff.record.v1` + `paper:phase7:signoff:template`
+  — the clean mechanism for a FUTURE human authorization: default is a blank `template-only` checklist,
+  a SIGNED status needs every acknowledgement + labels + a bounded micro-trade max-spend, the status/scope
+  are re-derived (no faked signature), and even a fully-signed record authorizes no live trade. (3) The
+  audit now optionally consumes a funding-status, a reconciliation report (verdict `reconciled` proves
+  the devnet broadcast), and a sign-off record (`signed-for-controlled-microtrade` proves the sign-off)
+  — so the verdict can reach `ready-for-separate-microtrade-authorization` ONLY with both, and even then
+  authorizes nothing. (4) `sniper.operator_demo.manifest.v1` + `paper:sniper:operator-demo` — one command
+  assembles a SAFE demo folder (real read-only audit + sign-off template, an honest funding-status fixture,
+  the byte-pinned fictional candidate + release-candidate examples), every artifact labelled by provenance,
+  live pinned disabled. (5) Web: 3 typed views + registry 53→56, a calm `/sniper` Phase 7 posture section
+  (no green live state). NO mainnet send, NO live trading, NO Rust signing/sending. The audit verdict on
+  this repo stays `authorized-for-design-only` (devnet broadcast still externally faucet-blocked; no
+  written human sign-off exists). Runbooks: [`EXECUTION_SAFETY.md`](EXECUTION_SAFETY.md),
+  [`MAINNET_DRY_RUN.md`](MAINNET_DRY_RUN.md), [`PHASE7_AUTHORIZATION_DOSSIER.md`](PHASE7_AUTHORIZATION_DOSSIER.md).
+- **Before S104 (gate):** do NOT start S104 while either prerequisite is open. A real funded devnet
+  broadcast must confirm + reconcile, and a written human Phase 7 sign-off must be recorded, BEFORE the
+  audit can read `ready-for-separate-microtrade-authorization`. Until both land, continue operator/demo
+  hardening or wait for explicit funding/sign-off. Even when both are present, S104 still needs a
+  separate, explicit written user authorization — the audit never authorizes live by itself.
 - **S104** — separately approved controlled mainnet MICRO-trade (burner wallet, micro cap,
-  manual confirmation; see the design review's exact conditions).
+  manual confirmation; see the design review's exact conditions). **Blocked on the S103-B gate above.**
 - **S105** — bounded live sniper session (attended, loss-capped, kill-switch rehearsed).
 - **S106+** — production hardening: latency, provider failover, strategy optimization.
 

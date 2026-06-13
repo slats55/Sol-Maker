@@ -228,3 +228,23 @@ The mainnet dry-run release candidate is one input to the Sprint 103 Phase 7 aut
 many, never a path to a send. The audit's best verdict,
 `ready-for-separate-microtrade-authorization`, still authorizes nothing. See
 [`PHASE7_AUTHORIZATION_DOSSIER.md`](PHASE7_AUTHORIZATION_DOSSIER.md).
+
+## Sprint 103-B — the operator demo workbench
+
+`paper:sniper:operator-demo --out <dir>` assembles a SAFE, showable folder of the whole paper /
+dry-run pipeline in one command, with a `sniper.operator_demo.manifest.v1` that labels every artifact
+by provenance:
+
+- **real-readonly** — the real Phase 7 authorization audit (over this repo) and a blank Phase 7
+  sign-off template;
+- **fixture** — an honest devnet funding-status snapshot (the known funding-blocked state; not a live
+  read);
+- **fictional-example** — the byte-pinned candidate list and the mainnet dry-run release candidate
+  (invented mints), which fold in candidate ranking, risk, quote score, tx build, tx inspection,
+  simulation, and readiness.
+
+The manifest re-derives its provenance counts, cross-checks every showcased stage against a present
+artifact, and pins `liveExecutionDisabled: true` / `neverSends: true`. The folder renders cleanly in
+the inspector (`pnpm web:inspect --dir <dir>`) and the `/sniper` command center carries a calm Phase 7
+posture section. Nothing in the demo sends, signs, or trades — it is a "look what Sol Maker can do"
+exhibit, not a live bot.
