@@ -524,6 +524,33 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
       "The S103 read-only security review: is the repo ready to be CONSIDERED for a separately-authorized S104 controlled micro-trade? It folds the fourteen-condition live gate, the no-send invariant, the signer/Rust/redaction/reconciliation boundaries, the release candidate, and the command surface into one verdict that is RE-DERIVED from the evidence and DEFAULTS to not-authorized. The best verdict, 'ready-for-separate-microtrade-authorization', authorizes NOTHING; live execution is pinned false and the artifact is structurally incapable of arming, signing, or sending. Produced by paper:phase7:authorization:audit.",
     cli: "paper:phase7:authorization:audit",
   },
+  {
+    id: "execution.devnet.funding_status.v1",
+    title: "Devnet funding status",
+    family: "execution",
+    stability: "stable",
+    description:
+      "The S103-B devnet proof unblocker: one honest, retained devnet balance observation for a throwaway rehearsal key. Public-key only — funded / canBroadcastDevnetProbe / fundingSourceStatus (funded | unfunded | faucet-rate-limited | faucet-unavailable | rpc-unavailable | unknown) are RE-DERIVED from the observed lamports, so an unobserved or short balance can never read as funded. Devnet only; never reads a secret key; authorizes no live trading. Produced by execution:devnet:funding-status.",
+    cli: "execution:devnet:funding-status",
+  },
+  {
+    id: "phase7.human_signoff.record.v1",
+    title: "Phase 7 human sign-off record",
+    family: "execution",
+    stability: "stable",
+    description:
+      "The S103-B mechanism for a FUTURE explicit human Phase 7 authorization. The default is a blank template-only checklist; a SIGNED status requires every required acknowledgement for the target scope plus operator + signed-at labels and (for a micro-trade) a bounded max-spend. The status and granted scope are RE-DERIVED (a signature cannot be faked); the granted scope can never exceed controlled-microtrade; and even a fully-signed record authorizes NO live trade and creates no mainnet send — it is evidence only. Produced by paper:phase7:signoff:template.",
+    cli: "paper:phase7:signoff:template",
+  },
+  {
+    id: "sniper.operator_demo.manifest.v1",
+    title: "Sniper operator demo manifest",
+    family: "sniper",
+    stability: "stable",
+    description:
+      "The S103-B operator demo workbench manifest: a SAFE, showable folder of the paper / dry-run pipeline. It ties together the real read-only Phase 7 audit + sign-off template, an honest devnet funding-status fixture, and the byte-pinned fictional candidate + release-candidate examples — every artifact labelled by provenance (real-readonly | fixture | fictional-example) with re-derived counts. Live execution is pinned disabled; nothing sends, signs, or trades. Produced by paper:sniper:operator-demo.",
+    cli: "paper:sniper:operator-demo",
+  },
 ];
 
 /** Look up schema metadata by id, or `undefined` for an unknown schema. */

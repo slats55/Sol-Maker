@@ -154,6 +154,52 @@ function workflowSection(): RawHtml {
   });
 }
 
+/** The Phase 7 / live posture + the operator demo workbench — honest, calm, no green live state. */
+function livePostureSection(): RawHtml {
+  const commands: readonly { readonly command: string; readonly summary: string }[] = [
+    {
+      command: "pnpm soulmaker paper:sniper:operator-demo --out runs/demo",
+      summary:
+        "Assemble a SAFE demo folder (the real Phase 7 audit + a blank sign-off template + an honest devnet funding-status fixture + the fictional release candidate), every artifact labelled by provenance. Inspect it with pnpm web:inspect --dir runs/demo.",
+    },
+    {
+      command: "pnpm soulmaker execution:devnet:funding-status --public-key <KEY>",
+      summary: "Read the throwaway devnet key's balance and report the honest funding/proof status. Never sends; mainnet endpoints refused.",
+    },
+    {
+      command: "pnpm soulmaker paper:phase7:signoff:template --out runs/signoff.json",
+      summary: "Generate the blank Phase 7 human sign-off template. A signed record is EVIDENCE only — it authorizes no live trade and creates no mainnet send.",
+    },
+    {
+      command: "pnpm soulmaker paper:phase7:authorization:audit",
+      summary: "Re-run the read-only Phase 7 authorization audit. The verdict defaults to not-authorized and authorizes nothing.",
+    },
+  ];
+  return Section({
+    title: "Phase 7 live-trading posture & operator demo",
+    description: "The honest live-execution status. Nothing here is ready to trade.",
+    body: html`
+      ${RiskNotice({
+        tone: "caution",
+        title: "Live trading is DISABLED and unauthorized.",
+        body: html`The fourteen-condition mainnet live gate defaults <strong>blocked</strong>, no CLI command can
+          send on mainnet, and the Phase 7 authorization audit verdict is
+          <code>authorized-for-design-only</code>. Two prerequisites remain open before a controlled
+          micro-trade could even be <em>considered</em>: a confirmed devnet broadcast and a written human
+          sign-off. Neither is granted here, and no flag in this repo can substitute for that human decision.`,
+      })}
+      <div class="sm-cmdgrid">
+        ${commands.map(
+          (cmd) => html`<article class="sm-cmd">
+            <code class="sm-cmd__code">${cmd.command}</code>
+            <p class="sm-cmd__summary">${cmd.summary}</p>
+          </article>`,
+        )}
+      </div>
+    `,
+  });
+}
+
 /** The full static Sniper Command Center page. */
 export function renderSniper(): RawHtml {
   const { index, overview } = loadSampleDryRun(hasTypedView);
@@ -166,6 +212,7 @@ export function renderSniper(): RawHtml {
     ${CandidateIntelSection(buildCandidateRows(index))}
     ${ObservabilitySection(buildObservabilityFacts(index, overview))}
     ${workflowSection()}
+    ${livePostureSection()}
 
     <p class="sm-artifactview__note">
       Read-only, local, simulated paper artifacts. Not a live result, not advice, not a profitability claim.

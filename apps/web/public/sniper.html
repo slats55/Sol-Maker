@@ -404,6 +404,40 @@
         </article>
     </div></div>
   </section>
+    <section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Phase 7 live-trading posture &amp; operator demo</h2>
+              <p class="sm-section__desc">The honest live-execution status. Nothing here is ready to trade.</p>
+            </div>
+
+          </div>
+    <div class="sm-section__body">
+      <div class="sm-notice sm-notice--caution" role="note">
+    <p class="sm-notice__title">Live trading is DISABLED and unauthorized.</p>
+    <div class="sm-notice__body">The fourteen-condition mainnet live gate defaults <strong>blocked</strong>, no CLI command can
+          send on mainnet, and the Phase 7 authorization audit verdict is
+          <code>authorized-for-design-only</code>. Two prerequisites remain open before a controlled
+          micro-trade could even be <em>considered</em>: a confirmed devnet broadcast and a written human
+          sign-off. Neither is granted here, and no flag in this repo can substitute for that human decision.</div>
+  </div>
+      <div class="sm-cmdgrid">
+        <article class="sm-cmd">
+            <code class="sm-cmd__code">pnpm soulmaker paper:sniper:operator-demo --out runs/demo</code>
+            <p class="sm-cmd__summary">Assemble a SAFE demo folder (the real Phase 7 audit + a blank sign-off template + an honest devnet funding-status fixture + the fictional release candidate), every artifact labelled by provenance. Inspect it with pnpm web:inspect --dir runs/demo.</p>
+          </article><article class="sm-cmd">
+            <code class="sm-cmd__code">pnpm soulmaker execution:devnet:funding-status --public-key &lt;KEY&gt;</code>
+            <p class="sm-cmd__summary">Read the throwaway devnet key&#39;s balance and report the honest funding/proof status. Never sends; mainnet endpoints refused.</p>
+          </article><article class="sm-cmd">
+            <code class="sm-cmd__code">pnpm soulmaker paper:phase7:signoff:template --out runs/signoff.json</code>
+            <p class="sm-cmd__summary">Generate the blank Phase 7 human sign-off template. A signed record is EVIDENCE only — it authorizes no live trade and creates no mainnet send.</p>
+          </article><article class="sm-cmd">
+            <code class="sm-cmd__code">pnpm soulmaker paper:phase7:authorization:audit</code>
+            <p class="sm-cmd__summary">Re-run the read-only Phase 7 authorization audit. The verdict defaults to not-authorized and authorizes nothing.</p>
+          </article>
+      </div>
+    </div>
+  </section>
 
     <p class="sm-artifactview__note">
       Read-only, local, simulated paper artifacts. Not a live result, not advice, not a profitability claim.

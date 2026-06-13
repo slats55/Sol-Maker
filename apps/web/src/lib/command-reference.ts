@@ -505,8 +505,29 @@ export const COMMANDS: readonly CommandRef[] = [
   {
     command: "paper:phase7:authorization:audit",
     summary:
-      "The S103 read-only Phase 7 authorization audit (phase7.authorization.audit.v1): machine-verifies the no-send invariant, the fourteen-gate default-blocked path, the signer/Rust/redaction/reconciliation boundaries, and the command surface, then re-derives a verdict that DEFAULTS to not-authorized. Authorizes NOTHING and sends NOTHING; a controlled micro-trade still needs a separate, explicit, written authorization.",
+      "The S103 read-only Phase 7 authorization audit (phase7.authorization.audit.v1): machine-verifies the no-send invariant, the fourteen-gate default-blocked path, the signer/Rust/redaction/reconciliation boundaries, and the command surface, then re-derives a verdict that DEFAULTS to not-authorized. Authorizes NOTHING and sends NOTHING; a controlled micro-trade still needs a separate, explicit, written authorization. S103-B: optionally consumes a devnet funding-status, a reconciliation report, and a sign-off record as evidence.",
     group: "Execution (gated)",
+    readsChain: false,
+  },
+  {
+    command: "execution:devnet:funding-status",
+    summary:
+      "The S103-B devnet proof unblocker (execution.devnet.funding_status.v1): READ a throwaway devnet key's balance once and report funded / unfunded / faucet-rate-limited / faucet-unavailable / rpc-unavailable / unknown. funded is RE-DERIVED from the observed lamports. Optional bounded devnet faucet airdrop; when funded, --complete-if-funded chains the rehearsal (--skip-airdrop) to land the real broadcast. Mainnet endpoints refused; no trade is sent; no secret key is serialized.",
+    group: "Execution (gated)",
+    readsChain: true,
+  },
+  {
+    command: "paper:phase7:signoff:template",
+    summary:
+      "The S103-B Phase 7 human sign-off mechanism (phase7.human_signoff.record.v1): generate a blank template-only checklist, or supply every required acknowledgement plus operator + signed-at labels and (for a micro-trade) a bounded max-spend to produce a SIGNED record. The status/scope are RE-DERIVED (no faked signatures); the granted scope can never exceed controlled-microtrade; even a fully-signed record authorizes NO live trade and creates no mainnet send.",
+    group: "Execution (gated)",
+    readsChain: false,
+  },
+  {
+    command: "paper:sniper:operator-demo",
+    summary:
+      "The S103-B operator demo workbench (sniper.operator_demo.manifest.v1): assemble a SAFE, showable demo folder of the paper / dry-run pipeline — the real read-only Phase 7 audit + sign-off template, an honest devnet funding-status fixture, and the byte-pinned fictional candidate + release-candidate examples. Every artifact is labelled by provenance; live execution is pinned disabled; nothing sends, signs, or trades.",
+    group: "Sniper (paper-only)",
     readsChain: false,
   },
   {

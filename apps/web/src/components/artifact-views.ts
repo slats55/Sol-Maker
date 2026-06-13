@@ -3616,6 +3616,167 @@ function renderEngineSimClassificationView(rec: Record<string, unknown>): RawHtm
  * ------------------------------------------------------------------ */
 
 /** Map a recognized schemaVersion to its typed renderer, or `null`. */
+function recordList(rec: Record<string, unknown>, key: string): Record<string, unknown>[] {
+  const raw = rec[key];
+  return (Array.isArray(raw) ? raw : []).map(asRecord).filter((x): x is Record<string, unknown> => x !== null);
+}
+
+function renderDevnetFundingStatusView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const status = need(missing, "fundingSourceStatus", readString(rec, "fundingSourceStatus"));
+  const publicKey = need(missing, "publicKey", readString(rec, "publicKey"));
+  const funded = readBoolean(rec, "funded");
+  const lamports = readNumber(rec, "lamports");
+  const sol = readNumber(rec, "solBalance");
+  const faucet = asRecord(rec["faucetAttemptSummary"]);
+  const caveats = readStringArray(rec, "caveats");
+  const safe = rec.neverMainnet === true && rec.phase7LiveTradingReady === false && readString(rec, "network") === "devnet";
+  return html`
+    ${RiskNotice({
+      tone: safe ? "info" : "caution",
+      title: safe
+        ? `Devnet funding status — ${status ?? DASH}. Read-only; never touches mainnet.`
+        : "Devnet funding-status is missing its devnet / no-live safety markers — do NOT trust this artifact",
+      body: html`A read-only devnet balance observation for a throwaway rehearsal key.
+        <strong>This never reads a secret key, never touches mainnet, and authorizes no live trading.</strong>
+        <code>funded</code> and <code>canBroadcastDevnetProbe</code> are re-derived from the observed
+        lamports — an unobserved or short balance can never read as funded.`,
+    })}
+    ${kvSection("Funding", undefined, [
+      { term: "status", detail: code(status) },
+      { term: "public key", detail: code(publicKey) },
+      { term: "balance", detail: text(lamports === null ? "unknown (not observed)" : `${num(lamports)} lamports (${num(sol)} SOL)`) },
+      { term: "minimum required", detail: text(`${num(readNumber(rec, "minimumRequiredLamports"))} lamports`) },
+      { term: "funded", detail: text(boolText(funded)) },
+      { term: "can broadcast devnet probe", detail: text(boolText(readBoolean(rec, "canBroadcastDevnetProbe"))) },
+    ])}
+    ${
+      faucet === null
+        ? null
+        : kvSection("Faucet attempt", undefined, [
+            { term: "outcome", detail: code(readString(faucet, "outcome")) },
+            { term: "attempts", detail: text(`${num(readNumber(faucet, "attempts"))} / ${num(readNumber(faucet, "maxAttempts"))}`) },
+            { term: "detail", detail: text(readString(faucet, "detail")) },
+          ])
+    }
+    ${Section({ title: "Next safe action", body: html`<p>${readString(rec, "nextSafeAction") ?? DASH}</p>` })}
+    ${
+      caveats.total === 0
+        ? null
+        : Section({ title: `Caveats (${String(caveats.total)})`, body: html`<ul class="sm-bullets sm-bullets--plain">${caveats.items.map((c) => html`<li>${c}</li>`)}</ul>` })
+    }
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderPhase7HumanSignoffView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const status = need(missing, "signoffStatus", readString(rec, "signoffStatus"));
+  const required = recordList(rec, "requiredAcknowledgements");
+  const ackedRaw = rec["acknowledgedAcknowledgementIds"];
+  const acked = new Set(Array.isArray(ackedRaw) ? ackedRaw.filter((x): x is string => typeof x === "string") : []);
+  const maxSpendLamports = readNumber(rec, "maxSpendLamports");
+  const safe =
+    rec.authorizesLiveExecution === false &&
+    rec.neverSends === true &&
+    rec.phase7LiveTradingReady === false &&
+    rec.requiresSeparateExecutionSprint === true;
+  return html`
+    ${RiskNotice({
+      tone: safe ? "info" : "caution",
+      title: safe
+        ? `Phase 7 human sign-off — status ${status ?? DASH}. This authorizes NO live trade by itself.`
+        : "Phase 7 sign-off is missing its no-authorization safety literals — do NOT trust this artifact",
+      body: html`The clean mechanism for a FUTURE explicit human Phase 7 authorization.
+        <strong>Even a fully-signed record authorizes no live trade and creates no mainnet send</strong> —
+        it is evidence only; a controlled micro-trade still needs the fourteen-condition live gate and a
+        separate, reviewed execution sprint. The status and granted scope are re-derived; a signature cannot be faked.`,
+    })}
+    ${kvSection("Sign-off", undefined, [
+      { term: "status", detail: code(status) },
+      { term: "granted scope", detail: code(readString(rec, "grantedScope")) },
+      { term: "target scope", detail: code(readString(rec, "targetScope")) },
+      { term: "operator", detail: text(readString(rec, "operatorLabel") ?? "(unsigned)") },
+      { term: "signed at", detail: text(readString(rec, "signedAtLabel") ?? "(none)") },
+      { term: "max spend", detail: text(maxSpendLamports === null ? "n/a" : `${num(maxSpendLamports)} lamports (${num(readNumber(rec, "maxSpendSol"))} SOL)`) },
+      { term: "repo sha", detail: code(readString(rec, "repoSha")) },
+      { term: "authorizes live execution", detail: text(boolText(readBoolean(rec, "authorizesLiveExecution"))) },
+    ])}
+    ${tableSection({
+      title: `Required acknowledgements (${String(required.length)})`,
+      description: "A human must explicitly check EACH for the target scope. None of these executes a trade.",
+      columns: [{ header: "Checked" }, { header: "Id" }, { header: "Acknowledgement" }],
+      rows: required.map((a) => {
+        const id = readString(a, "id");
+        return [text(id !== null && acked.has(id) ? "✓" : "✗"), code(id), text(readString(a, "text"))];
+      }),
+      empty: "No acknowledgements recorded.",
+    })}
+    ${Section({ title: "Next safe action", body: html`<p>${readString(rec, "nextSafeAction") ?? DASH}</p>` })}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderSniperOperatorDemoView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const demoId = need(missing, "demoId", readString(rec, "demoId"));
+  const artifacts = recordList(rec, "artifacts");
+  const stages = recordList(rec, "pipelineStages");
+  const allValid = readBoolean(rec, "allArtifactsValid");
+  const safe = rec.liveExecutionDisabled === true && rec.neverSends === true && rec.phase7LiveTradingReady === false;
+  return html`
+    ${RiskNotice({
+      tone: safe ? "info" : "caution",
+      title: safe
+        ? `Operator demo workbench — ${demoId ?? DASH}. SAFE paper / dry-run showcase; live execution DISABLED.`
+        : "Operator demo manifest is missing its live-disabled / no-send markers — do NOT trust this artifact",
+      body: html`A SAFE, showable folder of Sol Maker's paper / dry-run pipeline.
+        <strong>Nothing here sends, signs, or trades; live execution is disabled.</strong> Every artifact is
+        labelled by provenance — real-readonly (observed read-only evidence), fixture (an honest stand-in),
+        or fictional-example (invented mints) — never live trade evidence.`,
+    })}
+    ${kvSection("Demo", undefined, [
+      { term: "demo id", detail: text(demoId) },
+      { term: "generated at", detail: text(readString(rec, "generatedAt")) },
+      {
+        term: "artifacts",
+        detail: text(
+          `${num(readNumber(rec, "artifactCount"))} (${num(readNumber(rec, "realReadonlyCount"))} real-readonly, ${num(readNumber(rec, "fixtureCount"))} fixture, ${num(readNumber(rec, "fictionalExampleCount"))} fictional-example)`,
+        ),
+      },
+      { term: "all artifacts valid", detail: text(boolText(allValid)) },
+      { term: "live execution disabled", detail: text(boolText(readBoolean(rec, "liveExecutionDisabled"))) },
+    ])}
+    ${tableSection({
+      title: `Artifacts (${String(artifacts.length)})`,
+      description: "Each artifact in the demo folder, with its provenance and integrity.",
+      columns: [{ header: "Role" }, { header: "File" }, { header: "Provenance" }, { header: "Schema" }, { header: "Valid" }],
+      rows: artifacts.map((a) => {
+        const present = readBoolean(a, "present") === true;
+        const valid = readBoolean(a, "valid") === true;
+        return [
+          code(readString(a, "role")),
+          text(readString(a, "fileName")),
+          code(readString(a, "evidenceClass")),
+          code(readString(a, "schemaVersion")),
+          text(present ? (valid ? "valid" : "INVALID") : "missing"),
+        ];
+      }),
+      empty: "No artifacts recorded.",
+    })}
+    ${tableSection({
+      title: `Pipeline stages (${String(stages.length)})`,
+      description: "The stages this demo showcases — each evidenced by one of the artifacts above.",
+      columns: [{ header: "Stage" }, { header: "What it shows" }, { header: "Evidenced by" }],
+      rows: stages.map((s) => [code(readString(s, "stage")), text(readString(s, "description")), code(readString(s, "evidencedBy"))]),
+      empty: "No stages recorded.",
+    })}
+    ${Section({ title: "Why live trading is disabled", body: html`<p>${readString(rec, "whyLiveDisabled") ?? DASH}</p>` })}
+    ${Section({ title: "Next safe action", body: html`<p>${readString(rec, "nextSafeAction") ?? DASH}</p>` })}
+    ${partialNotice(missing)}
+  `;
+}
+
 function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml | null {
   switch (schema) {
     case "backtest.report.v1":
@@ -3686,6 +3847,12 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderMainnetDryRunReleaseCandidateView(rec);
     case "phase7.authorization.audit.v1":
       return renderPhase7AuthorizationAuditView(rec);
+    case "execution.devnet.funding_status.v1":
+      return renderDevnetFundingStatusView(rec);
+    case "phase7.human_signoff.record.v1":
+      return renderPhase7HumanSignoffView(rec);
+    case "sniper.operator_demo.manifest.v1":
+      return renderSniperOperatorDemoView(rec);
     case "execution.readiness.report.v1":
       return renderExecutionReadinessView(rec);
     case "execution.devnet.rehearsal.report.v1":
