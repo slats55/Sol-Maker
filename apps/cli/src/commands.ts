@@ -203,6 +203,8 @@ import {
   normalizeSniperPreflightInput,
   formatSniperPreflightInput,
   SNIPER_PREFLIGHT_INPUT_SCHEMA_VERSION,
+  normalizeSniperScoreInput,
+  buildMainnetDryRunReleaseCandidate,
   buildPaperSniperDecisionReport,
   formatPaperSniperDecisionReport,
   buildPaperSniperDecisionReportV2,
@@ -283,6 +285,10 @@ import {
   type SniperBurnerIsolationSpec,
   type SimulationIntentPlan,
   type SimulationIntentPlanDiff,
+  type SniperScoreInput,
+  type SniperScoreInputEntryInput,
+  type BuildMainnetDryRunReleaseCandidateInput,
+  type ReleaseCandidateRankedEntry,
 } from "@soulmaker/sniper";
 import {
   runPaperSession,
@@ -11034,14 +11040,18 @@ export interface SniperRehearseStage {
   stage:
     | "candidates"
     | "risk"
+    | "candidate-score"
     | "quote-fetch"
     | "quote-prepare"
+    | "quote-score"
     | "dry-run"
     | "tx-build"
     | "tx-simulate"
+    | "tx-inspect"
     | "devnet-rehearse"
     | "reconciliation"
-    | "readiness";
+    | "readiness"
+    | "release-candidate";
   status: RehearseStageStatus;
   detail: string;
   /** Artifact path(s) this stage produced or consumed, relative to the out dir where possible. */
@@ -11099,13 +11109,123 @@ export const REHEARSE_AUTO_RISK_MAX_CANDIDATES = 10;
 
 const REHEARSE_NEXT: Readonly<Record<string, string>> = {
   risk: "automatic in mainnet-dry-run mode (deep token:risk per candidate); or manually: pnpm soulmaker token:risk <mint> --deep --json --out <risk.json> per candidate, then paper:sniper:preflight:input:prepare to bridge them",
+  "candidate-score": "pnpm soulmaker engine:sniper:score --input <sniper-score-input.json> --out <candidate-scores.json> (Rust-only intelligence; install Rust + pnpm rust:build if unavailable — the paper pipeline runs without it)",
   "quote-fetch": "pnpm soulmaker paper:routequote:fetch --candidates <candidates.json> --amount-sol <sol> --out <dir> --allow-paper-read",
   "quote-prepare": "pnpm soulmaker paper:routequote:prepare --candidates <candidates.json> --quote <quote.*.json> --out <prepared.json>",
+  "quote-score": "pnpm soulmaker engine:quote:score --report <quotes/fetch-report.json> --max-quote-age-ms <ms> --out <quote-scores.json> (Rust-only quote intelligence; optional)",
   "tx-build": "pnpm soulmaker execution:build --candidate-mint <mint> --wallet <publicKey> --risk <risk.json> --amount-sol <sol> --slippage-bps <bps> --max-spend-sol <sol> --slippage-cap-bps <bps> --risk-score-cap <n> --request mainnet-dry-run --allow-paper-read --out <envelope.json>",
   "tx-simulate": "pnpm soulmaker paper:simulation:tx --envelope <envelope.json> --allow-paper-read --out <sim.json>",
+  "tx-inspect": "pnpm soulmaker engine:tx:inspect --envelope <envelope.json> --out <tx-inspect.json> (Rust-only unsigned-shape inspection; optional)",
   "devnet-rehearse": "pnpm soulmaker execution:devnet:rehearse --out runs/<dir> --acknowledge-devnet-execution (requires SOLMAKER_ENABLE_DEVNET_EXECUTION=devnet-only)",
   reconciliation: "pnpm soulmaker execution:session:reconcile --out runs/<dir> (accounts for the latest devnet session with real observed data); status: pnpm soulmaker execution:session:status",
+  "release-candidate": "produced automatically in mainnet-dry-run mode at <out>/release-candidate.json — inspect with pnpm web:inspect --dir <out>",
 };
+
+/**
+ * S102: assemble `sniper.score.input.v1` entries from the artifacts already written by the rehearsal
+ * (the per-candidate deep risk reports, the prepared routequote, the Rust quote scores, and the
+ * build-target simulation/build evidence). Pure-ish: reads only files the rehearsal itself produced,
+ * never the chain or a signer. Returns the entries; the caller normalizes + scores them. The
+ * token-2022 blocker fact is derived from the risk report's flags (the SAME ids the readiness
+ * checklist treats as Token-2022 extension blockers).
+ */
+function buildRehearseScoreInputEntries(args: {
+  ctx: CommandContext;
+  candidatesPath: string;
+  riskDir: string;
+  operatorRiskPath: string | null;
+  preparedPath: string | null;
+  quoteScorePath: string | null;
+  buildTargetMint: string | null;
+  simOutcome: string | null;
+  simClassification: string | null;
+  buildRefused: boolean;
+}): SniperScoreInputEntryInput[] {
+  const { ctx } = args;
+  let candidates: Array<{ candidateId: string; mint: string }> = [];
+  try {
+    const rawList = readJsonValue(ctx, args.candidatesPath, "sniper candidate list");
+    if (isPlainObject(rawList) && Array.isArray(rawList.candidates)) {
+      for (const entry of rawList.candidates) {
+        if (isPlainObject(entry) && typeof entry.mint === "string" && entry.mint.length > 0) {
+          const candidateId = typeof entry.candidateId === "string" && entry.candidateId.length > 0 ? entry.candidateId : entry.mint;
+          candidates.push({ candidateId, mint: entry.mint });
+        }
+      }
+    }
+  } catch {
+    candidates = [];
+  }
+
+  // Index the prepared routequote + quote-score artifacts by candidateId (best-effort, fail-open).
+  const preparedByCandidate = new Map<string, { observed: boolean }>();
+  if (args.preparedPath !== null && existsSync(args.preparedPath)) {
+    try {
+      const parsed = JSON.parse(stripJsonBom(readFileSync(args.preparedPath, "utf8"))) as { entries?: Array<{ candidateId?: string; quoteStatus?: string }> };
+      for (const e of parsed.entries ?? []) {
+        if (typeof e.candidateId === "string") preparedByCandidate.set(e.candidateId, { observed: e.quoteStatus === "quote-observed" });
+      }
+    } catch {
+      /* fail-open: no quote facts */
+    }
+  }
+  const quoteScoreByCandidate = new Map<string, { score: number | null; freshness: string | null }>();
+  if (args.quoteScorePath !== null && existsSync(args.quoteScorePath)) {
+    try {
+      const parsed = JSON.parse(stripJsonBom(readFileSync(args.quoteScorePath, "utf8"))) as {
+        entries?: Array<{ candidateId?: string; score?: number | null; facts?: { freshnessVerdict?: string } }>;
+      };
+      for (const e of parsed.entries ?? []) {
+        if (typeof e.candidateId === "string") {
+          quoteScoreByCandidate.set(e.candidateId, {
+            score: typeof e.score === "number" ? e.score : null,
+            freshness: typeof e.facts?.freshnessVerdict === "string" ? e.facts.freshnessVerdict : null,
+          });
+        }
+      }
+    } catch {
+      /* fail-open: no quote score facts */
+    }
+  }
+
+  return candidates.map((c) => {
+    const entry: SniperScoreInputEntryInput = { candidateId: c.candidateId, mint: c.mint };
+    // Deep risk report: prefer the auto-risk per-candidate file (risk/risk.<mint>.json); for the
+    // build-target candidate fall back to the operator-supplied --risk report. Projected by normalize.
+    const perCandidateRisk = join(args.riskDir, `risk.${c.mint}.json`);
+    const riskPath = existsSync(perCandidateRisk)
+      ? perCandidateRisk
+      : args.operatorRiskPath !== null && args.buildTargetMint !== null && c.mint === args.buildTargetMint && existsSync(args.operatorRiskPath)
+        ? args.operatorRiskPath
+        : null;
+    if (riskPath !== null) {
+      try {
+        const riskReport = JSON.parse(stripJsonBom(readFileSync(riskPath, "utf8"))) as { flags?: Array<{ id?: string; severity?: string }> };
+        entry.risk = riskReport;
+        const blocker = (riskReport.flags ?? []).some(
+          (f) => typeof f.id === "string" && TOKEN2022_RISK_FLAG_IDS.has(f.id) && (f.severity === "critical" || f.severity === "high"),
+        );
+        entry.token2022Blocker = blocker;
+      } catch {
+        /* fail-open: no risk facts for this candidate */
+      }
+    }
+    const prepared = preparedByCandidate.get(c.candidateId);
+    if (prepared !== undefined) entry.quoteObserved = prepared.observed;
+    const qs = quoteScoreByCandidate.get(c.candidateId);
+    if (qs !== undefined) {
+      if (qs.score !== null) entry.quoteScore = qs.score;
+      if (qs.freshness !== null) entry.quoteFreshness = qs.freshness as SniperScoreInputEntryInput["quoteFreshness"];
+    }
+    // Build-target candidate carries the simulation + build-refusal evidence.
+    if (args.buildTargetMint !== null && c.mint === args.buildTargetMint) {
+      if (args.simOutcome !== null) entry.simulationOutcome = args.simOutcome as SniperScoreInputEntryInput["simulationOutcome"];
+      if (args.simClassification !== null) entry.simulationClassification = args.simClassification as SniperScoreInputEntryInput["simulationClassification"];
+      entry.txBuildRefused = args.buildRefused;
+    }
+    return entry;
+  });
+}
 
 /**
  * `soulmaker paper:sniper:rehearse` — the UNIFIED sniper rehearsal workflow (Sprint 93). Chains
@@ -11160,6 +11280,48 @@ export async function paperSniperRehearseReport(
     stages.push({ stage, status, detail: redactString(detail).slice(0, 500), artifacts, nextCommand });
   };
 
+  // --- S102: release-candidate evidence accumulators (populated as stages run) ----------
+  // The mainnet-dry-run RELEASE CANDIDATE (sniper.mainnet_dryrun.release_candidate.v1) folds these
+  // into one auditable, no-send summary at the end. Nothing here loads a signer or calls a send seam.
+  let scoringAvailable = false;
+  let scoringEngineSource: "rust" | "none" = "none";
+  let scoringCandidateCount = 0;
+  let scoringBestCandidateId: string | null = null;
+  let scoringRanked: ReleaseCandidateRankedEntry[] = [];
+  // Risk evidence is derived from the SAME score-input bundle that is scored (single source of truth).
+  let riskAssessedRc = false;
+  let riskRejectedRc = false;
+  let riskWorstDecisionRc: string | null = null;
+  let riskCriticalRc: number | null = null;
+  let riskHighRc: number | null = null;
+  let riskToken2022Rc = false;
+  const riskToken2022MintsRc: string[] = [];
+  let quoteAttempted = false;
+  let quoteObservedRc = false;
+  let quoteFreshnessRc: string | null = null;
+  let quoteScoreValue: number | null = null;
+  let quoteScoreAvailable = false;
+  let txInspectAvailable = false;
+  let txInspectVersionSupported: boolean | null = null;
+  let txInspectBlockhashPresent: boolean | null = null;
+  let txInspectInstructionCount: number | null = null;
+  let txInspectUnresolvableProgramIdCount: number | null = null;
+  let buildTargetMint: string | null = null;
+  let buildAttempted = false;
+  let buildRefused = false;
+  let buildSucceeded = false;
+  let buildRefusalCodesRc: string[] = [];
+  let simAttempted = false;
+  let simOutcomeRc: string | null = null;
+  let simClassificationRc: string | null = null;
+  let simFailedRc = false;
+  let readinessAvailableRc = false;
+  let readinessVerdictRc: string | null = null;
+  let readinessSatisfiedRc: number | null = null;
+  let readinessTotalRc: number | null = null;
+  let stageErrorOccurred = false;
+  let stageErrorDetail: string | null = null;
+
   // --- Stage 1: candidates ---------------------------------------------------
   let candidatesPath: string;
   if (opts.replayFile !== undefined) {
@@ -11178,6 +11340,8 @@ export async function paperSniperRehearseReport(
     candidatesPath = join(realtimeDir, "candidates.json");
     if (snapshot.exitCode !== 0 || !existsSync(candidatesPath)) {
       push("candidates", "failed", `realtime replay snapshot failed: ${snapshot.text.slice(0, 200)}`);
+      stageErrorOccurred = true;
+      stageErrorDetail = "candidate replay snapshot failed";
       return finishRehearsal();
     }
     push("candidates", "executed", `candidates from realtime REPLAY snapshot of ${opts.replayFile}`, ["realtime/snapshot.json", "realtime/candidates.json"]);
@@ -11306,6 +11470,7 @@ export async function paperSniperRehearseReport(
     push("quote-fetch", "skipped", `${why}`, [], REHEARSE_NEXT["quote-fetch"] ?? null);
     push("quote-prepare", "skipped", "nothing to prepare without a fetch", [], REHEARSE_NEXT["quote-prepare"] ?? null);
   } else {
+    quoteAttempted = true;
     const quotesDir = join(outDir, "quotes");
     try {
       mkdirSync(quotesDir, { recursive: true });
@@ -11354,6 +11519,43 @@ export async function paperSniperRehearseReport(
     }
   }
 
+  // --- S99/S102: Rust quote scoring (optional intelligence; mainnet-dry-run only) ----------
+  // Scores the LIVE fetch report through the Rust sidecar into quote-quality intelligence. It is
+  // strictly read-only: the engine has no network/signer/send. A high quote score never unblocks
+  // anything; it is surfaced in the release candidate when available.
+  let quoteScorePath: string | null = null;
+  if (mode !== "mainnet-dry-run") {
+    push("quote-score", "skipped", `mode ${mode} fetches no live quote to score`, []);
+  } else if (fetchReportPath === null) {
+    push("quote-score", "skipped", "no live quote fetch report to score", [], REHEARSE_NEXT["quote-score"] ?? null);
+  } else {
+    quoteScorePath = join(outDir, "quote-scores.json");
+    const qScore = await engineQuoteScoreReport(ctx, {
+      reportPath: fetchReportPath,
+      maxQuoteAgeMs: opts.maxQuoteAgeMs ?? "60000",
+      outPath: quoteScorePath,
+      force: opts.force,
+    });
+    if (qScore.exitCode === 0 && existsSync(quoteScorePath)) {
+      quoteScoreAvailable = true;
+      try {
+        const parsed = JSON.parse(stripJsonBom(readFileSync(quoteScorePath, "utf8"))) as {
+          bestCandidateId?: string | null;
+          entries?: Array<{ candidateId?: string; score?: number | null }>;
+        };
+        const best = typeof parsed.bestCandidateId === "string" ? parsed.bestCandidateId : null;
+        const bestEntry = Array.isArray(parsed.entries) ? parsed.entries.find((e) => e.candidateId === best) : undefined;
+        quoteScoreValue = bestEntry !== undefined && typeof bestEntry.score === "number" ? bestEntry.score : null;
+      } catch {
+        quoteScoreValue = null;
+      }
+      push("quote-score", "executed", `Rust quote scoring written (best quote score ${quoteScoreValue ?? "n/a"})`, ["quote-scores.json"]);
+    } else {
+      quoteScorePath = null;
+      push("quote-score", "unavailable", `Rust quote scoring unavailable (the paper pipeline is unaffected): ${qScore.text.slice(0, 160)}`, [], REHEARSE_NEXT["quote-score"] ?? null);
+    }
+  }
+
   // --- Stage 5: paper dry-run ---------------------------------------------------
   const dryRunDir = join(outDir, "dry-run");
   const dryRun = paperSniperDryRunReport(ctx, {
@@ -11384,6 +11586,8 @@ export async function paperSniperRehearseReport(
     );
   } else {
     push("dry-run", "failed", `dry-run refused: ${dryRun.text.slice(0, 300)}`);
+    stageErrorOccurred = true;
+    stageErrorDetail = "paper dry-run refused";
     return finishRehearsal();
   }
 
@@ -11418,10 +11622,14 @@ export async function paperSniperRehearseReport(
     } catch {
       buildMint = null;
     }
+    buildTargetMint = buildMint;
     if (buildMint === null) {
       push("tx-build", "failed", "could not read the first candidate's mint for the build target");
       push("tx-simulate", "skipped", "nothing to simulate without a build", []);
+      stageErrorOccurred = true;
+      stageErrorDetail = "could not read the build-target mint";
     } else {
+      buildAttempted = true;
       envelopePath = join(outDir, "envelope.json");
       const buildReportPath = join(outDir, "txbuild-report.json");
       const build = await executionBuildReport(ctx, {
@@ -11445,18 +11653,18 @@ export async function paperSniperRehearseReport(
       // build is a first-class artifact (codes + guidance), not just truncated text.
       const buildReportArtifacts = existsSync(buildReportPath) ? ["txbuild-report.json"] : [];
       if (build.exitCode !== 0 || !existsSync(envelopePath)) {
-        let refusalCodes = "";
+        buildRefused = true;
         if (existsSync(buildReportPath)) {
           try {
             const parsed = JSON.parse(stripJsonBom(readFileSync(buildReportPath, "utf8"))) as { refusals?: Array<{ code?: string }> };
-            refusalCodes = (parsed.refusals ?? [])
+            buildRefusalCodesRc = (parsed.refusals ?? [])
               .map((r) => r.code)
-              .filter((c): c is string => typeof c === "string")
-              .join(", ");
+              .filter((c): c is string => typeof c === "string");
           } catch {
-            refusalCodes = "";
+            buildRefusalCodesRc = [];
           }
         }
+        const refusalCodes = buildRefusalCodesRc.join(", ");
         push(
           "tx-build",
           "blocked",
@@ -11467,7 +11675,9 @@ export async function paperSniperRehearseReport(
         envelopePath = null;
         push("tx-simulate", "skipped", "nothing to simulate without a build", []);
       } else {
+        buildSucceeded = true;
         push("tx-build", "executed", `UNSIGNED mainnet-dry-run envelope built for ${buildMint} (nothing signed, nothing sent)`, ["envelope.json", ...buildReportArtifacts]);
+        simAttempted = true;
         simulationPath = join(outDir, "tx-simulation.json");
         const sim = await paperSimulationTxReport(ctx, {
           envelopePath,
@@ -11493,6 +11703,9 @@ export async function paperSniperRehearseReport(
             simOutcome = null;
           }
         }
+        // Map the txpreview outcome ("simulated-ok"/"simulated-failed"/…) onto the closed
+        // score-input/release-candidate enum ("simulated-ok"/"failed"/"unavailable").
+        simOutcomeRc = simOutcome === "simulated-ok" ? "simulated-ok" : simOutcome === null ? "unavailable" : "failed";
         if (simOutcome === "simulated-ok") {
           push("tx-simulate", "executed", "the exact envelope simulated ok against recent chain state", ["tx-simulation.json"]);
         } else if (simOutcome === null) {
@@ -11500,6 +11713,9 @@ export async function paperSniperRehearseReport(
           simulationPath = null;
         } else {
           // S95: a failed simulation names its deterministic classification + next safe action.
+          // The classification is only meaningful on a failure (the closed S95 failure set).
+          simClassificationRc = simClassification;
+          simFailedRc = true;
           push(
             "tx-simulate",
             "failed",
@@ -11509,6 +11725,46 @@ export async function paperSniperRehearseReport(
           );
         }
       }
+    }
+  }
+
+  // --- S100/S102: Rust tx inspection (optional; mainnet-dry-run only, over the UNSIGNED envelope) -
+  // Inspects the unsigned envelope's wire shape through the Rust sidecar (version, blockhash,
+  // instruction/account counts, program ids). The engine refuses a signed envelope by design and
+  // has no network/signer/send. Inspection facts are surfaced in the release candidate.
+  if (mode !== "mainnet-dry-run") {
+    push("tx-inspect", "skipped", `mode ${mode} builds no unsigned envelope to inspect`, []);
+  } else if (envelopePath === null) {
+    push("tx-inspect", "skipped", "no unsigned envelope was built to inspect", [], REHEARSE_NEXT["tx-inspect"] ?? null);
+  } else {
+    const inspectPath = join(outDir, "tx-inspect.json");
+    const inspect = await engineTxInspectReport(ctx, {
+      envelopePath,
+      outPath: inspectPath,
+      force: opts.force,
+    });
+    if (inspect.exitCode === 0 && existsSync(inspectPath)) {
+      txInspectAvailable = true;
+      try {
+        const parsed = JSON.parse(stripJsonBom(readFileSync(inspectPath, "utf8"))) as {
+          shape?: { versionSupported?: boolean; blockhashPresent?: boolean; instructionCount?: number; unresolvableProgramIdCount?: number };
+        };
+        const shape = parsed.shape ?? {};
+        txInspectVersionSupported = typeof shape.versionSupported === "boolean" ? shape.versionSupported : null;
+        txInspectBlockhashPresent = typeof shape.blockhashPresent === "boolean" ? shape.blockhashPresent : null;
+        txInspectInstructionCount = typeof shape.instructionCount === "number" ? shape.instructionCount : null;
+        txInspectUnresolvableProgramIdCount = typeof shape.unresolvableProgramIdCount === "number" ? shape.unresolvableProgramIdCount : null;
+      } catch {
+        txInspectAvailable = false;
+      }
+      push(
+        "tx-inspect",
+        "executed",
+        `Rust unsigned-shape inspection written (version ${txInspectVersionSupported === true ? "supported" : "unsupported"}, ${txInspectInstructionCount ?? "?"} instruction(s))`,
+        ["tx-inspect.json"],
+      );
+    } else {
+      push("tx-inspect", "unavailable", `Rust tx inspection unavailable (the build/simulation evidence is unaffected): ${inspect.text.slice(0, 160)}`, [], REHEARSE_NEXT["tx-inspect"] ?? null);
     }
   }
 
@@ -11585,6 +11841,121 @@ export async function paperSniperRehearseReport(
     );
   }
 
+  // --- S101/S102: candidate scoring (intelligence layer; all modes) ----------------
+  // Builds a sniper.score.input.v1 bundle from the evidence gathered above and scores it through the
+  // Rust sidecar into a deterministic per-candidate score + closed verdict + ranking. A score is
+  // INTELLIGENCE ONLY — never a buy signal, never live readiness; a rejected risk stays rejected no
+  // matter the score, and scoring gates NOTHING in the live path. The bundle is also the single
+  // source of truth for the risk + quote evidence folded into the release candidate.
+  let scoreInputPath: string | null = null;
+  {
+    const scoreNetwork = mode === "mainnet-dry-run" ? "mainnet-beta" : mode === "devnet" ? "devnet" : null;
+    const entries = buildRehearseScoreInputEntries({
+      ctx,
+      candidatesPath,
+      riskDir: join(outDir, "risk"),
+      operatorRiskPath: effectiveRiskPath !== undefined ? resolvePath(ctx, effectiveRiskPath) : null,
+      preparedPath: routequotePath,
+      quoteScorePath,
+      buildTargetMint,
+      simOutcome: simOutcomeRc,
+      simClassification: simClassificationRc,
+      buildRefused,
+    });
+    if (entries.length === 0) {
+      push("candidate-score", "skipped", "no readable candidate to score", [], REHEARSE_NEXT["candidate-score"] ?? null);
+    } else {
+      let bundle: SniperScoreInput | null = null;
+      try {
+        bundle = normalizeSniperScoreInput({ sourceLabel: "paper:sniper:rehearse", mode, network: scoreNetwork, entries });
+      } catch (err) {
+        push("candidate-score", "failed", `score input could not be assembled: ${(err as Error).message.slice(0, 200)}`, [], REHEARSE_NEXT["candidate-score"] ?? null);
+        bundle = null;
+      }
+      if (bundle !== null) {
+        // Derive RC risk + quote evidence from the bundle — the single source of truth for what was scored.
+        scoringCandidateCount = bundle.candidates.length;
+        for (const c of bundle.candidates) {
+          const f = c.facts;
+          if (f.riskDecision !== null) {
+            riskAssessedRc = true;
+            if (f.riskDecision === "REJECT") {
+              riskRejectedRc = true;
+              riskWorstDecisionRc = "REJECT";
+            } else if (f.riskDecision === "CAUTION" && riskWorstDecisionRc !== "REJECT") {
+              riskWorstDecisionRc = "CAUTION";
+            } else if (f.riskDecision === "PASS_FOR_PAPER_EVALUATION" && riskWorstDecisionRc === null) {
+              riskWorstDecisionRc = "PASS_FOR_PAPER_EVALUATION";
+            }
+          }
+          if (f.riskCriticalFlagCount !== null) riskCriticalRc = Math.max(riskCriticalRc ?? 0, f.riskCriticalFlagCount);
+          if (f.riskHighFlagCount !== null) riskHighRc = Math.max(riskHighRc ?? 0, f.riskHighFlagCount);
+          if (f.token2022Blocker === true) {
+            riskToken2022Rc = true;
+            if (!riskToken2022MintsRc.includes(c.mint)) riskToken2022MintsRc.push(c.mint);
+          }
+        }
+        const target = buildTargetMint !== null ? bundle.candidates.find((c) => c.mint === buildTargetMint) : bundle.candidates[0];
+        if (target !== undefined && target.facts.quoteObserved === true) quoteObservedRc = true;
+        // quoteFreshnessRc is sourced from the TS readiness evidence below (no Rust dependency).
+
+        scoreInputPath = join(outDir, "sniper-score-input.json");
+        try {
+          writeFileSync(scoreInputPath, JSON.stringify(bundle, null, 2) + "\n");
+        } catch {
+          scoreInputPath = null;
+        }
+        if (scoreInputPath === null) {
+          push("candidate-score", "failed", "could not write the score input bundle", []);
+        } else {
+          const scorePath = join(outDir, "candidate-scores.json");
+          const score = await engineSniperScoreReport(ctx, { inputPath: scoreInputPath, outPath: scorePath, force: opts.force });
+          if (score.exitCode === 0 && existsSync(scorePath)) {
+            scoringAvailable = true;
+            scoringEngineSource = "rust";
+            try {
+              const parsed = JSON.parse(stripJsonBom(readFileSync(scorePath, "utf8"))) as {
+                bestCandidateId?: string | null;
+                rankedCandidates?: Array<{ candidateId?: string; mint?: string; rank?: number; score?: number; verdict?: string; reasonCodes?: string[] }>;
+              };
+              scoringBestCandidateId = typeof parsed.bestCandidateId === "string" ? parsed.bestCandidateId : null;
+              scoringRanked = (parsed.rankedCandidates ?? []).slice(0, 50).flatMap((c) =>
+                typeof c.candidateId === "string" && typeof c.mint === "string" && typeof c.rank === "number" && typeof c.score === "number" && typeof c.verdict === "string"
+                  ? [
+                      {
+                        candidateId: c.candidateId,
+                        mint: c.mint,
+                        rank: c.rank,
+                        score: c.score,
+                        verdict: c.verdict,
+                        reasonCodes: Array.isArray(c.reasonCodes) ? c.reasonCodes.filter((r): r is string => typeof r === "string") : [],
+                      },
+                    ]
+                  : [],
+              );
+            } catch {
+              scoringRanked = [];
+            }
+            push(
+              "candidate-score",
+              "executed",
+              `candidate scoring written (best: ${scoringBestCandidateId ?? "none"}; ${scoringCandidateCount} candidate(s) — intelligence only, never a buy signal)`,
+              ["sniper-score-input.json", "candidate-scores.json"],
+            );
+          } else {
+            push(
+              "candidate-score",
+              "unavailable",
+              `Rust candidate scoring unavailable (the paper pipeline is unaffected): ${score.text.slice(0, 160)}`,
+              ["sniper-score-input.json"],
+              REHEARSE_NEXT["candidate-score"] ?? null,
+            );
+          }
+        }
+      }
+    }
+  }
+
   // --- Stage 9: readiness (always; read-only) -------------------------------------
   const readinessPath = join(outDir, "readiness.json");
   const readiness = executionReadinessReport(ctx, {
@@ -11601,14 +11972,125 @@ export async function paperSniperRehearseReport(
   if (readiness.exitCode === 0 && existsSync(readinessPath)) {
     let satisfied = "?";
     try {
-      const parsed = JSON.parse(stripJsonBom(readFileSync(readinessPath, "utf8"))) as { satisfiedCount?: number; totalChecks?: number };
+      const parsed = JSON.parse(stripJsonBom(readFileSync(readinessPath, "utf8"))) as {
+        satisfiedCount?: number;
+        totalChecks?: number;
+        verdict?: string;
+        evidence?: { quoteFreshness?: { verdict?: string } | null };
+      };
       satisfied = `${parsed.satisfiedCount ?? "?"}/${parsed.totalChecks ?? "?"}`;
+      readinessAvailableRc = true;
+      readinessVerdictRc = typeof parsed.verdict === "string" ? parsed.verdict : null;
+      readinessSatisfiedRc = typeof parsed.satisfiedCount === "number" ? parsed.satisfiedCount : null;
+      readinessTotalRc = typeof parsed.totalChecks === "number" ? parsed.totalChecks : null;
+      // RC quote freshness comes from the TS-computed readiness evidence (no Rust dependency).
+      const freshnessVerdict = parsed.evidence?.quoteFreshness?.verdict;
+      if (typeof freshnessVerdict === "string") quoteFreshnessRc = freshnessVerdict;
     } catch {
       satisfied = "?";
     }
     push("readiness", "executed", `mainnet readiness checklist written (${satisfied} conditions satisfied; verdict blocked by design)`, ["readiness.json"]);
   } else {
     push("readiness", "failed", `readiness refused: ${readiness.text.slice(0, 200)}`);
+  }
+
+  // --- S102: mainnet dry-run RELEASE CANDIDATE (mainnet-dry-run only) --------------------
+  // Folds every stage's evidence into one auditable, NO-SEND release-candidate artifact. The
+  // verdict is re-derived from the structured evidence (never from a candidate score), the
+  // live-send status is pinned "disabled", and the schema refuses any send-result field.
+  if (mode === "mainnet-dry-run") {
+    const rcPath = join(outDir, "release-candidate.json");
+    const artifactRefs: string[] = [];
+    for (const ref of [
+      "candidates.json",
+      "sniper-score-input.json",
+      "candidate-scores.json",
+      "preflight-input.json",
+      "routequote-prepared.json",
+      "quote-scores.json",
+      "envelope.json",
+      "txbuild-report.json",
+      "tx-inspect.json",
+      "tx-simulation.json",
+      "readiness.json",
+    ]) {
+      if (existsSync(join(outDir, ref))) artifactRefs.push(ref);
+    }
+    const rcInput: BuildMainnetDryRunReleaseCandidateInput = {
+      runId: opts.operatorLabel ?? null,
+      generatedAt: (ctx.now ?? isoNow)(),
+      network: "mainnet-beta",
+      candidateSource: {
+        kind: opts.replayFile !== undefined ? "replay" : "file",
+        label: opts.replayFile !== undefined ? "realtime replay snapshot" : (opts.candidatesPath ?? "candidates.json"),
+      },
+      scoring: {
+        available: scoringAvailable,
+        engineSource: scoringEngineSource,
+        candidateCount: scoringCandidateCount,
+        bestCandidateId: scoringBestCandidateId,
+        rankedCandidates: scoringRanked,
+      },
+      risk: {
+        assessed: riskAssessedRc,
+        source: riskSource,
+        worstDecision: riskWorstDecisionRc,
+        rejected: riskRejectedRc,
+        criticalFlagCount: riskCriticalRc,
+        highFlagCount: riskHighRc,
+        token2022Blocker: riskToken2022Rc,
+        token2022BlockerMints: riskToken2022MintsRc,
+      },
+      quote: {
+        attempted: quoteAttempted,
+        observed: quoteObservedRc,
+        freshness: quoteFreshnessRc,
+        scoreAvailable: quoteScoreAvailable,
+        score: quoteScoreValue,
+      },
+      build: {
+        attempted: buildAttempted,
+        refused: buildRefused,
+        succeeded: buildSucceeded,
+        refusalCodes: buildRefusalCodesRc,
+      },
+      txInspection: {
+        available: txInspectAvailable,
+        versionSupported: txInspectVersionSupported,
+        blockhashPresent: txInspectBlockhashPresent,
+        instructionCount: txInspectInstructionCount,
+        unresolvableProgramIdCount: txInspectUnresolvableProgramIdCount,
+      },
+      simulation: {
+        attempted: simAttempted,
+        outcome: simOutcomeRc,
+        classification: simClassificationRc,
+        failed: simFailedRc,
+      },
+      readiness: {
+        available: readinessAvailableRc,
+        verdict: readinessVerdictRc,
+        satisfiedCount: readinessSatisfiedRc,
+        totalChecks: readinessTotalRc,
+      },
+      stageError: { occurred: stageErrorOccurred, detail: stageErrorDetail },
+      artifactRefs,
+    };
+    try {
+      const rc = buildMainnetDryRunReleaseCandidate(rcInput);
+      writeFileSync(rcPath, JSON.stringify(redactValue(rc), null, 2) + "\n");
+      push(
+        "release-candidate",
+        rc.verdict === "dryrun-complete-blocked-live" ? "executed" : rc.verdict === "dryrun-error" ? "failed" : "blocked",
+        `release candidate assembled — verdict ${rc.verdict}; live sending DISABLED`,
+        ["release-candidate.json"],
+        rc.nextSafeActions[0] ?? null,
+      );
+    } catch (err) {
+      push("release-candidate", "failed", `release candidate could not be assembled: ${(err as Error).message.slice(0, 200)}`, [], REHEARSE_NEXT["release-candidate"] ?? null);
+    }
+  } else {
+    push("release-candidate", "skipped", `the release candidate is a mainnet-dry-run deliverable; mode ${mode} produces none`, []);
   }
 
   return finishRehearsal();
