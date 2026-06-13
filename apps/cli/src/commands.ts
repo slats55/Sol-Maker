@@ -127,10 +127,13 @@ import {
 import {
   fetchEngineStatus,
   normalizeReplayThroughEngine,
+  scoreQuotesThroughEngine,
   ENGINE_STATUS_SCHEMA_VERSION,
+  ENGINE_QUOTE_SCORE_SCHEMA_VERSION,
   type EngineProcessRunner,
   type EngineStatusBridgeResult,
   type EngineRealtimeBridgeResult,
+  type EngineQuoteScoreBridgeResult,
 } from "@soulmaker/engine-bridge";
 import {
   createJupiterSwapBuilder,
@@ -11738,5 +11741,128 @@ export async function engineStatusReport(
     "",
     ...report.caveats.map((c) => `CAVEAT: ${c}`),
   ];
+  return { text: redactString(lines.join("\n")) + wroteLine, exitCode: 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 99 — engine:quote:score (Rust route-quote scoring hot path)
+//   Score a TypeScript-produced routequote.fetch.report.v1 through the Rust
+//   sidecar: per-entry quote-quality scores, a deterministic ranking, and
+//   closed reason codes. TypeScript stays the authority — every score is
+//   RECOMPUTED and every freshness verdict RE-EVALUATED with the real
+//   evaluateQuoteFreshness before the artifact is accepted. A route score is
+//   intelligence only: never a profitability claim, never readiness.
+// ---------------------------------------------------------------------------
+
+export interface EngineQuoteScoreCommandOptions {
+  /** Path to a routequote.fetch.report.v1 file (e.g. from paper:routequote:fetch --out-dir). */
+  reportPath?: string;
+  /** EXPLICIT quote age cap in ms (REQUIRED — no default cap exists by design). */
+  maxQuoteAgeMs?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit 1 when the Rust engine is unavailable (CI gating; default exit 0). */
+  failOnUnavailable?: boolean;
+}
+
+/** `soulmaker engine:quote:score` — score a quote fetch report through the Rust sidecar. */
+export async function engineQuoteScoreReport(
+  ctx: CommandContext = {},
+  opts: EngineQuoteScoreCommandOptions = {},
+): Promise<CliReport> {
+  if (!opts.reportPath) {
+    return { text: "Refusing: --report <path> is required (a routequote.fetch.report.v1 file, e.g. from paper:routequote:fetch --out-dir).", exitCode: 1 };
+  }
+  const maxQuoteAgeMs = Number(opts.maxQuoteAgeMs);
+  if (opts.maxQuoteAgeMs === undefined || !Number.isInteger(maxQuoteAgeMs) || maxQuoteAgeMs <= 0 || maxQuoteAgeMs > 999_999_999) {
+    return { text: "Refusing: --max-quote-age-ms <ms> is required (a positive integer; no default cap exists by design).", exitCode: 1 };
+  }
+  let fetchReportJson: string;
+  try {
+    fetchReportJson = readFileSync(resolvePath(ctx, opts.reportPath), "utf8");
+  } catch {
+    return { text: redactString(`Refusing: cannot read the fetch report at ${opts.reportPath}`), exitCode: 1 };
+  }
+
+  const result: EngineQuoteScoreBridgeResult = await scoreQuotesThroughEngine({
+    cwd: ctx.cwd ?? process.cwd(),
+    fetchReportJson,
+    scoredAt: (ctx.now ?? isoNow)(),
+    maxQuoteAgeMs,
+    runner: ctx.createEngineRunner?.(),
+    exists: ctx.engineBinaryExists,
+    env: ctx.env,
+  });
+
+  if (result.kind !== "ok") {
+    const exitCode = result.kind === "refused" || opts.failOnUnavailable ? 1 : 0;
+    if (opts.json) {
+      const payload = {
+        engineQuoteScore: result.kind,
+        reason: result.reason,
+        detail: result.detail,
+        nextSafeAction:
+          result.kind === "unavailable"
+            ? "install Rust via https://rustup.rs and run pnpm rust:build — quote scoring is Rust-only intelligence; the paper pipeline is fully functional without it"
+            : "inspect the engine output/exit detail above; the artifact was refused, never trusted",
+      };
+      return { text: redactString(JSON.stringify(payload, null, 2)), exitCode };
+    }
+    const lines = [
+      "RUST ENGINE ROUTE QUOTE SCORES",
+      result.kind === "unavailable"
+        ? `engine: UNAVAILABLE — ${result.reason}`
+        : `engine: REFUSED — ${result.reason}`,
+      `detail: ${result.detail}`,
+      result.kind === "unavailable"
+        ? "NEXT: install Rust via https://rustup.rs and run pnpm rust:build — quote scoring is Rust-only intelligence; the paper pipeline is fully functional without it."
+        : "NEXT: the engine answered but the artifact was refused (never trusted); inspect the detail above.",
+    ];
+    return { text: redactString(lines.join("\n")), exitCode };
+  }
+
+  const report = result.report;
+  let wroteLine = "";
+  if (opts.outPath) {
+    const resolvedPath = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolvedPath)) {
+      return { text: redactString(`Refusing: ${resolvedPath} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolvedPath, JSON.stringify(report, null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the quote score artifact at ${resolvedPath}`), exitCode: 1 };
+    }
+    wroteLine = `\nwrote ${resolvedPath}`;
+  }
+  if (opts.json) {
+    // The artifact is printed VERBATIM as validated — schemaVersion engine.routequote.score.report.v1.
+    return { text: JSON.stringify(report, null, 2) + wroteLine, exitCode: 0 };
+  }
+  const lines = [
+    "RUST ENGINE ROUTE QUOTE SCORES",
+    `schema:    ${ENGINE_QUOTE_SCORE_SCHEMA_VERSION} via ${result.via}`,
+    `report:    ${report.providerId} (${report.endpointHost}) fetched ${report.reportFetchedAt}`,
+    `scored:    ${report.scoredAt} (explicit cap ${report.maxQuoteAgeMs}ms) — ${report.includedCount} included / ${report.excludedCount} excluded of ${report.entryCount}`,
+    `ipc:       spawn ${result.timing.spawnMs}ms, parse ${result.timing.parseMs}ms, validate ${result.timing.validateMs}ms (IPC overhead only, never a trading-latency claim)`,
+    "",
+  ];
+  for (const id of report.ranking) {
+    const entry = report.entries.find((e) => e.candidateId === id);
+    if (!entry) continue;
+    const reasons = entry.reasons.length > 0 ? ` [${entry.reasons.join(", ")}]` : "";
+    lines.push(`  ${String(entry.score).padStart(3)}  ${id}${reasons}`);
+  }
+  for (const entry of report.entries.filter((e) => !e.included)) {
+    lines.push(`    -  ${entry.candidateId} EXCLUDED [${entry.reasons.join(", ")}]`);
+  }
+  lines.push("");
+  if (report.bestCandidateId !== null) {
+    lines.push(`best:      ${report.bestCandidateId} (quote-quality intelligence only — never a profitability claim, never an order)`);
+  } else {
+    lines.push("best:      none (no entry was both observed and fresh)");
+  }
+  lines.push("", ...report.caveats.map((c) => `CAVEAT: ${c}`));
   return { text: redactString(lines.join("\n")) + wroteLine, exitCode: 0 };
 }

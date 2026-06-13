@@ -52,6 +52,7 @@ import {
   paperRealtimeWatchReport,
   paperSimulationTxReport,
   engineStatusReport,
+  engineQuoteScoreReport,
   executionStatusReport,
   executionBuildReport,
   executionDevnetSendReport,
@@ -2766,6 +2767,33 @@ program
     const { text, exitCode } = await engineStatusReport(
       {},
       { json: Boolean(opts.json), outPath: opts.out, force: Boolean(opts.force), failOnUnavailable: Boolean(opts.failOnUnavailable) },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("engine:quote:score")
+  .description(
+    "S99 Rust route-quote scoring: run a routequote.fetch.report.v1 (from paper:routequote:fetch --out-dir) through the Rust sidecar and STRICTLY validate engine.routequote.score.report.v1 — every score is RECOMPUTED from its components and every freshness verdict RE-EVALUATED with the real evaluateQuoteFreshness; any disagreement refuses the artifact. A route score is quote-quality INTELLIGENCE only (impact, hops, age) — never a profitability claim, never readiness, never an order. Requires an EXPLICIT --max-quote-age-ms (no default cap by design). No Rust engine reports UNAVAILABLE honestly (exit 0 unless --fail-on-unavailable)",
+  )
+  .requiredOption("--report <path>", "routequote.fetch.report.v1 file to score")
+  .requiredOption("--max-quote-age-ms <ms>", "EXPLICIT quote age cap in milliseconds (no default exists by design)")
+  .option("--json", "emit the validated score artifact as stable JSON")
+  .option("--out <path>", "write ONLY the validated artifact JSON to this path (refused if it exists)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-unavailable", "exit 1 when no Rust engine is available (default: honest report, exit 0)")
+  .action(async (opts: { report?: string; maxQuoteAgeMs?: string; json?: boolean; out?: string; force?: boolean; failOnUnavailable?: boolean }) => {
+    const { text, exitCode } = await engineQuoteScoreReport(
+      {},
+      {
+        reportPath: opts.report,
+        maxQuoteAgeMs: opts.maxQuoteAgeMs,
+        json: Boolean(opts.json),
+        outPath: opts.out,
+        force: Boolean(opts.force),
+        failOnUnavailable: Boolean(opts.failOnUnavailable),
+      },
     );
     console.log(text);
     if (exitCode !== 0) process.exitCode = exitCode;
