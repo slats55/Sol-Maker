@@ -16,9 +16,11 @@
 import { describe, it, expect } from "vitest";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { createJupiterRecentAdapter } from "@soulmaker/realtime";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createJupiterRecentAdapter, CANDIDATE_OBSERVATION_CAVEATS, REPLAY_CAVEAT } from "@soulmaker/realtime";
 import type { FetchLike } from "@soulmaker/realtime";
+import type { EngineProcessRunner } from "@soulmaker/engine-bridge";
 import { paperRealtimeSnapshotReport, paperRealtimeWatchReport, paperSniperCandidatesValidateReport } from "./commands.js";
 
 const MINT_A = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -139,6 +141,204 @@ describe("paper:realtime:snapshot — happy path", () => {
       const snapshot = JSON.parse(r.text) as Record<string, unknown>;
       expect(snapshot.status).toBe("blocked");
       expect(snapshot.keptCount).toBe(0);
+    });
+  });
+});
+
+describe("paper:realtime:snapshot --engine rust (S98 sidecar hot path)", () => {
+  const REPLAY_EVENTS = {
+    events: [
+      { mint: MINT_A, symbol: "AAA", name: "Token A", observedAtLabel: "t0", launchpadLabel: "pump.fun", liquidityUsdHint: 1500 },
+      { mint: MINT_A, symbol: "DUP" },
+      { mint: MINT_B, symbol: "BBB" },
+    ],
+  };
+
+  /** A fake runner that emits exactly what the real Rust engine would. */
+  function rustOkRunner(): EngineProcessRunner {
+    const caveats = [...CANDIDATE_OBSERVATION_CAVEATS, REPLAY_CAVEAT];
+    const artifact = {
+      schemaVersion: "engine.realtime.observations.report.v1",
+      banner: "RUST ENGINE REALTIME REPLAY — test fixture banner.",
+      engineName: "solmaker-engine",
+      engineVersion: "0.1.0",
+      ipcVersion: "engine.ipc.v1",
+      providerId: "replay-file",
+      sourceKind: "replay",
+      endpointHost: "local-replay-file",
+      fetchedAt: "replay",
+      status: "observed",
+      statusDetail: null,
+      eventCount: 3,
+      observationCount: 2,
+      duplicateMintCount: 1,
+      observations: [
+        {
+          candidateId: `rt-${MINT_A.slice(0, 8).toLowerCase()}`,
+          mint: MINT_A,
+          symbol: "AAA",
+          name: "Token A",
+          sourceProviderId: "replay-file",
+          sourceKind: "replay",
+          observedAtLabel: "t0",
+          launchpadLabel: "pump.fun",
+          liquidityUsdHint: 1500,
+          marketCapUsdHint: null,
+          holderCountHint: null,
+          caveats,
+        },
+        {
+          candidateId: `rt-${MINT_B.slice(0, 8).toLowerCase()}`,
+          mint: MINT_B,
+          symbol: "BBB",
+          name: null,
+          sourceProviderId: "replay-file",
+          sourceKind: "replay",
+          observedAtLabel: "replay-event",
+          launchpadLabel: null,
+          liquidityUsdHint: null,
+          marketCapUsdHint: null,
+          holderCountHint: null,
+          caveats,
+        },
+      ],
+      createdAt: FIXED_CLOCK(),
+      caveats: ["Replay normalization only — test fixture caveat."],
+      neverSends: true,
+      phase7LiveTradingReady: false,
+    };
+    return {
+      run: () =>
+        Promise.resolve({
+          started: true,
+          startError: null,
+          exitCode: 0,
+          timedOut: false,
+          stdout: JSON.stringify(artifact, null, 2) + "\n",
+          stderr: "",
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        }),
+    };
+  }
+
+  function missingEngineRunner(): EngineProcessRunner {
+    return {
+      run: () =>
+        Promise.resolve({
+          started: false,
+          startError: "ENOENT",
+          exitCode: null,
+          timedOut: false,
+          stdout: "",
+          stderr: "",
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        }),
+    };
+  }
+
+  it("refuses an unknown --engine and a live source with --engine rust", async () => {
+    await withTmpAsync(async (tmp) => {
+      const ctx = { cwd: tmp, env: {}, now: FIXED_CLOCK };
+      const bogus = await paperRealtimeSnapshotReport(ctx, { engine: "fortran" });
+      expect(bogus.exitCode).toBe(1);
+      expect(bogus.text).toContain("--engine");
+
+      const live = await paperRealtimeSnapshotReport(ctx, { engine: "rust" });
+      expect(live.exitCode).toBe(1);
+      expect(live.text).toContain("no network capability");
+    });
+  });
+
+  it("a missing Rust engine is an honest refusal (exit 1), never a fake fallback", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeFileSync(join(tmp, "replay.json"), JSON.stringify(REPLAY_EVENTS));
+      const ctx = { cwd: tmp, env: {}, now: FIXED_CLOCK, createEngineRunner: () => missingEngineRunner(), engineBinaryExists: () => false };
+      const r = await paperRealtimeSnapshotReport(ctx, { source: "replay", replayFile: "replay.json", engine: "rust" });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toContain("no Rust engine is available");
+      expect(r.text).toContain("--engine ts");
+    });
+  });
+
+  it("a validated engine artifact folds into the SAME snapshot the TS path builds (byte parity)", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeFileSync(join(tmp, "replay.json"), JSON.stringify(REPLAY_EVENTS));
+      const baseCtx = { cwd: tmp, env: {}, now: FIXED_CLOCK };
+      const ts = await paperRealtimeSnapshotReport(baseCtx, { source: "replay", replayFile: "replay.json", json: true });
+      expect(ts.exitCode, ts.text.slice(0, 300)).toBe(0);
+
+      const rust = await paperRealtimeSnapshotReport(
+        { ...baseCtx, createEngineRunner: () => rustOkRunner(), engineBinaryExists: () => false },
+        { source: "replay", replayFile: "replay.json", engine: "rust", json: true },
+      );
+      expect(rust.exitCode, rust.text.slice(0, 300)).toBe(0);
+      expect(rust.text).toBe(ts.text); // byte-identical artifact regardless of engine
+
+      const snapshot = JSON.parse(rust.text) as Record<string, unknown>;
+      expect(snapshot.schemaVersion).toBe("realtime.candidates.snapshot.v1");
+      expect(snapshot.sourceKind).toBe("replay");
+      expect(snapshot.keptCount).toBe(2);
+    });
+  });
+
+  it("a tampered engine artifact is refused with the schema-mismatch reason", async () => {
+    await withTmpAsync(async (tmp) => {
+      writeFileSync(join(tmp, "replay.json"), JSON.stringify(REPLAY_EVENTS));
+      const tampered: EngineProcessRunner = {
+        run: () =>
+          Promise.resolve({
+            started: true,
+            startError: null,
+            exitCode: 0,
+            timedOut: false,
+            stdout: JSON.stringify({ schemaVersion: "engine.realtime.observations.report.v1", executable: true }),
+            stderr: "",
+            stdoutTruncated: false,
+            stderrTruncated: false,
+          }),
+      };
+      const ctx = { cwd: tmp, env: {}, now: FIXED_CLOCK, createEngineRunner: () => tampered, engineBinaryExists: () => false };
+      const r = await paperRealtimeSnapshotReport(ctx, { source: "replay", replayFile: "replay.json", engine: "rust" });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toContain("schema-mismatch");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REAL end-to-end: the actual Rust binary normalizes the replay file and the
+// resulting snapshot artifact is BYTE-IDENTICAL to the TypeScript path's.
+// Skipped honestly when no prebuilt engine exists — never faked.
+// ---------------------------------------------------------------------------
+
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+const ENGINE_BINARY = process.platform === "win32" ? "solmaker-engine.exe" : "solmaker-engine";
+const PREBUILT_ENGINE_EXISTS =
+  existsSync(join(REPO_ROOT, "target", "release", ENGINE_BINARY)) ||
+  existsSync(join(REPO_ROOT, "target", "debug", ENGINE_BINARY));
+
+describe("paper:realtime:snapshot --engine rust — REAL engine e2e", () => {
+  it.skipIf(!PREBUILT_ENGINE_EXISTS)("the real Rust engine produces a byte-identical snapshot artifact", async () => {
+    await withTmpAsync(async (tmp) => {
+      const replayPath = join(tmp, "replay.json");
+      writeFileSync(
+        replayPath,
+        JSON.stringify({
+          events: [
+            { mint: MINT_A, symbol: "AAA", name: "Token A", observedAtLabel: "t0", launchpadLabel: "pump.fun", liquidityUsdHint: 1500.25 },
+            { mint: MINT_A, symbol: "DUP" },
+            { mint: MINT_B, symbol: "BBB", name: "a1".repeat(32) },
+          ],
+        }),
+      );
+      const ctx = { cwd: REPO_ROOT, env: process.env, now: FIXED_CLOCK };
+      const ts = await paperRealtimeSnapshotReport(ctx, { source: "replay", replayFile: replayPath, json: true });
+      expect(ts.exitCode, ts.text.slice(0, 300)).toBe(0);
+      const rust = await paperRealtimeSnapshotReport(ctx, { source: "replay", replayFile: replayPath, engine: "rust", json: true });
+      expect(rust.exitCode, rust.text.slice(0, 300)).toBe(0);
+      expect(rust.text).toBe(ts.text);
     });
   });
 });

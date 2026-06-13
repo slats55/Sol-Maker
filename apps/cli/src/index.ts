@@ -1404,10 +1404,11 @@ program
 program
   .command("paper:realtime:snapshot")
   .description(
-    "ONE poll of a real-time candidate source — the public Jupiter recent-tokens feed (live) or a local replay file — folded into a realtime.candidates.snapshot.v1 artifact plus a ready-to-use canonical sniper.candidate.list.v1. Watching is READ-ONLY observation: no wallet, no keys, no signing, no sending, no order — market figures are provider-reported HINTS, replay data is always labeled replay, and the output feeds the existing PAPER intake. PAPER mode requires --allow-paper-read for the live source",
+    "ONE poll of a real-time candidate source — the public Jupiter recent-tokens feed (live) or a local replay file — folded into a realtime.candidates.snapshot.v1 artifact plus a ready-to-use canonical sniper.candidate.list.v1. Watching is READ-ONLY observation: no wallet, no keys, no signing, no sending, no order — market figures are provider-reported HINTS, replay data is always labeled replay, and the output feeds the existing PAPER intake. PAPER mode requires --allow-paper-read for the live source. S98: --engine rust normalizes a replay file through the Rust sidecar (strictly validated; byte-identical snapshot)",
   )
   .option("--source <id>", 'candidate source: "jupiter-recent" (live, default) or "replay" (local file)')
   .option("--replay-file <path>", 'replay events JSON ({ events: [{ mint, ... }] }; required for --source replay)')
+  .option("--engine <id>", 'normalizer: "ts" (default) or "rust" (S98 sidecar hot path; --source replay only; honest refusal when no Rust engine exists)')
   .option("--limit <n>", "keep at most this many observations (default 25, max 50)")
   .option("--min-liquidity-usd <usd>", "drop observations whose liquidity HINT is missing or below this")
   .option("--endpoint <url>", "override the live feed base URL")
@@ -1421,6 +1422,7 @@ program
     async (opts: {
       source?: string;
       replayFile?: string;
+      engine?: string;
       limit?: string;
       minLiquidityUsd?: string;
       endpoint?: string;
@@ -1436,6 +1438,7 @@ program
         {
           source: opts.source,
           replayFile: opts.replayFile,
+          engine: opts.engine,
           limit: opts.limit,
           minLiquidityUsd: opts.minLiquidityUsd,
           endpoint: opts.endpoint,

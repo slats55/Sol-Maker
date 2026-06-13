@@ -111,6 +111,7 @@ import {
   buildRealtimeCandidatesSnapshot,
   formatRealtimeCandidatesSnapshot,
   type CandidateSourceAdapter,
+  type CandidateSourceResult,
   type JupiterRecentAdapterOptions,
   type RealtimeCandidatesSnapshot,
 } from "@soulmaker/realtime";
@@ -125,9 +126,11 @@ import {
 } from "@soulmaker/txpreview";
 import {
   fetchEngineStatus,
+  normalizeReplayThroughEngine,
   ENGINE_STATUS_SCHEMA_VERSION,
   type EngineProcessRunner,
   type EngineStatusBridgeResult,
+  type EngineRealtimeBridgeResult,
 } from "@soulmaker/engine-bridge";
 import {
   createJupiterSwapBuilder,
@@ -5388,6 +5391,8 @@ export interface PaperRealtimeSnapshotCommandOptions {
   source?: string;
   /** Replay events JSON path (required when source is "replay"). */
   replayFile?: string;
+  /** Normalizer: "ts" (default) or "rust" (S98 sidecar hot path; replay only). */
+  engine?: string;
   /** Keep at most this many observations (default 25, max 50). */
   limit?: string;
   /** Drop observations whose liquidity hint is missing or below this (USD). */
@@ -5513,21 +5518,102 @@ export async function paperRealtimeSnapshotReport(
     }
   }
 
-  const gate = openRealtimeSource(ctx, {
-    source: opts.source,
-    replayFile: opts.replayFile,
-    endpoint: opts.endpoint,
-    timeoutMs,
-    allowPaperRead: opts.allowPaperRead,
-  });
-  if (!gate.ok || !gate.adapter || !gate.sourceKind) {
-    return { text: gate.message ?? "Refusing: candidate source unavailable.", exitCode: 1 };
+  const engine = opts.engine ?? "ts";
+  if (engine !== "ts" && engine !== "rust") {
+    return { text: 'Refusing: --engine must be "ts" or "rust".', exitCode: 1 };
+  }
+
+  let pollResult: CandidateSourceResult;
+  let sourceKind: "live" | "replay";
+  let engineLine: string | null = null;
+
+  if (engine === "rust") {
+    // S98 Rust sidecar hot path — REPLAY ONLY. The Rust engine has no network
+    // capability by construction; the live feed stays TypeScript. TypeScript
+    // strictly validates the engine artifact and builds the SAME snapshot
+    // downstream (byte-identical to the TypeScript path for the same file).
+    if ((opts.source ?? "jupiter-recent") !== "replay") {
+      return {
+        text: 'Refusing: --engine rust supports only --source replay (the Rust engine has no network capability; the live feed stays TypeScript).',
+        exitCode: 1,
+      };
+    }
+    if (!opts.replayFile) {
+      return { text: 'Refusing: --replay-file <path> is required when --source is "replay".', exitCode: 1 };
+    }
+    let replayEventsJson: string;
+    try {
+      replayEventsJson = readFileSync(resolvePath(ctx, opts.replayFile), "utf8");
+    } catch {
+      return { text: redactString(`Refusing: cannot read the replay events file at ${opts.replayFile}`), exitCode: 1 };
+    }
+    const engineResult: EngineRealtimeBridgeResult = await normalizeReplayThroughEngine({
+      cwd: ctx.cwd ?? process.cwd(),
+      replayEventsJson,
+      createdAt: (ctx.now ?? isoNow)(),
+      runner: ctx.createEngineRunner?.(),
+      exists: ctx.engineBinaryExists,
+      env: ctx.env,
+    });
+    if (engineResult.kind === "unavailable") {
+      return {
+        text: redactString(
+          [
+            "Refusing: --engine rust was requested but no Rust engine is available.",
+            `detail: ${engineResult.detail}`,
+            "NEXT: install Rust via https://rustup.rs and run pnpm rust:build — or rerun with --engine ts (same artifact, TypeScript normalizer).",
+          ].join("\n"),
+        ),
+        exitCode: 1,
+      };
+    }
+    if (engineResult.kind === "refused") {
+      return {
+        text: redactString(
+          [
+            `Refusing: the Rust engine output was refused (${engineResult.reason}) — never trusted unvalidated.`,
+            `detail: ${engineResult.detail}`,
+          ].join("\n"),
+        ),
+        exitCode: 1,
+      };
+    }
+    pollResult = {
+      status: engineResult.report.status,
+      observations: [...engineResult.report.observations],
+      metadata: {
+        providerId: engineResult.report.providerId,
+        endpointHost: engineResult.report.endpointHost,
+        fetchedAt: engineResult.report.fetchedAt,
+        httpStatus: null,
+        responseSha256_128: null,
+        statusDetail: engineResult.report.statusDetail,
+      },
+    };
+    sourceKind = "replay";
+    engineLine = `engine:     rust sidecar via ${engineResult.via} (validated; spawn ${engineResult.timing.spawnMs}ms, parse ${engineResult.timing.parseMs}ms, validate ${engineResult.timing.validateMs}ms — IPC overhead only, never a trading-latency claim)`;
+  } else {
+    const gate = openRealtimeSource(ctx, {
+      source: opts.source,
+      replayFile: opts.replayFile,
+      endpoint: opts.endpoint,
+      timeoutMs,
+      allowPaperRead: opts.allowPaperRead,
+    });
+    if (!gate.ok || !gate.adapter || !gate.sourceKind) {
+      return { text: gate.message ?? "Refusing: candidate source unavailable.", exitCode: 1 };
+    }
+    try {
+      pollResult = await gate.adapter.fetchOnce();
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+    sourceKind = gate.sourceKind;
   }
 
   let snapshot: RealtimeCandidatesSnapshot;
   try {
-    const result = await gate.adapter.fetchOnce();
-    snapshot = buildRealtimeCandidatesSnapshot(result, gate.sourceKind, { limit, minLiquidityUsdHint });
+    snapshot = buildRealtimeCandidatesSnapshot(pollResult, sourceKind, { limit, minLiquidityUsdHint });
   } catch (err) {
     return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
   }
@@ -5553,6 +5639,9 @@ export async function paperRealtimeSnapshotReport(
   }
 
   const lines = [formatRealtimeCandidatesSnapshot(snapshot), ""];
+  if (engineLine !== null) {
+    lines.unshift(engineLine, "");
+  }
   if (wrotePaths.length > 0) {
     lines.push(`wrote ${wrotePaths.length} file(s):`);
     for (const p of wrotePaths) lines.push(`  - ${p}`);
