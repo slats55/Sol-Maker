@@ -551,6 +551,15 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
       "The S103-B operator demo workbench manifest: a SAFE, showable folder of the paper / dry-run pipeline. It ties together the real read-only Phase 7 audit + sign-off template, an honest devnet funding-status fixture, and the byte-pinned fictional candidate + release-candidate examples — every artifact labelled by provenance (real-readonly | fixture | fictional-example) with re-derived counts. Live execution is pinned disabled; nothing sends, signs, or trades. Produced by paper:sniper:operator-demo.",
     cli: "paper:sniper:operator-demo",
   },
+  {
+    id: "phase7.microtrade.preflight.v1",
+    title: "S104 micro-trade preflight",
+    family: "execution",
+    stability: "stable",
+    description:
+      "The S104-A no-send readiness check: IF a human later gives a separate, explicit S104 execution authorization, are the required inputs present? It folds the written Phase 7 sign-off, the reconciled devnet broadcast proof, a complete mainnet dry-run release candidate, a public burner wallet, a bounded max-spend, a manual-confirmation label, and the release candidate's risk/quote/simulation posture into one re-derived verdict. It DOES NOT execute a trade: it never signs, never sends, never loads a key, and the best verdict — ready-for-separate-execution-authorization — authorizes NOTHING. liveExecutionAuthorized/authorizesLiveTrading are pinned false; the closed schema refuses any send result or signature. Produced by paper:phase7:microtrade:preflight.",
+    cli: "paper:phase7:microtrade:preflight",
+  },
 ];
 
 /** Look up schema metadata by id, or `undefined` for an unknown schema. */

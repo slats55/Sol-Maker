@@ -3777,6 +3777,75 @@ function renderSniperOperatorDemoView(rec: Record<string, unknown>): RawHtml {
   `;
 }
 
+function renderPhase7MicrotradePreflightView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const verdict = need(missing, "preflightVerdict", readString(rec, "preflightVerdict"));
+  const missingReqs = readStringArray(rec, "missingRequirements");
+  const caveats = readStringArray(rec, "caveats");
+  const ready = verdict === "ready-for-separate-execution-authorization";
+  const safe =
+    rec.liveExecutionAuthorized === false &&
+    rec.authorizesLiveTrading === false &&
+    rec.neverSends === true &&
+    rec.neverSigns === true &&
+    rec.notExecutable === true &&
+    rec.requiresSeparateExecutionApproval === true &&
+    rec.phase7LiveTradingReady === false &&
+    readString(rec, "network") === "mainnet-beta";
+  const maxLamports = readNumber(rec, "maxSpendCapLamports");
+  return html`
+    ${RiskNotice({
+      tone: safe ? (ready ? "info" : "caution") : "caution",
+      title: safe
+        ? `S104 micro-trade preflight — verdict ${verdict ?? DASH}. This does NOT execute trades.`
+        : "Micro-trade preflight is missing its no-execute / no-authorize safety markers — do NOT trust this artifact",
+      body: html`A read-only check of whether the structural inputs for a FUTURE, separately-authorized
+        controlled micro-trade are present. <strong>This artifact does not execute a trade — it never
+        signs, never sends, and loads no key.</strong> The best possible verdict,
+        <code>ready-for-separate-execution-authorization</code>, authorizes NOTHING: a separate,
+        explicit, written S104 execution authorization, the fourteen-condition live gate, and a
+        reviewed sprint are still required. Live trading stays disabled.`,
+    })}
+    ${kvSection("Preflight", undefined, [
+      { term: "verdict", detail: code(verdict) },
+      { term: "mode", detail: code(readString(rec, "mode")) },
+      { term: "network", detail: code(readString(rec, "network")) },
+      { term: "repo sha", detail: code(readString(rec, "repoSha")) },
+    ])}
+    ${kvSection("Structural inputs", "None of these executes a trade.", [
+      { term: "written human sign-off", detail: code(readString(rec, "signoffStatus")) },
+      { term: "reconciled devnet proof", detail: code(readString(rec, "devnetProofStatus")) },
+      { term: "mainnet dry-run release candidate", detail: code(readString(rec, "releaseCandidateStatus")) },
+      { term: "public burner wallet", detail: text(`${readString(rec, "burnerWalletStatus") ?? DASH}${readString(rec, "burnerWalletAddress") ? ` (${readString(rec, "burnerWalletAddress")})` : ""}`) },
+      { term: "manual confirmation", detail: code(readString(rec, "manualConfirmationStatus")) },
+      { term: "max spend cap", detail: text(maxLamports === null ? "(none)" : `${num(maxLamports)} lamports (${num(readNumber(rec, "maxSpendCapSol"))} SOL)`) },
+    ])}
+    ${kvSection("Trade-evidence posture (echoed from the release candidate)", undefined, [
+      { term: "risk", detail: code(readString(rec, "riskStatus")) },
+      { term: "Token-2022 blocker", detail: code(readString(rec, "token2022BlockerStatus")) },
+      { term: "quote freshness", detail: code(readString(rec, "quoteFreshnessStatus")) },
+      { term: "simulation", detail: code(readString(rec, "simulationStatus")) },
+      { term: "kill switch", detail: code(readString(rec, "killSwitchStatus")) },
+      { term: "reconciliation", detail: code(readString(rec, "reconciliationRequirement")) },
+    ])}
+    ${
+      missingReqs.total === 0
+        ? null
+        : Section({
+            title: `Missing requirements (${String(missingReqs.total)})`,
+            body: html`<ul class="sm-bullets sm-bullets--plain">${missingReqs.items.map((m) => html`<li>${m}</li>`)}</ul>`,
+          })
+    }
+    ${Section({ title: "Next safe action", body: html`<p>${readString(rec, "nextSafeAction") ?? DASH}</p>` })}
+    ${
+      caveats.total === 0
+        ? null
+        : Section({ title: `Caveats (${String(caveats.total)})`, body: html`<ul class="sm-bullets sm-bullets--plain">${caveats.items.map((c) => html`<li>${c}</li>`)}</ul>` })
+    }
+    ${partialNotice(missing)}
+  `;
+}
+
 function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml | null {
   switch (schema) {
     case "backtest.report.v1":
@@ -3851,6 +3920,8 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderDevnetFundingStatusView(rec);
     case "phase7.human_signoff.record.v1":
       return renderPhase7HumanSignoffView(rec);
+    case "phase7.microtrade.preflight.v1":
+      return renderPhase7MicrotradePreflightView(rec);
     case "sniper.operator_demo.manifest.v1":
       return renderSniperOperatorDemoView(rec);
     case "execution.readiness.report.v1":

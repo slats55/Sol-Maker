@@ -174,6 +174,11 @@ function livePostureSection(): RawHtml {
       command: "pnpm soulmaker paper:phase7:authorization:audit",
       summary: "Re-run the read-only Phase 7 authorization audit. The verdict defaults to not-authorized and authorizes nothing.",
     },
+    {
+      command: "pnpm soulmaker paper:phase7:microtrade:preflight --sign-off-record … --release-candidate …",
+      summary:
+        "S104 preflight: check whether the structural inputs for a FUTURE, separately-authorized micro-trade are present. It does NOT execute — the best verdict, ready-for-separate-execution-authorization, authorizes nothing.",
+    },
   ];
   return Section({
     title: "Phase 7 live-trading posture & operator demo",
@@ -188,8 +193,11 @@ function livePostureSection(): RawHtml {
           could even be <em>considered</em>, the devnet broadcast is now <strong>met</strong> — a real funded
           devnet broadcast confirmed and reconciled (devnet slot <code>469219488</code>, verdict
           <code>reconciled</code>). A written human Phase 7 sign-off remains the <em>only</em> open
-          prerequisite. Even so, nothing is authorized here, and no flag in this repo can substitute for that
-          human decision.`,
+          prerequisite. The S104 micro-trade <strong>preflight</strong>
+          (<code>paper:phase7:microtrade:preflight</code>) now checks whether the structural inputs are
+          present, but its best verdict — <code>ready-for-separate-execution-authorization</code> — still
+          authorizes nothing. Even so, nothing is authorized here, and no flag in this repo can substitute for
+          that human decision.`,
       })}
       <div class="sm-cmdgrid">
         ${commands.map(
