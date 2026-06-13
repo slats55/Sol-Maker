@@ -95,6 +95,7 @@ describe("solmaker-engine Rust crate — TypeScript-side safety scan", () => {
     expect(names).toContain("base64.rs");
     expect(names).toContain("tx_inspect.rs");
     expect(names).toContain("sim_classify.rs");
+    expect(names).toContain("sniper_score.rs");
   });
 
   it("Rust production source contains no forbidden capability token", () => {

@@ -82,3 +82,22 @@ export {
   type ClassifySimThroughEngineOptions,
   type EngineSimClassifyBridgeResult,
 } from "./sim-classify.js";
+export {
+  ENGINE_SNIPER_SCORE_SCHEMA_VERSION,
+  ENGINE_SNIPER_SCORE_INPUT_SCHEMA_VERSION,
+  ENGINE_SNIPER_SCORE_MAX_CANDIDATES,
+  ENGINE_SNIPER_SCORE_VERDICTS,
+  ENGINE_SNIPER_SCORE_REASON_CODES,
+  validateEngineSniperScoreReportV1,
+  type EngineSniperScoreReportV1,
+  type EngineSniperScoreCandidate,
+  type EngineSniperScoreComponents,
+  type EngineSniperScoreVerdict,
+  type EngineSniperScoreValidation,
+  type SniperScoreInputCrossCheck,
+} from "./validate-sniper-score.js";
+export {
+  scoreCandidatesThroughEngine,
+  type ScoreCandidatesThroughEngineOptions,
+  type EngineSniperScoreBridgeResult,
+} from "./sniper-score.js";

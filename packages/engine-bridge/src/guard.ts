@@ -15,6 +15,7 @@ const ALLOWED_LITERAL_ARGS = new Set([
   "quote-score",
   "tx-inspect",
   "sim-classify",
+  "sniper-score",
   "--json",
   "--created-at",
   "--scored-at",
