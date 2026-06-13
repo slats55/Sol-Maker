@@ -267,6 +267,31 @@ network/signer/send capability and is re-derived + cross-checked by the TypeScri
 wall before anything trusts it. The default state of every gate stays **blocked**; scoring
 does not change that. Design + safety boundary in [`SNIPER_SCORING.md`](SNIPER_SCORING.md).
 
+## The mainnet dry-run release candidate is not live readiness (Sprint 102)
+
+S102 folds the whole mainnet dry-run rehearsal into one no-send summary artifact,
+`sniper.mainnet_dryrun.release_candidate.v1`. It is the most complete operator view Sol Maker
+produces — and it is still, deliberately, **not an authorization**:
+
+- **No-send invariant.** The artifact's `liveSendStatus` is the literal `disabled`,
+  `phase7LiveTradingReady` is `false`, and `neverSends`/`neverSigns`/`notExecutable` are pinned true.
+  The schema is CLOSED — it refuses any `sendResult` / `signature` field, so it is *structurally*
+  incapable of reporting a live send. The rehearsal that produces it loads no signer and calls no
+  send seam (the only send-capable seam is the devnet self-transfer probe, reachable only in devnet
+  mode behind its own double opt-in — never in mainnet-dry-run mode).
+- **The verdict is re-derived from evidence, never from a score.** The closed verdict
+  (`dryrun-error` / `dryrun-blocked-{risk,quote,build,simulation}` / `dryrun-insufficient-evidence` /
+  `dryrun-complete-blocked-live`) is computed from the structured stage evidence in a fixed
+  precedence, and the validator recomputes it independently. A high candidate score can never move a
+  blocked verdict; a `REJECT` risk (or critical flag / Token-2022 blocker) forces
+  `dryrun-blocked-risk` regardless of the score.
+- **`dryrun-complete-blocked-live` is the BEST case, not "ready to trade."** It means *dry-run
+  evidence complete; live still disabled.* Even a fully-evidenced release candidate arms nothing:
+  the fourteen-condition mainnet live gate stays default-blocked-no-override, and opening the live
+  path remains a separate, explicitly-authorized future sprint (security audit → controlled
+  micro-trade). See [`MAINNET_DRY_RUN.md`](MAINNET_DRY_RUN.md) and
+  [`PHASE7_LIVE_SEND_DESIGN_REVIEW.md`](PHASE7_LIVE_SEND_DESIGN_REVIEW.md).
+
 ## Audit requirements
 
 Every send-capable path journals every attempt — refused or submitted — to an append-only JSONL

@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "sniper.mainnet_dryrun.release_candidate.v1",
+  "banner": "MAINNET DRY-RUN RELEASE CANDIDATE — a no-send rehearsal summary. LIVE SENDING IS DISABLED.",
+  "disclaimers": [
+    "MAINNET DRY-RUN RELEASE CANDIDATE — a folded summary of one no-send mainnet rehearsal (scoring, risk, quote, build, tx inspection, simulation, readiness).",
+    "Live sending is DISABLED. This artifact is structurally incapable of reporting a live send, a signature, or an armed state; mainnet sending has NO CLI surface.",
+    "A high candidate score is NOT a buy signal and NOT 'safe to trade'; a rejected risk stays rejected no matter the score, and scoring gates nothing in the live path.",
+    "'dryrun-complete-blocked-live' means dry-run evidence complete and live STILL disabled — it is never live-trading readiness.",
+    "No wallet, key, signing, sending, or live execution is involved anywhere in producing this artifact.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim."
+  ],
+  "runId": "example-blocked-risk",
+  "generatedAt": "2026-06-13T00:00:00.000Z",
+  "network": "mainnet-beta",
+  "mode": "mainnet-dry-run",
+  "verdict": "dryrun-blocked-risk",
+  "candidateSource": {
+    "kind": "file",
+    "label": "candidates.example.json"
+  },
+  "scoring": {
+    "available": true,
+    "engineSource": "rust",
+    "candidateCount": 1,
+    "bestCandidateId": "fic-b",
+    "rankedCandidates": [
+      {
+        "candidateId": "fic-b",
+        "mint": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "rank": 1,
+        "score": 58,
+        "verdict": "reject",
+        "reasonCodes": [
+          "paper-only",
+          "mainnet-live-disabled",
+          "risk-rejected",
+          "risk-over-threshold"
+        ]
+      }
+    ]
+  },
+  "risk": {
+    "assessed": true,
+    "source": "automatic",
+    "worstDecision": "REJECT",
+    "rejected": true,
+    "criticalFlagCount": 1,
+    "highFlagCount": 0,
+    "token2022Blocker": false,
+    "token2022BlockerMints": []
+  },
+  "quote": {
+    "attempted": true,
+    "observed": true,
+    "freshness": "fresh",
+    "scoreAvailable": true,
+    "score": 88
+  },
+  "build": {
+    "attempted": false,
+    "refused": false,
+    "succeeded": false,
+    "refusalCodes": []
+  },
+  "txInspection": {
+    "available": false,
+    "versionSupported": null,
+    "blockhashPresent": null,
+    "instructionCount": null,
+    "unresolvableProgramIdCount": null
+  },
+  "simulation": {
+    "attempted": false,
+    "outcome": null,
+    "classification": null,
+    "failed": false
+  },
+  "readiness": {
+    "available": true,
+    "verdict": "blocked",
+    "satisfiedCount": 7,
+    "totalChecks": 14
+  },
+  "stageError": {
+    "occurred": false,
+    "detail": null
+  },
+  "liveSendStatus": "disabled",
+  "whyLiveBlocked": [
+    "Mainnet live trading is DISABLED by policy: the fourteen-condition live gate is default-blocked-no-override, and mainnet sending has no CLI surface in this command or anywhere else.",
+    "No signer, key, or wallet is loaded anywhere in this dry-run, and no send seam is ever called.",
+    "Deep risk REJECTED a candidate — a rejected risk stays rejected no matter any candidate score."
+  ],
+  "nextSafeActions": [
+    "Drop the rejected/critical/Token-2022 candidate from the list and re-run the rehearsal; never override a risk gate.",
+    "Inspect the full run folder with `pnpm web:inspect --dir <run folder>` for the operator command-center view."
+  ],
+  "caveats": [
+    "Every summary here is folded from the existing per-stage production artifacts in the run folder — read them standalone for the full detail.",
+    "A blocked verdict is the system working, not a bug; only 'dryrun-complete-blocked-live' means the evidence is complete, and even then live stays disabled.",
+    "A candidate score is intelligence only — never a buy signal, never live readiness; the verdict is derived from risk/quote/build/simulation evidence, never from a score.",
+    "Rust tx inspection was UNAVAILABLE — the unsigned-shape facts are absent; the build/simulation evidence is otherwise unaffected."
+  ],
+  "artifactRefs": [
+    "candidate-scores.json",
+    "risk",
+    "readiness.json"
+  ],
+  "redactionApplied": true,
+  "notExecutable": true,
+  "neverSigns": true,
+  "neverSends": true,
+  "phase7LiveTradingReady": false,
+  "scoreIsNotLiveReadiness": true,
+  "highScoreIsNotSafeToTrade": true
+}

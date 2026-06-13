@@ -156,3 +156,65 @@ the bundle before accepting the artifact. A high score is NOT "safe to trade", a
 `reject` no matter the score, and the score satisfies none of the fourteen mainnet live-gate
 conditions - the dry-run's terminal verdict remains `blocked / live-not-authorized`. See
 [`SNIPER_SCORING.md`](SNIPER_SCORING.md) and [`RUST_ENGINE.md`](RUST_ENGINE.md).
+
+## The release candidate (S102)
+
+As of Sprint 102, `paper:sniper:rehearse --mode mainnet-dry-run` no longer leaves the scoring,
+quote-score, and tx-inspection layers as separate optional commands — it **chains them into the run**
+and folds every stage into ONE auditable, no-send summary: `release-candidate.json`
+(`sniper.mainnet_dryrun.release_candidate.v1`). The full chain is now:
+
+candidate discovery/replay → deep risk → quote fetch → quote prepare → **Rust quote score** → paper
+dry-run → unsigned tx build → **Rust tx inspection** → real simulation → **Rust candidate scoring +
+ranking** → readiness → **release candidate**.
+
+The release candidate carries: the candidate source; the candidate-scoring summary + ranked candidate
+facts; the deep-risk summary (worst decision, rejected, critical/high flag counts, Token-2022
+blockers); the quote summary (attempted/observed, freshness, Rust quote score); the unsigned tx-build
+summary (refused? refusal codes); the Rust tx-inspection summary (version supported, blockhash,
+instruction count, unresolvable program ids); the simulation outcome + classification; the readiness
+checklist counts; the closed verdict; `liveSendStatus` (always `disabled`); why live is blocked; the
+next safe actions; caveats; and the references to every per-stage artifact.
+
+### Reading the RC verdict
+
+The verdict is RE-DERIVED from the structured stage evidence — **never from a candidate score** — in
+this precedence (and the validator recomputes it independently, so a high score can never move a
+blocked verdict):
+
+| Verdict | Meaning |
+|---|---|
+| `dryrun-error` | a pipeline stage hard-errored; the run could not complete |
+| `dryrun-blocked-risk` | risk REJECT / critical flag / Token-2022 blocker (supreme gate) |
+| `dryrun-blocked-quote` | a quote was attempted but is not fresh-and-observed |
+| `dryrun-blocked-build` | the unsigned build was refused |
+| `dryrun-blocked-simulation` | the real `simulateTransaction` failed |
+| `dryrun-insufficient-evidence` | nothing blocking, but required evidence is missing (e.g. Rust scoring unavailable) |
+| `dryrun-complete-blocked-live` | dry-run evidence complete; **live still disabled** — the BEST case, never readiness |
+
+Every engine stage (scoring, quote-score, tx-inspect) falls back honestly when Rust is unavailable —
+the paper evidence chain never depends on Rust, and a missing scoring layer simply yields
+`dryrun-insufficient-evidence` rather than a false complete. Quote freshness is sourced from the
+TypeScript readiness evidence, so it never depends on the Rust quote scorer either.
+
+Inspect the whole run folder with the operator command-center view:
+
+```
+pnpm web:inspect --dir runs/dry-run-proof
+```
+
+The `sniper.mainnet_dryrun.release_candidate.v1` artifact has a dedicated typed view (verdict +
+**LIVE SENDING DISABLED** banner, ranked candidates, risk, quote, build/inspection/simulation,
+readiness, why-live-blocked, next safe actions, artifact references). Redacted FICTIONAL examples
+live in [`examples/sniper/mainnet-dryrun-release-candidate/`](../examples/sniper/mainnet-dryrun-release-candidate/)
+(regenerate with `pnpm tsx scripts/gen-mainnet-dryrun-rc-example.ts`).
+
+### Real evidence (2026-06-13)
+
+A real mainnet read-only run (candidate BONK, an unfunded throwaway fee-payer public key) produced a
+`dryrun-blocked-simulation` release candidate: deep risk PASS, a live Jupiter quote (Rust quote score
+90), a REAL unsigned Jupiter swap envelope (8 instructions), a REAL `simulateTransaction` that
+returned `account-error` (the unfunded fee payer — exactly the honest signal), a Rust tx inspection
+(version supported), a Rust candidate score (BONK 86/caution), readiness 8/14, and
+`liveSendStatus: disabled`. Nothing was signed or sent; the chain produced a complete operator view
+and correctly refused to proceed.

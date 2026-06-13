@@ -1125,11 +1125,32 @@ end-to-end; live trading does not begin until Sprint 104, separately authorized 
   stable. Axiom Pro remains a UX benchmark only — never a dependency. Devnet broadcast is still
   externally faucet-blocked. No mainnet send surface, no Rust signer/send/network, in this sprint or
   any prior one. Design + safety boundary in docs/SNIPER_SCORING.md.
-- **S102** — full mainnet dry-run release candidate: one command, complete evidence chain,
-  zero manual artifacts. (Recommended next: assemble the dry-run release-candidate bundle now that
-  the scoring intelligence layer exists; an Axiom-style command-center / watchlist UI pass is the
-  alternative if operator UX is prioritized over the release candidate.)
+- **S102** ✅ (2026-06-13) — mainnet dry-run RELEASE CANDIDATE + Axiom-style operator command
+  center. Actuals: a new `@soulmaker/sniper` `sniper.mainnet_dryrun.release_candidate.v1` builder +
+  strict validator folds one no-send mainnet rehearsal (candidate scoring + ranking, deep risk,
+  Token-2022 blockers, quote + freshness + Rust quote score, unsigned tx build, Rust tx inspection,
+  real simulation, readiness) into ONE auditable artifact. The verdict is RE-DERIVED from the
+  structured stage evidence and the validator recomputes it independently (CLOSED set
+  dryrun-error / dryrun-blocked-{risk,quote,build,simulation} / dryrun-insufficient-evidence /
+  dryrun-complete-blocked-live), so a candidate score can NEVER move a blocked verdict;
+  `liveSendStatus` is the literal `disabled`, the schema refuses any send-result field, and
+  neverSigns/neverSends/notExecutable are pinned. `paper:sniper:rehearse --mode mainnet-dry-run`
+  now chains the scoring/quote-score/tx-inspect engine stages (all honest Rust-optional fallbacks)
+  and assembles the release candidate; quote freshness comes from the TS readiness evidence (no Rust
+  dependency). New typed web view + registry entry; redacted byte-pinned examples under
+  `examples/sniper/mainnet-dryrun-release-candidate/`. REAL mainnet evidence: a read-only BONK run
+  produced a `dryrun-blocked-simulation` RC (deep risk PASS, live quote + Rust score 90, real
+  unsigned 8-instruction Jupiter envelope, real `simulateTransaction` → account-error on the
+  unfunded fee payer, Rust tx inspect + candidate score 86, readiness 8/14, live DISABLED) — nothing
+  signed or sent. No mainnet send surface, no Rust signer/send/network, in this sprint or any prior
+  one. Devnet broadcast is still externally faucet-blocked. Workflow in
+  [`MAINNET_DRY_RUN.md`](MAINNET_DRY_RUN.md); safety boundary in
+  [`EXECUTION_SAFETY.md`](EXECUTION_SAFETY.md).
 - **S103** — final security audit + live authorization review (written sign-off required).
+  (Recommended next: an independent line-by-line audit of the no-send invariant + the fourteen-gate
+  default-blocked path, producing the written sign-off S104's controlled micro-trade requires. An
+  operator watchlist / live-candidate-feed UX pass is the alternative if operator ergonomics is
+  prioritized over the audit.)
 - **S104** — separately approved controlled mainnet MICRO-trade (burner wallet, micro cap,
   manual confirmation; see the design review's exact conditions).
 - **S105** — bounded live sniper session (attended, loss-capped, kill-switch rehearsed).

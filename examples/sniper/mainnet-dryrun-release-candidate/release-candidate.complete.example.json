@@ -1,0 +1,120 @@
+{
+  "schemaVersion": "sniper.mainnet_dryrun.release_candidate.v1",
+  "banner": "MAINNET DRY-RUN RELEASE CANDIDATE — a no-send rehearsal summary. LIVE SENDING IS DISABLED.",
+  "disclaimers": [
+    "MAINNET DRY-RUN RELEASE CANDIDATE — a folded summary of one no-send mainnet rehearsal (scoring, risk, quote, build, tx inspection, simulation, readiness).",
+    "Live sending is DISABLED. This artifact is structurally incapable of reporting a live send, a signature, or an armed state; mainnet sending has NO CLI surface.",
+    "A high candidate score is NOT a buy signal and NOT 'safe to trade'; a rejected risk stays rejected no matter the score, and scoring gates nothing in the live path.",
+    "'dryrun-complete-blocked-live' means dry-run evidence complete and live STILL disabled — it is never live-trading readiness.",
+    "No wallet, key, signing, sending, or live execution is involved anywhere in producing this artifact.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim."
+  ],
+  "runId": "example-complete",
+  "generatedAt": "2026-06-13T00:00:00.000Z",
+  "network": "mainnet-beta",
+  "mode": "mainnet-dry-run",
+  "verdict": "dryrun-complete-blocked-live",
+  "candidateSource": {
+    "kind": "file",
+    "label": "candidates.example.json"
+  },
+  "scoring": {
+    "available": true,
+    "engineSource": "rust",
+    "candidateCount": 1,
+    "bestCandidateId": "fic-a",
+    "rankedCandidates": [
+      {
+        "candidateId": "fic-a",
+        "mint": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+        "rank": 1,
+        "score": 91,
+        "verdict": "watch",
+        "reasonCodes": [
+          "paper-only",
+          "mainnet-live-disabled"
+        ]
+      }
+    ]
+  },
+  "risk": {
+    "assessed": true,
+    "source": "automatic",
+    "worstDecision": "PASS_FOR_PAPER_EVALUATION",
+    "rejected": false,
+    "criticalFlagCount": 0,
+    "highFlagCount": 0,
+    "token2022Blocker": false,
+    "token2022BlockerMints": []
+  },
+  "quote": {
+    "attempted": true,
+    "observed": true,
+    "freshness": "fresh",
+    "scoreAvailable": true,
+    "score": 90
+  },
+  "build": {
+    "attempted": true,
+    "refused": false,
+    "succeeded": true,
+    "refusalCodes": []
+  },
+  "txInspection": {
+    "available": true,
+    "versionSupported": true,
+    "blockhashPresent": true,
+    "instructionCount": 7,
+    "unresolvableProgramIdCount": 0
+  },
+  "simulation": {
+    "attempted": true,
+    "outcome": "simulated-ok",
+    "classification": null,
+    "failed": false
+  },
+  "readiness": {
+    "available": true,
+    "verdict": "blocked",
+    "satisfiedCount": 8,
+    "totalChecks": 14
+  },
+  "stageError": {
+    "occurred": false,
+    "detail": null
+  },
+  "liveSendStatus": "disabled",
+  "whyLiveBlocked": [
+    "Mainnet live trading is DISABLED by policy: the fourteen-condition live gate is default-blocked-no-override, and mainnet sending has no CLI surface in this command or anywhere else.",
+    "No signer, key, or wallet is loaded anywhere in this dry-run, and no send seam is ever called.",
+    "The dry-run evidence is complete, but live sending remains disabled by policy — completeness is never live-trading readiness."
+  ],
+  "nextSafeActions": [
+    "Review this release candidate; the only authorized next step toward live is a separate, explicitly-approved sprint (security audit → micro-trade) — this command never sends.",
+    "Inspect the full run folder with `pnpm web:inspect --dir <run folder>` for the operator command-center view."
+  ],
+  "caveats": [
+    "Every summary here is folded from the existing per-stage production artifacts in the run folder — read them standalone for the full detail.",
+    "A blocked verdict is the system working, not a bug; only 'dryrun-complete-blocked-live' means the evidence is complete, and even then live stays disabled.",
+    "A candidate score is intelligence only — never a buy signal, never live readiness; the verdict is derived from risk/quote/build/simulation evidence, never from a score."
+  ],
+  "artifactRefs": [
+    "candidate-scores.json",
+    "routequote-prepared.json",
+    "quote-scores.json",
+    "envelope.json",
+    "tx-inspect.json",
+    "tx-simulation.json",
+    "readiness.json"
+  ],
+  "redactionApplied": true,
+  "notExecutable": true,
+  "neverSigns": true,
+  "neverSends": true,
+  "phase7LiveTradingReady": false,
+  "scoreIsNotLiveReadiness": true,
+  "highScoreIsNotSafeToTrade": true
+}
