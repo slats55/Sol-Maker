@@ -10,11 +10,13 @@ companion to the machine-checked artifact `phase7.authorization.audit.v1`
 [`PHASE7_LIVE_EXECUTION_GATE.md`](PHASE7_LIVE_EXECUTION_GATE.md), and
 [`RUST_ENGINE.md`](RUST_ENGINE.md).
 
-- **Audited baseline:** `origin/master = e607238` plus the Sprint 103 audit branch
-  `sprint-103-security-audit-phase7-authorization-dossier`.
+- **Audited baseline:** `origin/master = 222f17b` (Sprint 103-B) plus the Sprint 103-C funded-devnet
+  proof branch `sprint-103c-funded-devnet-proof-phase7-reaudit`.
 - **Audit verdict (this repo, today): `authorized-for-design-only`.** Every safety invariant is
-  machine-verified; the operational micro-trade prerequisites (a confirmed devnet broadcast and a
-  written human sign-off) are still open. Live execution stays unauthorized.
+  machine-verified. **Sprint 103-C closed the first operational prerequisite: a real devnet
+  end-to-end broadcast confirmed and reconciled (devnet slot `469219488`, verdict `reconciled`).** The
+  remaining prerequisite — a written human Phase 7 sign-off — is still open, so the verdict stays
+  `authorized-for-design-only` and live execution stays unauthorized.
 - Reproduce: `pnpm soulmaker paper:phase7:authorization:audit --repo-sha <sha>` (read-only; sends
   nothing; authorizes nothing).
 
@@ -37,13 +39,16 @@ companion to the machine-checked artifact `phase7.authorization.audit.v1`
 
 ## 2. What has NOT been proven
 
-- **A real mainnet trade has never been executed** — by design, and that is not in scope here.
-- **A real devnet end-to-end broadcast has never landed.** The devnet faucet has been rate-limited
-  (HTTP 429) across every attempt; the rehearsal honestly reports `devnet-funding-blocked` and sends
-  nothing. The send/sign/confirm/reconcile path is built and unit-tested, but the *live broadcast*
-  link is unverified on a real cluster.
+- **A real mainnet trade has never been executed** — by design, and that is not in scope here. The
+  *mainnet* live send/sign path remains deliberately unbuilt and unproven.
+- ~~A real devnet end-to-end broadcast has never landed.~~ **RESOLVED in Sprint 103-C.** The operator
+  funded a throwaway devnet key through the official faucet, and the full send/sign/confirm/reconcile
+  path drove a **confirmed, finalized devnet broadcast** (devnet slot `469219488`, reconciliation
+  verdict `reconciled`). See §6. Sprints 93–103-B were faucet-blocked (HTTP 429) and honestly stopped
+  at `devnet-funding-blocked`; that link is now verified on a real cluster with valueless funds.
 - **No written human Phase 7 sign-off exists yet.** This document is the security review; the
-  authorization is a separate, explicit human decision.
+  authorization is a separate, explicit human decision. **This is now the only remaining open
+  micro-trade prerequisite (§9).**
 
 ## 3. The no-send invariant (summary)
 
@@ -73,8 +78,19 @@ is re-derived on the TypeScript side and refused on disagreement. An absent tool
 
 ## 6. Devnet status
 
-**Funding-blocked.** The throwaway-key rehearsal path works end-to-end up to the faucet; the faucet
-returns 429, so the rehearsal stops at `devnet-funding-blocked` and sends nothing.
+**PROVEN (Sprint 103-C).** The operator funded a throwaway devnet key through the official devnet
+faucet, and `execution:devnet:funding-status --complete-if-funded` (signer supplied by `--signer-env`,
+keypair kept in the gitignored `runs/`) drove the full chain — fund check → unsigned 1-lamport
+self-transfer probe → `simulateTransaction` → send-once → confirm → reconcile — to a **confirmed,
+finalized devnet broadcast** at slot `469219488`, reconciliation verdict `reconciled` (pre
+`1,000,000,000` → post `999,995,000` lamports; network fee `5,000` lamports). The signature is public
+devnet chain data, verifiable on a devnet explorer (`https://explorer.solana.com/tx/<signature>?cluster=devnet`);
+it is masked as `[REDACTED]` in every artifact by the repo redactor (an 88-char base58 string is
+secret-shaped) and is never committed. The throwaway key and all run artifacts live under the
+gitignored `runs/`.
+
+Earlier (Sprints 93–103-B) the throwaway-key rehearsal path worked end-to-end up to the faucet, which
+returned HTTP 429, so the rehearsal honestly stopped at `devnet-funding-blocked` and sent nothing.
 
 **S103-B: the devnet proof runner.** Instead of re-discovering the funding state every run,
 `execution:devnet:funding-status` reads the throwaway key's balance once and emits the honest,
@@ -121,11 +137,14 @@ is no force/bypass variant.
 The audit's `authorized-for-design-only` verdict will only become
 `ready-for-separate-microtrade-authorization` once BOTH operational prerequisites are met:
 
-1. **A real devnet end-to-end broadcast has confirmed and reconciled at least once** — proving the
-   live send/sign/confirm/reconcile link on a real cluster with valueless funds.
-2. **A written human Phase 7 sign-off is recorded** (the S103-B mechanism below).
+1. ~~A real devnet end-to-end broadcast has confirmed and reconciled at least once~~ — **MET in
+   Sprint 103-C** (devnet slot `469219488`, verdict `reconciled`; see §6). The live
+   send/sign/confirm/reconcile link is proven on a real cluster with valueless funds.
+2. **A written human Phase 7 sign-off is recorded** (the S103-B mechanism below). **← the only
+   remaining open prerequisite.**
 
-Even then, that verdict authorizes **nothing**: it only states the repo is ready to be *considered*.
+Even with both met, that verdict authorizes **nothing**: it only states the repo is ready to be
+*considered*. A separate, explicit, written S104 authorization is still required (§§10–11).
 
 ### S103-B: the written sign-off mechanism
 
@@ -218,6 +237,10 @@ as its own sprint, and must enforce ALL of the following:
 ---
 
 *Generated for Sprint 103; the sign-off mechanism, the devnet proof runner, and the audit's evidence
-intake were added in Sprint 103-B. Re-run `pnpm soulmaker paper:phase7:authorization:audit` to refresh
-the machine-checked artifact. Examples: `examples/phase7/authorization-audit/`. A safe, showable demo
-folder of the whole pipeline: `pnpm soulmaker paper:sniper:operator-demo --out runs/demo`.*
+intake were added in Sprint 103-B. **Sprint 103-C landed the real funded devnet broadcast + reconciliation
+proof (§6) and re-ran the audit with it — the devnet prerequisite (§9.1) is now MET; the written human
+sign-off (§9.2) remains the only open prerequisite.** The future controlled micro-trade is scoped, as
+design only, in [`S104_CONTROLLED_MICROTRADE_PLAN.md`](S104_CONTROLLED_MICROTRADE_PLAN.md). Re-run
+`pnpm soulmaker paper:phase7:authorization:audit` to refresh the machine-checked artifact. Examples:
+`examples/phase7/authorization-audit/`. A safe, showable demo folder of the whole pipeline:
+`pnpm soulmaker paper:sniper:operator-demo --out runs/demo`.*
