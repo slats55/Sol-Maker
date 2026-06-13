@@ -82,7 +82,7 @@ const FACT_KEYS = [
 function echo(candidateId: string, extra: Record<string, unknown>): Record<string, unknown> {
   const c = SCORE_INPUT.candidates.find((x) => x.candidateId === candidateId)!;
   const flat: Record<string, unknown> = { candidateId: c.candidateId, mint: c.mint, source: c.source, caveats: c.caveats };
-  for (const k of FACT_KEYS) flat[k] = (c.facts as Record<string, unknown>)[k];
+  for (const k of FACT_KEYS) flat[k] = (c.facts as unknown as Record<string, unknown>)[k];
   return { ...flat, ...extra };
 }
 

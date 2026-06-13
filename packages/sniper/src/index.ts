@@ -538,3 +538,33 @@ export type {
   SimulationIntentPlanDiff,
   FormatSimulationIntentPlanDiffOptions,
 } from "./simulation-intent-diff.js";
+
+export {
+  buildMainnetDryRunReleaseCandidate,
+  validateMainnetDryRunReleaseCandidate,
+  deriveReleaseCandidateVerdict,
+  SniperReleaseCandidateError,
+  SNIPER_RELEASE_CANDIDATE_SCHEMA_VERSION,
+  SNIPER_RELEASE_CANDIDATE_BANNER,
+  SNIPER_RELEASE_CANDIDATE_DISCLAIMERS,
+  SNIPER_RELEASE_CANDIDATE_NETWORK,
+  SNIPER_RELEASE_CANDIDATE_MODE,
+  SNIPER_RELEASE_CANDIDATE_LIVE_SEND_STATUS,
+  SNIPER_RELEASE_CANDIDATE_VERDICTS,
+} from "./mainnet-dryrun-release-candidate.js";
+
+export type {
+  SniperReleaseCandidateVerdict,
+  ReleaseCandidateSource,
+  ReleaseCandidateRankedEntry,
+  ReleaseCandidateScoringEvidence,
+  ReleaseCandidateRiskEvidence,
+  ReleaseCandidateQuoteEvidence,
+  ReleaseCandidateBuildEvidence,
+  ReleaseCandidateTxInspectionEvidence,
+  ReleaseCandidateSimulationEvidence,
+  ReleaseCandidateReadinessEvidence,
+  ReleaseCandidateStageError,
+  BuildMainnetDryRunReleaseCandidateInput,
+  SniperMainnetDryRunReleaseCandidate,
+} from "./mainnet-dryrun-release-candidate.js";
