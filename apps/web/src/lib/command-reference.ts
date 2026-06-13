@@ -524,6 +524,13 @@ export const COMMANDS: readonly CommandRef[] = [
     readsChain: false,
   },
   {
+    command: "paper:phase7:microtrade:preflight",
+    summary:
+      "The S104-A controlled micro-trade preflight (phase7.microtrade.preflight.v1): READ the Phase 7 audit, the sign-off record, the mainnet dry-run release candidate, and the devnet reconciliation, validate a PUBLIC burner wallet and a bounded max-spend, require a manual-confirmation label, and re-derive ONE verdict. It DOES NOT execute a trade — it never signs, never sends, never loads a private key, adds no mainnet send surface; the closed schema refuses any send result/signature, and the best verdict, ready-for-separate-execution-authorization, authorizes NOTHING.",
+    group: "Execution (gated)",
+    readsChain: false,
+  },
+  {
     command: "paper:sniper:operator-demo",
     summary:
       "The S103-B operator demo workbench (sniper.operator_demo.manifest.v1): assemble a SAFE, showable demo folder of the paper / dry-run pipeline — the real read-only Phase 7 audit + sign-off template, an honest devnet funding-status fixture, and the byte-pinned fictional candidate + release-candidate examples. Every artifact is labelled by provenance; live execution is pinned disabled; nothing sends, signs, or trades.",

@@ -896,6 +896,16 @@
           </div>
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:phase7:microtrade:preflight</code>
+    <p class="sm-cmd__summary">The S104-A controlled micro-trade preflight (phase7.microtrade.preflight.v1): READ the Phase 7 audit, the sign-off record, the mainnet dry-run release candidate, and the devnet reconciliation, validate a PUBLIC burner wallet and a bounded max-spend, require a manual-confirmation label, and re-derive ONE verdict. It DOES NOT execute a trade — it never signs, never sends, never loads a private key, adds no mainnet send surface; the closed schema refuses any send result/signature, and the best verdict, ready-for-separate-execution-authorization, authorizes NOTHING.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="The S104-A no-send readiness check: IF a human later gives a separate, explicit S104 execution authorization, are the required inputs present? It folds the written Phase 7 sign-off, the reconciled devnet broadcast proof, a complete mainnet dry-run release candidate, a public burner wallet, a bounded max-spend, a manual-confirmation label, and the release candidate&#39;s risk/quote/simulation posture into one re-derived verdict. It DOES NOT execute a trade: it never signs, never sends, never loads a key, and the best verdict — ready-for-separate-execution-authorization — authorizes NOTHING. liveExecutionAuthorized/authorizesLiveTrading are pinned false; the closed schema refuses any send result or signature. Produced by paper:phase7:microtrade:preflight.">
+    <code>phase7.microtrade.preflight.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker execution:session:status</code>
     <p class="sm-cmd__summary">S96 read-only session accounting status: the latest execution session&#39;s ledger entries and the continuation decision a NEW devnet attempt would face (allowed only after reconciled / not-sent / funding-blocked / an explicit audited acknowledgment). Writes nothing unless --out.</p>
     <div class="sm-cmd__artifact">

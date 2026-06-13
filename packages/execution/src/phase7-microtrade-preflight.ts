@@ -263,7 +263,7 @@ export function parseBurnerPublicKey(input: unknown): string {
   if (trimmed.length === 0) throw new Phase7MicrotradePreflightError("burner wallet is empty");
   if (trimmed.length > BURNER_MAX_LEN) {
     throw new Phase7MicrotradePreflightError(
-      `burner wallet is ${trimmed.length} chars — too long to be a public key. Refusing (never paste a private key or seed phrase).`,
+      `burner wallet is ${trimmed.length} chars — too long to be a public key. Refusing (never paste a private key here).`,
     );
   }
   if (trimmed.length < BURNER_MIN_LEN) {
