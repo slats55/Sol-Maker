@@ -3521,6 +3521,11 @@ program
   .option("--risk-score-cap <score>", "explicit risk-score cap for the unsigned build dry-run")
   .option("--endpoint <url>", "read-only RPC / quote endpoint override")
   .option("--rpc-url <url>", "read-only RPC url for the simulation")
+  .option("--jupiter-url <url>", "read-only Jupiter quote base URL (used by --check-providers)")
+  .option("--timeout-ms <ms>", "per-probe timeout for --check-providers, clamped to [1000, 60000]")
+  .option("--retry-limit <n>", "read-only retry budget for --check-providers, clamped to [0, 5]")
+  .option("--check-providers", "run paper:sniper:provider:doctor FIRST and gate the live stages on it (writes provider-health.json)")
+  .option("--provider-health <path>", "ingest a sniper.provider_health.report.v1 instead of probing (mutually exclusive with --check-providers)")
   .option("--phase7-status <label>", "Phase 7 posture label echoed into the alpha report (default authorized-for-design-only)")
   .option("--evidence-provenance <label>", "real-readonly | fixture | fictional-example | mixed (default derived from the run)")
   .option("--json", "emit the alpha report as stable JSON")
@@ -3548,6 +3553,11 @@ program
       riskScoreCap?: string;
       endpoint?: string;
       rpcUrl?: string;
+      jupiterUrl?: string;
+      timeoutMs?: string;
+      retryLimit?: string;
+      checkProviders?: boolean;
+      providerHealth?: string;
       phase7Status?: string;
       evidenceProvenance?: string;
       json?: boolean;
@@ -3577,6 +3587,11 @@ program
           riskScoreCap: opts.riskScoreCap,
           endpoint: opts.endpoint,
           rpcUrl: opts.rpcUrl,
+          jupiterUrl: opts.jupiterUrl,
+          timeoutMs: opts.timeoutMs,
+          retryLimit: opts.retryLimit,
+          checkProviders: Boolean(opts.checkProviders),
+          providerHealthPath: opts.providerHealth,
           phase7Status: opts.phase7Status,
           evidenceProvenance: opts.evidenceProvenance,
           json: Boolean(opts.json),

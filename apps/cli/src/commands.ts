@@ -8538,6 +8538,16 @@ export interface PaperSniperCampaignAutoRunCommandOptions {
   riskScoreCap?: string;
   endpoint?: string;
   rpcUrl?: string;
+  /** Read-only Jupiter quote base URL override (used by --check-providers). */
+  jupiterUrl?: string;
+  /** Per-probe timeout (ms) for --check-providers, clamped to [1000, 60000]. */
+  timeoutMs?: string;
+  /** Read-only retry budget for --check-providers, clamped to [0, 5]. */
+  retryLimit?: string;
+  /** Run paper:sniper:provider:doctor FIRST and fold the result in (writes provider-health.json). */
+  checkProviders?: boolean;
+  /** Ingest a pre-computed sniper.provider_health.report.v1 instead of probing (mutually exclusive with --check-providers). */
+  providerHealthPath?: string;
   /** Optional Phase 7 posture label echoed into the alpha report (e.g. authorized-for-design-only). */
   phase7Status?: string;
   /** Optional provenance override; defaults to real-readonly when network is on, else mixed. */
@@ -8627,6 +8637,53 @@ export async function paperSniperCampaignAutoRunReport(
     warnings.push("--allow-readonly-network has no effect in paper mode (paper reaches no network); run --mode mainnet-dry-run for live read-only evidence.");
   }
 
+  // --- Sprint 105-B: resolve provider health (probe first, or ingest a report) -
+  // The result GATES the live network stages: if a provider is unreachable, its stage is skipped and
+  // recorded as honest evidence, never failure spam. A missing health report keeps the legacy behavior.
+  let providerHealth: SniperProviderHealthReport | null = null;
+  const providerHealthFilePath = join(outDir, PROVIDER_HEALTH_REPORT_FILE);
+  if (opts.providerHealthPath && opts.checkProviders) {
+    return { text: "Refusing: --provider-health and --check-providers are mutually exclusive (ingest a report OR probe, not both).", exitCode: 1 };
+  }
+  try {
+    if (opts.providerHealthPath) {
+      const raw = readJsonValue(ctx, opts.providerHealthPath, "provider health report");
+      if (!isPlainObject(raw) || raw.schemaVersion !== SNIPER_PROVIDER_HEALTH_REPORT_SCHEMA_VERSION) {
+        throw new Error(`provider health report schemaVersion must be "${SNIPER_PROVIDER_HEALTH_REPORT_SCHEMA_VERSION}"`);
+      }
+      providerHealth = validateSniperProviderHealthReport(raw);
+      writeFileSync(providerHealthFilePath, JSON.stringify(redactValue(providerHealth), null, 2) + "\n");
+    } else if (opts.checkProviders) {
+      // Reuse the doctor's exact bounded read-only probes; write the artifact into the alpha folder.
+      await paperSniperProviderDoctorReport(ctx, {
+        mode,
+        rpcUrl: opts.rpcUrl,
+        jupiterUrl: opts.jupiterUrl,
+        timeoutMs: opts.timeoutMs,
+        retryLimit: opts.retryLimit,
+        outPath: providerHealthFilePath,
+        force: true,
+      });
+      providerHealth = validateSniperProviderHealthReport(JSON.parse(stripJsonBom(readFileSync(providerHealthFilePath, "utf8"))));
+    }
+  } catch (err) {
+    return { text: redactString(`Refusing: provider health — ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // Per-stage reachability gates. With no health report the legacy network behavior is unchanged.
+  const providerStatusOf = (p: string): string | null =>
+    providerHealth ? (providerHealth.checks.find((c) => c.provider === p)?.status ?? null) : null;
+  const rpcOk = providerHealth === null || providerStatusOf("rpc") === "available";
+  const quoteOk = providerHealth === null || providerStatusOf("jupiter-quote") === "available";
+  const networkRpc = networkActive && rpcOk;
+  const networkQuote = networkActive && quoteOk;
+  if (networkActive && providerHealth !== null && !rpcOk) {
+    warnings.push(`provider health: RPC is ${providerStatusOf("rpc") ?? "unchecked"} — deep risk / build / simulation skipped (honest evidence, not a failure).`);
+  }
+  if (networkActive && providerHealth !== null && !quoteOk) {
+    warnings.push(`provider health: Jupiter quote is ${providerStatusOf("jupiter-quote") ?? "unchecked"} — quote fetch / build / simulation skipped (honest evidence, not a failure).`);
+  }
+
   // --- evidence accumulators (per mint) ---------------------------------------
   const evidence = new Map<string, AutoCandidateEvidence>();
   for (const c of limited) evidence.set(c.mint, { candidateId: c.candidateId, mint: c.mint, stages: [] });
@@ -8683,11 +8740,11 @@ export async function paperSniperCampaignAutoRunReport(
     }
   }
 
-  // --- Stage: deep risk per candidate (network only) --------------------------
+  // --- Stage: deep risk per candidate (network only; gated by provider health) -
   const candidatesDir = join(outDir, "candidates");
   let riskProviderFetched = 0;
   let riskProviderFailed = 0;
-  if (networkActive) {
+  if (networkRpc) {
     try {
       mkdirSync(candidatesDir, { recursive: true });
     } catch {
@@ -8721,8 +8778,12 @@ export async function paperSniperCampaignAutoRunReport(
       }
     }
   } else {
+    const reason =
+      networkActive && !rpcOk
+        ? `provider health reports the RPC ${providerStatusOf("rpc") ?? "unchecked"} — deep risk skipped (honest evidence); supply --risk <mint=path> for offline risk`
+        : "read-only network is off (paper mode or no --allow-readonly-network); supply --risk <mint=path> for offline risk";
     for (const c of limited) {
-      if (!riskByMint.has(c.mint)) pushStage(c.mint, "deep-risk", "not-attempted", "read-only network is off (paper mode or no --allow-readonly-network); supply --risk <mint=path> for offline risk");
+      if (!riskByMint.has(c.mint)) pushStage(c.mint, "deep-risk", networkActive && !rpcOk ? "skipped" : "not-attempted", reason);
     }
   }
 
@@ -8732,11 +8793,11 @@ export async function paperSniperCampaignAutoRunReport(
     return r !== undefined && (r.decision === "REJECT" || (r.criticalFlagCount ?? 0) > 0 || r.token2022Blocker);
   };
 
-  // --- Stage: route-quote fetch + prepare + score (network only) --------------
+  // --- Stage: route-quote fetch + prepare + score (network only; gated by provider health) -
   let quoteObservedCount = 0;
   let quoteAttempted = false;
   let quoteScoreRustAvailable: boolean | null = null;
-  if (networkActive) {
+  if (networkQuote) {
     const nonRejected = limited.filter((c) => !riskBlocked(c.mint));
     for (const c of limited) {
       if (riskBlocked(c.mint)) {
@@ -8806,16 +8867,20 @@ export async function paperSniperCampaignAutoRunReport(
       }
     }
   } else {
-    for (const c of limited) pushStage(c.mint, "quote-fetch", "not-attempted", "read-only network is off — no live quote fetched");
+    const quoteReason =
+      networkActive && !quoteOk
+        ? `provider health reports the Jupiter quote ${providerStatusOf("jupiter-quote") ?? "unchecked"} — quote fetch skipped (honest evidence)`
+        : "read-only network is off — no live quote fetched";
+    for (const c of limited) pushStage(c.mint, "quote-fetch", networkActive && !quoteOk ? "skipped" : "not-attempted", quoteReason);
   }
 
-  // --- Stage: unsigned build dry-run + tx-inspect + simulation (network only) --
+  // --- Stage: unsigned build dry-run + tx-inspect + simulation (network only; gated by provider health) -
   const buildConfigured = Boolean(opts.wallet && opts.slippageBps && opts.maxSpendSol && opts.slippageCapBps && opts.riskScoreCap);
   let simAttempted = false;
   let simOkCount = 0;
   let simFailedCount = 0;
   let txInspectRustAvailable: boolean | null = null;
-  if (networkActive && buildConfigured) {
+  if (networkRpc && networkQuote && buildConfigured) {
     const target = limited.find((c) => !riskBlocked(c.mint) && quoteByMint.get(c.mint) === "observed" && (riskPathByMint.has(c.mint) || riskByMint.has(c.mint)));
     if (target !== undefined) {
       const effectiveRiskPath = riskPathByMint.get(target.mint);
@@ -9015,6 +9080,18 @@ export async function paperSniperCampaignAutoRunReport(
             : "unavailable";
   const evidenceProvenance = (opts.evidenceProvenance as SniperAlphaRunEvidenceProvenance | undefined) ?? (networkActive ? "real-readonly" : "mixed");
 
+  // When a provider health report is present, its projection is the source of truth for the alpha
+  // provider summary (consistent with provider-health.json); otherwise fall back to the run heuristic.
+  const alphaProviderHealth = providerHealth
+    ? summarizeProviderHealthForAlpha(providerHealth)
+    : {
+        risk: networkActive ? providerStatus(true, riskProviderFetched, riskProviderFailed) : riskByMint.size > 0 ? ("ok" as const) : ("not-attempted" as const),
+        quote: networkActive ? providerStatus(quoteAttempted, quoteObservedCount, quoteAttempted && quoteObservedCount === 0 ? 1 : 0) : ("not-attempted" as const),
+        simulation: networkActive && simAttempted ? providerStatus(true, simOkCount, simFailedCount) : ("not-attempted" as const),
+      };
+  const alphaArtifactRefs = [READONLY_CAMPAIGN_PLAN_FILE, CAMPAIGN_OUTPUT_FILE, ALPHA_EVIDENCE_INDEX_FILE];
+  if (providerHealth) alphaArtifactRefs.push(PROVIDER_HEALTH_REPORT_FILE);
+
   try {
     alpha = buildSniperAlphaRunReport({
       runId: opts.runId ?? null,
@@ -9024,15 +9101,11 @@ export async function paperSniperCampaignAutoRunReport(
       campaignPlanRef: READONLY_CAMPAIGN_PLAN_FILE,
       watchlistRef: opts.watchlistPath ? basename(opts.watchlistPath) : null,
       diffRef: null,
-      providerHealth: {
-        risk: networkActive ? providerStatus(true, riskProviderFetched, riskProviderFailed) : riskByMint.size > 0 ? "ok" : "not-attempted",
-        quote: networkActive ? providerStatus(quoteAttempted, quoteObservedCount, quoteAttempted && quoteObservedCount === 0 ? 1 : 0) : "not-attempted",
-        simulation: networkActive && simAttempted ? providerStatus(true, simOkCount, simFailedCount) : "not-attempted",
-      },
+      providerHealth: alphaProviderHealth,
       rustEngineStatus,
       phase7Status: opts.phase7Status ?? "authorized-for-design-only",
       evidenceProvenance,
-      artifactRefs: [READONLY_CAMPAIGN_PLAN_FILE, CAMPAIGN_OUTPUT_FILE, ALPHA_EVIDENCE_INDEX_FILE],
+      artifactRefs: alphaArtifactRefs,
     });
   } catch (err) {
     return { text: redactString(`Refusing: cannot assemble the alpha report — ${(err as Error).message}`), exitCode: 1 };
@@ -9057,6 +9130,9 @@ export async function paperSniperCampaignAutoRunReport(
       `- **Candidates:** ${campaign.candidateCount}`,
       `- **Verdicts:** watch ${campaign.verdictCounts.watch} · review ${campaign.verdictCounts.review} · BLOCKED ${campaign.verdictCounts.blocked} · insufficient ${campaign.verdictCounts.insufficientEvidence}`,
       `- **Providers:** risk=${alpha.providerHealthSummary.risk} quote=${alpha.providerHealthSummary.quote} sim=${alpha.providerHealthSummary.simulation} · rust=${alpha.rustEngineStatus}`,
+      ...(providerHealth
+        ? [`- **Provider health:** \`${PROVIDER_HEALTH_REPORT_FILE}\` — canRunLiveReadonlyCampaign=${String(providerHealth.canRunLiveReadonlyCampaign)} (reachability only; a provider being down is honest evidence, never a risk verdict)`]
+        : []),
       `- **Phase 7:** ${alpha.phase7Status}`,
       "",
       "## Candidates",
@@ -9088,6 +9164,7 @@ export async function paperSniperCampaignAutoRunReport(
   const out: string[] = [formatSniperAlphaRunReport(alpha, { label: opts.runId })];
   for (const w of warnings) out.push("", `note: ${w}`);
   out.push("", `wrote: ${planPath}`, `       ${campaignPath}`, `       ${alphaPath}`, `       ${join(outDir, CAMPAIGN_SUMMARY_FILE)}`);
+  if (providerHealth) out.push(`       ${providerHealthFilePath}`);
   out.push("", `inspect: pnpm web:inspect --dir "${outDir}"`);
   return { text: redactString(out.join("\n")), exitCode };
 }

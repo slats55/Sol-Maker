@@ -14,7 +14,13 @@ import {
   validateSniperDryRunCampaign,
   validateSniperAlphaRunReport,
   validateSniperDryRunCampaignDiff,
+  validateSniperProviderHealthReport,
+  buildSniperProviderHealthReport,
+  type SniperProviderHealthCheckInput,
 } from "@soulmaker/sniper";
+import { createJupiterQuoteAdapter, type FetchLike, type QuoteProviderAdapter } from "@soulmaker/quotefetch";
+import type { ReadOnlyClientConfig, ReadOnlySolanaClient, RpcHealth } from "@soulmaker/solana";
+import type { EngineProcessRunner } from "@soulmaker/engine-bridge";
 import {
   paperSniperCampaignAutoRunReport,
   paperSniperCampaignDiffReport,
@@ -161,6 +167,133 @@ describe("paper:sniper:campaign:auto-run — offline alpha run", () => {
     expect(second.text).toContain("already exists");
     const forced = await paperSniperCampaignAutoRunReport(ctx, { candidatesPath, outDir: out, force: true });
     expect(forced.exitCode).toBe(0);
+  });
+});
+
+// --- Sprint 105-B: provider health integration --------------------------------
+
+const providerHealthFixture = (name: string, checks: SniperProviderHealthCheckInput[]): string =>
+  write(name, buildSniperProviderHealthReport({ reportId: "fixture", mode: "mainnet-dry-run", checks }));
+
+/** A ctx whose injected seams let --check-providers probe without any real network. */
+function doctorCtx(opts: { rpc?: "ok" | "down"; jupiter?: "ok" | "down" }) {
+  const fetchLike: FetchLike = async () => {
+    if (opts.jupiter === "down") throw new Error("network error");
+    return {
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({ inputMint: WSOL, inAmount: "1000000", outputMint: USDC, outAmount: "142000", otherAmountThreshold: "141000", priceImpactPct: "0.01", routePlan: [{ swapInfo: { label: "V" } }], contextSlot: 1 }),
+    };
+  };
+  return {
+    engineBinaryExists: () => false,
+    createEngineRunner: (): EngineProcessRunner => ({
+      run: () => Promise.resolve({ started: false, startError: "ENOENT", exitCode: null, timedOut: false, stdout: "", stderr: "", stdoutTruncated: false, stderrTruncated: false }),
+    }),
+    createClient: (config: ReadOnlyClientConfig) =>
+      ({
+        endpointHost: "f",
+        getRpcHealth: async (): Promise<RpcHealth> =>
+          (opts.rpc === "down" ? { ok: false, endpointHost: config.rpcUrl, error: "connection refused" } : { ok: true, endpointHost: config.rpcUrl, solanaCore: "1.18.0", featureSet: 1, slot: 1 }) as RpcHealth,
+      }) as unknown as ReadOnlySolanaClient,
+    createQuoteAdapter: (): QuoteProviderAdapter => createJupiterQuoteAdapter({ fetchLike }),
+  };
+}
+
+describe("paper:sniper:campaign:auto-run — provider health (S105-B)", () => {
+  it("ingests --provider-health, writes provider-health.json, and folds it into the alpha summary", async () => {
+    const candidatesPath = candidates([WSOL]);
+    const out = join(dir, "alpha");
+    const ph = providerHealthFixture("ph.json", [
+      { provider: "rpc", status: "available" },
+      { provider: "jupiter-quote", status: "available" },
+      { provider: "simulation", status: "available" },
+    ]);
+    const { exitCode } = await paperSniperCampaignAutoRunReport(ctx, { candidatesPath, providerHealthPath: ph, outDir: out, risks: [`${WSOL}=${riskFixture("r.json", "PASS_FOR_PAPER_EVALUATION")}`] });
+    expect(exitCode).toBe(0);
+    expect(existsSync(join(out, "provider-health.json"))).toBe(true);
+    validateSniperProviderHealthReport(JSON.parse(readFileSync(join(out, "provider-health.json"), "utf8")));
+    const alpha = validateSniperAlphaRunReport(JSON.parse(readFileSync(join(out, "alpha-report.json"), "utf8")));
+    expect(alpha.providerHealthSummary.risk).toBe("ok");
+    expect(alpha.providerHealthSummary.quote).toBe("ok");
+    expect(alpha.providerHealthSummary.simulation).toBe("ok");
+    expect(alpha.artifactRefs).toContain("provider-health.json");
+  });
+
+  it("when provider health says unavailable, the live network stages are SKIPPED honestly (no network touched)", async () => {
+    const candidatesPath = candidates([WSOL]);
+    const out = join(dir, "alpha");
+    const ph = providerHealthFixture("ph.json", [
+      { provider: "rpc", status: "unavailable" },
+      { provider: "jupiter-quote", status: "unavailable" },
+    ]);
+    // networkActive is ON, but the unavailable provider health gates the stages off (no createClient seam,
+    // so if it tried to reach the network the test would hang/fail — it doesn't, proving the gate).
+    const { exitCode } = await paperSniperCampaignAutoRunReport(ctx, {
+      candidatesPath,
+      mode: "mainnet-dry-run",
+      allowReadonlyNetwork: true,
+      providerHealthPath: ph,
+      outDir: out,
+    });
+    expect(exitCode).toBe(0);
+    const index = readJson("alpha/evidence-index.json") as { candidates: Array<{ stages: Array<{ stage: string; status: string }> }> };
+    const stages = index.candidates[0]!.stages;
+    expect(stages.some((s) => s.stage === "deep-risk" && s.status === "skipped")).toBe(true);
+    expect(stages.some((s) => s.stage === "quote-fetch" && s.status === "skipped")).toBe(true);
+    const alpha = validateSniperAlphaRunReport(JSON.parse(readFileSync(join(out, "alpha-report.json"), "utf8")));
+    expect(alpha.providerHealthSummary.risk).toBe("unavailable");
+    expect(alpha.providerHealthSummary.quote).toBe("unavailable");
+    expect(alpha.liveTradingStatus).toBe("disabled");
+  });
+
+  it("--check-providers probes (injected seams), writes provider-health.json, and reflects it", async () => {
+    const candidatesPath = candidates([WSOL]);
+    const out = join(dir, "alpha");
+    const { exitCode } = await paperSniperCampaignAutoRunReport(doctorCtx({ rpc: "ok", jupiter: "ok" }), {
+      candidatesPath,
+      checkProviders: true,
+      outDir: out,
+    });
+    expect(exitCode).toBe(0);
+    const health = validateSniperProviderHealthReport(JSON.parse(readFileSync(join(out, "provider-health.json"), "utf8")));
+    expect(health.canRunLiveReadonlyCampaign).toBe(true);
+    expect(health.noSend).toBe(true);
+    const alpha = validateSniperAlphaRunReport(JSON.parse(readFileSync(join(out, "alpha-report.json"), "utf8")));
+    expect(alpha.providerHealthSummary.risk).toBe("ok");
+    expect(alpha.providerHealthSummary.quote).toBe("ok");
+  });
+
+  it("--check-providers records an unreachable RPC and gates the live stages off", async () => {
+    const candidatesPath = candidates([WSOL]);
+    const out = join(dir, "alpha");
+    await paperSniperCampaignAutoRunReport(doctorCtx({ rpc: "down", jupiter: "ok" }), {
+      candidatesPath,
+      mode: "mainnet-dry-run",
+      allowReadonlyNetwork: true,
+      checkProviders: true,
+      outDir: out,
+    });
+    const health = validateSniperProviderHealthReport(JSON.parse(readFileSync(join(out, "provider-health.json"), "utf8")));
+    expect(health.canRunLiveReadonlyCampaign).toBe(false);
+    const index = readJson("alpha/evidence-index.json") as { candidates: Array<{ stages: Array<{ stage: string; status: string }> }> };
+    expect(index.candidates[0]!.stages.some((s) => s.stage === "deep-risk" && s.status === "skipped")).toBe(true);
+  });
+
+  it("refuses --provider-health together with --check-providers", async () => {
+    const candidatesPath = candidates([WSOL]);
+    const ph = providerHealthFixture("ph.json", [{ provider: "rpc", status: "available" }]);
+    const r = await paperSniperCampaignAutoRunReport(ctx, { candidatesPath, providerHealthPath: ph, checkProviders: true, outDir: join(dir, "alpha") });
+    expect(r.exitCode).toBe(1);
+    expect(r.text).toMatch(/mutually exclusive/);
+  });
+
+  it("refuses a provider-health file with the wrong schema", async () => {
+    const candidatesPath = candidates([WSOL]);
+    const bad = write("bad.json", { schemaVersion: "not.the.schema", checks: [] });
+    const r = await paperSniperCampaignAutoRunReport(ctx, { candidatesPath, providerHealthPath: bad, outDir: join(dir, "alpha") });
+    expect(r.exitCode).toBe(1);
   });
 });
 
