@@ -380,6 +380,88 @@
     <section class="sm-section">
     <div class="sm-section__head">
             <div>
+              <h2 class="sm-section__title">Operator alpha workflow (live-read-only · no-send)</h2>
+              <p class="sm-section__desc">Sprint 105-B: diagnose read-only providers, then run or honestly block a real-read-only alpha campaign. Live trading stays disabled — nothing here signs, sends, or trades.</p>
+            </div>
+
+          </div>
+    <div class="sm-section__body">
+      <div class="sm-notice sm-notice--info" role="note">
+    <p class="sm-notice__title">Read-only providers only — LIVE TRADING DISABLED · no wallet, no key, no signer, no send.</p>
+    <div class="sm-notice__body">The provider <strong>doctor</strong> reports whether Sol Maker can <em>reach</em> the read-only
+          dependencies an alpha campaign needs (RPC, the Jupiter quote API, the Rust engine). A provider being down
+          is <strong>honest evidence</strong>, never a candidate risk verdict — and the campaign skips that stage
+          rather than faking a result. Default endpoints are public and keyless; a key embedded in a custom
+          <code>--rpc-url</code> / <code>--jupiter-url</code> is <strong>never printed</strong> (every endpoint is
+          reduced to its host). <code>canRunLiveReadonlyCampaign</code> means only that the read-only network is
+          reachable — it <strong>never</strong> means a trade is authorized.</div>
+  </div>
+      <div class="sm-cmdgrid">
+        <article class="sm-cmd">
+            <code class="sm-cmd__code">pnpm soulmaker paper:sniper:provider:doctor --mode mainnet-dry-run --out runs/alpha/provider-health.json</code>
+            <p class="sm-cmd__summary">Check read-only provider readiness FIRST: bounded probes of the RPC, the Jupiter quote API, and the Rust engine into a sniper.provider_health.report.v1. Reachability only — a provider being down is honest evidence, never a candidate risk verdict. No raw endpoint is printed.</p>
+          </article><article class="sm-cmd">
+            <code class="sm-cmd__code">pnpm soulmaker paper:sniper:campaign:auto-run --candidates runs/alpha/candidates.json --mode mainnet-dry-run --allow-readonly-network --check-providers --out runs/alpha</code>
+            <p class="sm-cmd__summary">Run the live-read-only auto campaign: it checks providers, then gathers deep risk + route quotes itself. An unreachable provider SKIPS its stage as honest evidence — it never fakes a result and never kills the run. No send, no signer, no key.</p>
+          </article><article class="sm-cmd">
+            <code class="sm-cmd__code">pnpm soulmaker paper:sniper:campaign:diff --before runs/prev/campaign.json --after runs/alpha/campaign.json --out runs/alpha/campaign-diff.json</code>
+            <p class="sm-cmd__summary">Compare two campaigns — improved / worsened / newly-blocked / newly-watch. Reports movement only; authorizes nothing.</p>
+          </article><article class="sm-cmd">
+            <code class="sm-cmd__code">pnpm soulmaker paper:sniper:alpha:report --campaign runs/alpha/campaign.json --plan runs/alpha/readonly-campaign-plan.json --out runs/alpha/alpha-report.json</code>
+            <p class="sm-cmd__summary">Assemble the showable sniper.alpha_run.report.v1 (top / blocked / insufficient-evidence candidates, stage coverage, provider + Rust health, Phase 7 posture). Never a profitability or live-readiness claim.</p>
+          </article><article class="sm-cmd">
+            <code class="sm-cmd__code">pnpm web:inspect --dir runs/alpha --force</code>
+            <p class="sm-cmd__summary">Render the alpha folder — plan, ranked campaign, diff, alpha report, and the provider health report — each with a LIVE TRADING DISABLED banner. Restore the static site with pnpm web:build.</p>
+          </article>
+      </div>
+      <section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Alpha run folder</h2>
+              <p class="sm-section__desc">What --out contains after a run (inspect it with the command above).</p>
+            </div>
+
+          </div>
+    <div class="sm-section__body"><ul class="sm-bullets sm-bullets--plain">
+          <li><code>provider-health.json</code> — sniper.provider_health.report.v1 (reachability only)</li>
+          <li><code>readonly-campaign-plan.json</code> — what the no-send campaign is ALLOWED to do</li>
+          <li><code>campaign.json</code> — the ranked, re-derived candidate verdicts</li>
+          <li><code>alpha-report.json</code> — the showable summary (top / blocked / insufficient)</li>
+          <li><code>evidence-index.json</code> + per-candidate evidence, and <code>RUN_SUMMARY.md</code></li>
+        </ul></div>
+  </section>
+      <section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">Provider health status vocabulary</h2>
+              <p class="sm-section__desc">Reachability only — there is deliberately no blocked / ready status, so a down provider is never confused with a blocked candidate.</p>
+            </div>
+
+          </div>
+    <div class="sm-section__body"><ul class="sm-bullets sm-bullets--plain">
+          <li><code>available</code> — reachable for read-only use</li><li><code>unavailable</code> — unreachable (network error)</li><li><code>timeout</code> — no response within the timeout</li><li><code>rate-limited</code> — the provider throttled the read-only probe</li><li><code>misconfigured</code> — the endpoint is an invalid / unsupported URL</li><li><code>error</code> — the provider returned an error</li><li><code>skipped</code> — not probed (e.g. exercised by the campaign instead)</li>
+        </ul></div>
+  </section>
+      <section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">What is real vs fixture vs unavailable vs skipped vs blocked</h2>
+
+            </div>
+
+          </div>
+    <div class="sm-section__body"><ul class="sm-bullets sm-bullets--plain">
+          <li><code>real-readonly</code> — real evidence read live from a public RPC / quote provider (no send, no signer)</li><li><code>fixture</code> — deterministic committed example evidence</li><li><code>unavailable</code> — a provider could not be reached — recorded honestly, never faked</li><li><code>skipped</code> — a stage was gated off (provider down, or risk blocked the candidate)</li><li><code>blocked</code> — a candidate failed a risk / build / simulation gate — never overridable by a score</li>
+        </ul></div>
+  </section>
+      <p class="sm-muted-line">Next safe action: run the provider doctor; if providers are reachable, run the
+        auto campaign with <code>--check-providers</code>; if not, the campaign records the unavailable providers
+        honestly and runs a fixture campaign instead. Nothing here trades.</p>
+    </div>
+  </section>
+    <section class="sm-section">
+    <div class="sm-section__head">
+            <div>
               <h2 class="sm-section__title">Run it yourself</h2>
               <p class="sm-section__desc">The real-input rehearsal workflow — see examples/sniper/real-input-rehearsal/ for a runnable fictional walkthrough.</p>
             </div>

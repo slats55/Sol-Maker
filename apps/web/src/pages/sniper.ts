@@ -154,6 +154,104 @@ function workflowSection(): RawHtml {
   });
 }
 
+/** Sprint 105-B — the no-send Operator Alpha Workflow: provider health → live-read-only campaign. */
+function alphaWorkflowSection(): RawHtml {
+  const commands: readonly { readonly command: string; readonly summary: string }[] = [
+    {
+      command: "pnpm soulmaker paper:sniper:provider:doctor --mode mainnet-dry-run --out runs/alpha/provider-health.json",
+      summary:
+        "Check read-only provider readiness FIRST: bounded probes of the RPC, the Jupiter quote API, and the Rust engine into a sniper.provider_health.report.v1. Reachability only — a provider being down is honest evidence, never a candidate risk verdict. No raw endpoint is printed.",
+    },
+    {
+      command:
+        "pnpm soulmaker paper:sniper:campaign:auto-run --candidates runs/alpha/candidates.json --mode mainnet-dry-run --allow-readonly-network --check-providers --out runs/alpha",
+      summary:
+        "Run the live-read-only auto campaign: it checks providers, then gathers deep risk + route quotes itself. An unreachable provider SKIPS its stage as honest evidence — it never fakes a result and never kills the run. No send, no signer, no key.",
+    },
+    {
+      command: "pnpm soulmaker paper:sniper:campaign:diff --before runs/prev/campaign.json --after runs/alpha/campaign.json --out runs/alpha/campaign-diff.json",
+      summary: "Compare two campaigns — improved / worsened / newly-blocked / newly-watch. Reports movement only; authorizes nothing.",
+    },
+    {
+      command: "pnpm soulmaker paper:sniper:alpha:report --campaign runs/alpha/campaign.json --plan runs/alpha/readonly-campaign-plan.json --out runs/alpha/alpha-report.json",
+      summary: "Assemble the showable sniper.alpha_run.report.v1 (top / blocked / insufficient-evidence candidates, stage coverage, provider + Rust health, Phase 7 posture). Never a profitability or live-readiness claim.",
+    },
+    {
+      command: "pnpm web:inspect --dir runs/alpha --force",
+      summary: "Render the alpha folder — plan, ranked campaign, diff, alpha report, and the provider health report — each with a LIVE TRADING DISABLED banner. Restore the static site with pnpm web:build.",
+    },
+  ];
+  const providerStatuses: readonly { readonly status: string; readonly meaning: string }[] = [
+    { status: "available", meaning: "reachable for read-only use" },
+    { status: "unavailable", meaning: "unreachable (network error)" },
+    { status: "timeout", meaning: "no response within the timeout" },
+    { status: "rate-limited", meaning: "the provider throttled the read-only probe" },
+    { status: "misconfigured", meaning: "the endpoint is an invalid / unsupported URL" },
+    { status: "error", meaning: "the provider returned an error" },
+    { status: "skipped", meaning: "not probed (e.g. exercised by the campaign instead)" },
+  ];
+  const provenance: readonly { readonly label: string; readonly meaning: string }[] = [
+    { label: "real-readonly", meaning: "real evidence read live from a public RPC / quote provider (no send, no signer)" },
+    { label: "fixture", meaning: "deterministic committed example evidence" },
+    { label: "unavailable", meaning: "a provider could not be reached — recorded honestly, never faked" },
+    { label: "skipped", meaning: "a stage was gated off (provider down, or risk blocked the candidate)" },
+    { label: "blocked", meaning: "a candidate failed a risk / build / simulation gate — never overridable by a score" },
+  ];
+  return Section({
+    title: "Operator alpha workflow (live-read-only · no-send)",
+    description:
+      "Sprint 105-B: diagnose read-only providers, then run or honestly block a real-read-only alpha campaign. Live trading stays disabled — nothing here signs, sends, or trades.",
+    body: html`
+      ${RiskNotice({
+        tone: "info",
+        title: "Read-only providers only — LIVE TRADING DISABLED · no wallet, no key, no signer, no send.",
+        body: html`The provider <strong>doctor</strong> reports whether Sol Maker can <em>reach</em> the read-only
+          dependencies an alpha campaign needs (RPC, the Jupiter quote API, the Rust engine). A provider being down
+          is <strong>honest evidence</strong>, never a candidate risk verdict — and the campaign skips that stage
+          rather than faking a result. Default endpoints are public and keyless; a key embedded in a custom
+          <code>--rpc-url</code> / <code>--jupiter-url</code> is <strong>never printed</strong> (every endpoint is
+          reduced to its host). <code>canRunLiveReadonlyCampaign</code> means only that the read-only network is
+          reachable — it <strong>never</strong> means a trade is authorized.`,
+      })}
+      <div class="sm-cmdgrid">
+        ${commands.map(
+          (cmd) => html`<article class="sm-cmd">
+            <code class="sm-cmd__code">${cmd.command}</code>
+            <p class="sm-cmd__summary">${cmd.summary}</p>
+          </article>`,
+        )}
+      </div>
+      ${Section({
+        title: "Alpha run folder",
+        description: "What --out contains after a run (inspect it with the command above).",
+        body: html`<ul class="sm-bullets sm-bullets--plain">
+          <li><code>provider-health.json</code> — sniper.provider_health.report.v1 (reachability only)</li>
+          <li><code>readonly-campaign-plan.json</code> — what the no-send campaign is ALLOWED to do</li>
+          <li><code>campaign.json</code> — the ranked, re-derived candidate verdicts</li>
+          <li><code>alpha-report.json</code> — the showable summary (top / blocked / insufficient)</li>
+          <li><code>evidence-index.json</code> + per-candidate evidence, and <code>RUN_SUMMARY.md</code></li>
+        </ul>`,
+      })}
+      ${Section({
+        title: "Provider health status vocabulary",
+        description: "Reachability only — there is deliberately no blocked / ready status, so a down provider is never confused with a blocked candidate.",
+        body: html`<ul class="sm-bullets sm-bullets--plain">
+          ${providerStatuses.map((s) => html`<li><code>${s.status}</code> — ${s.meaning}</li>`)}
+        </ul>`,
+      })}
+      ${Section({
+        title: "What is real vs fixture vs unavailable vs skipped vs blocked",
+        body: html`<ul class="sm-bullets sm-bullets--plain">
+          ${provenance.map((p) => html`<li><code>${p.label}</code> — ${p.meaning}</li>`)}
+        </ul>`,
+      })}
+      <p class="sm-muted-line">Next safe action: run the provider doctor; if providers are reachable, run the
+        auto campaign with <code>--check-providers</code>; if not, the campaign records the unavailable providers
+        honestly and runs a fixture campaign instead. Nothing here trades.</p>
+    `,
+  });
+}
+
 /** The Phase 7 / live posture + the operator demo workbench — honest, calm, no green live state. */
 function livePostureSection(): RawHtml {
   const commands: readonly { readonly command: string; readonly summary: string }[] = [
@@ -222,6 +320,7 @@ export function renderSniper(): RawHtml {
     ${PipelineSection(buildPipelineStages(index, overview))}
     ${CandidateIntelSection(buildCandidateRows(index))}
     ${ObservabilitySection(buildObservabilityFacts(index, overview))}
+    ${alphaWorkflowSection()}
     ${workflowSection()}
     ${livePostureSection()}
 
