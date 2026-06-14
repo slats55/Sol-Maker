@@ -552,9 +552,16 @@ export const COMMANDS: readonly CommandRef[] = [
     readsChain: false,
   },
   {
+    command: "paper:sniper:provider:doctor",
+    summary:
+      "The S105-B read-only provider readiness check (sniper.provider_health.report.v1): resolve the read-only provider config (--rpc-url / --jupiter-url / env vars > safe public keyless defaults) and run BOUNDED read-only probes — an RPC health call, a tiny WSOL→USDC Jupiter quote, and a no-network Rust engine check. It reports REACHABILITY only (available / unavailable / timeout / rate-limited / misconfigured / error / skipped); a provider being down is honest evidence, never a candidate risk verdict. No raw endpoint is printed (every endpoint is reduced to its host); NEVER sends, signs, loads a key, or builds/simulates. --fail-on-unavailable gates CI; live trading stays disabled.",
+    group: "Sniper (paper-only)",
+    readsChain: true,
+  },
+  {
     command: "paper:sniper:campaign:auto-run",
     summary:
-      "The S105-A live-read-only auto campaign (sniper.readonly_campaign.plan.v1 + sniper.dryrun.campaign.v1 + sniper.alpha_run.report.v1): GATHER the safe read-only evidence itself across candidates — Rust candidate scoring, deep risk, route-quote fetch/score, and an unsigned build dry-run + simulation in mainnet-dry-run mode — and write a no-send alpha folder. Network reads happen ONLY with --mode mainnet-dry-run + the explicit --allow-readonly-network opt-in; a risk REJECT short-circuits the downstream stages; an unavailable provider / Rust engine is recorded honestly. NEVER sends, signs, or loads a key; live trading stays disabled.",
+      "The S105-A live-read-only auto campaign (sniper.readonly_campaign.plan.v1 + sniper.dryrun.campaign.v1 + sniper.alpha_run.report.v1): GATHER the safe read-only evidence itself across candidates — Rust candidate scoring, deep risk, route-quote fetch/score, and an unsigned build dry-run + simulation in mainnet-dry-run mode — and write a no-send alpha folder. S105-B adds --check-providers / --provider-health to gate the live stages on provider reachability. Network reads happen ONLY with --mode mainnet-dry-run + the explicit --allow-readonly-network opt-in; a risk REJECT short-circuits the downstream stages; an unavailable provider / Rust engine is recorded honestly. NEVER sends, signs, or loads a key; live trading stays disabled.",
     group: "Sniper (paper-only)",
     readsChain: true,
   },

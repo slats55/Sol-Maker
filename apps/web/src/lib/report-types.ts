@@ -605,6 +605,15 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
       "The S105-A showable summary of a no-send live-read-only alpha run, projected from a validated campaign: top / blocked / insufficient-evidence candidates, stage coverage, provider + Rust engine health, the Phase 7 posture, and evidence provenance (real-readonly vs fixture / fictional-example — never faked). Candidate verdicts come from the campaign's own re-derivation; the report can never claim profitability or live readiness, liveTradingStatus is pinned \"disabled\", authorizesLiveTrading is false, and the closed schema refuses any signature / send result. Produced by paper:sniper:alpha:report (and paper:sniper:campaign:auto-run).",
     cli: "paper:sniper:alpha:report",
   },
+  {
+    id: "sniper.provider_health.report.v1",
+    title: "Sniper provider health report",
+    family: "sniper",
+    stability: "stable",
+    description:
+      "The S105-B read-only provider readiness report: whether a no-send alpha campaign can REACH its read-only dependencies (RPC, the Jupiter quote API, the Rust engine, route-quote / build-dry-run / simulation). Each check carries a CLOSED reachability status (available / unavailable / skipped / misconfigured / timeout / rate-limited / error) — there is deliberately no blocked / ready status, so 'provider unavailable' is never confused with 'candidate blocked'. The summary counts and canRunLiveReadonlyCampaign are RE-DERIVED from the checks and the validator recomputes them as a parity wall; noSend / noSigner are pinned true, liveSendStatus is pinned \"disabled\", authorizesLiveTrading is false, and every endpoint is reduced to its host (no secret carried). Produced by paper:sniper:provider:doctor (and paper:sniper:campaign:auto-run --check-providers).",
+    cli: "paper:sniper:provider:doctor",
+  },
 ];
 
 /** Look up schema metadata by id, or `undefined` for an unknown schema. */

@@ -689,8 +689,22 @@
           </div>
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:sniper:provider:doctor</code>
+    <p class="sm-cmd__summary">The S105-B read-only provider readiness check (sniper.provider_health.report.v1): resolve the read-only provider config (--rpc-url / --jupiter-url / env vars &gt; safe public keyless defaults) and run BOUNDED read-only probes — an RPC health call, a tiny WSOL→USDC Jupiter quote, and a no-network Rust engine check. It reports REACHABILITY only (available / unavailable / timeout / rate-limited / misconfigured / error / skipped); a provider being down is honest evidence, never a candidate risk verdict. No raw endpoint is printed (every endpoint is reduced to its host); NEVER sends, signs, loads a key, or builds/simulates. --fail-on-unavailable gates CI; live trading stays disabled.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="The S105-B read-only provider readiness report: whether a no-send alpha campaign can REACH its read-only dependencies (RPC, the Jupiter quote API, the Rust engine, route-quote / build-dry-run / simulation). Each check carries a CLOSED reachability status (available / unavailable / skipped / misconfigured / timeout / rate-limited / error) — there is deliberately no blocked / ready status, so &#39;provider unavailable&#39; is never confused with &#39;candidate blocked&#39;. The summary counts and canRunLiveReadonlyCampaign are RE-DERIVED from the checks and the validator recomputes them as a parity wall; noSend / noSigner are pinned true, liveSendStatus is pinned &quot;disabled&quot;, authorizesLiveTrading is false, and every endpoint is reduced to its host (no secret carried). Produced by paper:sniper:provider:doctor (and paper:sniper:campaign:auto-run --check-providers).">
+    <code>sniper.provider_health.report.v1</code>
+  </span>
+          </div>
+    <span
+            class="sm-pill sm-pill--caution"
+            title="Reads public chain state; in PAPER mode requires --allow-paper-read and accepts public keys only"
+            >reads chain · public keys only</span
+          >
+  </article><article class="sm-cmd">
     <code class="sm-cmd__code">pnpm soulmaker paper:sniper:campaign:auto-run</code>
-    <p class="sm-cmd__summary">The S105-A live-read-only auto campaign (sniper.readonly_campaign.plan.v1 + sniper.dryrun.campaign.v1 + sniper.alpha_run.report.v1): GATHER the safe read-only evidence itself across candidates — Rust candidate scoring, deep risk, route-quote fetch/score, and an unsigned build dry-run + simulation in mainnet-dry-run mode — and write a no-send alpha folder. Network reads happen ONLY with --mode mainnet-dry-run + the explicit --allow-readonly-network opt-in; a risk REJECT short-circuits the downstream stages; an unavailable provider / Rust engine is recorded honestly. NEVER sends, signs, or loads a key; live trading stays disabled.</p>
+    <p class="sm-cmd__summary">The S105-A live-read-only auto campaign (sniper.readonly_campaign.plan.v1 + sniper.dryrun.campaign.v1 + sniper.alpha_run.report.v1): GATHER the safe read-only evidence itself across candidates — Rust candidate scoring, deep risk, route-quote fetch/score, and an unsigned build dry-run + simulation in mainnet-dry-run mode — and write a no-send alpha folder. S105-B adds --check-providers / --provider-health to gate the live stages on provider reachability. Network reads happen ONLY with --mode mainnet-dry-run + the explicit --allow-readonly-network opt-in; a risk REJECT short-circuits the downstream stages; an unavailable provider / Rust engine is recorded honestly. NEVER sends, signs, or loads a key; live trading stays disabled.</p>
     <div class="sm-cmd__artifact">
             <span class="sm-cmd__artifact-label">artifact</span>
             <span class="sm-schema sm-schema--stable" title="The S105-A constitution for a no-send live-read-only auto-campaign: what it is ALLOWED to do BEFORE it runs — allowedStages (a CLOSED read-only stage set), the re-derived disabledStages complement, the candidate cap, the quote-age cap, and the provider policy. The stage set carries no send / sign / arm / broadcast stage (such a stage is rejected as unknown); noSend / noSigner / noLiveTrading are pinned true; liveSendStatus is pinned &quot;disabled&quot;; and a plan can never imply readiness to trade (it has no readiness/execution field). Produced by paper:sniper:campaign:auto-run.">

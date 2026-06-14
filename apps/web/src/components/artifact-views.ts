@@ -4225,6 +4225,78 @@ function renderSniperAlphaRunReportView(rec: Record<string, unknown>): RawHtml {
   `;
 }
 
+function renderSniperProviderHealthView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const reportId = need(missing, "reportId", readString(rec, "reportId"));
+  const liveSendStatus = need(missing, "liveSendStatus", readString(rec, "liveSendStatus"));
+  const summary = asRecord(rec["summary"]);
+  const checks = Array.isArray(rec["checks"])
+    ? (rec["checks"] as unknown[]).filter((c): c is Record<string, unknown> => typeof c === "object" && c !== null && !Array.isArray(c))
+    : [];
+  const caveats = readStringArray(rec, "caveats");
+  // A provider health report can never send / sign / authorize a live path — these literals prove it.
+  const safe =
+    liveSendStatus === "disabled" &&
+    rec.noSend === true &&
+    rec.noSigner === true &&
+    rec.authorizesLiveTrading === false;
+  const canRunLive = rec.canRunLiveReadonlyCampaign === true;
+  return html`
+    ${RiskNotice({
+      tone: safe ? "info" : "caution",
+      title: safe
+        ? "Provider health report — LIVE TRADING DISABLED · reachability only, never a risk verdict"
+        : "Provider health report is missing its no-send / no-signer safety literals — do NOT trust this artifact",
+      body: html`Whether a no-send read-only alpha campaign can REACH its providers (RPC, the Jupiter quote API,
+        the Rust engine). A provider status is reachability ONLY — <code>available</code> / <code>unavailable</code>
+        / <code>timeout</code> / <code>rate-limited</code> / <code>misconfigured</code> / <code>error</code> /
+        <code>skipped</code> — and is never a candidate risk verdict. No endpoint secret is carried (every endpoint
+        is reduced to its host). <code>canRunLiveReadonlyCampaign</code> means only the read-only network is
+        reachable; <code>liveSendStatus</code> is <strong>${liveSendStatus}</strong> and it authorizes nothing.`,
+    })}
+    ${kvSection("Provider health", undefined, [
+      { term: "report id", detail: code(reportId) },
+      { term: "mode / network", detail: text(`${readString(rec, "mode") ?? DASH} / ${readString(rec, "network") ?? DASH}`) },
+      { term: "profile", detail: code(readString(rec, "providerProfile")) },
+      { term: "can run", detail: text(`live-readonly=${String(canRunLive)} · fixture=${String(rec.canRunFixtureCampaign === true)}`) },
+      { term: "live-send status", detail: text(liveSendStatus ?? DASH) },
+      {
+        term: "summary",
+        detail: summary === null
+          ? text(DASH)
+          : text(
+              `${num(readNumber(summary, "availableCount"))} available · ${num(readNumber(summary, "unavailableCount"))} unavailable · ${num(readNumber(summary, "timeoutCount"))} timeout · ${num(readNumber(summary, "rateLimitedCount"))} rate-limited · ${num(readNumber(summary, "misconfiguredCount"))} misconfigured · ${num(readNumber(summary, "errorCount"))} error · ${num(readNumber(summary, "skippedCount"))} skipped`,
+            ),
+      },
+    ])}
+    ${tableSection({
+      title: `Checks (${String(checks.length)})`,
+      description: "Per-provider reachability. Endpoints are host-only; a provider being down is honest evidence, never a risk verdict.",
+      columns: [{ header: "Status" }, { header: "Provider" }, { header: "Endpoint" }, { header: "Latency" }, { header: "Message" }],
+      rows: checks.slice(0, 100).map((c) => [
+        code(readString(c, "status")),
+        code(readString(c, "provider")),
+        text(readString(c, "redactedEndpoint") ?? DASH),
+        text(c["latencyMs"] === null || c["latencyMs"] === undefined ? DASH : `${num(readNumber(c, "latencyMs"))} ms`),
+        text(readString(c, "message") ?? DASH),
+      ]),
+      empty: "No checks.",
+    })}
+    ${checks.length === 0 ? "" : Section({
+      title: "Next safe actions",
+      body: html`<ul class="sm-bullets sm-bullets--plain">${checks.map((c) => {
+        const action = readString(c, "nextSafeAction");
+        return action === null ? "" : html`<li>${code(readString(c, "provider"))}: ${action}</li>`;
+      })}</ul>`,
+    })}
+    ${caveats.total === 0 ? "" : Section({
+      title: `Caveats (${String(caveats.total)})`,
+      body: html`<ul class="sm-bullets sm-bullets--plain">${caveats.items.map((c) => html`<li>${c}</li>`)}</ul>`,
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
 function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml | null {
   switch (schema) {
     case "backtest.report.v1":
@@ -4313,6 +4385,8 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderSniperCampaignDiffView(rec);
     case "sniper.alpha_run.report.v1":
       return renderSniperAlphaRunReportView(rec);
+    case "sniper.provider_health.report.v1":
+      return renderSniperProviderHealthView(rec);
     case "execution.readiness.report.v1":
       return renderExecutionReadinessView(rec);
     case "execution.devnet.rehearsal.report.v1":
