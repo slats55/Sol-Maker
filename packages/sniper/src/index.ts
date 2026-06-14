@@ -727,3 +727,61 @@ export type {
   SniperDryRunCampaignDiff,
   FormatSniperDryRunCampaignDiffOptions,
 } from "./dryrun-campaign-diff.js";
+
+export {
+  resolveReadonlyProviderConfig,
+  ReadonlyProviderConfigError,
+  READONLY_PROVIDER_MODES,
+  READONLY_PROVIDER_NETWORKS,
+  READONLY_PROVIDER_ENV_VARS,
+  DEFAULT_MAINNET_RPC_URL,
+  DEFAULT_DEVNET_RPC_URL,
+  DEFAULT_JUPITER_QUOTE_URL,
+  PROVIDER_TIMEOUT_MS_MIN,
+  PROVIDER_TIMEOUT_MS_MAX,
+  PROVIDER_TIMEOUT_MS_DEFAULT,
+  PROVIDER_RETRY_LIMIT_MIN,
+  PROVIDER_RETRY_LIMIT_MAX,
+  PROVIDER_RETRY_LIMIT_DEFAULT,
+} from "./provider-config.js";
+
+export type {
+  ReadonlyProviderMode,
+  ReadonlyProviderNetwork,
+  ReadonlyProviderSource,
+  ResolvedProviderEndpoint,
+  ResolvedReadonlyProviderConfig,
+  ResolveReadonlyProviderConfigInput,
+} from "./provider-config.js";
+
+export {
+  buildSniperProviderHealthReport,
+  validateSniperProviderHealthReport,
+  formatSniperProviderHealthReport,
+  summarizeProviderHealthForAlpha,
+  deriveCanRunLiveReadonlyCampaign,
+  SniperProviderHealthReportError,
+  SNIPER_PROVIDER_HEALTH_REPORT_SCHEMA_VERSION,
+  SNIPER_PROVIDER_HEALTH_REPORT_BANNER,
+  SNIPER_PROVIDER_HEALTH_REPORT_DISCLAIMERS,
+  SNIPER_PROVIDER_HEALTH_MODES,
+  SNIPER_PROVIDER_HEALTH_NETWORKS,
+  SNIPER_PROVIDER_HEALTH_PROVIDERS,
+  SNIPER_PROVIDER_HEALTH_STATUSES,
+  SNIPER_PROVIDER_HEALTH_LIVE_REQUIRED_PROVIDERS,
+  SNIPER_PROVIDER_HEALTH_LIVE_SEND_STATUS,
+} from "./provider-health-report.js";
+
+export type {
+  SniperProviderHealthMode,
+  SniperProviderHealthNetwork,
+  SniperProviderHealthProvider,
+  SniperProviderHealthStatus,
+  SniperProviderHealthCheckInput,
+  BuildSniperProviderHealthReportInput,
+  SniperProviderHealthCheck,
+  SniperProviderHealthSummary,
+  SniperProviderHealthReport,
+  SniperAlphaProviderStatusLabel,
+  FormatSniperProviderHealthReportOptions,
+} from "./provider-health-report.js";

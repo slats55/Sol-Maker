@@ -84,6 +84,62 @@ export function redactString(input: string): string {
 }
 
 /**
+ * The safe, displayable form of a provider endpoint URL plus honesty flags.
+ *
+ * An RPC / quote endpoint may embed a secret in its userinfo (`https://user:pass@host`),
+ * query string (`?api-key=…`), or an opaque path segment (`…/v1/<APIKEY>`). It is therefore
+ * NEVER safe to echo a raw provider URL. {@link redactEndpoint} reduces a URL to
+ * `scheme://host[:port]` — dropping userinfo, path, query, and fragment — so the host can be
+ * shown for diagnostics without leaking a key.
+ */
+export interface RedactedEndpoint {
+  /** Safe-to-display form: `scheme://host[:port]`. Never the raw secret-bearing URL. */
+  readonly display: string;
+  /** True only when the input parsed as a valid absolute http(s) URL. */
+  readonly valid: boolean;
+  /**
+   * True when redaction actually dropped something secret-bearing (userinfo, a non-root path,
+   * a query string, or a fragment) or refused to echo an unparseable / unsupported URL.
+   */
+  readonly redactionApplied: boolean;
+}
+
+/**
+ * Reduce a provider endpoint URL to a safe `scheme://host[:port]` display string.
+ *
+ * Only `http`/`https` are accepted (the read-only provider surface speaks HTTP). The userinfo,
+ * path, query, and fragment are ALWAYS dropped — those are the places a key hides — and the host
+ * is additionally passed through {@link redactString} as a belt-and-braces backstop. An empty,
+ * non-string, unparseable, or non-http(s) input never echoes the raw value; it returns a fixed
+ * placeholder and `valid: false`. Pure and deterministic.
+ */
+export function redactEndpoint(url: unknown): RedactedEndpoint {
+  if (typeof url !== "string" || url.trim().length === 0) {
+    return { display: "[no-endpoint]", valid: false, redactionApplied: false };
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    // Never echo an unparseable URL — refusing to display IS a redaction.
+    return { display: "[invalid-endpoint]", valid: false, redactionApplied: true };
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return { display: "[unsupported-scheme]", valid: false, redactionApplied: true };
+  }
+  const droppedSomething =
+    parsed.username.length > 0 ||
+    parsed.password.length > 0 ||
+    (parsed.pathname.length > 0 && parsed.pathname !== "/") ||
+    parsed.search.length > 0 ||
+    parsed.hash.length > 0;
+  // Host only (includes a non-default port). Belt-and-braces scrub in case a host is secret-shaped.
+  const safeHost = redactString(parsed.host);
+  const display = `${parsed.protocol}//${safeHost}`;
+  return { display, valid: true, redactionApplied: droppedSomething || safeHost !== parsed.host };
+}
+
+/**
  * Recursively redact any value. Returns a structurally-cloned, redacted copy;
  * the input is never mutated. Safe against circular references.
  */

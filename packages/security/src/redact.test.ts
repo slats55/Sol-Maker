@@ -4,6 +4,7 @@ import {
   isSensitiveKey,
   redactString,
   redactValue,
+  redactEndpoint,
 } from "./redact.js";
 
 // A realistic-looking but entirely fake 64-byte base58 secret key (~88 chars).
@@ -136,5 +137,65 @@ describe("redactValue", () => {
     const input = { privateKey: "secret" };
     redactValue(input);
     expect(input.privateKey).toBe("secret");
+  });
+});
+
+describe("redactEndpoint", () => {
+  it("shows scheme://host for a safe public endpoint, no redaction applied", () => {
+    const out = redactEndpoint("https://api.mainnet-beta.solana.com");
+    expect(out.display).toBe("https://api.mainnet-beta.solana.com");
+    expect(out.valid).toBe(true);
+    expect(out.redactionApplied).toBe(false);
+  });
+
+  it("keeps a non-default port but still drops everything after the host", () => {
+    const out = redactEndpoint("http://localhost:8899/health");
+    expect(out.display).toBe("http://localhost:8899");
+    expect(out.valid).toBe(true);
+    expect(out.redactionApplied).toBe(true);
+  });
+
+  it("drops an ?api-key= query token (never echoes the secret)", () => {
+    const out = redactEndpoint("https://mainnet.helius-rpc.com/?api-key=supersecret123");
+    expect(out.display).toBe("https://mainnet.helius-rpc.com");
+    expect(out.display).not.toContain("supersecret123");
+    expect(out.valid).toBe(true);
+    expect(out.redactionApplied).toBe(true);
+  });
+
+  it("drops a key embedded in an opaque path segment", () => {
+    const out = redactEndpoint("https://rpc.example.com/v1/abcDEF1234567890key");
+    expect(out.display).toBe("https://rpc.example.com");
+    expect(out.display).not.toContain("abcDEF1234567890key");
+    expect(out.redactionApplied).toBe(true);
+  });
+
+  it("drops userinfo (user:password@host)", () => {
+    const out = redactEndpoint("https://user:hunter2@rpc.example.com/path");
+    expect(out.display).toBe("https://rpc.example.com");
+    expect(out.display).not.toContain("hunter2");
+    expect(out.display).not.toContain("user");
+    expect(out.redactionApplied).toBe(true);
+  });
+
+  it("refuses an unparseable URL without echoing it", () => {
+    const out = redactEndpoint("not a url at all");
+    expect(out.display).toBe("[invalid-endpoint]");
+    expect(out.valid).toBe(false);
+    expect(out.redactionApplied).toBe(true);
+  });
+
+  it("refuses a non-http(s) scheme", () => {
+    const out = redactEndpoint("ws://rpc.example.com");
+    expect(out.display).toBe("[unsupported-scheme]");
+    expect(out.valid).toBe(false);
+  });
+
+  it("returns a no-endpoint placeholder for empty / non-string input", () => {
+    expect(redactEndpoint("").display).toBe("[no-endpoint]");
+    expect(redactEndpoint("").valid).toBe(false);
+    expect(redactEndpoint(undefined).display).toBe("[no-endpoint]");
+    expect(redactEndpoint(null).valid).toBe(false);
+    expect(redactEndpoint(42 as unknown).valid).toBe(false);
   });
 });
