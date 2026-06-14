@@ -1,0 +1,195 @@
+{
+  "schemaVersion": "sniper.alpha_history.trend.v1",
+  "banner": "SNIPER ALPHA HISTORY TREND — a no-send series across ordered alpha-history snapshots. NOT a profitability claim, NOT live readiness. LIVE TRADING IS DISABLED.",
+  "disclaimers": [
+    "SNIPER ALPHA HISTORY TREND — a no-send series across ordered alpha-history snapshots; it reports movement and authorizes nothing.",
+    "Live trading is DISABLED. This artifact is structurally incapable of reporting a live send, a signature, or an armed state; mainnet sending has NO CLI surface.",
+    "The order is the SUPPLIED order, never a wall-clock reading; the trend invents no timestamps and no fake time series.",
+    "A trend never re-derives or overrides a snapshot's counts — it reads each rollup's own re-derived tally as ground truth.",
+    "Movement is not momentum. A falling blocked count or a rising watch count across snapshots is bookkeeping, never a buy signal, a profitability claim, or a live-readiness claim.",
+    "No wallet, key, signing, sending, or live execution is involved anywhere in producing this trend.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim.",
+    "Not a live-readiness claim."
+  ],
+  "trendId": "example-alpha-history-trend",
+  "generatedAt": null,
+  "snapshotCount": 3,
+  "snapshots": [
+    {
+      "label": "monday",
+      "historyId": "example-alpha-history-mon",
+      "runCount": 2,
+      "totalCandidateCount": 3,
+      "invalidArtifactCount": 0,
+      "verdictCounts": {
+        "watch": 2,
+        "review": 0,
+        "blocked": 1,
+        "insufficientEvidence": 0
+      },
+      "providerOk": {
+        "risk": 1,
+        "quote": 1,
+        "simulation": 1
+      },
+      "provenanceCounts": {
+        "realReadonly": 0,
+        "fixture": 2,
+        "fictionalExample": 0,
+        "mixed": 0
+      }
+    },
+    {
+      "label": "tuesday",
+      "historyId": "example-alpha-history-tue",
+      "runCount": 2,
+      "totalCandidateCount": 3,
+      "invalidArtifactCount": 0,
+      "verdictCounts": {
+        "watch": 2,
+        "review": 0,
+        "blocked": 1,
+        "insufficientEvidence": 0
+      },
+      "providerOk": {
+        "risk": 2,
+        "quote": 2,
+        "simulation": 2
+      },
+      "provenanceCounts": {
+        "realReadonly": 0,
+        "fixture": 2,
+        "fictionalExample": 0,
+        "mixed": 0
+      }
+    },
+    {
+      "label": "wednesday",
+      "historyId": "example-alpha-history-wed",
+      "runCount": 1,
+      "totalCandidateCount": 3,
+      "invalidArtifactCount": 0,
+      "verdictCounts": {
+        "watch": 3,
+        "review": 0,
+        "blocked": 0,
+        "insufficientEvidence": 0
+      },
+      "providerOk": {
+        "risk": 1,
+        "quote": 1,
+        "simulation": 1
+      },
+      "provenanceCounts": {
+        "realReadonly": 0,
+        "fixture": 1,
+        "fictionalExample": 0,
+        "mixed": 0
+      }
+    }
+  ],
+  "stepDeltas": [
+    {
+      "fromLabel": "monday",
+      "toLabel": "tuesday",
+      "candidateDelta": 0,
+      "verdictDeltas": {
+        "watch": 0,
+        "review": 0,
+        "blocked": 0,
+        "insufficientEvidence": 0
+      }
+    },
+    {
+      "fromLabel": "tuesday",
+      "toLabel": "wednesday",
+      "candidateDelta": 0,
+      "verdictDeltas": {
+        "watch": 1,
+        "review": 0,
+        "blocked": -1,
+        "insufficientEvidence": 0
+      }
+    }
+  ],
+  "totalCandidateSeries": [
+    3,
+    3,
+    3
+  ],
+  "verdictSeries": {
+    "watch": [
+      2,
+      2,
+      3
+    ],
+    "review": [
+      0,
+      0,
+      0
+    ],
+    "blocked": [
+      1,
+      1,
+      0
+    ],
+    "insufficientEvidence": [
+      0,
+      0,
+      0
+    ]
+  },
+  "blockerReasonTotals": [
+    {
+      "reason": "deep risk REJECTED this candidate",
+      "totalRunCount": 2,
+      "snapshotCount": 2
+    }
+  ],
+  "provenanceTotals": {
+    "realReadonly": 0,
+    "fixture": 5,
+    "fictionalExample": 0,
+    "mixed": 0
+  },
+  "providerHealthConsistency": {
+    "risk": {
+      "okRuns": 4,
+      "totalRuns": 5,
+      "label": "sometimes-ok"
+    },
+    "quote": {
+      "okRuns": 4,
+      "totalRuns": 5,
+      "label": "sometimes-ok"
+    },
+    "simulation": {
+      "okRuns": 4,
+      "totalRuns": 5,
+      "label": "sometimes-ok"
+    }
+  },
+  "summaryLine": "3 snapshots (monday -> wednesday) · blocked 1 -> 0 (-1) · watch 2 -> 3 (+1) · candidates 3 -> 3 · live trading DISABLED.",
+  "sensitiveFieldScan": {
+    "scanned": true,
+    "signaturePresent": false,
+    "txidPresent": false,
+    "sendResultPresent": false,
+    "keyLikePresent": false
+  },
+  "liveTradingStatus": "disabled",
+  "authorizesLiveTrading": false,
+  "anyInputAuthorizesLiveTrading": false,
+  "caveats": [
+    "A trend chains ordered alpha-history snapshots; it never trades, never sends, and never authorizes a live path.",
+    "Snapshots are kept in the supplied order; step deltas compare consecutive snapshots only — there is no implied calendar time.",
+    "An alpha history records blocker reasons (from blocked candidates) but not separate caution reasons, so reason totals cover blocker reasons only.",
+    "Live trading is disabled by policy; there is no mainnet-send command anywhere in Sol Maker."
+  ],
+  "redactionApplied": true,
+  "neverSends": true,
+  "phase7LiveTradingReady": false
+}

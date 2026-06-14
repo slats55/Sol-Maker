@@ -1,0 +1,235 @@
+{
+  "schemaVersion": "sniper.alpha_history.diff.v1",
+  "banner": "SNIPER ALPHA HISTORY DIFF — a no-send comparison of two alpha-history rollups. It reports movement only; it authorizes nothing. LIVE TRADING IS DISABLED.",
+  "disclaimers": [
+    "SNIPER ALPHA HISTORY DIFF — a no-send comparison of two alpha-history rollups; it reports what moved and authorizes nothing.",
+    "Live trading is DISABLED. This artifact is structurally incapable of reporting a live send, a signature, or an armed state; mainnet sending has NO CLI surface.",
+    "A diff never re-derives or overrides a history's counts — it reads each rollup's own re-derived tally as ground truth and reports deltas only.",
+    "Runs are paired by their stable `runRef`; an alpha history carries run-level counts, not per-candidate identity, so candidate movement is reported as run add / remove plus per-run count deltas — never an invented per-candidate match.",
+    "Movement is not momentum. A falling blocked count or a rising watch count is bookkeeping across runs, never a buy signal, a profitability claim, or a live-readiness claim.",
+    "No wallet, key, signing, sending, or live execution is involved anywhere in producing this diff.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim.",
+    "Not a live-readiness claim."
+  ],
+  "diffId": "example-alpha-history-diff",
+  "comparedAt": null,
+  "baseRef": "alpha-history-mon.json",
+  "nextRef": "alpha-history-tue.json",
+  "baseHistoryId": "example-alpha-history-mon",
+  "nextHistoryId": "example-alpha-history-tue",
+  "runIdentity": {
+    "baseRunCount": 2,
+    "nextRunCount": 2,
+    "baseInvalidArtifactCount": 0,
+    "nextInvalidArtifactCount": 0,
+    "baseTotalCandidateCount": 3,
+    "nextTotalCandidateCount": 3
+  },
+  "runChanges": [
+    {
+      "runRef": "runs/alpha-mon",
+      "status": "changed",
+      "candidateCountDelta": 0,
+      "verdictCountDeltas": {
+        "watch": 1,
+        "review": 0,
+        "blocked": -1,
+        "insufficientEvidence": 0
+      },
+      "providerHealthChanges": [],
+      "provenanceChange": null,
+      "topMintChange": "So11111111111111111111111111111111111111112 -> EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "rustEngineChange": null,
+      "phase7Change": null,
+      "blockerReasonChanges": [
+        "removed: deep risk REJECTED this candidate"
+      ],
+      "movementNote": "Evidence moved (blocked -1 · watch +1). Re-check the changed signals; never override a risk / build / simulation gate; live trading stays disabled."
+    },
+    {
+      "runRef": "runs/alpha-only-monday",
+      "status": "removed",
+      "candidateCountDelta": null,
+      "verdictCountDeltas": null,
+      "providerHealthChanges": [],
+      "provenanceChange": null,
+      "topMintChange": null,
+      "rustEngineChange": null,
+      "phase7Change": null,
+      "blockerReasonChanges": [],
+      "movementNote": "REMOVED from the next history — no longer compared. Live trading stays disabled."
+    },
+    {
+      "runRef": "runs/alpha-only-tuesday",
+      "status": "added",
+      "candidateCountDelta": null,
+      "verdictCountDeltas": null,
+      "providerHealthChanges": [],
+      "provenanceChange": null,
+      "topMintChange": null,
+      "rustEngineChange": null,
+      "phase7Change": null,
+      "blockerReasonChanges": [
+        "added: deep risk REJECTED this candidate"
+      ],
+      "movementNote": "ADDED in the next history (watch 0 · review 0 · blocked 1 · insufficient 0). Newly compared; live trading stays disabled."
+    }
+  ],
+  "aggregateVerdictMovement": {
+    "watch": {
+      "base": 2,
+      "next": 2,
+      "delta": 0
+    },
+    "review": {
+      "base": 0,
+      "next": 0,
+      "delta": 0
+    },
+    "blocked": {
+      "base": 1,
+      "next": 1,
+      "delta": 0
+    },
+    "insufficientEvidence": {
+      "base": 0,
+      "next": 0,
+      "delta": 0
+    }
+  },
+  "providerHealthMovement": {
+    "risk": {
+      "ok": {
+        "base": 1,
+        "next": 2,
+        "delta": 1
+      },
+      "degraded": {
+        "base": 0,
+        "next": 0,
+        "delta": 0
+      },
+      "unavailable": {
+        "base": 1,
+        "next": 0,
+        "delta": -1
+      },
+      "notAttempted": {
+        "base": 0,
+        "next": 0,
+        "delta": 0
+      }
+    },
+    "quote": {
+      "ok": {
+        "base": 1,
+        "next": 2,
+        "delta": 1
+      },
+      "degraded": {
+        "base": 0,
+        "next": 0,
+        "delta": 0
+      },
+      "unavailable": {
+        "base": 1,
+        "next": 0,
+        "delta": -1
+      },
+      "notAttempted": {
+        "base": 0,
+        "next": 0,
+        "delta": 0
+      }
+    },
+    "simulation": {
+      "ok": {
+        "base": 1,
+        "next": 2,
+        "delta": 1
+      },
+      "degraded": {
+        "base": 0,
+        "next": 0,
+        "delta": 0
+      },
+      "unavailable": {
+        "base": 1,
+        "next": 0,
+        "delta": -1
+      },
+      "notAttempted": {
+        "base": 0,
+        "next": 0,
+        "delta": 0
+      }
+    }
+  },
+  "provenanceMovement": {
+    "realReadonly": {
+      "base": 0,
+      "next": 0,
+      "delta": 0
+    },
+    "fixture": {
+      "base": 2,
+      "next": 2,
+      "delta": 0
+    },
+    "fictionalExample": {
+      "base": 0,
+      "next": 0,
+      "delta": 0
+    },
+    "mixed": {
+      "base": 0,
+      "next": 0,
+      "delta": 0
+    }
+  },
+  "blockerReasonMovement": [],
+  "phase7PostureMovement": {
+    "added": [],
+    "removed": [],
+    "retained": [
+      "authorized-for-design-only"
+    ]
+  },
+  "summary": {
+    "runsAdded": 1,
+    "runsRemoved": 1,
+    "runsChanged": 1,
+    "runsUnchanged": 0,
+    "totalCandidateDelta": 0,
+    "invalidArtifactDelta": 0,
+    "aggregateWatchDelta": 0,
+    "aggregateReviewDelta": 0,
+    "aggregateBlockedDelta": 0,
+    "aggregateInsufficientDelta": 0
+  },
+  "summaryLine": "NEXT vs BASE: +1 run(s) added · 1 removed · 1 changed · 0 unchanged · aggregate blocked 0 · watch 0 · candidates 0 · live trading DISABLED.",
+  "sensitiveFieldScan": {
+    "scanned": true,
+    "signaturePresent": false,
+    "txidPresent": false,
+    "sendResultPresent": false,
+    "keyLikePresent": false
+  },
+  "baseLiveTradingStatus": "disabled",
+  "nextLiveTradingStatus": "disabled",
+  "liveTradingStatus": "disabled",
+  "authorizesLiveTrading": false,
+  "anyInputAuthorizesLiveTrading": false,
+  "caveats": [
+    "A diff compares two alpha-history rollups; it never trades, never sends, and never authorizes a live path.",
+    "Runs are paired by `runRef`; a run present in only one history is reported as added / removed, never as an improvement or a regression.",
+    "An alpha history records blocker reasons (from blocked candidates) but not separate caution reasons, so reason movement covers blocker reasons only.",
+    "Live trading is disabled by policy; there is no mainnet-send command anywhere in Sol Maker."
+  ],
+  "redactionApplied": true,
+  "neverSends": true,
+  "phase7LiveTradingReady": false
+}

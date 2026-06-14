@@ -1,0 +1,132 @@
+{
+  "schemaVersion": "sniper.strategy_intelligence.v1",
+  "banner": "SNIPER STRATEGY INTELLIGENCE — read-only no-send candidate intelligence (why a verdict + what to study next). NOT a buy signal, NOT a profitability claim. LIVE TRADING IS DISABLED.",
+  "disclaimers": [
+    "SNIPER STRATEGY INTELLIGENCE — read-only no-send candidate intelligence projected from a campaign + token:risk reports.",
+    "Live trading is DISABLED. This artifact is structurally incapable of reporting a live send, a signature, or an armed state; mainnet sending has NO CLI surface.",
+    "Candidate verdicts come from the campaign's own re-derivation (a high score can never override a blocker); this layer only explains and ranks them.",
+    "A confidence label measures EVIDENCE COMPLETENESS, never price direction. A flag is surfaced ONLY when its risk report actually carries it.",
+    "'watch' is the best a candidate reaches — keep monitoring, never ready or safe to trade.",
+    "No wallet, key, signing, sending, or live execution is involved anywhere in producing this artifact.",
+    "Not a buy signal.",
+    "Not a live result.",
+    "Not financial advice.",
+    "Not a profitability claim."
+  ],
+  "intelligenceId": "example-strategy-intelligence",
+  "generatedAt": null,
+  "campaignRef": null,
+  "evidenceProvenance": "fixture",
+  "candidateCount": 3,
+  "verdictCounts": {
+    "watch": 1,
+    "review": 0,
+    "blocked": 1,
+    "insufficientEvidence": 1
+  },
+  "confidenceCounts": {
+    "high": 2,
+    "medium": 0,
+    "low": 1
+  },
+  "mintClassCounts": {
+    "wrappedSol": 1,
+    "stablecoin": 1,
+    "other": 1
+  },
+  "topConcerns": [
+    {
+      "flagId": "freeze-authority-present",
+      "severity": "critical",
+      "candidateCount": 1
+    }
+  ],
+  "candidates": [
+    {
+      "candidateId": "wsol",
+      "mint": "So11111111111111111111111111111111111111112",
+      "mintClass": "wrapped-sol",
+      "verdict": "watch",
+      "score": 88,
+      "riskDecision": "PASS_FOR_PAPER_EVALUATION",
+      "riskScore": 5,
+      "hasRiskReport": true,
+      "notableFlags": [],
+      "confidence": "high",
+      "reasonCodes": [
+        "risk-clean",
+        "verdict-monitor"
+      ],
+      "whyItMatters": "This is wrapped SOL — a well-known utility mint, not a memecoin opportunity. No notable read-only concerns surfaced on the current evidence. This candidate is clean-to-watch — keep monitoring. This is NOT a buy signal; live trading stays disabled.",
+      "whatToStudyNext": "Keep it on the watchlist and re-run the campaign periodically; a clean read-only verdict is monitoring guidance, never a buy."
+    },
+    {
+      "candidateId": "usdc",
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "mintClass": "stablecoin",
+      "verdict": "blocked",
+      "score": null,
+      "riskDecision": "REJECT",
+      "riskScore": 100,
+      "hasRiskReport": true,
+      "notableFlags": [
+        {
+          "id": "freeze-authority-present",
+          "severity": "critical",
+          "title": "Freeze authority present"
+        }
+      ],
+      "confidence": "high",
+      "reasonCodes": [
+        "risk-rejected",
+        "authority-freeze-present",
+        "verdict-blocked"
+      ],
+      "whyItMatters": "This is a well-known stablecoin, not a memecoin opportunity. Notable read-only concerns: Freeze authority present (critical). This candidate failed a read-only gate and is BLOCKED — a high score can never override it. Nothing here trades.",
+      "whatToStudyNext": "Drop or deprioritize; re-checking a blocked candidate is rarely worthwhile. Never override a risk gate."
+    },
+    {
+      "candidateId": "bonk",
+      "mint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+      "mintClass": "other",
+      "verdict": "insufficient-evidence",
+      "score": null,
+      "riskDecision": null,
+      "riskScore": null,
+      "hasRiskReport": false,
+      "notableFlags": [],
+      "confidence": "low",
+      "reasonCodes": [
+        "risk-missing",
+        "evidence-incomplete"
+      ],
+      "whyItMatters": "Evidence is missing for this candidate, so no honest read-only verdict can be formed yet. Gather deep risk before drawing any conclusion.",
+      "whatToStudyNext": "Run `token:risk --deep` for this mint and re-run the campaign; without it the candidate stays low-confidence."
+    }
+  ],
+  "strategyNotes": [
+    "1 of 3 candidate(s) are monitorable (watch / review); 1 blocked, 1 need more evidence.",
+    "Most common read-only concern: \"freeze-authority-present\" in 1 candidate(s) (critical). Prioritize mints without it.",
+    "2 candidate(s) are well-known utility / stablecoin mints — not memecoin opportunities; they appear as deterministic examples, not targets.",
+    "1 candidate(s) are low-confidence (missing deep risk or insufficient evidence) — gather token:risk --deep before studying them further.",
+    "This intelligence is read-only study guidance. It is never a buy list, never a profitability claim, and live trading stays disabled."
+  ],
+  "nextSafeActions": [
+    "1 candidate(s) BLOCKED — review their reason codes; never override a read-only gate.",
+    "1 candidate(s) are low-confidence — gather token:risk --deep and re-run.",
+    "1 candidate(s) are monitorable — study the highest-confidence ones first. This is NOT a buy list.",
+    "Live trading stays DISABLED. The Phase 7 path requires a separate, explicit written human sign-off and a separate authorization sprint — nothing here authorizes it."
+  ],
+  "caveats": [
+    "Intelligence explains evidence; it never trades, never sends, and never authorizes a live path.",
+    "A notable flag is read VERBATIM from the candidate's token:risk report — a missing report is shown as low confidence, never faked.",
+    "'why this matters' / 'what to study next' are deterministic operator guidance, never a recommendation to buy or sell.",
+    "Live trading is disabled by policy; there is no mainnet-send command anywhere in Sol Maker."
+  ],
+  "liveTradingStatus": "disabled",
+  "authorizesLiveTrading": false,
+  "redactionApplied": true,
+  "neverSends": true,
+  "phase7LiveTradingReady": false,
+  "notAProfitabilityClaim": true
+}

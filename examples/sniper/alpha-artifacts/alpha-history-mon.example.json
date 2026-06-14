@@ -1,0 +1,145 @@
+{
+  "schemaVersion": "sniper.alpha_history.v1",
+  "banner": "SNIPER ALPHA HISTORY — a no-send rollup across many live-read-only alpha runs. NOT a profitability claim, NOT live readiness. LIVE TRADING IS DISABLED.",
+  "disclaimers": [
+    "SNIPER ALPHA HISTORY — a no-send rollup across many live-read-only alpha runs over Solana memecoin candidates.",
+    "Live trading is DISABLED. This rollup is structurally incapable of reporting a live send, a signature, or an armed state; mainnet sending has NO CLI surface.",
+    "Per-run verdict counts come from each run's own re-derivation (a high score can never override a blocker); this rollup only aggregates and ranks them.",
+    "'watch' is the best a candidate reaches — it means keep monitoring, never ready or safe to trade. Real read-only evidence is labelled separately from fixture / fictional-example evidence.",
+    "Invalid or unrecognized artifacts are listed honestly and are NEVER counted as runs.",
+    "No wallet, key, signing, sending, or live execution is involved anywhere in producing this rollup.",
+    "Not a live result.",
+    "Not a trade signal.",
+    "Not financial advice.",
+    "Not a profitability claim.",
+    "Not a live-readiness claim."
+  ],
+  "historyId": "example-alpha-history-mon",
+  "generatedAt": null,
+  "runCount": 2,
+  "invalidArtifactCount": 0,
+  "totalCandidateCount": 3,
+  "aggregateVerdictCounts": {
+    "watch": 2,
+    "review": 0,
+    "blocked": 1,
+    "insufficientEvidence": 0
+  },
+  "providerHealthRollup": {
+    "risk": {
+      "ok": 1,
+      "degraded": 0,
+      "unavailable": 1,
+      "notAttempted": 0
+    },
+    "quote": {
+      "ok": 1,
+      "degraded": 0,
+      "unavailable": 1,
+      "notAttempted": 0
+    },
+    "simulation": {
+      "ok": 1,
+      "degraded": 0,
+      "unavailable": 1,
+      "notAttempted": 0
+    }
+  },
+  "evidenceProvenanceRollup": {
+    "realReadonly": 0,
+    "fixture": 2,
+    "fictionalExample": 0,
+    "mixed": 0
+  },
+  "phase7Postures": [
+    "authorized-for-design-only"
+  ],
+  "topBlockerReasons": [
+    {
+      "reason": "deep risk REJECTED this candidate",
+      "runCount": 1
+    }
+  ],
+  "runs": [
+    {
+      "runRef": "runs/alpha-mon",
+      "runId": "sniper-alpha-run",
+      "mode": "mainnet-dry-run",
+      "network": "mainnet-beta",
+      "evidenceProvenance": "fixture",
+      "candidateCount": 2,
+      "verdictCounts": {
+        "watch": 1,
+        "review": 0,
+        "blocked": 1,
+        "insufficientEvidence": 0
+      },
+      "providerHealth": {
+        "risk": "ok",
+        "quote": "ok",
+        "simulation": "ok"
+      },
+      "rustEngineStatus": "available",
+      "phase7Status": "authorized-for-design-only",
+      "hasAlphaReport": true,
+      "topMint": "So11111111111111111111111111111111111111112",
+      "blockerReasons": [
+        "deep risk REJECTED this candidate"
+      ],
+      "liveTradingStatus": "disabled",
+      "authorizesLiveTrading": false
+    },
+    {
+      "runRef": "runs/alpha-only-monday",
+      "runId": "sniper-alpha-run",
+      "mode": "mainnet-dry-run",
+      "network": "mainnet-beta",
+      "evidenceProvenance": "fixture",
+      "candidateCount": 1,
+      "verdictCounts": {
+        "watch": 1,
+        "review": 0,
+        "blocked": 0,
+        "insufficientEvidence": 0
+      },
+      "providerHealth": {
+        "risk": "unavailable",
+        "quote": "unavailable",
+        "simulation": "unavailable"
+      },
+      "rustEngineStatus": "available",
+      "phase7Status": "authorized-for-design-only",
+      "hasAlphaReport": true,
+      "topMint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+      "blockerReasons": [],
+      "liveTradingStatus": "disabled",
+      "authorizesLiveTrading": false
+    }
+  ],
+  "invalidArtifacts": [],
+  "sensitiveFieldScan": {
+    "scanned": true,
+    "signaturePresent": false,
+    "txidPresent": false,
+    "sendResultPresent": false,
+    "keyLikePresent": false
+  },
+  "anyRunAuthorizesLiveTrading": false,
+  "nextSafeActions": [
+    "1 candidate-run(s) ended BLOCKED across the history — review the blocker reasons; never override a risk / build / simulation gate.",
+    "2 watch + 0 review candidate-run(s) — keep monitoring. This is NOT a buy list.",
+    "Live trading stays DISABLED. The Phase 7 path requires a separate, explicit written human sign-off and a separate authorization sprint — nothing here authorizes it."
+  ],
+  "caveats": [
+    "A history rolls up evidence; it never trades, never sends, and never authorizes a live path.",
+    "Aggregate counts are re-derived from the per-run summaries — a run that claims live authorization is refused, never folded in.",
+    "Provenance is honest: real read-only network runs are distinguished from fixture / fictional-example runs; a run missing its alpha report defaults to not-attempted provider health, never a faked one.",
+    "Live trading is disabled by policy; there is no mainnet-send command anywhere in Sol Maker."
+  ],
+  "artifactRefs": [],
+  "liveTradingStatus": "disabled",
+  "authorizesLiveTrading": false,
+  "redactionApplied": true,
+  "neverSends": true,
+  "phase7LiveTradingReady": false
+}
