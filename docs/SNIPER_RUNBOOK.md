@@ -102,6 +102,17 @@ for the full campaign reference.
 `paper:sniper:campaign:auto-run` GATHERS the safe read-only evidence ITSELF across many candidates and
 writes a no-send alpha folder. **Live trading stays disabled — it never sends, signs, or loads a key.**
 
+0. **Check provider readiness first** (Sprint 105-B) — before a live read-only run, confirm Sol Maker
+   can reach its read-only providers (RPC, the Jupiter quote API, the Rust engine):
+   ```
+   pnpm soulmaker paper:sniper:provider:doctor --mode mainnet-dry-run --out runs/provider-health.json
+   ```
+   It writes a `sniper.provider_health.report.v1` reporting REACHABILITY only (available / unavailable /
+   timeout / rate-limited / misconfigured / error / skipped) and a re-derived `canRunLiveReadonlyCampaign`.
+   A provider being down is honest evidence, never a candidate risk verdict. No raw endpoint is printed —
+   every endpoint is reduced to its host. It never sends, signs, loads a key, or builds/simulates. Set
+   `--rpc-url` / `--jupiter-url` (or the `SOULMAKER_READONLY_RPC_URL` / `SOULMAKER_JUPITER_QUOTE_URL` env
+   vars) to probe your own read-only endpoints; a key embedded in a URL is never echoed.
 1. **Prepare a watchlist or candidate list** (`paper:sniper:watchlist:prepare`).
 2. **Run the auto campaign** — offline (paper) or with live read-only network reads:
    ```
@@ -109,9 +120,9 @@ writes a no-send alpha folder. **Live trading stays disabled — it never sends,
    pnpm soulmaker paper:sniper:campaign:auto-run --watchlist runs/watchlist.json \
      --risk <MINT>=risk.<MINT>.json --out runs/alpha --campaign-id alpha-1
 
-   # Live read-only (mainnet-dry-run): gather deep risk + route quotes itself. No send, no signer.
+   # Live read-only (mainnet-dry-run): check providers first, then gather deep risk + route quotes.
    pnpm soulmaker paper:sniper:campaign:auto-run --candidates runs/candidates.json \
-     --mode mainnet-dry-run --allow-readonly-network --out runs/alpha
+     --mode mainnet-dry-run --allow-readonly-network --check-providers --out runs/alpha
    ```
    It writes `readonly-campaign-plan.json` (`sniper.readonly_campaign.plan.v1`), `campaign.json`
    (`sniper.dryrun.campaign.v1`), `alpha-report.json` (`sniper.alpha_run.report.v1`),
@@ -197,6 +208,7 @@ invariants.
 | `paper:sniper:dry-run` | `--candidates`, `--out` | a full directory | the S88 PAPER dry-run ORCHESTRATOR — one command, the whole chain (19 artifacts + `RUN_SUMMARY.md`; +`routequote-prepared.json` when `--routequote` is supplied) |
 | `paper:sniper:rehearse` | `--candidates` or `--replay-file`, `--out` | a full directory | the S93 UNIFIED rehearsal WORKFLOW — chains candidates → risk bridge → quote fetch/prepare → dry-run → unsigned build → real simulation → optional devnet broadcast → readiness, with an honest per-stage record (`sniper.rehearsal.report.v1`). Closed mode set `--mode paper` (default, offline) / `devnet` (broadcast only behind `--devnet-send` + the double opt-in) / `mainnet-dry-run` (build+simulate, structurally cannot send). NO mainnet-live mode |
 | `paper:sniper:operator-demo` | `--out` | a full directory | the S103-B operator demo workbench — assembles a SAFE, showable demo folder + `sniper.operator_demo.manifest.v1` (the real read-only Phase 7 audit + sign-off template, an honest devnet funding-status fixture, the byte-pinned fictional candidate + release-candidate examples), every artifact labelled by provenance, live execution pinned disabled. Nothing sends, signs, or trades |
+| `paper:sniper:provider:doctor` | (none — flags / env / defaults) | `--out` only | the S105-B READ-ONLY provider readiness check — resolve the read-only provider config (`--rpc-url` / `--jupiter-url` / env > safe public defaults) and run BOUNDED read-only probes (RPC health, a tiny WSOL→USDC Jupiter quote, the Rust engine) into a `sniper.provider_health.report.v1`. REACHABILITY only (`available` / `unavailable` / `timeout` / `rate-limited` / `misconfigured` / `error` / `skipped`); a provider being down is honest evidence, NOT a candidate risk verdict. No raw endpoint printed; never sends, signs, loads a key, or builds/simulates. `--fail-on-unavailable` gates CI |
 | `paper:sniper:watchlist:prepare` | one of `--watchlist` / `--candidates` / `--add` | `--out` only | the S104-C operator watchlist — create / normalize a `sniper.watchlist.v1` by merging an existing watchlist, a candidate list, and/or `--add <mint[=label]>` entries (deduped by mint, first wins; mints validated as public keys). A status (`watch` / `review` / `blocked` / `archived`) is bookkeeping ONLY — never a trade signal, never trade readiness |
 | `paper:sniper:campaign:run` | `--candidates` or `--watchlist` | a full directory | the S104-C dry-run CAMPAIGN — COMPARE candidates across the evidence you already gathered (`--score`, `--preflight`, `--risk <mint=path>`, `--routequote`, `--release-candidate <mint=path>`, joined BY MINT) into a no-send `sniper.dryrun.campaign.v1` + `RUN_SUMMARY.md`. Each candidate's verdict (`watch` / `review` / `blocked` / `insufficient-evidence`) is RE-DERIVED — a high score can NEVER override a blocker; missing evidence shows as `insufficient-evidence`. LOCAL-ONLY; live sending pinned disabled |
 

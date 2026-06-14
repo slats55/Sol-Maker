@@ -810,6 +810,15 @@ pnpm soulmaker paper:sniper:watchlist:prepare --candidates <candidates.json> --o
 # insufficient-evidence) is RE-DERIVED; a high score can NEVER override a blocker. Live stays DISABLED.
 pnpm soulmaker paper:sniper:campaign:run --watchlist runs/watchlist.json --preflight preflight.json --out runs/campaign
 
+# Sprint 105-B — READ-ONLY PROVIDER READINESS: paper:sniper:provider:doctor resolves the read-only
+# provider config (--rpc-url / --jupiter-url / env vars > safe public keyless defaults) and runs BOUNDED
+# read-only probes (an RPC health call, a tiny WSOL->USDC Jupiter quote, a no-network Rust engine check)
+# into a sniper.provider_health.report.v1. REACHABILITY only (available/unavailable/timeout/rate-limited/
+# misconfigured/error/skipped) — a provider being down is honest evidence, never a candidate risk verdict.
+# No raw endpoint is printed (every endpoint is reduced to its host); never sends, signs, loads a key, or
+# builds/simulates. --fail-on-unavailable gates CI; live trading stays DISABLED.
+pnpm soulmaker paper:sniper:provider:doctor --mode mainnet-dry-run --out runs/provider-health.json
+
 # Sprint 105-A — LIVE-READ-ONLY AUTO CAMPAIGN: paper:sniper:campaign:auto-run GATHERS the safe read-only
 # evidence ITSELF across candidates (Rust scoring, deep risk, route-quote fetch/score, unsigned build +
 # simulation in mainnet-dry-run mode) and writes a no-send alpha folder — sniper.readonly_campaign.plan.v1

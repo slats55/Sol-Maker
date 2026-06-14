@@ -68,6 +68,7 @@ import {
   paperSniperOperatorDemoReport,
   paperSniperWatchlistPrepareReport,
   paperSniperCampaignRunReport,
+  paperSniperProviderDoctorReport,
   paperSniperCampaignAutoRunReport,
   paperSniperCampaignDiffReport,
   paperSniperAlphaReportReport,
@@ -3433,6 +3434,57 @@ program
           outDir: opts.out,
           force: Boolean(opts.force),
           failOnBlocked: Boolean(opts.failOnBlocked),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:provider:doctor")
+  .description(
+    "Sprint 105-B READ-ONLY provider readiness check: resolve the read-only provider config (explicit flags > env vars > safe public keyless defaults) and run BOUNDED read-only probes — an RPC health call, a tiny WSOL→USDC Jupiter quote, and a no-network Rust engine check — into a `sniper.provider_health.report.v1`. It reports REACHABILITY only (available / unavailable / timeout / rate-limited / misconfigured / error / skipped); a provider being down is honest evidence, never a candidate risk verdict. It NEVER sends, NEVER signs, NEVER loads a key, and NEVER builds or simulates a transaction; no raw endpoint is printed (every endpoint is reduced to its host). LIVE TRADING stays DISABLED",
+  )
+  .option("--mode <mode>", "paper | mainnet-dry-run | devnet-review (default paper; devnet skips the mainnet-only quote probe)")
+  .option("--rpc-url <url>", "read-only RPC endpoint to probe (overrides env / default; a key in the URL is never printed)")
+  .option("--jupiter-url <url>", "read-only Jupiter quote base URL to probe (overrides env / default)")
+  .option("--provider-profile <label>", "short label describing the endpoint set (echoed into the report)")
+  .option("--timeout-ms <ms>", "per-probe timeout, clamped to [1000, 60000] (default 10000)")
+  .option("--retry-limit <n>", "read-only retry budget, clamped to [0, 5] (default 1)")
+  .option("--report-id <label>", "operator label echoed into the provider health report")
+  .option("--json", "emit the provider health report as stable JSON")
+  .option("--out <path>", "write the provider health report JSON to this path (refused if it exists without --force)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-unavailable", "exit non-zero when the live read-only providers are not all reachable")
+  .action(
+    async (opts: {
+      mode?: string;
+      rpcUrl?: string;
+      jupiterUrl?: string;
+      providerProfile?: string;
+      timeoutMs?: string;
+      retryLimit?: string;
+      reportId?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnUnavailable?: boolean;
+    }) => {
+      const { text, exitCode } = await paperSniperProviderDoctorReport(
+        {},
+        {
+          mode: opts.mode,
+          rpcUrl: opts.rpcUrl,
+          jupiterUrl: opts.jupiterUrl,
+          providerProfile: opts.providerProfile,
+          timeoutMs: opts.timeoutMs,
+          retryLimit: opts.retryLimit,
+          reportId: opts.reportId,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnUnavailable: Boolean(opts.failOnUnavailable),
         },
       );
       console.log(text);

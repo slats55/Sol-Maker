@@ -19,6 +19,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import { basename, dirname, isAbsolute, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gatherPhase7AuditProbes } from "./phase7-audit-probes.js";
@@ -314,6 +315,12 @@ import {
   formatSimulationIntentPlan,
   diffSimulationIntentPlans,
   formatSimulationIntentPlanDiff,
+  resolveReadonlyProviderConfig,
+  buildSniperProviderHealthReport,
+  formatSniperProviderHealthReport,
+  summarizeProviderHealthForAlpha,
+  validateSniperProviderHealthReport,
+  SNIPER_PROVIDER_HEALTH_REPORT_SCHEMA_VERSION,
   SNIPER_CANDIDATE_LIST_SCHEMA_VERSION,
   SNIPER_POLICY_CONFIG_SCHEMA_VERSION,
   type SniperCandidateList,
@@ -347,6 +354,10 @@ import {
   type SniperScoreInputEntryInput,
   type BuildMainnetDryRunReleaseCandidateInput,
   type ReleaseCandidateRankedEntry,
+  type SniperProviderHealthReport,
+  type SniperProviderHealthCheckInput,
+  type SniperProviderHealthStatus,
+  type ResolvedReadonlyProviderConfig,
 } from "@soulmaker/sniper";
 import {
   runPaperSession,
@@ -8216,6 +8227,245 @@ export function paperSniperCampaignRunReport(
     lines.push("", `inspect: pnpm web:inspect --dir "${resolvePath(ctx, opts.outDir)}"`);
   }
   return { text: redactString(lines.join("\n")), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 105-B — `paper:sniper:provider:doctor`: READ-ONLY provider readiness.
+//   Resolve the read-only provider config (flags > env > safe public defaults),
+//   run BOUNDED read-only probes (RPC health, a tiny Jupiter quote, the Rust
+//   engine) and assemble a sniper.provider_health.report.v1. It NEVER sends,
+//   signs, loads a key, or builds/simulates a transaction; an unavailable /
+//   rate-limited / misconfigured provider is recorded HONESTLY, never faked, and
+//   never confused with a candidate risk verdict. No raw endpoint is ever
+//   printed — every endpoint is reduced to its host.
+// ---------------------------------------------------------------------------
+
+/** USD Coin mainnet mint — a stable, well-known output for the tiny read-only Jupiter quote probe. */
+const PROVIDER_DOCTOR_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+/** 0.001 WSOL (9 decimals) in raw base units — a tiny, read-only quote probe; nothing is ever traded. */
+const PROVIDER_DOCTOR_PROBE_AMOUNT_RAW = "1000000";
+const PROVIDER_DOCTOR_PROBE_SLIPPAGE_BPS = 50;
+const PROVIDER_HEALTH_REPORT_FILE = "provider-health.json";
+
+/** Map a read error / provider message onto the closed provider-health status set. */
+function classifyProviderProbeError(message: string): SniperProviderHealthStatus {
+  if (/\b429\b|rate.?limit|too many requests/i.test(message)) return "rate-limited";
+  if (/timeout|timed out|abort|esockettimedout|etimedout/i.test(message)) return "timeout";
+  return "unavailable";
+}
+
+/** Probe the RPC endpoint with a read-only health call (version + slot). Never throws out. */
+async function probeProviderRpc(ctx: CommandContext, cfg: ResolvedReadonlyProviderConfig): Promise<SniperProviderHealthCheckInput> {
+  const redactedEndpoint = cfg.rpc.redacted.display;
+  if (!cfg.rpc.valid || cfg.rpc.url === null) {
+    return { provider: "rpc", status: "misconfigured", redactedEndpoint, message: "RPC endpoint is not a valid public http(s) URL" };
+  }
+  const make = ctx.createClient ?? createReadOnlySolanaClient;
+  const start = performance.now();
+  try {
+    const client = make({ rpcUrl: cfg.rpc.url });
+    const health = await client.getRpcHealth();
+    const latencyMs = performance.now() - start;
+    if (health.ok) {
+      return {
+        provider: "rpc",
+        status: "available",
+        latencyMs,
+        redactedEndpoint,
+        message: `RPC reachable (solana-core ${health.solanaCore ?? "?"}, slot ${health.slot ?? "?"})`,
+      };
+    }
+    const msg = redactString(health.error ?? "unknown");
+    return { provider: "rpc", status: classifyProviderProbeError(msg), latencyMs, redactedEndpoint, message: `RPC health failed: ${msg}`.slice(0, 300) };
+  } catch (err) {
+    const latencyMs = performance.now() - start;
+    const msg = redactString(String((err as Error)?.message ?? err));
+    return { provider: "rpc", status: classifyProviderProbeError(msg), latencyMs, redactedEndpoint, message: `RPC probe error: ${msg}`.slice(0, 300) };
+  }
+}
+
+/** Probe the Jupiter quote endpoint with a tiny WSOL→USDC read-only quote. Never throws out. */
+async function probeProviderJupiter(ctx: CommandContext, cfg: ResolvedReadonlyProviderConfig): Promise<SniperProviderHealthCheckInput> {
+  const redactedEndpoint = cfg.jupiterQuote.redacted.display;
+  if (!cfg.jupiterQuote.valid || cfg.jupiterQuote.url === null) {
+    return { provider: "jupiter-quote", status: "misconfigured", redactedEndpoint, message: "Jupiter quote endpoint is not a valid public http(s) URL" };
+  }
+  const makeAdapter = ctx.createQuoteAdapter ?? createJupiterQuoteAdapter;
+  const start = performance.now();
+  try {
+    const adapter = makeAdapter({ baseUrl: cfg.jupiterQuote.url, timeoutMs: cfg.timeoutMs, clock: ctx.now });
+    const result = await adapter.fetchQuote({
+      candidateMint: PROVIDER_DOCTOR_USDC_MINT,
+      inputMint: WSOL_MINT,
+      amountRaw: PROVIDER_DOCTOR_PROBE_AMOUNT_RAW,
+      slippageBps: PROVIDER_DOCTOR_PROBE_SLIPPAGE_BPS,
+    });
+    const latencyMs = performance.now() - start;
+    const httpStatus = result.metadata.httpStatus;
+    let status: SniperProviderHealthStatus;
+    if (result.status === "quote-observed") status = "available";
+    else if (result.status === "blocked") status = "rate-limited";
+    else if (result.status === "unavailable") status = "unavailable"; // network error / timeout — honestly unavailable
+    else status = "error"; // error | unsupported
+    return {
+      provider: "jupiter-quote",
+      status,
+      latencyMs,
+      redactedEndpoint,
+      message: `Jupiter quote probe: ${result.status}${httpStatus !== null ? ` (HTTP ${httpStatus})` : ""}`,
+    };
+  } catch (err) {
+    const latencyMs = performance.now() - start;
+    const msg = redactString(String((err as Error)?.message ?? err));
+    return { provider: "jupiter-quote", status: classifyProviderProbeError(msg), latencyMs, redactedEndpoint, message: `Jupiter probe error: ${msg}`.slice(0, 300) };
+  }
+}
+
+/** Probe the Rust engine over the JSON IPC contract WITHOUT touching the network. Honest UNAVAILABLE. */
+async function probeProviderEngine(ctx: CommandContext, cfg: ResolvedReadonlyProviderConfig): Promise<SniperProviderHealthCheckInput> {
+  const result = await fetchEngineStatus({
+    cwd: ctx.cwd ?? process.cwd(),
+    createdAt: (ctx.now ?? isoNow)(),
+    runner: ctx.createEngineRunner?.(),
+    exists: ctx.engineBinaryExists,
+    env: ctx.env,
+    timeoutMs: cfg.timeoutMs,
+  });
+  if (result.kind === "ok") {
+    return {
+      provider: "rust-engine",
+      status: "available",
+      latencyMs: result.timing.spawnMs,
+      message: `Rust engine ${result.report.engineName} ${result.report.engineVersion} via ${result.via} (intelligence only; never signs/sends)`,
+    };
+  }
+  if (result.kind === "unavailable") {
+    return {
+      provider: "rust-engine",
+      status: "unavailable",
+      message: "Rust engine is absent — install via https://rustup.rs and run pnpm rust:build; TypeScript stays fully functional without it",
+      nextSafeAction: "The campaign runs every non-Rust stage without it; build the engine later for Rust intelligence. Nothing here trades.",
+    };
+  }
+  const status: SniperProviderHealthStatus = result.reason === "engine-timeout" ? "timeout" : "error";
+  return { provider: "rust-engine", status, message: `Rust engine refused: ${result.reason} — ${redactString(result.detail).slice(0, 200)}` };
+}
+
+export interface PaperSniperProviderDoctorCommandOptions {
+  /** paper | mainnet-dry-run | devnet-review (default paper). */
+  mode?: string;
+  rpcUrl?: string;
+  jupiterUrl?: string;
+  providerProfile?: string;
+  timeoutMs?: string;
+  retryLimit?: string;
+  reportId?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit non-zero when the live read-only providers are not all reachable (default: exit 0, honest evidence). */
+  failOnUnavailable?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:provider:doctor` — resolve the read-only provider config and run bounded
+ * read-only probes (RPC health, a tiny Jupiter quote, the Rust engine) into a
+ * `sniper.provider_health.report.v1`. NEVER sends, signs, loads a key, or builds/simulates; never
+ * prints a raw endpoint. Returns a {@link CliReport}.
+ */
+export async function paperSniperProviderDoctorReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperProviderDoctorCommandOptions = {},
+): Promise<CliReport> {
+  let cfg: ResolvedReadonlyProviderConfig;
+  try {
+    cfg = resolveReadonlyProviderConfig({
+      flags: {
+        mode: opts.mode,
+        rpcUrl: opts.rpcUrl,
+        jupiterUrl: opts.jupiterUrl,
+        providerProfile: opts.providerProfile,
+        timeoutMs: opts.timeoutMs,
+        retryLimit: opts.retryLimit,
+      },
+      env: (ctx.env ?? process.env) as Record<string, string | undefined>,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // Bounded read-only probes. The Jupiter probe is skipped on devnet (no devnet quotes exist).
+  const checks: SniperProviderHealthCheckInput[] = [];
+  checks.push(await probeProviderRpc(ctx, cfg));
+  if (cfg.network === "devnet") {
+    checks.push({
+      provider: "jupiter-quote",
+      status: "skipped",
+      redactedEndpoint: cfg.jupiterQuote.redacted.display,
+      message: "the Jupiter quote provider serves mainnet only — no devnet quotes exist, so the probe is skipped",
+    });
+  } else {
+    checks.push(await probeProviderJupiter(ctx, cfg));
+  }
+  checks.push(await probeProviderEngine(ctx, cfg));
+  // routequote / txbuild-dryrun / simulation are exercised by the CAMPAIGN, not the doctor: the doctor
+  // never builds or simulates. Their reachability follows the RPC + quote probes above (recorded honestly).
+  checks.push({
+    provider: "routequote",
+    status: "skipped",
+    message: "route-quote PREPARE is local (it normalizes the quote observations above); reachability follows the Jupiter quote check",
+    nextSafeAction: "Run paper:routequote:prepare / the auto-campaign to exercise this stage. Nothing here trades.",
+  });
+  checks.push({
+    provider: "txbuild-dryrun",
+    status: "skipped",
+    message: "the UNSIGNED build dry-run is exercised by the campaign (needs RPC + a fresh quote); the doctor never builds",
+    nextSafeAction: "Run the auto-campaign in --mode mainnet-dry-run to exercise the unsigned build. Nothing is ever signed or sent.",
+  });
+  checks.push({
+    provider: "simulation",
+    status: "skipped",
+    message: "transaction simulation is exercised by the campaign over an UNSIGNED envelope; reachability follows the RPC check",
+    nextSafeAction: "Run the auto-campaign in --mode mainnet-dry-run to exercise simulation. Nothing is ever signed or sent.",
+  });
+
+  let report: SniperProviderHealthReport;
+  try {
+    report = buildSniperProviderHealthReport({
+      reportId: opts.reportId ?? null,
+      checkedAt: (ctx.now ?? isoNow)(),
+      mode: cfg.mode,
+      network: cfg.network,
+      providerProfile: cfg.providerProfile,
+      checks,
+      caveats: cfg.notes,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: cannot assemble the provider health report — ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  let wroteLine = "";
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(report), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the provider health report at ${resolved}`), exitCode: 1 };
+    }
+    wroteLine = `\nwrote ${resolved}`;
+  }
+
+  const exitCode = opts.failOnUnavailable && !report.canRunLiveReadonlyCampaign ? 1 : 0;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(report), null, 2) + wroteLine, exitCode };
+  }
+  const nextAction = report.canRunLiveReadonlyCampaign
+    ? "NEXT: providers reachable — run `paper:sniper:campaign:auto-run --mode mainnet-dry-run --allow-readonly-network --check-providers`. Nothing here trades."
+    : "NEXT: the live read-only providers are not all reachable — run a FIXTURE campaign, or fix/retry the endpoints. The campaign skips unreachable stages honestly. Nothing here trades.";
+  return { text: redactString(`${formatSniperProviderHealthReport(report, { label: opts.reportId })}\n\n${nextAction}${wroteLine}`), exitCode };
 }
 
 // ---------------------------------------------------------------------------
