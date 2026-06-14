@@ -23,6 +23,8 @@ each labelled by provenance so a fixture or fictional example can never be mista
 | `devnet-funding-status` | `devnet-funding-status.json` | fixture | an honest funding-blocked snapshot (not a live read) |
 | `candidate-input` | `candidates.json` | fictional-example | the fictional candidate list that seeds the ranking |
 | `mainnet-dry-run-release-candidate` | `release-candidate.json` | fictional-example | a no-send release candidate folding in candidate ranking, risk, quote score, tx build, tx inspection, simulation, and readiness |
+| `watchlist` | `watchlist.json` | fictional-example | the S104-C operator watchlist of candidate mints to monitor (a status is bookkeeping only, never trade readiness) |
+| `dryrun-campaign` | `campaign.json` | fictional-example | the S104-C no-send campaign comparing candidates across score / risk / quote / dry-run evidence (watch / review / blocked verdicts re-derived; a score never overrides a blocker; live sending pinned disabled) |
 
 ## Why live trading is disabled
 

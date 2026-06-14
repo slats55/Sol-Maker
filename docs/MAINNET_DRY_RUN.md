@@ -247,4 +247,64 @@ The manifest re-derives its provenance counts, cross-checks every showcased stag
 artifact, and pins `liveExecutionDisabled: true` / `neverSends: true`. The folder renders cleanly in
 the inspector (`pnpm web:inspect --dir <dir>`) and the `/sniper` command center carries a calm Phase 7
 posture section. Nothing in the demo sends, signs, or trades — it is a "look what Sol Maker can do"
-exhibit, not a live bot.
+exhibit, not a live bot. As of S104-C the demo also ships a fictional `watchlist.json` and
+`campaign.json`, so the operator watchlist → campaign workflow below is visible in the demo too.
+
+## Sprint 104-C — operator watchlists + dry-run campaigns
+
+The S104-C operator layer turns the safe pipeline into a workbench for comparing many candidates,
+**without crossing the live-money boundary**. Two new artifacts and two new commands:
+
+### Watchlists (`sniper.watchlist.v1`)
+
+`paper:sniper:watchlist:prepare` creates or normalizes a list of candidate mints to monitor:
+
+```
+# From a candidate list:
+pnpm soulmaker paper:sniper:watchlist:prepare --candidates candidates.json --out runs/watchlist.json
+# Add mints (with optional labels), merging + deduping by mint (first wins):
+pnpm soulmaker paper:sniper:watchlist:prepare --watchlist runs/watchlist.json --add <MINT>=TICKER --status review --out runs/watchlist.json --force
+```
+
+Every mint is validated as a 32-byte public key (secret-length input is refused), and a status
+(`watch` / `review` / `blocked` / `archived`) is **bookkeeping only** — `statusIsNotTradeReadiness`
+is pinned true and the schema has no readiness/execution field. A watchlist never means a candidate
+is ready or safe to trade.
+
+### Dry-run campaigns (`sniper.dryrun.campaign.v1`)
+
+`paper:sniper:campaign:run` compares candidates across the evidence you already gathered, joined **by
+mint**, into a no-send campaign folder (`campaign.json` + `RUN_SUMMARY.md`):
+
+```
+pnpm soulmaker paper:sniper:campaign:run \
+  --watchlist runs/watchlist.json \
+  --score candidate-scores.json \                 # engine.sniper.score.report.v1 (engine:sniper:score)
+  --preflight preflight.json \                     # sniper.token.preflight.report.v1 (paper:sniper:preflight)
+  --risk <MINT>=risk.<MINT>.json \                 # token:risk --json output (repeatable)
+  --routequote routequote-prepared.json \          # routequote.prepared.v1 (paper:routequote:prepare/fetch)
+  --release-candidate <MINT>=release-candidate.json \  # sniper.mainnet_dryrun.release_candidate.v1 (repeatable)
+  --out runs/campaign
+```
+
+Each candidate gets a `finalOperatorVerdict` that is **re-derived from the structured evidence**:
+
+- **blocked** — a REJECT risk, a critical risk flag, a Token-2022 blocker, a `fail` preflight, a
+  refused build, a failed simulation, a blocking release-candidate verdict, or a `blocked` watchlist
+  status. **A candidate's score is never read by the derivation, so a high score can never override a
+  blocker** (the validator independently re-derives the verdict and refuses a tampered one).
+- **insufficient-evidence** — no core safety evidence (risk / preflight / release candidate) is
+  present. Missing evidence is shown honestly, never hidden behind a clean-looking score.
+- **review** — core evidence is present but there is a concern (CAUTION risk, `warn`/`unknown`
+  preflight, a stale/unavailable quote, a `review` watchlist status, …).
+- **watch** — core evidence present, a positive clean signal (risk PASS / preflight pass / RC
+  complete), and no concern. **`watch` is the best a candidate reaches — it means keep monitoring,
+  never "ready" or "safe to trade".**
+
+The campaign is deterministic and LOCAL-ONLY: it reads the named files only — no RPC, no network, no
+wallet, no signer, no send — and is byte-stable (no wall-clock). `liveSendStatus` is pinned
+`"disabled"` and the closed schema refuses any `signature` / `txid` / `sendResult` field. Because it
+aggregates evidence the operator already produced, it adds no new network surface; the live-read-only
+auto-gather flow remains `paper:sniper:rehearse`. Inspect a campaign folder with
+`pnpm web:inspect --dir runs/campaign` — the command center renders the ranked comparison, the
+per-candidate blockers, and the stage-coverage matrix, with live trading disabled.

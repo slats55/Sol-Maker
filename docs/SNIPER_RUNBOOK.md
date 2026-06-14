@@ -62,6 +62,40 @@ blocks over the committed sample run.
 8. **Live trading remains disabled** — Phase 7 is unauthorized; no wallet, key, signing, or
    transaction exists anywhere in this workflow.
 
+## Operator watchlists + dry-run campaigns (S104-C)
+
+Once you are watching more than one candidate, the operator layer lets you keep a watchlist and run a
+SAFE campaign that compares candidates across the evidence you already gathered — **no signing, no
+sending, live trading stays disabled.**
+
+1. **Keep a watchlist** of mints to monitor:
+   ```
+   pnpm soulmaker paper:sniper:watchlist:prepare --candidates candidates.json --out runs/watchlist.json
+   # add a mint later (deduped by mint; first wins):
+   pnpm soulmaker paper:sniper:watchlist:prepare --watchlist runs/watchlist.json --add <MINT>=TICKER --out runs/watchlist.json --force
+   ```
+   A status (`watch` / `review` / `blocked` / `archived`) is **bookkeeping only** — never a trade
+   signal and never trade readiness. Every mint is validated as a public key.
+2. **Gather per-candidate evidence** with the existing commands (all paper / read-only): candidate
+   scoring (`engine:sniper:score`), token preflight (`paper:sniper:preflight`), deep risk
+   (`token:risk --json`), route quotes (`paper:routequote:prepare`/`:fetch`), and per-candidate
+   mainnet dry-run release candidates (`paper:sniper:rehearse --mode mainnet-dry-run`).
+3. **Run the campaign** — it joins every evidence source **by mint** and re-derives each verdict:
+   ```
+   pnpm soulmaker paper:sniper:campaign:run --watchlist runs/watchlist.json \
+     --score candidate-scores.json --preflight preflight.json \
+     --risk <MINT>=risk.<MINT>.json --routequote routequote-prepared.json \
+     --release-candidate <MINT>=release-candidate.json --out runs/campaign
+   ```
+4. **Read the verdicts**: `watch` (clean, keep monitoring — never "buy"), `review` (a concern to
+   resolve), `blocked` (a hard blocker — **a high score can never override it**), or
+   `insufficient-evidence` (gather more and re-run). Missing evidence is shown, never hidden.
+5. **Inspect in the command center**: `pnpm web:inspect --dir runs/campaign` renders the ranked
+   comparison, per-candidate blockers, and stage-coverage matrix. Live sending stays `disabled`.
+
+See [docs/MAINNET_DRY_RUN.md](MAINNET_DRY_RUN.md#sprint-104-c--operator-watchlists--dry-run-campaigns)
+for the full campaign reference.
+
 ## What exists now
 
 | Stage | Command | Artifact schema | What it does |

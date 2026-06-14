@@ -1195,6 +1195,25 @@ end-to-end; live trading does not begin until Sprint 104, separately authorized 
   loads a key, adds NO mainnet send surface; the best verdict, `ready-for-separate-execution-authorization`,
   authorizes nothing. (4) Web: typed view + registry, `/sniper` S104 preflight note. The preflight on
   this repo reports `blocked-missing-signoff` — the written human sign-off is the only open prerequisite.
+- **S104-C** ✅ (2026-06-13) — Operator command center + watchlist intelligence + dry-run campaigns,
+  the product/operator-hardening track the S104-A "sign-off still missing" branch recommended. NO
+  mainnet send, NO live trading, NO sign-off faked; live stays 0% by policy. Actuals: (1)
+  `sniper.watchlist.v1` (`@soulmaker/sniper`) — a closed-schema operator watchlist of candidate mints
+  to monitor; a status (`watch`/`review`/`blocked`/`archived`) is bookkeeping ONLY
+  (`statusIsNotTradeReadiness` pinned true; no readiness/execution field exists), mints validated as
+  public keys, re-derived mint/status tallies. (2) `paper:sniper:watchlist:prepare` — create/normalize
+  by merging `--watchlist` + `--candidates` + repeatable `--add <mint[=label]>` (deduped by mint).
+  (3) `sniper.dryrun.campaign.v1` — a closed-schema no-send comparison of candidates across ranking,
+  watchlist, risk, quote, build, simulation, release-candidate, and preflight evidence; each
+  `finalOperatorVerdict` (`watch`/`review`/`blocked`/`insufficient-evidence`) is RE-DERIVED from the
+  structured evidence — a candidate's score is never read, so a high score can NEVER override a blocker;
+  `liveSendStatus` pinned `disabled`, closed schema refuses any signature/txid/send-result field.
+  (4) `paper:sniper:campaign:run` — compares candidates from a `--candidates`/`--watchlist` spine plus
+  `--score`/`--preflight`/`--risk`/`--routequote`/`--release-candidate` evidence (joined by mint) into a
+  no-send campaign folder; deterministic, LOCAL-ONLY. (5) Web command center: typed views for both
+  schemas (registry +2) with do-NOT-trust framing on flipped safety literals. (6) `paper:sniper:operator-demo`
+  now ships a fictional watchlist + campaign (7 artifacts, all valid). All Phase 7 locks intact;
+  preflight still `blocked-missing-signoff`.
 - **Before S104 (gate):** the devnet-broadcast prerequisite is **MET** (S103-C funded broadcast,
   reconciled). The **written human Phase 7 sign-off remains the only open prerequisite**; until it is
   recorded the audit cannot read `ready-for-separate-microtrade-authorization` and the preflight stays
@@ -1203,7 +1222,10 @@ end-to-end; live trading does not begin until Sprint 104, separately authorized 
 - **Next sprint (conditional):**
   - **If the human sign-off is still missing** (today's state): do NOT advance the live path. Continue
     UI / operator / product hardening (e.g. the operator demo, the command center, docs), and wait for an
-    explicit human sign-off.
+    explicit human sign-off. **S104-C did exactly this** (watchlist + dry-run campaigns + command center).
+    Further safe tracks from here: a campaign DIFF artifact (compare two campaign runs), a live-read-only
+    campaign that auto-gathers quote/build evidence per candidate via the existing `paper:sniper:rehearse`
+    seams, deeper read-only candidate intelligence, or more demo polish — all paper/dry-run only.
   - **If a `signed-for-controlled-microtrade` sign-off exists AND the audit + preflight read ready:**
     **S104-B** may DESIGN the controlled mainnet send surface (the `execution:mainnet:microtrade:*`
     commands proposed in the S104 plan) — but it must still be a separate, reviewed sprint and still
