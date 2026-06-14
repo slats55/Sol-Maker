@@ -263,7 +263,6 @@ import {
   type SniperAlphaRunEvidenceProvenance,
   type SniperAlphaRunReport,
   buildSniperAlphaHistory,
-  validateSniperAlphaHistory,
   formatSniperAlphaHistory,
   type SniperAlphaHistoryRunInput,
   type SniperAlphaHistoryInvalidArtifactInput,
