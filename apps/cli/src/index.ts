@@ -67,6 +67,7 @@ import {
   phase7MicrotradePreflightReport,
   paperSniperOperatorDemoReport,
   paperSniperWatchlistPrepareReport,
+  paperSniperCampaignRunReport,
   executionSessionStatusReport,
   executionSessionReconcileReport,
   executionSessionAcknowledgeReport,
@@ -3356,6 +3357,79 @@ program
           outPath: opts.out,
           force: Boolean(opts.force),
           failOnWarning: Boolean(opts.failOnWarning),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:campaign:run")
+  .description(
+    "Sprint 104-C dry-run campaign: COMPARE candidates across the evidence you already gathered and write a SAFE no-send campaign folder + `sniper.dryrun.campaign.v1`. The spine is --candidates or --watchlist; --score (engine.sniper.score.report.v1), --preflight (sniper.token.preflight.report.v1), --risk <mint=path> (token:risk JSON), --routequote (routequote.prepared.v1), and --release-candidate <mint=path> (sniper.mainnet_dryrun.release_candidate.v1) attach ranking / risk / quote / dry-run evidence BY MINT. Each candidate's verdict (watch / review / blocked / insufficient-evidence) is RE-DERIVED — a high score can NEVER override a blocker, and missing evidence is shown as insufficient-evidence, never hidden. Reads the named files only; LOCAL-ONLY (no RPC, no network, no wallet, no signer, no send). Live trading stays DISABLED",
+  )
+  .option("--candidates <path>", "candidate list spine (raw operator input or canonical sniper.candidate.list.v1)")
+  .option("--watchlist <path>", "watchlist spine (sniper.watchlist.v1; supplies the per-mint watchlist status too)")
+  .option("--score <path>", "engine.sniper.score.report.v1 (rank + score per candidate; intelligence only)")
+  .option("--preflight <path>", "sniper.token.preflight.report.v1 (preflight verdict + a fallback risk decision per candidate)")
+  .option(
+    "--risk <mint=path>",
+    "token:risk JSON for a mint (the authoritative deep-risk decision; repeatable)",
+    (value: string, previous: string[]) => previous.concat(value),
+    [] as string[],
+  )
+  .option("--routequote <path>", "routequote.prepared.v1 (route-quote observation status per candidate)")
+  .option(
+    "--release-candidate <mint=path>",
+    "sniper.mainnet_dryrun.release_candidate.v1 for a mint (RC verdict + build + simulation; repeatable)",
+    (value: string, previous: string[]) => previous.concat(value),
+    [] as string[],
+  )
+  .option("--mode <mode>", "campaign mode: paper | mainnet-dry-run | devnet-review (default paper)")
+  .option("--network <network>", "network: mainnet-beta | devnet | testnet (default mainnet-beta)")
+  .option("--campaign-id <label>", "operator label echoed into the campaign (default sniper-dryrun-campaign)")
+  .option("--limit <n>", "cap the number of candidates compared (default: all)", (v: string) => Number.parseInt(v, 10))
+  .option("--json", "emit the campaign as stable JSON")
+  .option("--out <dir>", "output DIRECTORY for campaign.json + RUN_SUMMARY.md (writes nothing if omitted)")
+  .option("--force", "overwrite existing campaign artifacts in the output directory")
+  .option("--fail-on-blocked", "exit non-zero when any candidate is blocked")
+  .action(
+    (opts: {
+      candidates?: string;
+      watchlist?: string;
+      score?: string;
+      preflight?: string;
+      risk?: string[];
+      routequote?: string;
+      releaseCandidate?: string[];
+      mode?: string;
+      network?: string;
+      campaignId?: string;
+      limit?: number;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnBlocked?: boolean;
+    }) => {
+      const { text, exitCode } = paperSniperCampaignRunReport(
+        {},
+        {
+          candidatesPath: opts.candidates,
+          watchlistPath: opts.watchlist,
+          scorePath: opts.score,
+          preflightPath: opts.preflight,
+          risks: opts.risk,
+          routequotePath: opts.routequote,
+          releaseCandidates: opts.releaseCandidate,
+          mode: opts.mode,
+          network: opts.network,
+          campaignId: opts.campaignId,
+          limit: opts.limit,
+          json: Boolean(opts.json),
+          outDir: opts.out,
+          force: Boolean(opts.force),
+          failOnBlocked: Boolean(opts.failOnBlocked),
         },
       );
       console.log(text);

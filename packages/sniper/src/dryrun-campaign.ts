@@ -328,7 +328,6 @@ function reviewReasons(ev: CampaignVerdictEvidence): string[] {
   const reasons: string[] = [];
   if (ev.watchlistStatus === "review") reasons.push("watchlist status is review");
   if (ev.riskDecision === "CAUTION") reasons.push("deep risk returned CAUTION");
-  if (ev.riskDecision === null) reasons.push("no deep risk decision was supplied");
   if (ev.preflightVerdict === "warn") reasons.push("token preflight WARNED");
   if (ev.preflightVerdict === "unknown") reasons.push("token preflight is unknown (no data)");
   if (ev.quoteStatus === "stale") reasons.push("the route quote is stale");

@@ -804,6 +804,12 @@ pnpm soulmaker paper:sniper:operator-demo --out runs/demo
 # public keys). A status (watch/review/blocked/archived) is bookkeeping ONLY — never a trade signal.
 pnpm soulmaker paper:sniper:watchlist:prepare --candidates <candidates.json> --out runs/watchlist.json
 
+# paper:sniper:campaign:run COMPARES candidates across the evidence you already gathered (--score,
+# --preflight, --risk <mint=path>, --routequote, --release-candidate <mint=path>, joined BY MINT) into
+# a no-send sniper.dryrun.campaign.v1 + RUN_SUMMARY.md. Each verdict (watch/review/blocked/
+# insufficient-evidence) is RE-DERIVED; a high score can NEVER override a blocker. Live stays DISABLED.
+pnpm soulmaker paper:sniper:campaign:run --watchlist runs/watchlist.json --preflight preflight.json --out runs/campaign
+
 # Sprint 27 — PAPER SNIPER DECISIONS: fold the candidate list + preflight + optional operator rules
 # into a per-candidate SIMULATED decision — skip / watch / paper-enter / paper-reject / unknown — with
 # reasons. A paper-enter is a PAPER-ONLY decision, NOT a buy/sell order, NOT a transaction, NOT live

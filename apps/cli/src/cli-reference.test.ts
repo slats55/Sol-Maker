@@ -46,6 +46,7 @@ const EXPECTED_COMMANDS: readonly string[] = [
   "paper:sniper:rehearse",
   "paper:sniper:operator-demo",
   "paper:sniper:watchlist:prepare",
+  "paper:sniper:campaign:run",
   "paper:phase6:prereqs",
   "paper:phase6:intent:plan",
   "paper:phase6:diff:intent",

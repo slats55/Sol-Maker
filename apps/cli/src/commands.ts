@@ -246,6 +246,11 @@ import {
   type SniperWatchlist,
   type SniperWatchlistEntryInput,
   type SniperWatchlistStatus,
+  buildSniperDryRunCampaign,
+  formatSniperDryRunCampaign,
+  SNIPER_DRYRUN_CAMPAIGN_SCHEMA_VERSION,
+  type SniperDryRunCampaign,
+  type SniperDryRunCampaignCandidateInput,
   buildPaperSniperDecisionReport,
   formatPaperSniperDecisionReport,
   buildPaperSniperDecisionReportV2,
@@ -7661,6 +7666,321 @@ export function paperSniperWatchlistPrepareReport(
     "  - Compare these candidates safely with `paper:sniper:campaign:run --watchlist <this file> ...` (no signing, no sending).",
     "  - A status is bookkeeping only — each entry still needs an independent risk check, a fresh quote, and a dry-run.",
   );
+  return { text: redactString(lines.join("\n")), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 104-C — paper:sniper:campaign:run
+//   A SAFE, no-send campaign that COMPARES candidates across the evidence the
+//   operator already gathered: ranking (--score), deep risk (--risk / --preflight),
+//   route quote (--routequote), and the unsigned build + simulation + release-
+//   candidate verdict (--release-candidate). Every evidence source is joined by
+//   MINT, each piece strictly validated with its production validator, and folded
+//   into sniper.dryrun.campaign.v1 — each candidate's verdict RE-DERIVED so a
+//   score can never override a blocker. Writes a campaign folder (campaign.json +
+//   RUN_SUMMARY.md). LOCAL-ONLY: reads the named files only — no RPC, no network,
+//   no wallet, no signer, no send. A deterministic comparison of existing
+//   evidence; the live-read-only auto-gather flow is paper:sniper:rehearse.
+// ---------------------------------------------------------------------------
+
+const CAMPAIGN_OUTPUT_FILE = "campaign.json";
+const CAMPAIGN_SUMMARY_FILE = "RUN_SUMMARY.md";
+
+export interface PaperSniperCampaignRunCommandOptions {
+  /** Candidate list (raw or canonical sniper.candidate.list.v1). One of --candidates / --watchlist required. */
+  candidatesPath?: string;
+  /** Watchlist (sniper.watchlist.v1); supplies the spine AND the per-mint watchlist status. */
+  watchlistPath?: string;
+  /** engine.sniper.score.report.v1 (rank + score per candidate; intelligence only). */
+  scorePath?: string;
+  /** sniper.token.preflight.report.v1 (preflight verdict + a fallback risk decision per candidate). */
+  preflightPath?: string;
+  /** Repeatable "mint=path" token:risk JSON files (the authoritative deep-risk decision per mint). */
+  risks?: string[];
+  /** routequote.prepared.v1 (route-quote observation status per candidate). */
+  routequotePath?: string;
+  /** Repeatable "mint=path" sniper.mainnet_dryrun.release_candidate.v1 files (RC verdict + build + simulation). */
+  releaseCandidates?: string[];
+  mode?: string;
+  network?: string;
+  campaignId?: string;
+  /** Cap the number of candidates compared (default: all). */
+  limit?: number;
+  json?: boolean;
+  /** Output DIRECTORY for campaign.json + RUN_SUMMARY.md. */
+  outDir?: string;
+  force?: boolean;
+  /** Exit non-zero when any candidate is blocked. */
+  failOnBlocked?: boolean;
+}
+
+interface CampaignSpineCandidate {
+  candidateId: string;
+  mint: string;
+  watchlistStatus: SniperWatchlistStatus | null;
+}
+
+/** Parse a repeatable "mint=path" argument into its mint + path halves. */
+function parseMintPathArg(arg: string): { mint: string; path: string } {
+  const eq = arg.indexOf("=");
+  if (eq === -1) throw new Error(`expected "mint=path" but got "${arg}"`);
+  return { mint: arg.slice(0, eq).trim(), path: arg.slice(eq + 1).trim() };
+}
+
+/** Map a routequote.prepared quoteStatus onto the campaign's closed quote-status set. */
+function projectQuoteStatus(status: unknown): SniperDryRunCampaignCandidateInput["quoteStatus"] {
+  switch (status) {
+    case "quote-observed":
+      return "observed";
+    case "unavailable":
+      return "unavailable";
+    case "blocked":
+      return "blocked";
+    case "error":
+      return "error";
+    case "unsupported":
+      return "unsupported";
+    default:
+      return null;
+  }
+}
+
+/**
+ * `soulmaker paper:sniper:campaign:run` — compare candidates across the evidence already gathered.
+ * The spine is `--candidates` or `--watchlist`; `--score` / `--preflight` / `--risk` / `--routequote`
+ * / `--release-candidate` attach ranking, risk, quote, and dry-run evidence by MINT. Each supplied
+ * file is strictly validated; a missing stage stays honestly absent (surfaced as `insufficient-evidence`
+ * or `review`, never hidden). Reads the named files only — NO RPC / network / wallet / signer / send.
+ * Writes `campaign.json` + `RUN_SUMMARY.md` into `--out`. Every per-candidate verdict is re-derived,
+ * so a high score can never rescue a blocked candidate. Live trading stays disabled.
+ */
+export function paperSniperCampaignRunReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperCampaignRunCommandOptions = {},
+): CliReport {
+  if (!opts.candidatesPath && !opts.watchlistPath) {
+    return { text: "Refusing: provide --candidates <path> or --watchlist <path> (the candidate spine).", exitCode: 1 };
+  }
+  if (opts.candidatesPath && opts.watchlistPath) {
+    return { text: "Refusing: --candidates and --watchlist are mutually exclusive (pick one spine).", exitCode: 1 };
+  }
+
+  // --- spine: candidates or watchlist -----------------------------------------
+  const spine: CampaignSpineCandidate[] = [];
+  try {
+    if (opts.watchlistPath) {
+      const raw = readJsonValue(ctx, opts.watchlistPath, "watchlist");
+      const wl = validateSniperWatchlist(
+        isPlainObject(raw) && raw.schemaVersion === SNIPER_WATCHLIST_SCHEMA_VERSION ? raw : normalizeSniperWatchlist(raw as never),
+      );
+      for (const e of wl.entries) spine.push({ candidateId: e.entryId, mint: e.mint, watchlistStatus: e.status });
+    } else {
+      const raw = readJsonValue(ctx, opts.candidatesPath!, "candidate list");
+      if (!isPlainObject(raw) || !Array.isArray(raw.candidates)) throw new Error("candidate list must be a JSON object with a candidates array");
+      if (raw.schemaVersion !== undefined && raw.schemaVersion !== SNIPER_CANDIDATE_LIST_SCHEMA_VERSION) {
+        throw new Error(`candidate schemaVersion must be "${SNIPER_CANDIDATE_LIST_SCHEMA_VERSION}"`);
+      }
+      for (const c of raw.candidates as unknown[]) {
+        if (!isPlainObject(c) || typeof c.mint !== "string") throw new Error("each candidate must have a mint");
+        const mint = parseMintAddress(c.mint);
+        const candidateId = typeof c.candidateId === "string" && c.candidateId.trim().length > 0 ? c.candidateId.trim() : mint;
+        spine.push({ candidateId, mint, watchlistStatus: null });
+      }
+    }
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  if (spine.length === 0) return { text: "Refusing: the spine has no candidates.", exitCode: 1 };
+
+  const limited = opts.limit !== undefined && opts.limit > 0 ? spine.slice(0, opts.limit) : spine;
+  const truncated = limited.length < spine.length;
+
+  // --- evidence projections (each joined by canonical MINT) -------------------
+  const warnings: string[] = [];
+  const scoreByMint = new Map<string, { rank: number | null; score: number | null }>();
+  const preflightByMint = new Map<string, { status: string; riskDecision: string | null; criticalFlagCount: number | null; token2022Blocker: boolean }>();
+  const riskByMint = new Map<string, { decision: string | null; criticalFlagCount: number | null; token2022Blocker: boolean }>();
+  const quoteByMint = new Map<string, SniperDryRunCampaignCandidateInput["quoteStatus"]>();
+  const rcByMint = new Map<string, { verdict: string; buildStatus: SniperDryRunCampaignCandidateInput["buildStatus"]; simulationStatus: SniperDryRunCampaignCandidateInput["simulationStatus"] }>();
+
+  try {
+    if (opts.scorePath) {
+      const raw = readJsonValue(ctx, opts.scorePath, "candidate score report");
+      if (!isPlainObject(raw) || raw.schemaVersion !== ENGINE_SNIPER_SCORE_SCHEMA_VERSION) {
+        throw new Error(`score report schemaVersion must be "${ENGINE_SNIPER_SCORE_SCHEMA_VERSION}"`);
+      }
+      for (const e of (raw.rankedCandidates as unknown[]) ?? []) {
+        if (isPlainObject(e) && typeof e.mint === "string") {
+          scoreByMint.set(parseMintAddress(e.mint), {
+            rank: typeof e.rank === "number" ? e.rank : null,
+            score: typeof e.score === "number" ? e.score : null,
+          });
+        }
+      }
+    }
+    if (opts.preflightPath) {
+      const pf = validateSniperTokenPreflightReport(readJsonValue(ctx, opts.preflightPath, "token preflight report"));
+      for (const e of pf.candidates) {
+        let t22 = false;
+        if (e.risk?.topFlags) {
+          t22 = e.risk.topFlags.some((f) => TOKEN2022_RISK_FLAG_IDS.has(f.id) && (f.severity === "critical" || f.severity === "high"));
+        }
+        preflightByMint.set(e.mint, {
+          status: e.status,
+          riskDecision: e.risk?.decision ?? null,
+          criticalFlagCount: e.risk?.criticalFlagCount ?? null,
+          token2022Blocker: t22,
+        });
+      }
+    }
+    for (const arg of opts.risks ?? []) {
+      const { mint, path } = parseMintPathArg(arg);
+      const canonical = parseMintAddress(mint);
+      const rr = readJsonValue(ctx, path, `risk report for ${canonical}`);
+      if (!isPlainObject(rr) || typeof rr.decision !== "string") throw new Error(`risk report for ${canonical} is missing a decision`);
+      const flags = Array.isArray(rr.flags) ? (rr.flags as Array<{ id?: string; severity?: string }>) : [];
+      riskByMint.set(canonical, {
+        decision: rr.decision,
+        criticalFlagCount: flags.filter((f) => f.severity === "critical").length,
+        token2022Blocker: flags.some((f) => typeof f.id === "string" && TOKEN2022_RISK_FLAG_IDS.has(f.id) && (f.severity === "critical" || f.severity === "high")),
+      });
+    }
+    if (opts.routequotePath) {
+      const prepared = validateRouteQuotePrepared(readJsonValue(ctx, opts.routequotePath, "prepared route quotes"));
+      for (const e of prepared.entries) quoteByMint.set(e.mint, projectQuoteStatus(e.quoteStatus));
+    }
+    for (const arg of opts.releaseCandidates ?? []) {
+      const { mint, path } = parseMintPathArg(arg);
+      const canonical = parseMintAddress(mint);
+      const rc = validateMainnetDryRunReleaseCandidate(readJsonValue(ctx, path, `release candidate for ${canonical}`));
+      const buildStatus = rc.build.refused ? "refused" : rc.build.succeeded ? "succeeded" : "not-attempted";
+      const simulationStatus = rc.simulation.failed
+        ? "failed"
+        : rc.simulation.outcome === "simulated-ok"
+          ? "simulated-ok"
+          : rc.simulation.outcome === "unavailable"
+            ? "unavailable"
+            : "not-attempted";
+      rcByMint.set(canonical, { verdict: rc.verdict, buildStatus, simulationStatus });
+    }
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // --- fold per-candidate evidence into the campaign input --------------------
+  const candidateInputs: SniperDryRunCampaignCandidateInput[] = limited.map((c) => {
+    const score = scoreByMint.get(c.mint);
+    const pf = preflightByMint.get(c.mint);
+    const directRisk = riskByMint.get(c.mint);
+    const quote = quoteByMint.get(c.mint);
+    const rc = rcByMint.get(c.mint);
+    // Risk: prefer the direct token:risk file; fall back to the preflight-embedded risk.
+    const riskDecision = directRisk?.decision ?? pf?.riskDecision ?? null;
+    const criticalFlagCount = directRisk?.criticalFlagCount ?? pf?.criticalFlagCount ?? null;
+    const token2022Blocker = directRisk?.token2022Blocker ?? pf?.token2022Blocker ?? false;
+    return {
+      candidateId: c.candidateId,
+      mint: c.mint,
+      rank: score?.rank ?? null,
+      score: score?.score ?? null,
+      watchlistStatus: c.watchlistStatus,
+      riskDecision,
+      riskCriticalFlagCount: criticalFlagCount,
+      token2022Blocker,
+      quoteStatus: quote ?? null,
+      buildStatus: rc?.buildStatus ?? null,
+      simulationStatus: rc?.simulationStatus ?? null,
+      releaseCandidateVerdict: rc?.verdict ?? null,
+      preflightVerdict: pf?.status ?? null,
+    };
+  });
+
+  // Provenance: record which evidence files were supplied (basenames as labels).
+  const artifactRefs: string[] = [];
+  for (const [label, path] of [
+    ["candidates", opts.candidatesPath],
+    ["watchlist", opts.watchlistPath],
+    ["score", opts.scorePath],
+    ["preflight", opts.preflightPath],
+    ["routequote", opts.routequotePath],
+  ] as const) {
+    if (path) artifactRefs.push(`${label}:${basename(path)}`);
+  }
+  for (const arg of opts.risks ?? []) artifactRefs.push(`risk:${basename(parseMintPathArg(arg).path)}`);
+  for (const arg of opts.releaseCandidates ?? []) artifactRefs.push(`release-candidate:${basename(parseMintPathArg(arg).path)}`);
+
+  let campaign: SniperDryRunCampaign;
+  try {
+    campaign = buildSniperDryRunCampaign({
+      campaignId: opts.campaignId ?? null,
+      // No wall-clock: the @soulmaker/sniper artifacts are deterministic by design (the CLI owns I/O
+      // but never stamps a campaign with system time), so the same evidence yields a byte-identical run.
+      generatedAt: null,
+      mode: opts.mode ?? null,
+      network: opts.network ?? null,
+      candidates: candidateInputs,
+      artifactRefs,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: cannot assemble the campaign — ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (truncated) warnings.push(`--limit truncated the campaign to ${limited.length} of ${spine.length} candidate(s).`);
+
+  // --- write the campaign folder (campaign.json + RUN_SUMMARY.md) -------------
+  if (opts.outDir) {
+    const outDir = resolvePath(ctx, opts.outDir);
+    const files = [CAMPAIGN_OUTPUT_FILE, CAMPAIGN_SUMMARY_FILE];
+    if (!opts.force) {
+      for (const f of files) {
+        if (existsSync(join(outDir, f))) {
+          return { text: redactString(`Refusing: ${join(outDir, f)} already exists (pass --force to overwrite).`), exitCode: 1 };
+        }
+      }
+    }
+    try {
+      mkdirSync(outDir, { recursive: true });
+      writeFileSync(join(outDir, CAMPAIGN_OUTPUT_FILE), JSON.stringify(redactValue(campaign), null, 2) + "\n");
+      const summary = [
+        `# Sniper Dry-Run Campaign — ${campaign.campaignId}`,
+        "",
+        "> **SAFE no-send campaign.** Nothing here signs, sends, or trades. Live execution is DISABLED.",
+        "",
+        `- **Mode:** ${campaign.mode} (${campaign.network})`,
+        `- **Candidates:** ${campaign.candidateCount}`,
+        `- **Verdicts:** watch ${campaign.verdictCounts.watch} · review ${campaign.verdictCounts.review} · BLOCKED ${campaign.verdictCounts.blocked} · insufficient ${campaign.verdictCounts.insufficientEvidence}`,
+        "",
+        "## Candidates",
+        "",
+        "| verdict | candidate | mint | score | risk | quote | build | sim | preflight | RC |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        ...campaign.candidates.map(
+          (c) =>
+            `| ${c.finalOperatorVerdict} | ${c.candidateId} | ${c.mint} | ${c.score ?? "—"} | ${c.riskDecision ?? "—"} | ${c.quoteStatus ?? "—"} | ${c.buildStatus ?? "—"} | ${c.simulationStatus ?? "—"} | ${c.preflightVerdict ?? "—"} | ${c.releaseCandidateVerdict ?? "—"} |`,
+        ),
+        "",
+        ...(warnings.length > 0 ? ["## Notes", "", ...warnings.map((w) => `- ${w}`), ""] : []),
+        `next safe action: ${campaign.nextSafeAction}`,
+        "",
+        "Inspect: `pnpm web:inspect --dir <this folder>`",
+        "",
+      ];
+      writeFileSync(join(outDir, CAMPAIGN_SUMMARY_FILE), redactString(summary.join("\n")));
+    } catch {
+      return { text: redactString(`Refusing: cannot write the campaign folder at ${outDir}`), exitCode: 1 };
+    }
+  }
+
+  const exitCode = opts.failOnBlocked && campaign.verdictCounts.blocked > 0 ? 1 : 0;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(campaign), null, 2), exitCode };
+  }
+  const lines = [formatSniperDryRunCampaign(campaign, { label: opts.campaignId })];
+  for (const w of warnings) lines.push("", `note: ${w}`);
+  if (opts.outDir) {
+    lines.push("", `wrote: ${join(resolvePath(ctx, opts.outDir), CAMPAIGN_OUTPUT_FILE)}`, `       ${join(resolvePath(ctx, opts.outDir), CAMPAIGN_SUMMARY_FILE)}`);
+    lines.push("", `inspect: pnpm web:inspect --dir "${resolvePath(ctx, opts.outDir)}"`);
+  }
   return { text: redactString(lines.join("\n")), exitCode };
 }
 
