@@ -269,6 +269,9 @@ import {
   type SniperAlphaHistoryInvalidArtifactInput,
   diffSniperAlphaHistories,
   formatSniperAlphaHistoryDiff,
+  buildSniperAlphaHistoryTrend,
+  formatSniperAlphaHistoryTrend,
+  type SniperAlphaHistoryTrendSnapshotInput,
   buildSniperStrategyIntelligence,
   formatSniperStrategyIntelligence,
   type SniperStrategyRiskInput,
@@ -9597,6 +9600,129 @@ export function paperSniperAlphaHistoryDiffReport(
   if (opts.outPath) lines.push("", `wrote: ${resolvePath(ctx, opts.outPath)}`);
   if (exitCode !== 0) lines.push("", `--fail-on-worsened: aggregate blocked rose by ${diff.summary.aggregateBlockedDelta} across the two histories.`);
   return { text: redactString(lines.join("\n")), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 107 — `paper:sniper:alpha:history:trend`: fold an ORDERED list of
+//   sniper.alpha_history.v1 rollups into sniper.alpha_history.trend.v1. Pure read
+//   of the named history files (a path may be a folder holding alpha-history.json),
+//   in the SUPPLIED order (no wall-clock). Reports the verdict / candidate series,
+//   step-to-step deltas, blocker-reason totals, provenance totals, and provider
+//   consistency. Authorizes nothing. LOCAL-ONLY: no RPC / network / wallet / signer
+//   / send.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperAlphaHistoryTrendCommandOptions {
+  /** Repeatable "label=path" history snapshots, kept in the supplied order (path may be a folder). */
+  histories?: string[];
+  /** Parent directory whose immediate children (alpha-history.json files OR folders holding one) are snapshots. */
+  historiesDir?: string;
+  trendId?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:alpha:history:trend` — fold an ORDERED list of `sniper.alpha_history.v1`
+ * rollups into a deterministic `sniper.alpha_history.trend.v1`. Reads the named files only (a folder
+ * resolves to its `alpha-history.json`) — NO RPC / network / wallet / signer / send. The order is the
+ * supplied order; explicit `--history <label=path>` entries come first, then `--histories-dir` children
+ * sorted by name. Each snapshot is re-validated + deep-scanned; a malformed or live-authorizing rollup
+ * is refused. Reports movement only; live trading stays disabled.
+ */
+export function paperSniperAlphaHistoryTrendReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperAlphaHistoryTrendCommandOptions = {},
+): CliReport {
+  const historyFlags = opts.histories ?? [];
+  if (historyFlags.length === 0 && !opts.historiesDir) {
+    return { text: "Refusing: provide at least two snapshots via --history <label=path> (repeatable) and/or --histories-dir <parent>.", exitCode: 1 };
+  }
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+  }
+
+  const snapshots: SniperAlphaHistoryTrendSnapshotInput[] = [];
+
+  /** Resolve one (label, path) into a validated snapshot OR a refusal. */
+  const ingestOne = (label: string, sourcePath: string): CliReport | null => {
+    try {
+      const history = validateSniperAlphaHistory(readJsonValue(ctx, resolveAlphaHistoryFile(ctx, sourcePath), `alpha history (${label})`));
+      snapshots.push({ label, history });
+      return null;
+    } catch (err) {
+      return { text: redactString(`Refusing: snapshot "${label}": ${(err as Error).message}`), exitCode: 1 };
+    }
+  };
+
+  // --- explicit --history label=path entries (preserve supplied order) --------
+  for (const flag of historyFlags) {
+    let label: string;
+    let path: string;
+    try {
+      const parsed = parseMintPathArg(flag);
+      label = parsed.mint;
+      path = parsed.path;
+    } catch {
+      return { text: redactString(`Refusing: --history expects "label=path" but got "${flag}".`), exitCode: 1 };
+    }
+    if (label.length === 0 || path.length === 0) {
+      return { text: redactString(`Refusing: --history expects a non-empty label AND path but got "${flag}".`), exitCode: 1 };
+    }
+    const refusal = ingestOne(label, path);
+    if (refusal) return refusal;
+  }
+
+  // --- auto-discovered --histories-dir children (sorted by name) --------------
+  if (opts.historiesDir) {
+    const parent = resolvePath(ctx, opts.historiesDir);
+    let names: string[];
+    try {
+      if (!statSync(parent).isDirectory()) return { text: redactString(`Refusing: --histories-dir ${parent} is not a directory.`), exitCode: 1 };
+      names = readdirSync(parent);
+    } catch {
+      return { text: redactString(`Refusing: cannot read --histories-dir at ${parent}.`), exitCode: 1 };
+    }
+    for (const name of [...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
+      const child = join(parent, name);
+      let childIsDir = false;
+      try {
+        childIsDir = statSync(child).isDirectory();
+      } catch {
+        childIsDir = false;
+      }
+      if (childIsDir) {
+        if (!existsSync(join(child, ALPHA_HISTORY_DIFF_FILE))) continue;
+        const refusal = ingestOne(name, child);
+        if (refusal) return refusal;
+      } else if (name.endsWith(".json")) {
+        const refusal = ingestOne(name.replace(/\.json$/, ""), child);
+        if (refusal) return refusal;
+      }
+    }
+  }
+
+  let trend;
+  try {
+    trend = buildSniperAlphaHistoryTrend({ trendId: opts.trendId ?? null, generatedAt: null, snapshots });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    try {
+      writeFileSync(resolvePath(ctx, opts.outPath), JSON.stringify(redactValue(trend), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the trend to ${resolvePath(ctx, opts.outPath)}`), exitCode: 1 };
+    }
+  }
+
+  if (opts.json) return { text: JSON.stringify(redactValue(trend), null, 2), exitCode: 0 };
+  const lines = [formatSniperAlphaHistoryTrend(trend, { label: opts.trendId })];
+  if (opts.outPath) lines.push("", `wrote: ${resolvePath(ctx, opts.outPath)}`);
+  return { text: redactString(lines.join("\n")), exitCode: 0 };
 }
 
 // ---------------------------------------------------------------------------

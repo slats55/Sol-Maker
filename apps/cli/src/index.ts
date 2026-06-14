@@ -74,6 +74,7 @@ import {
   paperSniperAlphaReportReport,
   paperSniperAlphaHistoryReport,
   paperSniperAlphaHistoryDiffReport,
+  paperSniperAlphaHistoryTrendReport,
   paperSniperStrategyIntelReport,
   executionSessionStatusReport,
   executionSessionReconcileReport,
@@ -3758,6 +3759,38 @@ program
         outPath: opts.out,
         force: Boolean(opts.force),
         failOnWorsened: Boolean(opts.failOnWorsened),
+      },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("paper:sniper:alpha:history:trend")
+  .description(
+    "Sprint 107 alpha history trend: fold an ORDERED list of `sniper.alpha_history.v1` rollups (--history <label=path>, repeatable, kept in supplied order; and/or --histories-dir <parent>; a path may be a folder holding alpha-history.json) into `sniper.alpha_history.trend.v1`. The order is the SUPPLIED order — NO wall-clock, no fake time series. Reports the watch / review / blocked / insufficient-evidence series and candidate series across snapshots, step-to-step deltas between consecutive snapshots, the blocker-reason totals (run-occurrences across snapshots), the evidence-provenance totals, and the per-provider ok-run consistency, plus a one-line operator summary. It NEVER re-derives a verdict and authorizes NOTHING; each snapshot is re-validated + deep-scanned and a malformed / live-authorizing rollup is refused. liveTradingStatus is pinned disabled and the trend can NEVER report a live send. LOCAL-ONLY (no RPC / network / wallet / signer / send)",
+  )
+  .option(
+    "--history <label=path>",
+    "a history snapshot as label=path (path is a sniper.alpha_history.v1 file or a folder holding alpha-history.json); repeatable, kept in supplied order",
+    (value: string, previous: string[]) => previous.concat(value),
+    [] as string[],
+  )
+  .option("--histories-dir <parent>", "a parent directory whose immediate children (alpha-history.json files OR folders holding one) are auto-discovered as snapshots, sorted by name")
+  .option("--trend-id <label>", "operator label echoed into the trend")
+  .option("--json", "emit the trend as stable JSON")
+  .option("--out <path>", "write ONLY the trend JSON to this path (refused if it exists without --force)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .action((opts: { history?: string[]; historiesDir?: string; trendId?: string; json?: boolean; out?: string; force?: boolean }) => {
+    const { text, exitCode } = paperSniperAlphaHistoryTrendReport(
+      {},
+      {
+        histories: opts.history,
+        historiesDir: opts.historiesDir,
+        trendId: opts.trendId,
+        json: Boolean(opts.json),
+        outPath: opts.out,
+        force: Boolean(opts.force),
       },
     );
     console.log(text);

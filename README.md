@@ -860,6 +860,16 @@ pnpm soulmaker paper:sniper:alpha:history --run before=runs/alpha-before --run a
 # stays DISABLED, authorizes nothing. --fail-on-worsened gates CI when the aggregate blocked count rose.
 pnpm soulmaker paper:sniper:alpha:history:diff --base runs/alpha-history-mon.json --next runs/alpha-history-tue.json --out runs/alpha-history-diff.json
 
+# Sprint 107 — ALPHA HISTORY TREND: paper:sniper:alpha:history:trend folds an ORDERED list of
+# sniper.alpha_history.v1 rollups (--history <label=path>, repeatable, kept in supplied order; and/or
+# --histories-dir <parent>; a path may be a folder holding alpha-history.json) into
+# sniper.alpha_history.trend.v1. The order is the SUPPLIED order — NO wall-clock, no fake time series. It
+# reports the watch/review/blocked/insufficient-evidence series + candidate series across snapshots,
+# step-to-step deltas, blocker-reason totals, evidence-provenance totals, and per-provider ok-run
+# consistency, plus a one-line summary. Each snapshot is re-validated + deep-scanned; a malformed /
+# live-authorizing rollup is refused. LOCAL-ONLY — live trading stays DISABLED, authorizes nothing.
+pnpm soulmaker paper:sniper:alpha:history:trend --history mon=runs/alpha-history-mon.json --history tue=runs/alpha-history-tue.json --out runs/alpha-history-trend.json
+
 # Sprint 106 — STRATEGY INTELLIGENCE: paper:sniper:strategy:intel projects a campaign (--campaign) +
 # per-mint token:risk reports (--risk <mint=path>) into read-only per-candidate intelligence cards — the
 # notable risk flags by NAME (freeze/mint authority, Token-2022 risks, holder concentration, mutable

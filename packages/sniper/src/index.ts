@@ -783,6 +783,34 @@ export type {
 } from "./alpha-history-diff.js";
 
 export {
+  buildSniperAlphaHistoryTrend,
+  validateSniperAlphaHistoryTrend,
+  formatSniperAlphaHistoryTrend,
+  SniperAlphaHistoryTrendError,
+  SNIPER_ALPHA_HISTORY_TREND_SCHEMA_VERSION,
+  SNIPER_ALPHA_HISTORY_TREND_BANNER,
+  SNIPER_ALPHA_HISTORY_TREND_DISCLAIMERS,
+  SNIPER_ALPHA_HISTORY_TREND_LIVE_TRADING_STATUS,
+  SNIPER_ALPHA_HISTORY_TREND_CONSISTENCY,
+} from "./alpha-history-trend.js";
+
+export type {
+  SniperAlphaHistoryTrendConsistency,
+  SniperAlphaHistoryTrendSnapshotInput,
+  BuildSniperAlphaHistoryTrendInput,
+  SniperAlphaHistoryTrendProviderOk,
+  SniperAlphaHistoryTrendProvenanceCounts,
+  SniperAlphaHistoryTrendSnapshot,
+  SniperAlphaHistoryTrendStep,
+  SniperAlphaHistoryTrendVerdictSeries,
+  SniperAlphaHistoryTrendBlockerTotal,
+  SniperAlphaHistoryTrendProviderConsistency,
+  SniperAlphaHistoryTrendSensitiveScan,
+  SniperAlphaHistoryTrend,
+  FormatSniperAlphaHistoryTrendOptions,
+} from "./alpha-history-trend.js";
+
+export {
   buildSniperStrategyIntelligence,
   validateSniperStrategyIntelligence,
   formatSniperStrategyIntelligence,
