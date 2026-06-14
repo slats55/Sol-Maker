@@ -122,12 +122,21 @@ writes a no-send alpha folder. **Live trading stays disabled — it never sends,
 
    # Live read-only (mainnet-dry-run): check providers first, then gather deep risk + route quotes.
    pnpm soulmaker paper:sniper:campaign:auto-run --candidates runs/candidates.json \
-     --mode mainnet-dry-run --allow-readonly-network --check-providers --out runs/alpha
+     --mode mainnet-dry-run --allow-readonly-network --check-providers --rpc-url <RPC_URL> --out runs/alpha
    ```
    It writes `readonly-campaign-plan.json` (`sniper.readonly_campaign.plan.v1`), `campaign.json`
    (`sniper.dryrun.campaign.v1`), `alpha-report.json` (`sniper.alpha_run.report.v1`),
    `evidence-index.json`, per-candidate evidence, and `RUN_SUMMARY.md`. A risk REJECT short-circuits the
    downstream quote/build/simulation stages; an unavailable provider / Rust engine is recorded honestly.
+   - **`--rpc-url` is honored consistently** (S105-C): the provider `--check-providers` probe, the
+     per-candidate deep-risk read, and the simulation all use that *same* read-only endpoint, so the
+     gathered evidence is internally consistent. Precedence is **`--rpc-url` flag > `SOULMAKER_RPC_URL`
+     env > public keyless default**; a key embedded in the URL reaches the read-only client only and is
+     reduced to its host in every report. `--rpc-url` has no effect in paper mode (the run warns you).
+   - **Provider health is fetched once and reused** — `--check-providers` probes a single time and gates
+     every candidate's live stages off the one report (a down provider skips its stage as honest
+     evidence). Pass `--provider-health <report.json>` to ingest a report you already have instead of
+     re-probing.
 3. **Diff against a previous run** — `paper:sniper:campaign:diff --before <old>/campaign.json
    --after runs/alpha/campaign.json --out runs/alpha/campaign-diff.json` (`sniper.dryrun.campaign.diff.v1`).
    It reports movement only — improved / worsened / newly-blocked / newly-watch — and authorizes nothing.

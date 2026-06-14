@@ -284,8 +284,16 @@ pnpm soulmaker paper:sniper:campaign:auto-run --watchlist runs/watchlist.json \
 
 # Live read-only (mainnet-dry-run): gather deep risk + quotes itself. No send, no signer.
 pnpm soulmaker paper:sniper:campaign:auto-run --candidates runs/candidates.json \
-  --mode mainnet-dry-run --allow-readonly-network --out runs/alpha
+  --mode mainnet-dry-run --allow-readonly-network --rpc-url <RPC_URL> --out runs/alpha
 ```
+
+**Offline vs live (real-readonly vs fixture):** the *offline* form reaches **no network** — it ingests
+the `--risk` files you supply and marks every network stage `not-attempted`, so its provenance is
+fixture / operator-supplied. The *live read-only* form (`--mode mainnet-dry-run
+--allow-readonly-network`) reads deep risk + quotes from real providers and is labelled `real-readonly`.
+Either way nothing signs, sends, or loads a key. `--rpc-url` (S105-C) drives the deep-risk read **and**
+the simulation at the same endpoint (flag > `SOULMAKER_RPC_URL` env > public default); it has no effect
+in the offline/paper form (the run warns you).
 
 `paper:sniper:campaign:diff --before <a>/campaign.json --after <b>/campaign.json --out diff.json`
 (`sniper.dryrun.campaign.diff.v1`) compares two campaigns by mint — added / removed / unchanged /

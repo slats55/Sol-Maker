@@ -85,9 +85,12 @@ pnpm soulmaker paper:sniper:watchlist:prepare --candidates runs/candidates.json 
 pnpm soulmaker paper:sniper:campaign:auto-run --watchlist runs/watchlist.json \
   --risk <MINT>=risk.<MINT>.json --out runs/alpha --run-id demo
 #    Live read-only (mainnet-dry-run): probe providers, then gather deep risk + quotes itself.
-#    Deep risk needs an RPC: set SOULMAKER_RPC_URL (or SOULMAKER_READONLY_RPC_URL) to a public mainnet RPC.
+#    --rpc-url drives the provider probe, deep risk AND simulation at the SAME endpoint
+#    (precedence: --rpc-url flag > SOULMAKER_RPC_URL env > public keyless default; a key in the URL
+#    is never printed). Omit it to fall back to SOULMAKER_RPC_URL / the public default.
 pnpm soulmaker paper:sniper:campaign:auto-run --candidates runs/candidates.json \
-  --mode mainnet-dry-run --allow-readonly-network --check-providers --out runs/alpha --run-id demo
+  --mode mainnet-dry-run --allow-readonly-network --check-providers --rpc-url <RPC_URL> \
+  --out runs/alpha --run-id demo
 
 # 3. Diff against a previous run.
 pnpm soulmaker paper:sniper:campaign:diff --before runs/prev/campaign.json \
@@ -104,6 +107,10 @@ pnpm web:inspect --dir runs/alpha
 
 Or run the curated workbench in one command: `paper:sniper:operator-demo --out runs/demo`, then
 `pnpm web:inspect --dir runs/demo`.
+
+A fully reproducible, copy-pasteable version of this demo (offline-fixture and live-read-only variants,
+using committed example candidates) lives in
+[examples/sniper/alpha-workflow/README.md](../examples/sniper/alpha-workflow/README.md).
 
 **When providers are unavailable:** the doctor records each provider's exact status (`unavailable` /
 `timeout` / `rate-limited` / `misconfigured` / `error`) and re-derives `canRunLiveReadonlyCampaign:

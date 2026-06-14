@@ -1280,6 +1280,33 @@ Made the no-send alpha workflow **reliable and demoable with real read-only prov
   no mainnet send surface, no Rust signer/send. The written human sign-off is still the only live
   blocker; live trading remains 0% by policy.
 
+## Sprint 105-C — alpha stabilization, cleanup + consistency (DONE)
+
+Kept the exact no-send alpha checkpoint but made it **cleaner, more consistent, and harder to break** —
+still **no-send / no-signer / no-live-trading**, no new command, no new live surface.
+
+- **`--rpc-url` consistency fix** — `paper:sniper:campaign:auto-run` accepted `--rpc-url` but only the
+  simulation used it; deep risk silently fell back to `SOULMAKER_RPC_URL` / config. Now the provider
+  `--check-providers` probe, the per-candidate deep-risk read, and the simulation all read the **same**
+  endpoint. `openChainRead` resolves an optional override with precedence **flag > env > config**,
+  validates it as a URL, refuses a malformed one without printing it, and reduces a secret-bearing one
+  to its host in every report. The run warns when `--rpc-url` has no effect (paper mode) and records the
+  resolved RPC host (host-only) in `RUN_SUMMARY` when the network is active.
+- **End-to-end regression suite** (`sniper-alpha-workflow-regression.test.ts`) drives provider:doctor →
+  watchlist → auto-run → diff → alpha:report with injected fixtures and locks the checkpoint: live
+  trading disabled + `authorizesLiveTrading` false in every committed artifact; no
+  `signature`/`sendResult`/`txid`/secret-key field ever populated; REJECT candidate blocked, clean
+  candidate never falsely blocked; identical input → byte-identical artifacts; one candidate failing
+  never kills the campaign; an ingested provider-health report reused, not re-probed; candidate limit
+  enforced.
+- **Demo repeatability** — a fully reproducible, copy-pasteable demo (offline-fixture + live-read-only)
+  at [examples/sniper/alpha-workflow/README.md](../examples/sniper/alpha-workflow/README.md); the
+  `/sniper` page + the runbook/checklist/dry-run docs document the `--rpc-url` consistency.
+- **Safety audit refreshed, no drift:** command-surface + cli-reference + signer-boundary + Rust
+  capability + release-candidate + safety-scan all green; only send command remains `execution:devnet:send`;
+  Rust deps remain `serde` + `serde_json`. Phase 7 locks unchanged (audit `authorized-for-design-only`,
+  preflight `blocked-missing-signoff`). The written human sign-off is still the only live blocker.
+
 ### Next recommended track
 
 With the written human Phase 7 sign-off **still missing**, S104-B (the controlled mainnet micro-trade

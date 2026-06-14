@@ -825,9 +825,11 @@ pnpm soulmaker paper:sniper:provider:doctor --mode mainnet-dry-run --out runs/pr
 # + sniper.dryrun.campaign.v1 + sniper.alpha_run.report.v1 + per-candidate evidence + RUN_SUMMARY.md.
 # Network reads happen ONLY with --mode mainnet-dry-run + the explicit --allow-readonly-network opt-in;
 # a risk REJECT short-circuits the downstream stages; unavailable providers/Rust are recorded honestly.
-# It NEVER sends, signs, or loads a key — live trading stays DISABLED.
+# It NEVER sends, signs, or loads a key — live trading stays DISABLED. (S105-C) --rpc-url drives the
+# provider probe, deep risk AND simulation at the SAME endpoint (flag > SOULMAKER_RPC_URL env > default);
+# a key in the URL is never printed, and it has no effect in paper mode (the run warns you).
 pnpm soulmaker paper:sniper:campaign:auto-run --watchlist runs/watchlist.json --risk <MINT>=risk.<MINT>.json --out runs/alpha
-pnpm soulmaker paper:sniper:campaign:auto-run --candidates runs/candidates.json --mode mainnet-dry-run --allow-readonly-network --out runs/alpha
+pnpm soulmaker paper:sniper:campaign:auto-run --candidates runs/candidates.json --mode mainnet-dry-run --allow-readonly-network --rpc-url <RPC_URL> --out runs/alpha
 
 # paper:sniper:campaign:diff compares two campaigns (--before/--after) into sniper.dryrun.campaign.diff.v1
 # (added/removed/unchanged/changed, score deltas, verdict transitions, improved/worsened/newly-blocked/
