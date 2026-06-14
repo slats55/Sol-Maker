@@ -609,3 +609,40 @@ export type {
   SniperWatchlist,
   FormatSniperWatchlistOptions,
 } from "./watchlist.js";
+
+export {
+  buildSniperDryRunCampaign,
+  validateSniperDryRunCampaign,
+  formatSniperDryRunCampaign,
+  deriveSniperCampaignCandidateVerdict,
+  isBlockingReleaseCandidateVerdict,
+  SniperDryRunCampaignError,
+  SNIPER_DRYRUN_CAMPAIGN_SCHEMA_VERSION,
+  SNIPER_DRYRUN_CAMPAIGN_BANNER,
+  SNIPER_DRYRUN_CAMPAIGN_DISCLAIMERS,
+  SNIPER_DRYRUN_CAMPAIGN_MODES,
+  SNIPER_DRYRUN_CAMPAIGN_NETWORKS,
+  SNIPER_DRYRUN_CAMPAIGN_LIVE_SEND_STATUS,
+  SNIPER_CAMPAIGN_CANDIDATE_VERDICTS,
+  SNIPER_CAMPAIGN_QUOTE_STATUSES,
+  SNIPER_CAMPAIGN_BUILD_STATUSES,
+  SNIPER_CAMPAIGN_SIMULATION_STATUSES,
+  SNIPER_CAMPAIGN_RISK_DECISIONS,
+  SNIPER_CAMPAIGN_PREFLIGHT_VERDICTS,
+} from "./dryrun-campaign.js";
+
+export type {
+  SniperDryRunCampaignMode,
+  SniperDryRunCampaignNetwork,
+  SniperCampaignCandidateVerdict,
+  SniperCampaignQuoteStatus,
+  SniperCampaignBuildStatus,
+  SniperCampaignSimulationStatus,
+  SniperDryRunCampaignCandidateInput,
+  BuildSniperDryRunCampaignInput,
+  SniperDryRunCampaignCandidate,
+  SniperCampaignVerdictCounts,
+  SniperCampaignStage,
+  SniperDryRunCampaign,
+  FormatSniperDryRunCampaignOptions,
+} from "./dryrun-campaign.js";
