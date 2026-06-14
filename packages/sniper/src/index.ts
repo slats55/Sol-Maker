@@ -646,3 +646,30 @@ export type {
   SniperDryRunCampaign,
   FormatSniperDryRunCampaignOptions,
 } from "./dryrun-campaign.js";
+
+export {
+  buildSniperReadonlyCampaignPlan,
+  validateSniperReadonlyCampaignPlan,
+  formatSniperReadonlyCampaignPlan,
+  SniperReadonlyCampaignPlanError,
+  SNIPER_READONLY_CAMPAIGN_PLAN_SCHEMA_VERSION,
+  SNIPER_READONLY_CAMPAIGN_PLAN_BANNER,
+  SNIPER_READONLY_CAMPAIGN_PLAN_DISCLAIMERS,
+  SNIPER_READONLY_CAMPAIGN_PLAN_MODES,
+  SNIPER_READONLY_CAMPAIGN_PLAN_NETWORKS,
+  SNIPER_READONLY_CAMPAIGN_PLAN_LIVE_SEND_STATUS,
+  SNIPER_READONLY_CAMPAIGN_STAGES,
+  SNIPER_READONLY_CAMPAIGN_NETWORK_STAGES,
+  SNIPER_READONLY_CAMPAIGN_PROVIDER_POLICIES,
+  SNIPER_READONLY_CAMPAIGN_MAX_CANDIDATE_LIMIT,
+} from "./readonly-campaign-plan.js";
+
+export type {
+  SniperReadonlyCampaignPlanMode,
+  SniperReadonlyCampaignPlanNetwork,
+  SniperReadonlyCampaignStage,
+  SniperReadonlyCampaignProviderPolicy,
+  BuildSniperReadonlyCampaignPlanInput,
+  SniperReadonlyCampaignPlan,
+  FormatSniperReadonlyCampaignPlanOptions,
+} from "./readonly-campaign-plan.js";
