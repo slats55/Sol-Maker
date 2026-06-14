@@ -300,10 +300,66 @@ fictional-example — never faked). It can never claim profitability or live rea
 `pnpm web:inspect --dir runs/alpha` — the command center renders the plan, the ranked campaign, the
 diff, and the alpha report under a **LIVE TRADING DISABLED** banner.
 
-**Real read-only evidence (2026-06-13):** a live `--mode mainnet-dry-run --allow-readonly-network` run
-over WSOL + USDC produced valid artifacts with `provenance: real-readonly`; in the sandbox the public
-RPC / quote providers were honestly recorded `unavailable` and both candidates fell to
-`insufficient-evidence` — the pipeline faked nothing and sent nothing. Live trading stays disabled.
+## Sprint 105-B — read-only provider health + a real-read-only alpha smoke
+
+Before a live-read-only run, **diagnose the read-only providers** so an alpha campaign either runs on
+real evidence or is honestly blocked — never faked.
+
+### Read-only provider setup (no secrets required)
+
+The provider config is resolved from **explicit flags > environment variables > safe public keyless
+defaults**, in that order:
+
+| What | Flag | Env var | Default |
+| --- | --- | --- | --- |
+| RPC endpoint | `--rpc-url` | `SOULMAKER_READONLY_RPC_URL` (falls back to `SOULMAKER_RPC_URL`) | `https://api.mainnet-beta.solana.com` |
+| Jupiter quote base | `--jupiter-url` | `SOULMAKER_JUPITER_QUOTE_URL` | `https://lite-api.jup.ag/swap/v1` |
+| Profile label | `--provider-profile` | `SOULMAKER_READONLY_PROVIDER_PROFILE` | derived |
+| Per-probe timeout (ms) | `--timeout-ms` | `SOULMAKER_PROVIDER_TIMEOUT_MS` | `10000` (clamped to `[1000, 60000]`) |
+| Retry budget | `--retry-limit` | `SOULMAKER_PROVIDER_RETRY_LIMIT` | `1` (clamped to `[0, 5]`) |
+
+No secret is ever required — the defaults are public, keyless tiers. If a custom endpoint embeds a key
+(userinfo, an `?api-key=` query, or an opaque path segment), it is **reduced to its host** before
+display and **never printed raw**. The config is structurally read-only: there is no send / sign field.
+
+### No-send provider checks
+
+```powershell
+# PowerShell — probe RPC + Jupiter + the Rust engine (read-only only):
+pnpm soulmaker paper:sniper:provider:doctor --mode mainnet-dry-run --out runs/alpha/provider-health.json
+```
+
+The doctor writes a `sniper.provider_health.report.v1` and prints a per-provider status table. Each
+status is **reachability only** — `available` / `unavailable` / `timeout` / `rate-limited` /
+`misconfigured` / `error` / `skipped`. There is deliberately **no** `blocked` / `ready` status, so
+"provider unavailable" can never be confused with "candidate blocked". The summary counts and
+`canRunLiveReadonlyCampaign` are re-derived from the checks; `noSend` / `noSigner` are pinned true and
+`liveSendStatus` is pinned `"disabled"`. The doctor never builds or simulates — those stages are
+exercised by the campaign.
+
+`paper:sniper:campaign:auto-run --check-providers` runs the doctor first and **gates** the live stages
+on it: an unreachable RPC or Jupiter quote skips deep-risk / quote-fetch / build / simulation as honest
+`skipped` evidence (never failure spam), and the alpha folder gains a `provider-health.json` whose
+projection becomes the alpha report's provider summary.
+
+### Real-readonly vs fixture
+
+The alpha report's `evidenceProvenance` distinguishes **`real-readonly`** (read live from a public RPC
+/ quote provider, no send / signer) from **`fixture`** / **`fictional-example`** (committed example
+evidence). Deep risk needs an RPC — set `SOULMAKER_RPC_URL` (or `SOULMAKER_READONLY_RPC_URL`) so the
+campaign's `token:risk --deep` path can read mainnet; the Jupiter quote path uses the keyless lite tier
+with no extra config.
+
+**Real read-only evidence (2026-06-13, S105-B):** `paper:sniper:provider:doctor --mode mainnet-dry-run`
+reached all three core providers live — RPC `api.mainnet-beta.solana.com` (solana-core 4.0.0, a real
+recent slot), the Jupiter lite quote API (HTTP 200, `quote-observed`), and the prebuilt Rust engine —
+`canRunLiveReadonlyCampaign: true`. A live `auto-run --mode mainnet-dry-run --allow-readonly-network
+--check-providers` over USDC + BONK then deep-read real chain data: **USDC was BLOCKED** by the risk
+engine (a real freeze-authority critical flag) and BONK stayed for watch. The pipeline faked nothing,
+sent nothing, and signed nothing; the raw artifacts live under the gitignored `runs/`. Live trading
+stays disabled. (Earlier S105-A runs in a network-restricted sandbox honestly recorded the providers
+`unavailable` and fell to `insufficient-evidence` — that path still works and is the correct behavior
+when providers are unreachable.)
 
 ## Sprint 104-C — operator watchlists + dry-run campaigns
 

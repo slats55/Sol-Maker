@@ -30,11 +30,19 @@ All of these are paper / dry-run / read-only and ship with tests:
   only, never trade readiness).
 - **Campaign (aggregation)** — `paper:sniper:campaign:run` compares candidates across evidence the
   operator already gathered (`sniper.dryrun.campaign.v1`).
-- **Auto-campaign (S105-A)** — `paper:sniper:campaign:auto-run` GATHERS the safe read-only evidence
+- **Provider health (S105-B)** — `paper:sniper:provider:doctor` resolves the read-only provider config
+  (flags / env vars > safe public keyless defaults) and runs BOUNDED read-only probes (RPC health, a
+  tiny WSOL→USDC Jupiter quote, the Rust engine) into `sniper.provider_health.report.v1`. It reports
+  REACHABILITY only (a provider being down is honest evidence, never a candidate risk verdict), reduces
+  every endpoint to its host (no key is ever printed), and never sends/signs/builds/simulates. Proven
+  against real public mainnet providers (RPC + Jupiter + Rust engine all reachable).
+- **Auto-campaign (S105-A/B)** — `paper:sniper:campaign:auto-run` GATHERS the safe read-only evidence
   itself across candidates and writes `sniper.readonly_campaign.plan.v1` + `sniper.dryrun.campaign.v1` +
   `sniper.alpha_run.report.v1` + per-candidate evidence + `RUN_SUMMARY.md`. Network reads happen ONLY in
-  `--mode mainnet-dry-run` with the explicit `--allow-readonly-network` opt-in; a risk REJECT
-  short-circuits the candidate's downstream stages; unavailable providers / Rust are recorded honestly.
+  `--mode mainnet-dry-run` with the explicit `--allow-readonly-network` opt-in; `--check-providers`
+  (S105-B) probes first and GATES the live stages on reachability — an unreachable provider skips its
+  stage as honest evidence; a risk REJECT short-circuits the candidate's downstream stages; unavailable
+  providers / Rust are recorded honestly.
 - **Campaign diff (S105-A)** — `paper:sniper:campaign:diff` (`sniper.dryrun.campaign.diff.v1`): movement
   only (added / removed / changed, score deltas, verdict transitions, improved / worsened / newly-blocked
   / newly-watch). Never overrides a verdict; authorizes nothing.
@@ -64,6 +72,11 @@ All of these are paper / dry-run / read-only and ship with tests:
 ## 3. How to demo the alpha
 
 ```
+# 0. (S105-B) Check read-only provider readiness FIRST (real-readonly smoke).
+pnpm soulmaker paper:sniper:provider:doctor --mode mainnet-dry-run --out runs/alpha/provider-health.json
+#    Set SOULMAKER_READONLY_RPC_URL / SOULMAKER_JUPITER_QUOTE_URL (or pass --rpc-url / --jupiter-url) to
+#    probe your own read-only endpoints; a key embedded in a URL is never printed.
+
 # 1. Create a watchlist (or use a candidate list).
 pnpm soulmaker paper:sniper:watchlist:prepare --candidates runs/candidates.json --out runs/watchlist.json
 
@@ -71,9 +84,10 @@ pnpm soulmaker paper:sniper:watchlist:prepare --candidates runs/candidates.json 
 #    Offline (no network): ingest risk files; Rust scoring runs offline.
 pnpm soulmaker paper:sniper:campaign:auto-run --watchlist runs/watchlist.json \
   --risk <MINT>=risk.<MINT>.json --out runs/alpha --run-id demo
-#    Live read-only (mainnet-dry-run): gather deep risk + quotes itself (no send, no signer).
+#    Live read-only (mainnet-dry-run): probe providers, then gather deep risk + quotes itself.
+#    Deep risk needs an RPC: set SOULMAKER_RPC_URL (or SOULMAKER_READONLY_RPC_URL) to a public mainnet RPC.
 pnpm soulmaker paper:sniper:campaign:auto-run --candidates runs/candidates.json \
-  --mode mainnet-dry-run --allow-readonly-network --out runs/alpha --run-id demo
+  --mode mainnet-dry-run --allow-readonly-network --check-providers --out runs/alpha --run-id demo
 
 # 3. Diff against a previous run.
 pnpm soulmaker paper:sniper:campaign:diff --before runs/prev/campaign.json \
@@ -90,6 +104,15 @@ pnpm web:inspect --dir runs/alpha
 
 Or run the curated workbench in one command: `paper:sniper:operator-demo --out runs/demo`, then
 `pnpm web:inspect --dir runs/demo`.
+
+**When providers are unavailable:** the doctor records each provider's exact status (`unavailable` /
+`timeout` / `rate-limited` / `misconfigured` / `error`) and re-derives `canRunLiveReadonlyCampaign:
+false` — it never fakes a result. The auto campaign with `--check-providers` then SKIPS the live
+stages that depend on the unreachable provider (recorded as honest `skipped` evidence, not failure
+spam) and still writes a complete alpha folder. Run a fixture / offline campaign (ingest `--risk`
+files; omit `--allow-readonly-network`) until the providers recover, or supply a healthier read-only
+endpoint via `--rpc-url` / `--jupiter-url`. A provider being down is **never** a candidate risk
+verdict.
 
 ## 4. Safety status
 

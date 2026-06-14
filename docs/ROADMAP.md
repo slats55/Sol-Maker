@@ -1256,6 +1256,43 @@ here sends.
   preflight stays `blocked-missing-signoff`. The written human sign-off is still the only live blocker;
   live trading remains 0% by policy.
 
+## Sprint 105-B — provider health + a real-read-only alpha run (DONE)
+
+Made the no-send alpha workflow **reliable and demoable with real read-only providers** — still
+**no-send / no-signer / no-live-trading**.
+
+- `redactEndpoint` (`@soulmaker/security`) reduces any provider URL to `scheme://host`, and
+  `resolveReadonlyProviderConfig` (`@soulmaker/sniper`) resolves the read-only endpoints from flags >
+  env vars > safe public keyless defaults (timeout/retry clamped; secret-bearing endpoints flagged and
+  never printed; structurally read-only).
+- `sniper.provider_health.report.v1` — a closed-schema, no-send reachability report (per-provider
+  status `available` / `unavailable` / `skipped` / `misconfigured` / `timeout` / `rate-limited` /
+  `error`; re-derived summary + `canRunLiveReadonlyCampaign` parity wall; pinned safety literals). A
+  provider being down is honest evidence, never a candidate risk verdict.
+- `paper:sniper:provider:doctor` runs bounded read-only probes (RPC health, a tiny WSOL→USDC Jupiter
+  quote, the Rust engine) into the report. `paper:sniper:campaign:auto-run --check-providers` /
+  `--provider-health` fold it in and GATE the live stages on reachability.
+- A real-read-only smoke reached all three providers live and **blocked USDC on a real freeze-authority
+  REJECT** while keeping BONK for watch (raw artifacts under the gitignored `runs/`). Typed view +
+  registry entry + a curated `/sniper` "Operator alpha workflow" section. See
+  [docs/MAINNET_DRY_RUN.md](MAINNET_DRY_RUN.md#sprint-105-b--read-only-provider-health--a-real-read-only-alpha-smoke).
+- **All Phase 7 locks intact:** audit `authorized-for-design-only`, preflight `blocked-missing-signoff`,
+  no mainnet send surface, no Rust signer/send. The written human sign-off is still the only live
+  blocker; live trading remains 0% by policy.
+
+### Next recommended track
+
+With the written human Phase 7 sign-off **still missing**, S104-B (the controlled mainnet micro-trade
+**send** surface) must NOT be built. The highest-value next tracks are all no-send:
+
+- **Alpha polish / strategy intelligence** — richer candidate scoring inputs, liquidity-depth signals,
+  multi-run alpha history + portfolio rollup over campaigns, scheduled read-only watch runs.
+- **Dashboard** — surface a real-read-only alpha run on `/sniper` from a committed redacted example,
+  alpha-run history, provider-health trend.
+
+Only once BOTH a written human Phase 7 sign-off AND a separate explicit S104 execution authorization
+exist should S104-B send-surface *design* even be revisited.
+
 ## Definition of done (every phase)
 
 1. `pnpm check` (typecheck + lint + test) is green.
