@@ -238,6 +238,14 @@ import {
   buildSniperOperatorDemoManifest,
   type OperatorDemoArtifactRef,
   type OperatorDemoStage,
+  normalizeSniperWatchlist,
+  validateSniperWatchlist,
+  formatSniperWatchlist,
+  SNIPER_WATCHLIST_SCHEMA_VERSION,
+  SNIPER_WATCHLIST_STATUSES,
+  type SniperWatchlist,
+  type SniperWatchlistEntryInput,
+  type SniperWatchlistStatus,
   buildPaperSniperDecisionReport,
   formatPaperSniperDecisionReport,
   buildPaperSniperDecisionReportV2,
@@ -7478,6 +7486,181 @@ export function paperSniperOperatorDemoReport(
     `manifest:   ${manifestPath}`,
     `next:       ${manifest.nextSafeAction}`,
   ];
+  return { text: redactString(lines.join("\n")), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 104-C — paper:sniper:watchlist:prepare
+//   Create / normalize a sniper.watchlist.v1 from an existing watchlist file, a
+//   candidate list, and/or repeatable --add mints. Sources are merged and
+//   DEDUPED by mint (first wins; watchlist entries beat candidate-derived beat
+//   --add), every mint is validated as a 32-byte public key (secret-length input
+//   refused), and the result is normalized. LOCAL-ONLY: no RPC, no network, no
+//   wallet. A monitoring list — a status is bookkeeping, NEVER a trade signal.
+// ---------------------------------------------------------------------------
+
+const WATCHLIST_OUTPUT_FILE = "watchlist.json";
+
+export interface PaperSniperWatchlistPrepareCommandOptions {
+  /** Existing watchlist to start from (canonical sniper.watchlist.v1 or raw {entries:[...]}). */
+  watchlistPath?: string;
+  /** Candidate list to seed entries from (raw operator input or canonical sniper.candidate.list.v1). */
+  candidatesPath?: string;
+  /** Repeatable "mint" or "mint=label" entries to add (status = the default status). */
+  add?: string[];
+  /** Default status for seeded / added entries (default "watch"). Must be in the closed set. */
+  status?: string;
+  watchlistId?: string;
+  source?: string;
+  network?: string;
+  json?: boolean;
+  /** Write ONLY the watchlist JSON to this path (writes nothing if omitted; no mkdir). */
+  outPath?: string;
+  force?: boolean;
+  /** Exit non-zero when the normalized watchlist carries any warning (e.g. duplicate mints). */
+  failOnWarning?: boolean;
+}
+
+/** Read raw watchlist entries from a file value (canonical artifact or raw {entries:[...]}). */
+function readWatchlistEntriesFromValue(value: unknown): SniperWatchlistEntryInput[] {
+  if (!isPlainObject(value) || !Array.isArray(value.entries)) {
+    throw new Error("watchlist file must be a JSON object with an entries array");
+  }
+  if (value.schemaVersion !== undefined && value.schemaVersion !== SNIPER_WATCHLIST_SCHEMA_VERSION) {
+    throw new Error(`watchlist schemaVersion must be "${SNIPER_WATCHLIST_SCHEMA_VERSION}" (got "${String(value.schemaVersion)}")`);
+  }
+  return value.entries as SniperWatchlistEntryInput[];
+}
+
+/** Map a candidate-list value into watchlist entry inputs (entryId defaults to the mint). */
+function candidateValueToWatchlistEntries(value: unknown, status: SniperWatchlistStatus): SniperWatchlistEntryInput[] {
+  if (!isPlainObject(value) || !Array.isArray(value.candidates)) {
+    throw new Error("candidate file must be a JSON object with a candidates array");
+  }
+  if (value.schemaVersion !== undefined && value.schemaVersion !== SNIPER_CANDIDATE_LIST_SCHEMA_VERSION) {
+    throw new Error(`candidate schemaVersion must be "${SNIPER_CANDIDATE_LIST_SCHEMA_VERSION}" (got "${String(value.schemaVersion)}")`);
+  }
+  return (value.candidates as unknown[]).map((c) => {
+    const obj = isPlainObject(c) ? c : {};
+    const label = typeof obj.symbol === "string" ? obj.symbol : typeof obj.name === "string" ? obj.name : null;
+    const provider = typeof obj.sourceTag === "string" ? obj.sourceTag : "candidate-list";
+    const notes = typeof obj.sourceNote === "string" ? [obj.sourceNote] : [];
+    const tags = Array.isArray(obj.tags) ? (obj.tags as unknown[]).filter((t): t is string => typeof t === "string") : [];
+    return { mint: String(obj.mint ?? ""), label, provider, status, notes, tags } as SniperWatchlistEntryInput;
+  });
+}
+
+/** Parse a repeatable --add value ("mint" or "mint=label") into a watchlist entry input. */
+function addArgToWatchlistEntry(arg: string, status: SniperWatchlistStatus): SniperWatchlistEntryInput {
+  const eq = arg.indexOf("=");
+  const mint = (eq === -1 ? arg : arg.slice(0, eq)).trim();
+  const label = eq === -1 ? null : arg.slice(eq + 1).trim() || null;
+  return { mint, label, provider: "manual", status };
+}
+
+/**
+ * `soulmaker paper:sniper:watchlist:prepare` — create or normalize a `sniper.watchlist.v1`. Merges an
+ * existing watchlist (`--watchlist`), a candidate list (`--candidates`), and repeatable `--add`
+ * mints into one deduped (by mint; first wins) list, validates every mint as a public key
+ * (secret-length input refused), and normalizes. Reads ONLY the named local files (BOM-tolerant);
+ * performs NO RPC / network / wallet work. `--json` emits the watchlist; `--out` writes ONLY the
+ * watchlist JSON (refusing overwrite without `--force`, creating no directories). A watchlist status
+ * is bookkeeping — NEVER a trade signal and NEVER trade readiness.
+ */
+export function paperSniperWatchlistPrepareReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperWatchlistPrepareCommandOptions = {},
+): CliReport {
+  const hasSource = Boolean(opts.watchlistPath) || Boolean(opts.candidatesPath) || (opts.add?.length ?? 0) > 0;
+  if (!hasSource) {
+    return { text: "Refusing: provide at least one of --watchlist, --candidates, or --add <mint>.", exitCode: 1 };
+  }
+
+  let status: SniperWatchlistStatus = "watch";
+  if (opts.status !== undefined) {
+    if (!(SNIPER_WATCHLIST_STATUSES as readonly string[]).includes(opts.status)) {
+      return { text: redactString(`Refusing: --status must be one of: ${SNIPER_WATCHLIST_STATUSES.join(", ")}.`), exitCode: 1 };
+    }
+    status = opts.status as SniperWatchlistStatus;
+  }
+
+  // Gather raw entries from each source, in precedence order.
+  const sources: SniperWatchlistEntryInput[] = [];
+  try {
+    if (opts.watchlistPath) {
+      sources.push(...readWatchlistEntriesFromValue(readJsonValue(ctx, opts.watchlistPath, "watchlist")));
+    }
+    if (opts.candidatesPath) {
+      sources.push(...candidateValueToWatchlistEntries(readJsonValue(ctx, opts.candidatesPath, "candidate list"), status));
+    }
+    for (const arg of opts.add ?? []) {
+      sources.push(addArgToWatchlistEntry(arg, status));
+    }
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // Dedup by canonical mint (first wins). parseMintAddress refuses secret-length input outright.
+  const seenMints = new Set<string>();
+  const merged: SniperWatchlistEntryInput[] = [];
+  let skippedDuplicates = 0;
+  for (let i = 0; i < sources.length; i += 1) {
+    const raw = sources[i]!;
+    let canonical: string;
+    try {
+      canonical = parseMintAddress(raw.mint);
+    } catch (err) {
+      return { text: redactString(`Refusing: entry ${i + 1}: ${(err as Error).message}`), exitCode: 1 };
+    }
+    if (seenMints.has(canonical)) {
+      skippedDuplicates += 1;
+      continue;
+    }
+    seenMints.add(canonical);
+    merged.push({ ...raw, mint: canonical });
+  }
+
+  let watchlist: SniperWatchlist;
+  try {
+    watchlist = normalizeSniperWatchlist({
+      watchlistId: opts.watchlistId ?? null,
+      createdAtLabel: null,
+      sourceLabel: opts.source ?? opts.watchlistPath ?? opts.candidatesPath ?? null,
+      network: opts.network ?? null,
+      entries: merged,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (existsSync(resolved) && !opts.force) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+    try {
+      writeFileSync(resolved, JSON.stringify(redactValue(watchlist), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the watchlist at ${resolved}`), exitCode: 1 };
+    }
+  }
+
+  const exitCode = opts.failOnWarning && watchlist.warnings.length > 0 ? 1 : 0;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(watchlist), null, 2), exitCode };
+  }
+
+  const lines = [formatSniperWatchlist(watchlist, { label: opts.watchlistId })];
+  if (skippedDuplicates > 0) {
+    lines.push("", `note: skipped ${skippedDuplicates} duplicate-mint entry(ies) while merging (first occurrence kept).`);
+  }
+  if (opts.outPath) lines.push("", `wrote: ${resolvePath(ctx, opts.outPath)}`);
+  lines.push(
+    "",
+    "next safe actions:",
+    "  - Compare these candidates safely with `paper:sniper:campaign:run --watchlist <this file> ...` (no signing, no sending).",
+    "  - A status is bookkeeping only — each entry still needs an independent risk check, a fresh quote, and a dry-run.",
+  );
   return { text: redactString(lines.join("\n")), exitCode };
 }
 

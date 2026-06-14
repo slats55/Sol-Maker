@@ -66,6 +66,7 @@ import {
   phase7SignoffTemplateReport,
   phase7MicrotradePreflightReport,
   paperSniperOperatorDemoReport,
+  paperSniperWatchlistPrepareReport,
   executionSessionStatusReport,
   executionSessionReconcileReport,
   executionSessionAcknowledgeReport,
@@ -3305,6 +3306,62 @@ program
     console.log(text);
     if (exitCode !== 0) process.exitCode = exitCode;
   });
+
+program
+  .command("paper:sniper:watchlist:prepare")
+  .description(
+    "Sprint 104-C operator watchlist: create or normalize a `sniper.watchlist.v1` from an existing watchlist (--watchlist), a candidate list (--candidates), and/or repeatable --add <mint[=label]> entries. Sources are merged and DEDUPED by mint (first wins), every mint is validated as a 32-byte Solana public key (secret-length / private-key-like input is REFUSED), and the result is normalized. A status (watch / review / blocked / archived) is bookkeeping ONLY — never a trade signal and never trade readiness. Reads the named files only; writes nothing unless --out (refused if it exists without --force; no directories created). LOCAL-ONLY: no RPC, no network, no wallet",
+  )
+  .option("--watchlist <path>", "existing watchlist to start from (canonical sniper.watchlist.v1 or raw {entries:[...]})")
+  .option("--candidates <path>", "candidate list to seed entries from (raw operator input or canonical sniper.candidate.list.v1)")
+  .option(
+    "--add <mint>",
+    'a mint (or "mint=label") to add as a watch entry (repeatable)',
+    (value: string, previous: string[]) => previous.concat(value),
+    [] as string[],
+  )
+  .option("--status <status>", "default status for seeded/added entries: watch | review | blocked | archived (default watch)")
+  .option("--watchlist-id <label>", "operator label echoed into the watchlist (default sniper-watchlist)")
+  .option("--source <label>", "source label echoed into the watchlist")
+  .option("--network <network>", "network the watchlist is scoped to: mainnet-beta | devnet | testnet (default mainnet-beta)")
+  .option("--json", "emit the normalized watchlist as stable JSON")
+  .option("--out <path>", "write ONLY the watchlist JSON to this path (writes nothing if omitted)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-warning", "exit non-zero when the normalized watchlist carries any warning (e.g. duplicate mints)")
+  .action(
+    (opts: {
+      watchlist?: string;
+      candidates?: string;
+      add?: string[];
+      status?: string;
+      watchlistId?: string;
+      source?: string;
+      network?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnWarning?: boolean;
+    }) => {
+      const { text, exitCode } = paperSniperWatchlistPrepareReport(
+        {},
+        {
+          watchlistPath: opts.watchlist,
+          candidatesPath: opts.candidates,
+          add: opts.add,
+          status: opts.status,
+          watchlistId: opts.watchlistId,
+          source: opts.source,
+          network: opts.network,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnWarning: Boolean(opts.failOnWarning),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
 
 program
   .command("paper:phase7:signoff:template")

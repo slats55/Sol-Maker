@@ -798,6 +798,12 @@ pnpm soulmaker execution:devnet:funding-status --public-key <KEY> --out runs/fun
 pnpm soulmaker paper:phase7:signoff:template --out runs/signoff.json
 pnpm soulmaker paper:sniper:operator-demo --out runs/demo
 
+# Sprint 104-C — OPERATOR WATCHLIST + DRY-RUN CAMPAIGNS (live trading stays DISABLED).
+# paper:sniper:watchlist:prepare creates/normalizes a sniper.watchlist.v1 by merging an existing
+# watchlist, a candidate list, and/or --add <mint[=label]> entries (deduped by mint; mints validated as
+# public keys). A status (watch/review/blocked/archived) is bookkeeping ONLY — never a trade signal.
+pnpm soulmaker paper:sniper:watchlist:prepare --candidates <candidates.json> --out runs/watchlist.json
+
 # Sprint 27 — PAPER SNIPER DECISIONS: fold the candidate list + preflight + optional operator rules
 # into a per-candidate SIMULATED decision — skip / watch / paper-enter / paper-reject / unknown — with
 # reasons. A paper-enter is a PAPER-ONLY decision, NOT a buy/sell order, NOT a transaction, NOT live
