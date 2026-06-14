@@ -37,6 +37,26 @@ A short, honest status of the no-send alpha. For the full checklist see
 - **Repeatable demo** — [examples/sniper/alpha-workflow/README.md](../examples/sniper/alpha-workflow/README.md)
   (offline-fixture + live-read-only, copy-pasteable, using committed example candidates).
 
+## New in Sprint 106
+
+- **Alpha history rollup** — `paper:sniper:alpha:history` (`sniper.alpha_history.v1`) folds MANY no-send
+  alpha run folders into ONE deterministic rollup (`--run <label=path>` / `--runs-dir <parent>`): the
+  candidate total, the watch / review / blocked / insufficient-evidence tally, the provider-health +
+  evidence-provenance rollups, the most common blocker reasons, and the Phase 7 postures across runs. A
+  missing / malformed / unrecognized artifact is listed honestly and never counted as a run; a run that
+  claims live authorization is refused. `liveTradingStatus` pinned `"disabled"`; authorizes nothing.
+- **Strategy intelligence** — `paper:sniper:strategy:intel` (`sniper.strategy_intelligence.v1`) projects a
+  campaign + per-mint `token:risk` reports into read-only per-candidate intelligence cards: the notable
+  risk flags BY NAME, a mint class (wrapped-SOL / stablecoin / other), a confidence label (evidence
+  completeness — never price direction), closed reason codes, and plain-English why-this-matters /
+  what-to-study-next. Verdicts come from the campaign (a score never overrides a blocker). Never a buy
+  signal, never a profitability claim.
+- **Typed web views** for both new schemas on `/sniper`, under the LIVE TRADING DISABLED banner, with a
+  do-NOT-trust caution when the safety literals are missing; hostile content escaped.
+- **Demo + regression** — the operator walkthrough covers both commands, and the end-to-end regression
+  suite now drives `alpha:history` and `strategy:intel` (artifacts validate, stay live-disabled, smuggle
+  no send/signature field, surface the freeze-authority flag).
+
 ## What does NOT work (honest)
 
 - **Live trading** — not implemented; 0% by policy.

@@ -369,6 +369,26 @@ stays disabled. (Earlier S105-A runs in a network-restricted sandbox honestly re
 `unavailable` and fell to `insufficient-evidence` — that path still works and is the correct behavior
 when providers are unreachable.)
 
+## Sprint 106 — alpha history rollup + strategy intelligence (read-only)
+
+Once you have run the mainnet dry-run / live-read-only alpha more than once, two S106 commands turn the
+folders into something an operator can compare and understand — still **no-send / no-signer**:
+
+- `paper:sniper:alpha:history --runs-dir runs --out runs/alpha-history.json` folds every alpha run folder
+  into one `sniper.alpha_history.v1` rollup (the candidate total, the watch / review / blocked /
+  insufficient-evidence tally, the provider-health + evidence-provenance rollups, the most common blocker
+  reasons, and the Phase 7 postures across runs). A missing / malformed / unrecognized artifact is listed
+  honestly and never counted as a run; a run claiming live authorization is refused.
+- `paper:sniper:strategy:intel --campaign runs/alpha/campaign.json --risk <MINT>=risk.<MINT>.json`
+  projects a campaign + the per-mint `token:risk` reports into per-candidate intelligence cards: the
+  notable risk flags BY NAME (freeze / mint authority, Token-2022 risks, holder concentration, mutable
+  metadata, thin liquidity), a mint class, a confidence label (evidence completeness, never price
+  direction), closed reason codes, and plain-English why-this-matters / what-to-study-next.
+
+Both are `liveTradingStatus: "disabled"`, authorize nothing, and refuse any send / signature field. They
+read evidence already gathered by the dry-run / live-read-only path — they reach no network themselves
+(`strategy:intel` reads the `token:risk` files you already wrote).
+
 ## Sprint 104-C — operator watchlists + dry-run campaigns
 
 The S104-C operator layer turns the safe pipeline into a workbench for comparing many candidates,

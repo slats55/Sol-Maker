@@ -1307,15 +1307,50 @@ still **no-send / no-signer / no-live-trading**, no new command, no new live sur
   Rust deps remain `serde` + `serde_json`. Phase 7 locks unchanged (audit `authorized-for-design-only`,
   preflight `blocked-missing-signoff`). The written human sign-off is still the only live blocker.
 
+## Sprint 106 — alpha history, strategy intelligence + release hardening (DONE)
+
+Built the next no-send alpha layer — repeatable read-only campaigns an operator can roll up, compare,
+and understand — still **no-send / no-signer / no-live-trading**, no new live surface.
+
+- **Alpha history rollup** (`paper:sniper:alpha:history` → `sniper.alpha_history.v1`) — fold MANY no-send
+  alpha run folders into ONE deterministic rollup via `--run <label=path>` / `--runs-dir <parent>`. Each
+  run's spine is its validated `campaign.json` (verdicts come from the campaign's own re-derivation — a
+  score never overrides a blocker); the optional `alpha-report.json` adds provider health / provenance /
+  Rust / Phase 7. Aggregates the candidate total, the watch / review / blocked / insufficient-evidence
+  tally, the provider-health + evidence-provenance rollups, the most common blocker reasons, and the
+  Phase 7 postures. A recognized-but-invalid or unrecognized artifact is listed honestly and NEVER
+  counted as a run; a run that claims live authorization is refused; each run is deep-scanned for a
+  send / signature field. `liveTradingStatus` pinned `"disabled"`, `authorizesLiveTrading` /
+  `anyRunAuthorizesLiveTrading` false. `--fail-on-invalid` / `--fail-on-blocked` gate CI.
+- **Strategy intelligence** (`paper:sniper:strategy:intel` → `sniper.strategy_intelligence.v1`) — project
+  a campaign + per-mint `token:risk` reports into read-only per-candidate intelligence cards: the notable
+  risk flags BY NAME (freeze / mint authority, Token-2022 risks, holder concentration, mutable metadata,
+  thin liquidity), a mint class (wrapped-SOL / stablecoin / other), a confidence label (evidence
+  completeness — never price direction), closed reason codes, and plain-English why-this-matters /
+  what-to-study-next. Verdicts come from the campaign (a score never overrides a blocker); a flag is shown
+  ONLY when its report carries it. NEVER a buy signal, NEVER a profitability claim.
+- **Web** — typed `/sniper` views for both new schemas (run table, verdict tally, provider / provenance
+  rollups, blocker frequencies, candidate cards) under the LIVE TRADING DISABLED banner, with a do-NOT-trust
+  caution when the safety literals are missing; a new "Alpha run history" section on `/sniper`; registry +
+  command-reference updated (drift guards green); hostile content escaped.
+- **Operator demo pack** — `examples/sniper/alpha-workflow/README.md` extended with copy-pasteable offline
+  + read-only walkthroughs for both commands, a what-good-vs-blocked verdict table, and a troubleshooting
+  table; every documented command was run end-to-end and is locked by the regression suite.
+- **Reliability** — the rollup is order-independent (shuffled input → byte-identical output), the
+  blocker-reason rollup is bounded, and a 100-run rollup validates with every aggregate re-derived.
+- **Safety, no drift** — both new pure modules carry a forbidden-capability / forbidden-import safety
+  regression; command-surface + cli-reference + safety-scan stay green; the only send command remains
+  `execution:devnet:send`; Phase 7 locks unchanged. The written human sign-off is still the only live blocker.
+
 ### Next recommended track
 
 With the written human Phase 7 sign-off **still missing**, S104-B (the controlled mainnet micro-trade
 **send** surface) must NOT be built. The highest-value next tracks are all no-send:
 
-- **Alpha polish / strategy intelligence** — richer candidate scoring inputs, liquidity-depth signals,
-  multi-run alpha history + portfolio rollup over campaigns, scheduled read-only watch runs.
-- **Dashboard** — surface a real-read-only alpha run on `/sniper` from a committed redacted example,
-  alpha-run history, provider-health trend.
+- **Alpha history diff / trend** — a conservative delta between two `sniper.alpha_history.v1` rollups
+  (runs added / removed, verdict-tally movement, provenance trend), and a scheduled read-only watch run.
+- **Strategy intelligence depth** — fold liquidity-depth quote probes and the Rust candidate score into
+  the intelligence cards; surface a committed redacted strategy-intelligence example on `/sniper`.
 
 Only once BOTH a written human Phase 7 sign-off AND a separate explicit S104 execution authorization
 exist should S104-B send-surface *design* even be revisited.

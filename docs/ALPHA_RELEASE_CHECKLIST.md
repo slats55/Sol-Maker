@@ -49,6 +49,17 @@ All of these are paper / dry-run / read-only and ship with tests:
 - **Alpha report (S105-A)** — `paper:sniper:alpha:report` (`sniper.alpha_run.report.v1`): a showable
   summary with top / blocked / insufficient candidates, provider + Rust engine health, the Phase 7
   posture, and honest evidence provenance. Never a profitability or live-readiness claim.
+- **Alpha history (S106)** — `paper:sniper:alpha:history` (`sniper.alpha_history.v1`): fold MANY no-send
+  alpha run folders into ONE deterministic rollup (`--run <label=path>` / `--runs-dir <parent>`) — the
+  candidate total, the watch / review / blocked / insufficient-evidence tally, the provider-health +
+  evidence-provenance rollups, the most common blocker reasons, and the Phase 7 postures across runs. A
+  missing / malformed / unrecognized artifact is listed honestly and never counted as a run; a run that
+  claims live authorization is refused. `liveTradingStatus` pinned disabled; authorizes nothing.
+- **Strategy intelligence (S106)** — `paper:sniper:strategy:intel` (`sniper.strategy_intelligence.v1`):
+  project a campaign + per-mint `token:risk` reports into read-only per-candidate intelligence cards —
+  the notable risk flags BY NAME, a mint class, a confidence label (evidence completeness, never price
+  direction), closed reason codes, and plain-English why-this-matters / what-to-study-next. Verdicts come
+  from the campaign (a score never overrides a blocker). Never a buy signal, never a profitability claim.
 - **UI command center** — `pnpm web:inspect --dir <folder>` renders typed views for every artifact above
   (plan / campaign / diff / alpha report included) under a **LIVE TRADING DISABLED** banner; the
   `/sniper` page carries the calm Phase 7 posture.
@@ -103,6 +114,13 @@ pnpm soulmaker paper:sniper:alpha:report --campaign runs/alpha/campaign.json \
 
 # 5. Open the command center over the whole folder.
 pnpm web:inspect --dir runs/alpha
+
+# 6. (S106) Roll up many run folders into one deterministic history.
+pnpm soulmaker paper:sniper:alpha:history --runs-dir runs --out runs/alpha-history.json
+
+# 7. (S106) Explain a campaign's candidates (read-only why + what to study next).
+pnpm soulmaker paper:sniper:strategy:intel --campaign runs/alpha/campaign.json \
+  --out runs/alpha/strategy-intel.json
 ```
 
 Or run the curated workbench in one command: `paper:sniper:operator-demo --out runs/demo`, then
