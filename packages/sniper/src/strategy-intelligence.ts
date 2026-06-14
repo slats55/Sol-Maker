@@ -313,16 +313,37 @@ interface ProjectedRisk {
   flags: SniperStrategyNotableFlag[];
 }
 
-/** Project a parsed token:risk report onto the fields the intelligence layer reads. Pure, defensive. */
-function projectRisk(report: unknown): ProjectedRisk {
+/**
+ * Sanitize an operator-supplied risk-flag string (`id` / `title`). A missing / empty value falls back
+ * to a safe placeholder; a present value is held to the SAME discipline as every other string in the
+ * module — no control char / NUL / BOM, no secret-shaped value, and a length cap — so the artifact's
+ * pinned `redactionApplied: true` is HONEST. A hostile value is REFUSED (never copied verbatim).
+ */
+function safeFlagText(value: unknown, fallback: string, name: string): string {
+  if (typeof value !== "string") return fallback;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return fallback;
+  rejectControlChars(trimmed, name);
+  if (trimmed.length > MAX_LABEL_LEN) throw new SniperStrategyIntelligenceError(`${name} exceeds ${MAX_LABEL_LEN} characters`);
+  if (redactString(trimmed) !== trimmed) throw new SniperStrategyIntelligenceError(`${name} is secret-shaped and is refused`);
+  return trimmed;
+}
+
+/**
+ * Project a parsed token:risk report onto the fields the intelligence layer reads. Pure and defensive
+ * about SHAPE (a non-object / wrong-typed field degrades to a null / placeholder, never a throw), but
+ * STRICT about content: a present flag id / title is run through {@link safeFlagText}, so a
+ * control-char or secret-shaped value is refused rather than copied verbatim into the artifact.
+ */
+function projectRisk(report: unknown, where: string): ProjectedRisk {
   if (!isObject(report)) return { present: false, decision: null, score: null, flags: [] };
   const decision = typeof report.decision === "string" && RISK_DECISIONS.has(report.decision) ? report.decision : null;
   const score = typeof report.score === "number" && Number.isFinite(report.score) ? report.score : null;
   const rawFlags = Array.isArray(report.flags) ? report.flags : [];
-  const flags: SniperStrategyNotableFlag[] = rawFlags.filter(isObject).map((f) => ({
-    id: typeof f.id === "string" && f.id.trim().length > 0 ? f.id.trim() : "(unknown)",
+  const flags: SniperStrategyNotableFlag[] = rawFlags.filter(isObject).map((f, i) => ({
+    id: safeFlagText(f.id, "(unknown)", `${where}.flags[${i}].id`),
     severity: typeof f.severity === "string" && RISK_SEVERITIES.has(f.severity) ? f.severity : "info",
-    title: typeof f.title === "string" && f.title.trim().length > 0 ? f.title.trim() : "(untitled)",
+    title: safeFlagText(f.title, "(untitled)", `${where}.flags[${i}].title`),
   }));
   return { present: true, decision, score, flags };
 }
@@ -543,7 +564,7 @@ export function buildSniperStrategyIntelligence(input: BuildSniperStrategyIntell
       } catch (err) {
         throw new SniperStrategyIntelligenceError(`riskReports[${i}]: ${(err as Error).message}`);
       }
-      riskByMint.set(mint, projectRisk(r.report));
+      riskByMint.set(mint, projectRisk(r.report, `riskReports[${i}]`));
     }
   }
 
@@ -692,11 +713,18 @@ function validateCandidate(value: unknown, where: string): SniperStrategyCandida
   }
   if (typeof value.hasRiskReport !== "boolean") throw new SniperStrategyIntelligenceError(`${where}.hasRiskReport must be a boolean`);
   if (!Array.isArray(value.notableFlags)) throw new SniperStrategyIntelligenceError(`${where}.notableFlags must be an array`);
-  for (const f of value.notableFlags as unknown[]) {
+  (value.notableFlags as unknown[]).forEach((f, i) => {
     if (!isObject(f) || typeof f.id !== "string" || typeof f.severity !== "string" || typeof f.title !== "string") {
       throw new SniperStrategyIntelligenceError(`${where}.notableFlags entries must have string id/severity/title`);
     }
-  }
+    // Parity wall: enforce the same string discipline the builder applies, so redactionApplied is honest.
+    for (const k of ["id", "title"] as const) {
+      const s = f[k] as string;
+      rejectControlChars(s, `${where}.notableFlags[${i}].${k}`);
+      if (s.length > MAX_LABEL_LEN) throw new SniperStrategyIntelligenceError(`${where}.notableFlags[${i}].${k} exceeds ${MAX_LABEL_LEN} characters`);
+      if (redactString(s) !== s) throw new SniperStrategyIntelligenceError(`${where}.notableFlags[${i}].${k} is secret-shaped and is refused`);
+    }
+  });
   if (!Array.isArray(value.reasonCodes) || (value.reasonCodes as unknown[]).some((c) => !(SNIPER_STRATEGY_REASON_CODES as readonly string[]).includes(c as string))) {
     throw new SniperStrategyIntelligenceError(`${where}.reasonCodes must be a subset of the closed reason-code set`);
   }

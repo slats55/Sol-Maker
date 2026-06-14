@@ -142,6 +142,41 @@ describe("buildSniperStrategyIntelligence — malformed / safety refusals", () =
     expect(intel.candidates[0]!.riskDecision).toBeNull();
     expect(intel.candidates[0]!.notableFlags).toEqual([]);
   });
+
+  it("refuses a secret-shaped flag title (redactionApplied stays honest)", () => {
+    const campaign = makeCampaign([cand({ candidateId: "c1", mint: USDC, riskDecision: "REJECT" })]);
+    const secretTitle = "a".repeat(90); // long base58-shaped blob the redactor flags
+    expect(() =>
+      buildSniperStrategyIntelligence({
+        campaign,
+        riskReports: [riskReport(USDC, "REJECT", [{ id: "freeze-authority-present", severity: "critical", title: secretTitle }])],
+      }),
+    ).toThrow(/secret-shaped/);
+  });
+
+  it("refuses a control-char-bearing flag title (no artifact corruption)", () => {
+    const campaign = makeCampaign([cand({ candidateId: "c1", mint: USDC, riskDecision: "REJECT" })]);
+    expect(() =>
+      buildSniperStrategyIntelligence({
+        campaign,
+        riskReports: [riskReport(USDC, "REJECT", [{ id: "freeze-authority-present", severity: "critical", title: "bad\u0007title" }])],
+      }),
+    ).toThrow(/control character/);
+  });
+
+  it("validation rejects a notable flag whose title was tampered to a secret-shaped value", () => {
+    const campaign = makeCampaign([cand({ candidateId: "c1", mint: USDC, riskDecision: "REJECT" })]);
+    const intel = buildSniperStrategyIntelligence({
+      campaign,
+      riskReports: [riskReport(USDC, "REJECT", [{ id: "freeze-authority-present", severity: "critical", title: "Freeze authority present" }])],
+    });
+    const secret = "a".repeat(90);
+    const tampered = {
+      ...intel,
+      candidates: [{ ...intel.candidates[0]!, notableFlags: [{ ...intel.candidates[0]!.notableFlags[0]!, title: secret }] }],
+    };
+    expect(() => validateSniperStrategyIntelligence(tampered)).toThrow(/secret-shaped/);
+  });
 });
 
 describe("validateSniperStrategyIntelligence — closed schema + parity wall", () => {
