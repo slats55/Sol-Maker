@@ -25,7 +25,7 @@
  */
 
 import { redactString } from "@soulmaker/security";
-import { parseMintAddress, isValidMintAddress } from "./mint-address.js";
+import { parseMintAddress } from "./mint-address.js";
 import { SNIPER_WATCHLIST_STATUSES, type SniperWatchlistStatus } from "./watchlist.js";
 import { SNIPER_RELEASE_CANDIDATE_VERDICTS } from "./mainnet-dryrun-release-candidate.js";
 
@@ -494,21 +494,6 @@ function normalizeCandidate(raw: unknown, index: number, seenIds: Set<string>): 
     blockers,
     nextSafeAction: deriveCandidateNextSafeAction(finalOperatorVerdict, evidence),
     notes: normalizeStringList(raw.notes, `${where}.notes`, MAX_LIST),
-  };
-}
-
-function evidenceOf(c: SniperDryRunCampaignCandidate): CampaignVerdictEvidence {
-  return {
-    watchlistStatus: c.watchlistStatus,
-    riskDecision: c.riskDecision,
-    riskCriticalFlagCount: c.riskCriticalFlagCount,
-    token2022Blocker: c.token2022Blocker,
-    quoteStatus: c.quoteStatus,
-    buildStatus: c.buildStatus,
-    buildRefusalCodes: c.buildRefusalCodes,
-    simulationStatus: c.simulationStatus,
-    releaseCandidateVerdict: c.releaseCandidateVerdict,
-    preflightVerdict: c.preflightVerdict,
   };
 }
 

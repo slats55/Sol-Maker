@@ -249,7 +249,6 @@ import {
   buildSniperDryRunCampaign,
   validateSniperDryRunCampaign,
   formatSniperDryRunCampaign,
-  SNIPER_DRYRUN_CAMPAIGN_SCHEMA_VERSION,
   type SniperDryRunCampaign,
   type SniperDryRunCampaignCandidateInput,
   buildPaperSniperDecisionReport,
@@ -7590,8 +7589,6 @@ export function paperSniperOperatorDemoReport(
 //   refused), and the result is normalized. LOCAL-ONLY: no RPC, no network, no
 //   wallet. A monitoring list — a status is bookkeeping, NEVER a trade signal.
 // ---------------------------------------------------------------------------
-
-const WATCHLIST_OUTPUT_FILE = "watchlist.json";
 
 export interface PaperSniperWatchlistPrepareCommandOptions {
   /** Existing watchlist to start from (canonical sniper.watchlist.v1 or raw {entries:[...]}). */
