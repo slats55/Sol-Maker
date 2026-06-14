@@ -254,6 +254,69 @@ function alphaWorkflowSection(): RawHtml {
   });
 }
 
+function alphaHistorySection(): RawHtml {
+  const commands: readonly { readonly command: string; readonly summary: string }[] = [
+    {
+      command: "pnpm soulmaker paper:sniper:alpha:history --runs-dir runs --out runs/alpha-history.json",
+      summary:
+        "Auto-discover every alpha run folder under a parent (each holding a campaign.json) and fold them into ONE deterministic sniper.alpha_history.v1 rollup. A missing / malformed / unrecognized artifact is listed honestly and NEVER counted as a run.",
+    },
+    {
+      command:
+        "pnpm soulmaker paper:sniper:alpha:history --run before=runs/alpha-before --run after=runs/alpha-after --out runs/alpha-history.json",
+      summary:
+        "Roll up explicit run folders with --run <label=path> (repeatable). Each run's spine is its validated campaign.json (verdicts come from the campaign's own re-derivation); the optional alpha-report.json adds provider health / provenance / Rust / Phase 7.",
+    },
+    {
+      command: "pnpm web:inspect --input runs/alpha-history.json",
+      summary: "Render the rollup as a typed view — the run table, the verdict tally, the provider-health + provenance rollups, the most common blocker reasons, and the invalid-artifact list — under a LIVE TRADING DISABLED banner.",
+    },
+  ];
+  const rollups: readonly { readonly field: string; readonly meaning: string }[] = [
+    { field: "aggregateVerdictCounts", meaning: "watch / review / blocked / insufficient-evidence summed across runs" },
+    { field: "providerHealthRollup", meaning: "how many runs found each provider ok / degraded / unavailable / not-attempted" },
+    { field: "evidenceProvenanceRollup", meaning: "how many runs were real-readonly vs fixture vs fictional-example vs mixed" },
+    { field: "topBlockerReasons", meaning: "the most common blocker reasons by run frequency (a blocker is never overridable by a score)" },
+    { field: "phase7Postures", meaning: "the distinct Phase 7 postures observed across runs" },
+    { field: "invalidArtifacts", meaning: "recognized-but-invalid or unrecognized artifacts — listed honestly, never counted as runs" },
+  ];
+  return Section({
+    title: "Alpha run history (rollup · no-send)",
+    description:
+      "Sprint 106: once you have several alpha run folders, fold them into ONE deterministic history. It aggregates and ranks — it never re-runs anything, never trades, and authorizes nothing.",
+    body: html`
+      ${RiskNotice({
+        tone: "info",
+        title: "Read-only rollup — LIVE TRADING DISABLED · no wallet, no key, no signer, no send.",
+        body: html`<code>paper:sniper:alpha:history</code> folds many no-send alpha runs into one
+          <code>sniper.alpha_history.v1</code> artifact. Per-run verdict counts come from each run's own
+          campaign re-derivation — a high score can <strong>never</strong> override a blocker. A run that claims
+          live authorization is <strong>refused</strong>, every run is deep-scanned for a send / signature field,
+          and <code>authorizesLiveTrading</code> / <code>anyRunAuthorizesLiveTrading</code> are pinned
+          <strong>false</strong>. It is never a profitability claim and never a live-readiness claim.`,
+      })}
+      <div class="sm-cmdgrid">
+        ${commands.map(
+          (cmd) => html`<article class="sm-cmd">
+            <code class="sm-cmd__code">${cmd.command}</code>
+            <p class="sm-cmd__summary">${cmd.summary}</p>
+          </article>`,
+        )}
+      </div>
+      ${Section({
+        title: "What the rollup aggregates",
+        description: "Every aggregate is re-derived from the per-run summaries and re-checked by the validator as a parity wall.",
+        body: html`<ul class="sm-bullets sm-bullets--plain">
+          ${rollups.map((r) => html`<li><code>${r.field}</code> — ${r.meaning}</li>`)}
+        </ul>`,
+      })}
+      <p class="sm-muted-line">Next safe action: gather a few alpha run folders (see the workflow above), then run
+        <code>paper:sniper:alpha:history --runs-dir runs</code>. Add <code>--fail-on-invalid</code> /
+        <code>--fail-on-blocked</code> to gate CI. Nothing here trades; live trading stays disabled.</p>
+    `,
+  });
+}
+
 /** The Phase 7 / live posture + the operator demo workbench — honest, calm, no green live state. */
 function livePostureSection(): RawHtml {
   const commands: readonly { readonly command: string; readonly summary: string }[] = [
@@ -323,6 +386,7 @@ export function renderSniper(): RawHtml {
     ${CandidateIntelSection(buildCandidateRows(index))}
     ${ObservabilitySection(buildObservabilityFacts(index, overview))}
     ${alphaWorkflowSection()}
+    ${alphaHistorySection()}
     ${workflowSection()}
     ${livePostureSection()}
 

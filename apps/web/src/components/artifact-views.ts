@@ -4297,6 +4297,129 @@ function renderSniperProviderHealthView(rec: Record<string, unknown>): RawHtml {
   `;
 }
 
+function renderSniperAlphaHistoryView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const historyId = need(missing, "historyId", readString(rec, "historyId"));
+  const liveTradingStatus = need(missing, "liveTradingStatus", readString(rec, "liveTradingStatus"));
+  const agg = asRecord(rec["aggregateVerdictCounts"]);
+  const prov = asRecord(rec["evidenceProvenanceRollup"]);
+  const providerRollup = asRecord(rec["providerHealthRollup"]);
+  const scan = asRecord(rec["sensitiveFieldScan"]);
+  const runs = Array.isArray(rec["runs"])
+    ? (rec["runs"] as unknown[]).filter((r): r is Record<string, unknown> => typeof r === "object" && r !== null && !Array.isArray(r))
+    : [];
+  const invalid = Array.isArray(rec["invalidArtifacts"])
+    ? (rec["invalidArtifacts"] as unknown[]).filter((a): a is Record<string, unknown> => typeof a === "object" && a !== null && !Array.isArray(a))
+    : [];
+  const topBlockers = Array.isArray(rec["topBlockerReasons"])
+    ? (rec["topBlockerReasons"] as unknown[]).filter((b): b is Record<string, unknown> => typeof b === "object" && b !== null && !Array.isArray(b))
+    : [];
+  const phase7 = readStringArray(rec, "phase7Postures");
+  const nextActions = readStringArray(rec, "nextSafeActions");
+  const caveats = readStringArray(rec, "caveats");
+  // A history can never report a live send / authorize a live path — these literals prove it.
+  const safe =
+    liveTradingStatus === "disabled" &&
+    rec.authorizesLiveTrading === false &&
+    rec.anyRunAuthorizesLiveTrading === false &&
+    rec.neverSends === true &&
+    rec.phase7LiveTradingReady === false;
+  const scanClean =
+    scan !== null &&
+    scan.signaturePresent === false &&
+    scan.txidPresent === false &&
+    scan.sendResultPresent === false &&
+    scan.keyLikePresent === false;
+  return html`
+    ${RiskNotice({
+      tone: safe ? "info" : "caution",
+      title: safe
+        ? "Sniper alpha history — LIVE TRADING DISABLED · THIS DOES NOT SEND TRANSACTIONS"
+        : "Alpha history is missing its no-send / not-authorized safety literals — do NOT trust this artifact",
+      body: html`A no-send rollup across many live-read-only alpha runs. Per-run verdict counts come from each
+        run's own re-derivation (a high score can never override a blocker); this rollup only aggregates and
+        ranks them. A recognized-but-invalid or unrecognized artifact is listed honestly and never counted as
+        a run, and a run claiming live authorization is refused. <code>authorizesLiveTrading</code> and
+        <code>anyRunAuthorizesLiveTrading</code> are <strong>false</strong>;
+        <code>liveTradingStatus</code> is <strong>${liveTradingStatus}</strong>. It is never a profitability
+        claim and never a live-readiness claim.`,
+    })}
+    ${kvSection("Alpha history", undefined, [
+      { term: "history id", detail: code(historyId) },
+      { term: "runs", detail: text(`${num(readNumber(rec, "runCount"))} valid · ${num(readNumber(rec, "invalidArtifactCount"))} invalid / unrecognized`) },
+      { term: "candidates", detail: text(num(readNumber(rec, "totalCandidateCount"))) },
+      {
+        term: "verdicts",
+        detail: agg === null
+          ? text(DASH)
+          : text(`watch ${num(readNumber(agg, "watch"))} · review ${num(readNumber(agg, "review"))} · blocked ${num(readNumber(agg, "blocked"))} · insufficient ${num(readNumber(agg, "insufficientEvidence"))}`),
+      },
+      {
+        term: "provenance",
+        detail: prov === null
+          ? text(DASH)
+          : text(`real-readonly ${num(readNumber(prov, "realReadonly"))} · fixture ${num(readNumber(prov, "fixture"))} · fictional ${num(readNumber(prov, "fictionalExample"))} · mixed ${num(readNumber(prov, "mixed"))}`),
+      },
+      {
+        term: "provider health",
+        detail: providerRollup === null
+          ? text(DASH)
+          : (() => {
+              const r = asRecord(providerRollup["risk"]);
+              const q = asRecord(providerRollup["quote"]);
+              const s = asRecord(providerRollup["simulation"]);
+              return text(
+                `risk ok=${num(readNumber(r ?? {}, "ok"))}/unavailable=${num(readNumber(r ?? {}, "unavailable"))} · quote ok=${num(readNumber(q ?? {}, "ok"))}/unavailable=${num(readNumber(q ?? {}, "unavailable"))} · sim ok=${num(readNumber(s ?? {}, "ok"))}/unavailable=${num(readNumber(s ?? {}, "unavailable"))}`,
+              );
+            })(),
+      },
+      { term: "phase 7 postures", detail: phase7.items.length === 0 ? text(DASH) : text(phase7.items.join(", ")) },
+      { term: "sensitive-field scan", detail: text(scanClean ? "clean (no signature / txid / send-result / key-shaped field)" : "INCOMPLETE — review") },
+      { term: "live-trading status", detail: text(liveTradingStatus ?? DASH) },
+    ])}
+    ${tableSection({
+      title: `Runs (${String(runs.length)})`,
+      description: "Per-run summary. Verdicts come from each run's own campaign re-derivation — never a buy list.",
+      columns: [{ header: "Run" }, { header: "Mode / network" }, { header: "Provenance" }, { header: "Watch" }, { header: "Review" }, { header: "Blocked" }, { header: "Insufficient" }, { header: "Top mint" }],
+      rows: runs.slice(0, 200).map((r) => {
+        const vc = asRecord(r["verdictCounts"]);
+        return [
+          code(readString(r, "runRef")),
+          text(`${readString(r, "mode") ?? DASH} / ${readString(r, "network") ?? DASH}`),
+          code(readString(r, "evidenceProvenance")),
+          text(num(readNumber(vc ?? {}, "watch"))),
+          text(num(readNumber(vc ?? {}, "review"))),
+          text(num(readNumber(vc ?? {}, "blocked"))),
+          text(num(readNumber(vc ?? {}, "insufficientEvidence"))),
+          text(readString(r, "topMint") ?? DASH),
+        ];
+      }),
+      empty: "No valid runs.",
+    })}
+    ${invalid.length === 0 ? "" : Section({
+      title: `Invalid / unrecognized artifacts (${String(invalid.length)})`,
+      description: "Listed honestly and NEVER counted as runs — re-generate them.",
+      body: html`<ul class="sm-bullets sm-bullets--plain">${invalid.map((a) => html`<li>${code(readString(a, "ref"))}: ${text(readString(a, "reason") ?? DASH)}</li>`)}</ul>`,
+    })}
+    ${topBlockers.length === 0 ? "" : tableSection({
+      title: "Most common blocker reasons",
+      description: "How many runs carried each blocker reason (a blocker is never overridable by a score).",
+      columns: [{ header: "Reason" }, { header: "Runs" }],
+      rows: topBlockers.map((b) => [text(readString(b, "reason") ?? DASH), text(num(readNumber(b, "runCount")))]),
+      empty: "No blocker reasons.",
+    })}
+    ${nextActions.total === 0 ? "" : Section({
+      title: "Next safe actions",
+      body: html`<ul class="sm-bullets sm-bullets--plain">${nextActions.items.map((a) => html`<li>${a}</li>`)}</ul>`,
+    })}
+    ${caveats.total === 0 ? "" : Section({
+      title: `Caveats (${String(caveats.total)})`,
+      body: html`<ul class="sm-bullets sm-bullets--plain">${caveats.items.map((c) => html`<li>${c}</li>`)}</ul>`,
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
 function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml | null {
   switch (schema) {
     case "backtest.report.v1":
@@ -4385,6 +4508,8 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderSniperCampaignDiffView(rec);
     case "sniper.alpha_run.report.v1":
       return renderSniperAlphaRunReportView(rec);
+    case "sniper.alpha_history.v1":
+      return renderSniperAlphaHistoryView(rec);
     case "sniper.provider_health.report.v1":
       return renderSniperProviderHealthView(rec);
     case "execution.readiness.report.v1":

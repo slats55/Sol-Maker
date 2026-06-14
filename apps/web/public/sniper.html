@@ -464,6 +464,53 @@
     <section class="sm-section">
     <div class="sm-section__head">
             <div>
+              <h2 class="sm-section__title">Alpha run history (rollup · no-send)</h2>
+              <p class="sm-section__desc">Sprint 106: once you have several alpha run folders, fold them into ONE deterministic history. It aggregates and ranks — it never re-runs anything, never trades, and authorizes nothing.</p>
+            </div>
+
+          </div>
+    <div class="sm-section__body">
+      <div class="sm-notice sm-notice--info" role="note">
+    <p class="sm-notice__title">Read-only rollup — LIVE TRADING DISABLED · no wallet, no key, no signer, no send.</p>
+    <div class="sm-notice__body"><code>paper:sniper:alpha:history</code> folds many no-send alpha runs into one
+          <code>sniper.alpha_history.v1</code> artifact. Per-run verdict counts come from each run's own
+          campaign re-derivation — a high score can <strong>never</strong> override a blocker. A run that claims
+          live authorization is <strong>refused</strong>, every run is deep-scanned for a send / signature field,
+          and <code>authorizesLiveTrading</code> / <code>anyRunAuthorizesLiveTrading</code> are pinned
+          <strong>false</strong>. It is never a profitability claim and never a live-readiness claim.</div>
+  </div>
+      <div class="sm-cmdgrid">
+        <article class="sm-cmd">
+            <code class="sm-cmd__code">pnpm soulmaker paper:sniper:alpha:history --runs-dir runs --out runs/alpha-history.json</code>
+            <p class="sm-cmd__summary">Auto-discover every alpha run folder under a parent (each holding a campaign.json) and fold them into ONE deterministic sniper.alpha_history.v1 rollup. A missing / malformed / unrecognized artifact is listed honestly and NEVER counted as a run.</p>
+          </article><article class="sm-cmd">
+            <code class="sm-cmd__code">pnpm soulmaker paper:sniper:alpha:history --run before=runs/alpha-before --run after=runs/alpha-after --out runs/alpha-history.json</code>
+            <p class="sm-cmd__summary">Roll up explicit run folders with --run &lt;label=path&gt; (repeatable). Each run&#39;s spine is its validated campaign.json (verdicts come from the campaign&#39;s own re-derivation); the optional alpha-report.json adds provider health / provenance / Rust / Phase 7.</p>
+          </article><article class="sm-cmd">
+            <code class="sm-cmd__code">pnpm web:inspect --input runs/alpha-history.json</code>
+            <p class="sm-cmd__summary">Render the rollup as a typed view — the run table, the verdict tally, the provider-health + provenance rollups, the most common blocker reasons, and the invalid-artifact list — under a LIVE TRADING DISABLED banner.</p>
+          </article>
+      </div>
+      <section class="sm-section">
+    <div class="sm-section__head">
+            <div>
+              <h2 class="sm-section__title">What the rollup aggregates</h2>
+              <p class="sm-section__desc">Every aggregate is re-derived from the per-run summaries and re-checked by the validator as a parity wall.</p>
+            </div>
+
+          </div>
+    <div class="sm-section__body"><ul class="sm-bullets sm-bullets--plain">
+          <li><code>aggregateVerdictCounts</code> — watch / review / blocked / insufficient-evidence summed across runs</li><li><code>providerHealthRollup</code> — how many runs found each provider ok / degraded / unavailable / not-attempted</li><li><code>evidenceProvenanceRollup</code> — how many runs were real-readonly vs fixture vs fictional-example vs mixed</li><li><code>topBlockerReasons</code> — the most common blocker reasons by run frequency (a blocker is never overridable by a score)</li><li><code>phase7Postures</code> — the distinct Phase 7 postures observed across runs</li><li><code>invalidArtifacts</code> — recognized-but-invalid or unrecognized artifacts — listed honestly, never counted as runs</li>
+        </ul></div>
+  </section>
+      <p class="sm-muted-line">Next safe action: gather a few alpha run folders (see the workflow above), then run
+        <code>paper:sniper:alpha:history --runs-dir runs</code>. Add <code>--fail-on-invalid</code> /
+        <code>--fail-on-blocked</code> to gate CI. Nothing here trades; live trading stays disabled.</p>
+    </div>
+  </section>
+    <section class="sm-section">
+    <div class="sm-section__head">
+            <div>
               <h2 class="sm-section__title">Run it yourself</h2>
               <p class="sm-section__desc">The real-input rehearsal workflow — see examples/sniper/real-input-rehearsal/ for a runnable fictional walkthrough.</p>
             </div>
