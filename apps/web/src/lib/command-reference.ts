@@ -587,6 +587,13 @@ export const COMMANDS: readonly CommandRef[] = [
     readsChain: false,
   },
   {
+    command: "paper:sniper:strategy:intel",
+    summary:
+      "The S106 strategy intelligence (sniper.strategy_intelligence.v1): project a campaign (--campaign) + per-mint token:risk reports (--risk <mint=path>) into read-only per-candidate intelligence cards — the notable risk flags by NAME (freeze / mint authority, Token-2022 risks, holder concentration, mutable metadata, thin liquidity), a mint class (wrapped-SOL / stablecoin / other), a confidence label (evidence completeness, never price direction), closed reason codes, and plain-English why-this-matters / what-to-study-next. Candidate verdicts come from the campaign's own re-derivation — a score can NEVER override a blocker; a flag is surfaced ONLY when its report carries it. Never a buy signal, never a profitability claim. LOCAL-ONLY (no RPC / network / wallet / signer / send); --fail-on-blocked gates CI.",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
+  {
     command: "execution:session:status",
     summary:
       "S96 read-only session accounting status: the latest execution session's ledger entries and the continuation decision a NEW devnet attempt would face (allowed only after reconciled / not-sent / funding-blocked / an explicit audited acknowledgment). Writes nothing unless --out.",

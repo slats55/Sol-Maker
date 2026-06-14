@@ -850,6 +850,15 @@ pnpm soulmaker paper:sniper:alpha:report --campaign runs/alpha/campaign.json --p
 pnpm soulmaker paper:sniper:alpha:history --runs-dir runs --out runs/alpha-history.json
 pnpm soulmaker paper:sniper:alpha:history --run before=runs/alpha-before --run after=runs/alpha-after --out runs/alpha-history.json
 
+# Sprint 106 — STRATEGY INTELLIGENCE: paper:sniper:strategy:intel projects a campaign (--campaign) +
+# per-mint token:risk reports (--risk <mint=path>) into read-only per-candidate intelligence cards — the
+# notable risk flags by NAME (freeze/mint authority, Token-2022 risks, holder concentration, mutable
+# metadata, thin liquidity), a mint class (wrapped-SOL/stablecoin/other), a confidence label (evidence
+# completeness, never price direction), closed reason codes, and plain-English why-this-matters /
+# what-to-study-next. Verdicts come from the campaign (a score can NEVER override a blocker). It is
+# sniper.strategy_intelligence.v1 — never a buy signal, never a profitability claim; LOCAL-ONLY.
+pnpm soulmaker paper:sniper:strategy:intel --campaign runs/alpha/campaign.json --risk <MINT>=risk.<MINT>.json --out runs/alpha/strategy-intel.json
+
 # Sprint 27 — PAPER SNIPER DECISIONS: fold the candidate list + preflight + optional operator rules
 # into a per-candidate SIMULATED decision — skip / watch / paper-enter / paper-reject / unknown — with
 # reasons. A paper-enter is a PAPER-ONLY decision, NOT a buy/sell order, NOT a transaction, NOT live

@@ -755,6 +755,36 @@ export type {
 } from "./alpha-history.js";
 
 export {
+  buildSniperStrategyIntelligence,
+  validateSniperStrategyIntelligence,
+  formatSniperStrategyIntelligence,
+  SniperStrategyIntelligenceError,
+  SNIPER_STRATEGY_INTELLIGENCE_SCHEMA_VERSION,
+  SNIPER_STRATEGY_INTELLIGENCE_BANNER,
+  SNIPER_STRATEGY_INTELLIGENCE_DISCLAIMERS,
+  SNIPER_STRATEGY_INTELLIGENCE_LIVE_TRADING_STATUS,
+  SNIPER_STRATEGY_MINT_CLASSES,
+  SNIPER_STRATEGY_CONFIDENCE_LEVELS,
+  SNIPER_STRATEGY_REASON_CODES,
+} from "./strategy-intelligence.js";
+
+export type {
+  SniperStrategyMintClass,
+  SniperStrategyConfidence,
+  SniperStrategyReasonCode,
+  SniperStrategyRiskInput,
+  BuildSniperStrategyIntelligenceInput,
+  SniperStrategyNotableFlag,
+  SniperStrategyCandidateIntel,
+  SniperStrategyVerdictCounts,
+  SniperStrategyConfidenceCounts,
+  SniperStrategyMintClassCounts,
+  SniperStrategyConcern,
+  SniperStrategyIntelligence,
+  FormatSniperStrategyIntelligenceOptions,
+} from "./strategy-intelligence.js";
+
+export {
   resolveReadonlyProviderConfig,
   ReadonlyProviderConfigError,
   READONLY_PROVIDER_MODES,

@@ -4420,6 +4420,102 @@ function renderSniperAlphaHistoryView(rec: Record<string, unknown>): RawHtml {
   `;
 }
 
+function renderSniperStrategyIntelligenceView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const intelligenceId = need(missing, "intelligenceId", readString(rec, "intelligenceId"));
+  const liveTradingStatus = need(missing, "liveTradingStatus", readString(rec, "liveTradingStatus"));
+  const verdicts = asRecord(rec["verdictCounts"]);
+  const confidence = asRecord(rec["confidenceCounts"]);
+  const mintClasses = asRecord(rec["mintClassCounts"]);
+  const candidates = Array.isArray(rec["candidates"])
+    ? (rec["candidates"] as unknown[]).filter((c): c is Record<string, unknown> => typeof c === "object" && c !== null && !Array.isArray(c))
+    : [];
+  const concerns = Array.isArray(rec["topConcerns"])
+    ? (rec["topConcerns"] as unknown[]).filter((c): c is Record<string, unknown> => typeof c === "object" && c !== null && !Array.isArray(c))
+    : [];
+  const strategyNotes = readStringArray(rec, "strategyNotes");
+  const nextActions = readStringArray(rec, "nextSafeActions");
+  const caveats = readStringArray(rec, "caveats");
+  const safe =
+    liveTradingStatus === "disabled" &&
+    rec.authorizesLiveTrading === false &&
+    rec.neverSends === true &&
+    rec.phase7LiveTradingReady === false &&
+    rec.notAProfitabilityClaim === true;
+  return html`
+    ${RiskNotice({
+      tone: safe ? "info" : "caution",
+      title: safe
+        ? "Sniper strategy intelligence — LIVE TRADING DISABLED · read-only study guidance, NOT a buy signal"
+        : "Strategy intelligence is missing its no-send / not-a-profitability-claim literals — do NOT trust this artifact",
+      body: html`Read-only candidate intelligence projected from a campaign + token:risk reports: the notable risk
+        flags by name, a mint class, a confidence label (evidence completeness — never price direction), reason
+        codes, and plain-English why-this-matters / what-to-study-next. Verdicts come from the campaign's own
+        re-derivation; a high score can never override a blocker. <code>liveTradingStatus</code> is
+        <strong>${liveTradingStatus}</strong>; it is never a buy signal and never a profitability claim.`,
+    })}
+    ${kvSection("Strategy intelligence", undefined, [
+      { term: "id", detail: code(intelligenceId) },
+      { term: "candidates", detail: text(num(readNumber(rec, "candidateCount"))) },
+      {
+        term: "verdicts",
+        detail: verdicts === null
+          ? text(DASH)
+          : text(`watch ${num(readNumber(verdicts, "watch"))} · review ${num(readNumber(verdicts, "review"))} · blocked ${num(readNumber(verdicts, "blocked"))} · insufficient ${num(readNumber(verdicts, "insufficientEvidence"))}`),
+      },
+      {
+        term: "confidence",
+        detail: confidence === null
+          ? text(DASH)
+          : text(`high ${num(readNumber(confidence, "high"))} · medium ${num(readNumber(confidence, "medium"))} · low ${num(readNumber(confidence, "low"))}`),
+      },
+      {
+        term: "mint classes",
+        detail: mintClasses === null
+          ? text(DASH)
+          : text(`wrapped-sol ${num(readNumber(mintClasses, "wrappedSol"))} · stablecoin ${num(readNumber(mintClasses, "stablecoin"))} · other ${num(readNumber(mintClasses, "other"))}`),
+      },
+      { term: "provenance", detail: code(readString(rec, "evidenceProvenance")) },
+      { term: "live-trading status", detail: text(liveTradingStatus ?? DASH) },
+    ])}
+    ${tableSection({
+      title: `Candidates (${String(candidates.length)})`,
+      description: "Per-candidate intelligence. Verdicts come from the campaign — never a buy list.",
+      columns: [{ header: "Verdict" }, { header: "Candidate" }, { header: "Mint" }, { header: "Class" }, { header: "Confidence" }, { header: "Risk" }, { header: "Reason codes" }],
+      rows: candidates.slice(0, 200).map((c) => [
+        code(readString(c, "verdict")),
+        code(readString(c, "candidateId")),
+        text(readString(c, "mint") ?? DASH),
+        text(readString(c, "mintClass") ?? DASH),
+        text(readString(c, "confidence") ?? DASH),
+        text(readString(c, "riskDecision") ?? DASH),
+        text(readStringArray(c, "reasonCodes").items.join(", ") || DASH),
+      ]),
+      empty: "No candidates.",
+    })}
+    ${concerns.length === 0 ? "" : tableSection({
+      title: "Top read-only concerns",
+      description: "How many candidates carry each notable risk flag (a flag is read verbatim from its risk report).",
+      columns: [{ header: "Flag" }, { header: "Severity" }, { header: "Candidates" }],
+      rows: concerns.map((c) => [code(readString(c, "flagId")), text(readString(c, "severity") ?? DASH), text(num(readNumber(c, "candidateCount")))]),
+      empty: "No concerns.",
+    })}
+    ${strategyNotes.total === 0 ? "" : Section({
+      title: "Strategy notes",
+      body: html`<ul class="sm-bullets sm-bullets--plain">${strategyNotes.items.map((n) => html`<li>${n}</li>`)}</ul>`,
+    })}
+    ${nextActions.total === 0 ? "" : Section({
+      title: "Next safe actions",
+      body: html`<ul class="sm-bullets sm-bullets--plain">${nextActions.items.map((a) => html`<li>${a}</li>`)}</ul>`,
+    })}
+    ${caveats.total === 0 ? "" : Section({
+      title: `Caveats (${String(caveats.total)})`,
+      body: html`<ul class="sm-bullets sm-bullets--plain">${caveats.items.map((c) => html`<li>${c}</li>`)}</ul>`,
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
 function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml | null {
   switch (schema) {
     case "backtest.report.v1":
@@ -4510,6 +4606,8 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderSniperAlphaRunReportView(rec);
     case "sniper.alpha_history.v1":
       return renderSniperAlphaHistoryView(rec);
+    case "sniper.strategy_intelligence.v1":
+      return renderSniperStrategyIntelligenceView(rec);
     case "sniper.provider_health.report.v1":
       return renderSniperProviderHealthView(rec);
     case "execution.readiness.report.v1":

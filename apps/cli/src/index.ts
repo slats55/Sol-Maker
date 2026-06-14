@@ -73,6 +73,7 @@ import {
   paperSniperCampaignDiffReport,
   paperSniperAlphaReportReport,
   paperSniperAlphaHistoryReport,
+  paperSniperStrategyIntelReport,
   executionSessionStatusReport,
   executionSessionReconcileReport,
   executionSessionAcknowledgeReport,
@@ -3725,6 +3726,53 @@ program
           outPath: opts.out,
           force: Boolean(opts.force),
           failOnInvalid: Boolean(opts.failOnInvalid),
+          failOnBlocked: Boolean(opts.failOnBlocked),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:strategy:intel")
+  .description(
+    "Sprint 106 strategy intelligence: project a campaign (--campaign) + per-mint token:risk reports (--risk <mint=path>) into read-only per-candidate intelligence cards — the notable risk flags by name (freeze / mint authority, Token-2022 risks, holder concentration, mutable metadata, thin liquidity), a mint class (wrapped-SOL / stablecoin / other), a confidence label (evidence completeness, never price direction), closed reason codes, and plain-English `why this matters` / `what to study next`. Candidate verdicts come from the campaign's own re-derivation — a score can NEVER override a blocker. Produces `sniper.strategy_intelligence.v1`. Never a buy signal, never a profitability claim; LOCAL-ONLY (no RPC / network / wallet / signer / send)",
+  )
+  .option("--campaign <path>", "the sniper.dryrun.campaign.v1 to explain (required)")
+  .option(
+    "--risk <mint=path>",
+    "a token:risk JSON file for a candidate as mint=path (the detailed flags); repeatable",
+    (value: string, previous: string[]) => previous.concat(value),
+    [] as string[],
+  )
+  .option("--intelligence-id <label>", "operator label echoed into the artifact")
+  .option("--evidence-provenance <label>", "real-readonly | fixture | fictional-example | mixed (default mixed)")
+  .option("--json", "emit the intelligence as stable JSON")
+  .option("--out <path>", "write ONLY the intelligence JSON to this path (refused if it exists without --force)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-blocked", "exit non-zero when any candidate is blocked")
+  .action(
+    (opts: {
+      campaign?: string;
+      risk?: string[];
+      intelligenceId?: string;
+      evidenceProvenance?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnBlocked?: boolean;
+    }) => {
+      const { text, exitCode } = paperSniperStrategyIntelReport(
+        {},
+        {
+          campaignPath: opts.campaign,
+          risks: opts.risk,
+          intelligenceId: opts.intelligenceId,
+          evidenceProvenance: opts.evidenceProvenance,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
           failOnBlocked: Boolean(opts.failOnBlocked),
         },
       );

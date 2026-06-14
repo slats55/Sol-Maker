@@ -267,6 +267,9 @@ import {
   formatSniperAlphaHistory,
   type SniperAlphaHistoryRunInput,
   type SniperAlphaHistoryInvalidArtifactInput,
+  buildSniperStrategyIntelligence,
+  formatSniperStrategyIntelligence,
+  type SniperStrategyRiskInput,
   diffSniperDryRunCampaigns,
   validateSniperDryRunCampaignDiff,
   formatSniperDryRunCampaignDiff,
@@ -9499,6 +9502,99 @@ export function paperSniperAlphaHistoryReport(
 
   if (opts.json) return { text: JSON.stringify(redactValue(history), null, 2), exitCode };
   const lines = [formatSniperAlphaHistory(history, { label: opts.historyId })];
+  if (opts.outPath) lines.push("", `wrote: ${resolvePath(ctx, opts.outPath)}`);
+  if (gateNotes.length > 0) lines.push("", ...gateNotes);
+  return { text: redactString(lines.join("\n")), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 106 — `paper:sniper:strategy:intel`: read-only candidate intelligence.
+//   Projects a validated campaign (the verdict spine) + the operator's per-mint
+//   token:risk reports into per-candidate intelligence cards — the specific
+//   notable risk flags by name, a mint class, a confidence label, reason codes,
+//   and plain-English "why this matters" / "what to study next". LOCAL-ONLY:
+//   reads the named files only — no RPC, no network, no wallet, no signer, no
+//   send. Never a buy signal, never a profitability claim.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperStrategyIntelCommandOptions {
+  /** The sniper.dryrun.campaign.v1 this intelligence projects (required). */
+  campaignPath?: string;
+  /** Repeatable "mint=path" token:risk JSON files (the detailed flags per mint). */
+  risks?: string[];
+  intelligenceId?: string;
+  evidenceProvenance?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit non-zero when any candidate is blocked. */
+  failOnBlocked?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:strategy:intel` — explain a campaign's candidates. The spine is the
+ * validated `--campaign`; repeatable `--risk <mint=path>` token:risk reports attach the detailed flags
+ * by MINT. Each candidate gets its notable flags (freeze / mint authority, Token-2022 risks, holder
+ * concentration, mutable metadata, thin liquidity), a mint class, a confidence label, reason codes,
+ * and deterministic "why this matters" / "what to study next" guidance — verdicts come from the
+ * campaign (a score can never override a blocker). Reads the named files only — NO RPC / network /
+ * wallet / signer / send. Never a buy signal; live trading stays disabled.
+ */
+export function paperSniperStrategyIntelReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperStrategyIntelCommandOptions = {},
+): CliReport {
+  if (!opts.campaignPath) return { text: "Refusing: --campaign <campaign.json> is required (the campaign this intelligence projects).", exitCode: 1 };
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+  }
+
+  let intel;
+  try {
+    const campaign = validateSniperDryRunCampaign(readJsonValue(ctx, opts.campaignPath, "campaign"));
+    const riskReports: SniperStrategyRiskInput[] = [];
+    for (const arg of opts.risks ?? []) {
+      let mint: string;
+      let path: string;
+      try {
+        const parsed = parseMintPathArg(arg);
+        mint = parsed.mint;
+        path = parsed.path;
+      } catch {
+        return { text: redactString(`Refusing: --risk expects "mint=path" but got "${arg}".`), exitCode: 1 };
+      }
+      riskReports.push({ mint, report: readJsonValue(ctx, path, `token:risk for ${mint}`) });
+    }
+    intel = buildSniperStrategyIntelligence({
+      intelligenceId: opts.intelligenceId ?? null,
+      generatedAt: null,
+      campaign,
+      campaignRef: basename(opts.campaignPath),
+      riskReports,
+      evidenceProvenance: opts.evidenceProvenance ?? null,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    try {
+      writeFileSync(resolvePath(ctx, opts.outPath), JSON.stringify(redactValue(intel), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the strategy intelligence to ${resolvePath(ctx, opts.outPath)}`), exitCode: 1 };
+    }
+  }
+
+  let exitCode = 0;
+  const gateNotes: string[] = [];
+  if (opts.failOnBlocked && intel.verdictCounts.blocked > 0) {
+    exitCode = 1;
+    gateNotes.push(`--fail-on-blocked: ${intel.verdictCounts.blocked} candidate(s) are blocked.`);
+  }
+
+  if (opts.json) return { text: JSON.stringify(redactValue(intel), null, 2), exitCode };
+  const lines = [formatSniperStrategyIntelligence(intel, { label: opts.intelligenceId })];
   if (opts.outPath) lines.push("", `wrote: ${resolvePath(ctx, opts.outPath)}`);
   if (gateNotes.length > 0) lines.push("", ...gateNotes);
   return { text: redactString(lines.join("\n")), exitCode };

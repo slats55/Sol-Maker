@@ -615,6 +615,15 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
     cli: "paper:sniper:alpha:history",
   },
   {
+    id: "sniper.strategy_intelligence.v1",
+    title: "Sniper strategy intelligence",
+    family: "sniper",
+    stability: "stable",
+    description:
+      "The S106 read-only candidate intelligence: a projection of a campaign (the verdict spine) + per-mint token:risk reports into per-candidate cards — the notable risk flags by NAME (freeze / mint authority, Token-2022 risks, holder concentration, mutable metadata, thin liquidity), a mint class (wrapped-SOL / stablecoin / other), a confidence label (evidence completeness, never price direction), closed reason codes, and plain-English why-this-matters / what-to-study-next. Verdicts come from the campaign's own re-derivation (a score never overrides a blocker); a flag is surfaced ONLY when its report carries it. liveTradingStatus is pinned \"disabled\", authorizesLiveTrading / notAProfitabilityClaim are pinned, and the closed schema refuses any signature / send result. Never a buy signal. Produced by paper:sniper:strategy:intel.",
+    cli: "paper:sniper:strategy:intel",
+  },
+  {
     id: "sniper.provider_health.report.v1",
     title: "Sniper provider health report",
     family: "sniper",
