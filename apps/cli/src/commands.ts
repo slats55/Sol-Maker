@@ -252,8 +252,10 @@ import {
   type SniperDryRunCampaign,
   type SniperDryRunCampaignCandidateInput,
   buildSniperReadonlyCampaignPlan,
+  validateSniperReadonlyCampaignPlan,
   type SniperReadonlyCampaignStage,
   buildSniperAlphaRunReport,
+  validateSniperAlphaRunReport,
   formatSniperAlphaRunReport,
   type SniperAlphaRunProviderStatus,
   type SniperAlphaRunRustEngineStatus,
@@ -7283,6 +7285,9 @@ export function paperSniperOperatorDemoReport(
     "release-candidate.json",
     "watchlist.json",
     "campaign.json",
+    "readonly-campaign-plan.json",
+    "campaign-diff.json",
+    "alpha-report.json",
     OPERATOR_DEMO_MANIFEST_FILE,
     OPERATOR_DEMO_README_FILE,
   ];
@@ -7504,6 +7509,138 @@ export function paperSniperOperatorDemoReport(
     }
   }
 
+  // h/i/j) Sprint 105-A alpha workflow — FICTIONAL-EXAMPLE: the read-only campaign plan the campaign
+  // ran under, a campaign DIFF against a slightly-earlier campaign, and the showable alpha run report.
+  // Built over the SAME fictional candidate set so the demo shows the full alpha workflow end to end.
+  {
+    let ficCandidates: Array<{ candidateId: string; mint: string }> = [];
+    try {
+      const raw = readJsonValue(inner, "candidates.json", "demo candidates");
+      if (isPlainObject(raw) && Array.isArray(raw.candidates)) {
+        ficCandidates = (raw.candidates as unknown[])
+          .filter((c): c is Record<string, unknown> => isPlainObject(c) && typeof c.mint === "string")
+          .map((c) => ({ candidateId: typeof c.candidateId === "string" ? c.candidateId : String(c.mint), mint: String(c.mint) }));
+      }
+    } catch {
+      ficCandidates = [];
+    }
+    // Re-build the demo campaign deterministically (identical to section g) for the plan/diff/alpha.
+    const afterInputs: SniperDryRunCampaignCandidateInput[] = ficCandidates.map((c, i) => {
+      const base: SniperDryRunCampaignCandidateInput = { candidateId: c.candidateId, mint: c.mint, watchlistStatus: "watch" };
+      if (i === 0) return { ...base, score: 90, riskDecision: "PASS_FOR_PAPER_EVALUATION", preflightVerdict: "pass", quoteStatus: "observed", buildStatus: "succeeded", simulationStatus: "simulated-ok", releaseCandidateVerdict: "dryrun-complete-blocked-live" };
+      if (i === 1) return { ...base, score: 60, riskDecision: "CAUTION", preflightVerdict: "warn" };
+      if (i === 2) return { ...base, score: 80, riskDecision: "REJECT", preflightVerdict: "fail" };
+      return base;
+    });
+    // A slightly-earlier "before" campaign: candidate 0 was only at review (CAUTION) — the after IMPROVED it to watch.
+    const beforeInputs: SniperDryRunCampaignCandidateInput[] = afterInputs.map((c, i) =>
+      i === 0 ? { candidateId: c.candidateId, mint: c.mint, watchlistStatus: "watch", score: 70, riskDecision: "CAUTION", preflightVerdict: "warn" } : c,
+    );
+
+    let demoCampaign: SniperDryRunCampaign | null = null;
+    try {
+      demoCampaign = buildSniperDryRunCampaign({ campaignId: "operator-demo-campaign", mode: "mainnet-dry-run", candidates: afterInputs, artifactRefs: ["watchlist.json", "release-candidate.json"] });
+    } catch {
+      demoCampaign = null;
+    }
+
+    // h) Read-only campaign plan.
+    {
+      let valid = false;
+      let schemaVersion: string | null = null;
+      try {
+        const plan = buildSniperReadonlyCampaignPlan({
+          planId: "operator-demo-plan",
+          campaignId: "operator-demo-campaign",
+          mode: "mainnet-dry-run",
+          network: "mainnet-beta",
+          inputCandidatesRef: "candidates.json",
+          candidateLimit: 25,
+          providerPolicy: "live-readonly-when-allowed",
+          allowedStages: ["candidate-score", "deep-risk", "quote-fetch", "quote-score", "routequote-prepare", "tx-build-dryrun", "tx-inspect", "simulate"],
+          maxQuoteAgeMs: 60000,
+        });
+        writeFileSync(join(outDir, "readonly-campaign-plan.json"), JSON.stringify(redactValue(plan), null, 2) + "\n");
+        validateSniperReadonlyCampaignPlan(readJsonValue(inner, "readonly-campaign-plan.json", "demo plan"));
+        valid = true;
+        schemaVersion = plan.schemaVersion;
+      } catch {
+        valid = false;
+      }
+      artifacts.push({
+        role: "readonly-campaign-plan",
+        fileName: "readonly-campaign-plan.json",
+        schemaVersion,
+        evidenceClass: "fictional-example",
+        present: existsSync(join(outDir, "readonly-campaign-plan.json")),
+        valid,
+        summary: "the read-only auto-campaign plan the campaign ran under (allowed read-only stages only; no send / sign / arm stage; live trading disabled)",
+      });
+    }
+
+    // i) Campaign diff (before -> after; candidate 0 improved review -> watch).
+    {
+      let valid = false;
+      let schemaVersion: string | null = null;
+      try {
+        const before = buildSniperDryRunCampaign({ campaignId: "operator-demo-campaign-prev", mode: "mainnet-dry-run", candidates: beforeInputs });
+        const after = demoCampaign ?? buildSniperDryRunCampaign({ campaignId: "operator-demo-campaign", mode: "mainnet-dry-run", candidates: afterInputs });
+        const diff = diffSniperDryRunCampaigns({ diffId: "operator-demo-diff", before, after, beforeCampaignRef: "campaign-prev.json", afterCampaignRef: "campaign.json" });
+        writeFileSync(join(outDir, "campaign-diff.json"), JSON.stringify(redactValue(diff), null, 2) + "\n");
+        validateSniperDryRunCampaignDiff(readJsonValue(inner, "campaign-diff.json", "demo diff"));
+        valid = true;
+        schemaVersion = diff.schemaVersion;
+      } catch {
+        valid = false;
+      }
+      artifacts.push({
+        role: "campaign-diff",
+        fileName: "campaign-diff.json",
+        schemaVersion,
+        evidenceClass: "fictional-example",
+        present: existsSync(join(outDir, "campaign-diff.json")),
+        valid,
+        summary: "a no-send diff of the campaign against a slightly-earlier one (movement only; authorizes nothing; live trading disabled)",
+      });
+    }
+
+    // j) Alpha run report (projects the demo campaign; references the plan + diff).
+    {
+      let valid = false;
+      let schemaVersion: string | null = null;
+      try {
+        const campaignForAlpha = demoCampaign ?? buildSniperDryRunCampaign({ campaignId: "operator-demo-campaign", mode: "mainnet-dry-run", candidates: afterInputs });
+        const alpha = buildSniperAlphaRunReport({
+          runId: "operator-demo-alpha",
+          campaign: campaignForAlpha,
+          campaignRef: "campaign.json",
+          campaignPlanRef: "readonly-campaign-plan.json",
+          watchlistRef: "watchlist.json",
+          diffRef: "campaign-diff.json",
+          providerHealth: { risk: "ok", quote: "ok", simulation: "ok" },
+          rustEngineStatus: "available",
+          phase7Status: "authorized-for-design-only",
+          evidenceProvenance: "fictional-example",
+        });
+        writeFileSync(join(outDir, "alpha-report.json"), JSON.stringify(redactValue(alpha), null, 2) + "\n");
+        validateSniperAlphaRunReport(readJsonValue(inner, "alpha-report.json", "demo alpha report"));
+        valid = true;
+        schemaVersion = alpha.schemaVersion;
+      } catch {
+        valid = false;
+      }
+      artifacts.push({
+        role: "alpha-run-report",
+        fileName: "alpha-report.json",
+        schemaVersion,
+        evidenceClass: "fictional-example",
+        present: existsSync(join(outDir, "alpha-report.json")),
+        valid,
+        summary: "the showable alpha run report projecting the campaign (top / blocked / insufficient candidates; never a profitability or live-readiness claim; live trading disabled)",
+      });
+    }
+  }
+
   // The pipeline stages the demo showcases, each evidenced by one of the artifacts above.
   const stages: OperatorDemoStage[] = [
     { stage: "candidate-ranking", description: "candidates scored 0-100 and ranked (intelligence only; never a buy signal)", evidencedBy: "mainnet-dry-run-release-candidate" },
@@ -7517,6 +7654,9 @@ export function paperSniperOperatorDemoReport(
     { stage: "candidate-input", description: "the fictional candidate list that seeds the ranking", evidencedBy: "candidate-input" },
     { stage: "watchlist", description: "the S104-C operator watchlist of candidate mints to monitor (a status is bookkeeping only, never trade readiness)", evidencedBy: "watchlist" },
     { stage: "dryrun-campaign", description: "the S104-C no-send dry-run campaign comparing candidates across score / risk / quote / dry-run evidence (verdicts re-derived; a score never overrides a blocker)", evidencedBy: "dryrun-campaign" },
+    { stage: "readonly-campaign-plan", description: "the S105-A read-only auto-campaign plan the campaign ran under (allowed read-only stages only; no send / sign / arm stage)", evidencedBy: "readonly-campaign-plan" },
+    { stage: "campaign-diff", description: "the S105-A no-send diff against a slightly-earlier campaign (movement only; authorizes nothing)", evidencedBy: "campaign-diff" },
+    { stage: "alpha-run-report", description: "the S105-A showable alpha run report projecting the campaign (never a profitability or live-readiness claim)", evidencedBy: "alpha-run-report" },
     { stage: "phase7-authorization-audit", description: "the read-only Phase 7 authorization audit verdict", evidencedBy: "phase7-authorization-audit" },
     { stage: "phase7-signoff", description: "the blank human sign-off template (the future authorization mechanism)", evidencedBy: "phase7-human-signoff" },
     { stage: "devnet-funding-status", description: "the devnet funding/proof status for the throwaway key", evidencedBy: "devnet-funding-status" },

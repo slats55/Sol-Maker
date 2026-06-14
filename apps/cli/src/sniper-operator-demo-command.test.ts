@@ -19,6 +19,9 @@ import {
   validateMainnetDryRunReleaseCandidate as validateRc,
   validateSniperWatchlist,
   validateSniperDryRunCampaign,
+  validateSniperReadonlyCampaignPlan,
+  validateSniperDryRunCampaignDiff,
+  validateSniperAlphaRunReport,
 } from "@soulmaker/sniper";
 import { paperSniperOperatorDemoReport } from "./commands.js";
 
@@ -42,10 +45,11 @@ describe("paper:sniper:operator-demo", () => {
       expect(r.exitCode, r.text.slice(0, 600)).toBe(0);
       const manifest = validateManifest(JSON.parse(r.text));
 
-      expect(manifest.artifactCount).toBe(7);
+      expect(manifest.artifactCount).toBe(10);
       expect(manifest.realReadonlyCount).toBe(2);
       expect(manifest.fixtureCount).toBe(1);
-      expect(manifest.fictionalExampleCount).toBe(4); // candidate + release-candidate + watchlist + campaign
+      // candidate + release-candidate + watchlist + campaign + plan + diff + alpha-report
+      expect(manifest.fictionalExampleCount).toBe(7);
       expect(manifest.allArtifactsValid).toBe(true);
       expect(manifest.liveExecutionDisabled).toBe(true);
       expect(manifest.neverSends).toBe(true);
@@ -75,6 +79,15 @@ describe("paper:sniper:operator-demo", () => {
       expect(campaign.liveSendStatus).toBe("disabled");
       // The demo campaign shows a re-derived spread (watch / review / blocked) — never authorizing a trade.
       expect(campaign.verdictCounts.blocked).toBeGreaterThanOrEqual(1);
+      // S105-A alpha workflow artifacts: the plan, a campaign diff, and the alpha run report.
+      const plan = validateSniperReadonlyCampaignPlan(JSON.parse(readFileSync(join(dir, "readonly-campaign-plan.json"), "utf8")));
+      expect(plan.liveSendStatus).toBe("disabled");
+      const diff = validateSniperDryRunCampaignDiff(JSON.parse(readFileSync(join(dir, "campaign-diff.json"), "utf8")));
+      expect(diff.authorizesLiveTrading).toBe(false);
+      expect(diff.summary.improvedCount).toBeGreaterThanOrEqual(1); // candidate 0 review -> watch
+      const alpha = validateSniperAlphaRunReport(JSON.parse(readFileSync(join(dir, "alpha-report.json"), "utf8")));
+      expect(alpha.liveTradingStatus).toBe("disabled");
+      expect(alpha.evidenceProvenance).toBe("fictional-example");
 
       // Every showcased stage points at a present artifact role.
       const roles = new Set(manifest.artifacts.map((a) => a.role));
