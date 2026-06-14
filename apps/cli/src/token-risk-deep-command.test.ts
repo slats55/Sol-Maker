@@ -236,3 +236,106 @@ describe("token:risk --deep — S93 Token-2022 extension checks", () => {
     });
   });
 });
+
+describe("openChainRead — --rpc-url override precedence + redaction (S105-C)", () => {
+  /**
+   * A ctx that records the rpcUrl every injected client was built with and derives its endpointHost
+   * host-only from that url (exactly as the production read-only client does), so a redaction leak
+   * would surface in the report. The config on disk carries the FALLBACK endpoint.
+   */
+  function captureCtx(tmp: string, configRpcUrl: string, seen: string[]) {
+    writeFileSync(
+      join(tmp, "soulmaker.config.json"),
+      JSON.stringify({ mode: "WATCH_ONLY", rpcUrl: configRpcUrl }),
+    );
+    return {
+      cwd: tmp,
+      env: {},
+      now: () => "2026-06-12T00:00:00.000Z",
+      createClient: (config: { rpcUrl: string }): ReadOnlySolanaClient => {
+        seen.push(config.rpcUrl);
+        return { ...baseClient(), endpointHost: new URL(config.rpcUrl).host };
+      },
+    };
+  }
+
+  it("an explicit --rpc-url WINS over the configured/env endpoint (flag beats env)", async () => {
+    await withTmpAsync(async (tmp) => {
+      const seen: string[] = [];
+      const override = "https://override.example.com";
+      await tokenRiskReport(USDC, captureCtx(tmp, "https://env-fallback.example.com", seen), {
+        json: true,
+        rpcUrl: override,
+      });
+      expect(seen).toEqual([override]);
+    });
+  });
+
+  it("with no --rpc-url the configured/env endpoint is used (fallback preserved)", async () => {
+    await withTmpAsync(async (tmp) => {
+      const seen: string[] = [];
+      await tokenRiskReport(USDC, captureCtx(tmp, "https://env-fallback.example.com", seen), { json: true });
+      expect(seen).toEqual(["https://env-fallback.example.com"]);
+    });
+  });
+
+  it("a blank/whitespace --rpc-url falls back rather than refusing", async () => {
+    await withTmpAsync(async (tmp) => {
+      const seen: string[] = [];
+      await tokenRiskReport(USDC, captureCtx(tmp, "https://env-fallback.example.com", seen), {
+        json: true,
+        rpcUrl: "   ",
+      });
+      expect(seen).toEqual(["https://env-fallback.example.com"]);
+    });
+  });
+
+  it("a malformed --rpc-url is refused WITHOUT echoing the raw value", async () => {
+    await withTmpAsync(async (tmp) => {
+      const seen: string[] = [];
+      const bad = "not a url ::: secret-token-1234567890";
+      const out = await tokenRiskReport(USDC, captureCtx(tmp, "https://env-fallback.example.com", seen), {
+        rpcUrl: bad,
+      });
+      expect(out).toMatch(/^Refusing: --rpc-url is not a valid URL/);
+      expect(out).not.toContain("secret-token-1234567890");
+      expect(seen).toEqual([]); // never reached the client
+    });
+  });
+
+  it("a secret-bearing --rpc-url reaches the client but never appears in the report", async () => {
+    await withTmpAsync(async (tmp) => {
+      const seen: string[] = [];
+      const secret = "https://rpc.example.com/v1?api-key=SUPERSECRETKEYVALUE";
+      const out = await tokenRiskReport(USDC, captureCtx(tmp, "https://env-fallback.example.com", seen), {
+        json: true,
+        rpcUrl: secret,
+      });
+      // The override drove the read (the secret is needed to actually reach the endpoint)…
+      expect(seen).toEqual([secret]);
+      // …but the token:risk report carries no endpoint field, so the secret can never leak through it.
+      expect(out).not.toContain("SUPERSECRETKEYVALUE");
+      expect(out).not.toContain("api-key");
+    });
+  });
+
+  it("an override enables the read even when no endpoint is configured", async () => {
+    await withTmpAsync(async (tmp) => {
+      const seen: string[] = [];
+      // config has NO rpcUrl; the override alone satisfies the gate.
+      writeFileSync(join(tmp, "soulmaker.config.json"), JSON.stringify({ mode: "WATCH_ONLY" }));
+      const ctxNoRpc = {
+        cwd: tmp,
+        env: {},
+        now: () => "2026-06-12T00:00:00.000Z",
+        createClient: (config: { rpcUrl: string }): ReadOnlySolanaClient => {
+          seen.push(config.rpcUrl);
+          return { ...baseClient(), endpointHost: new URL(config.rpcUrl).host };
+        },
+      };
+      const out = await tokenRiskReport(USDC, ctxNoRpc, { json: true, rpcUrl: "https://only-override.example.com" });
+      expect(out).not.toMatch(/^Refusing:/);
+      expect(seen).toEqual(["https://only-override.example.com"]);
+    });
+  });
+});

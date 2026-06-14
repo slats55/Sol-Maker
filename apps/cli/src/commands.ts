@@ -521,6 +521,14 @@ export interface CommandContext {
 export interface ChainReadOptions {
   /** Permit chain reads while in PAPER mode (explicit opt-in). */
   allowPaperRead?: boolean;
+  /**
+   * Explicit read-only RPC endpoint override (e.g. a `--rpc-url` CLI flag). When present and
+   * non-empty it WINS over the configured endpoint (`SOULMAKER_RPC_URL` env / config file), so an
+   * orchestrator can drive every read-only stage — including deep risk — at the SAME endpoint it
+   * probed with provider:doctor. It is never printed raw: the endpoint reaches the read-only client
+   * only, and every report reduces it to its host. This adds NO send/sign capability.
+   */
+  rpcUrl?: string;
 }
 
 function toLoadOptions(ctx: CommandContext): LoadConfigOptions {
@@ -754,12 +762,29 @@ function openChainRead(ctx: CommandContext, opts: ChainReadOptions): ChainGate {
     }
   }
 
-  const rpcUrl = config.rpcUrl;
+  // Endpoint precedence: an explicit override (CLI --rpc-url) WINS over the configured endpoint
+  // (SOULMAKER_RPC_URL env / config file), which in turn beats nothing. The override is validated as
+  // a URL but never echoed raw — a malformed one is refused without printing it (it may carry a key).
+  const override = opts.rpcUrl?.trim();
+  let rpcUrl: string | undefined;
+  if (override) {
+    try {
+      new URL(override);
+    } catch {
+      return {
+        ok: false,
+        message: "Refusing: --rpc-url is not a valid URL (it is never printed; check it for typos).",
+      };
+    }
+    rpcUrl = override;
+  } else {
+    rpcUrl = config.rpcUrl;
+  }
   if (!rpcUrl) {
     return {
       ok: false,
       message:
-        "Refusing: no rpcUrl configured. Set SOULMAKER_RPC_URL or rpcUrl in config.",
+        "Refusing: no rpcUrl configured. Pass --rpc-url, set SOULMAKER_RPC_URL, or set rpcUrl in config.",
     };
   }
 
@@ -8636,6 +8661,9 @@ export async function paperSniperCampaignAutoRunReport(
   if (opts.allowReadonlyNetwork === true && mode !== "mainnet-dry-run") {
     warnings.push("--allow-readonly-network has no effect in paper mode (paper reaches no network); run --mode mainnet-dry-run for live read-only evidence.");
   }
+  if (opts.rpcUrl && !networkActive) {
+    warnings.push("--rpc-url has no effect here: deep risk / simulation only read the network in --mode mainnet-dry-run with --allow-readonly-network.");
+  }
 
   // --- Sprint 105-B: resolve provider health (probe first, or ingest a report) -
   // The result GATES the live network stages: if a provider is unreachable, its stage is skipped and
@@ -8754,7 +8782,9 @@ export async function paperSniperCampaignAutoRunReport(
       if (riskByMint.has(c.mint)) continue; // operator override already present
       const riskOut = join(candidatesDir, `risk.${c.mint}.json`);
       try {
-        await tokenRiskReport(c.mint, ctx, { deep: true, outPath: riskOut, force: opts.force, allowPaperRead: true });
+        // Honor --rpc-url here too (S105-C): deep risk reads the SAME endpoint provider:doctor
+        // probed and the simulation uses, so the gathered evidence is internally consistent.
+        await tokenRiskReport(c.mint, ctx, { deep: true, outPath: riskOut, force: opts.force, allowPaperRead: true, rpcUrl: opts.rpcUrl });
         if (existsSync(riskOut)) {
           const rr = JSON.parse(stripJsonBom(readFileSync(riskOut, "utf8")));
           const projected = projectAutoRiskReport(rr);
@@ -9126,6 +9156,9 @@ export async function paperSniperCampaignAutoRunReport(
       "> **LIVE TRADING DISABLED — THIS DOES NOT SEND TRANSACTIONS.** Nothing here signs, sends, or trades.",
       "",
       `- **Mode:** ${mode} (${network}) · read-only network: ${networkActive ? "ON" : "off"}`,
+      ...(networkActive && opts.rpcUrl
+        ? [`- **RPC endpoint:** ${endpointHostOf(opts.rpcUrl)} (host-only, from --rpc-url; deep risk + simulation read this exact endpoint)`]
+        : []),
       `- **Provenance:** ${alpha.evidenceProvenance}`,
       `- **Candidates:** ${campaign.candidateCount}`,
       `- **Verdicts:** watch ${campaign.verdictCounts.watch} · review ${campaign.verdictCounts.review} · BLOCKED ${campaign.verdictCounts.blocked} · insufficient ${campaign.verdictCounts.insufficientEvidence}`,

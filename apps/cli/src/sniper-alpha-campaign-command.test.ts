@@ -297,6 +297,105 @@ describe("paper:sniper:campaign:auto-run — provider health (S105-B)", () => {
   });
 });
 
+// --- Sprint 105-C: deep-risk honors --rpc-url (consistency with provider:doctor + simulation) -----
+
+describe("paper:sniper:campaign:auto-run — deep-risk honors --rpc-url (S105-C)", () => {
+  /** A read-only client that records the endpoint it was built with and reads a clean mint. */
+  function endpointCaptureClient(config: ReadOnlyClientConfig, seen: string[]): ReadOnlySolanaClient {
+    seen.push(config.rpcUrl);
+    const host = new URL(config.rpcUrl).host;
+    return {
+      endpointHost: host,
+      getRpcHealth: async (): Promise<RpcHealth> => ({ ok: true, endpointHost: host }) as RpcHealth,
+      getVersion: async () => ({ solanaCore: "test" }),
+      getSolBalance: async () => ({ ownerBase58: WSOL, lamports: 0, sol: 0 }),
+      getTokenAccounts: async () => [],
+      getTokenMintInfo: async (mint: string | { toBase58(): string }) => ({
+        mint: typeof mint === "string" ? mint : mint.toBase58(),
+        decimals: 9,
+        supplyRaw: "1000",
+        uiSupply: 1000,
+        mintAuthorityPresent: false,
+        freezeAuthorityPresent: false,
+        isInitialized: true,
+        programLabel: "spl-token",
+        source: "test",
+      }),
+    } as unknown as ReadOnlySolanaClient;
+  }
+
+  /** A ctx with a WATCH_ONLY config (fallback endpoint on disk) and an endpoint-capturing client. */
+  function captureCtx(seen: string[], configRpcUrl: string) {
+    writeFileSync(join(dir, "soulmaker.config.json"), JSON.stringify({ mode: "WATCH_ONLY", rpcUrl: configRpcUrl }));
+    return {
+      cwd: dir,
+      env: {},
+      engineBinaryExists: () => false,
+      createClient: (config: ReadOnlyClientConfig) => endpointCaptureClient(config, seen),
+    };
+  }
+
+  // Provider health: RPC available (deep-risk runs), Jupiter unavailable (quote stage skipped → isolate deep-risk).
+  const rpcOnlyHealth = () =>
+    providerHealthFixture("ph.json", [
+      { provider: "rpc", status: "available" },
+      { provider: "jupiter-quote", status: "unavailable" },
+    ]);
+
+  it("an explicit --rpc-url drives the deep-risk read (flag beats the on-disk/env endpoint)", async () => {
+    const candidatesPath = candidates([WSOL]);
+    const seen: string[] = [];
+    const override = "https://override.rpc.example.com";
+    const { exitCode } = await paperSniperCampaignAutoRunReport(captureCtx(seen, "https://env-fallback.example.com"), {
+      candidatesPath,
+      mode: "mainnet-dry-run",
+      allowReadonlyNetwork: true,
+      providerHealthPath: rpcOnlyHealth(),
+      rpcUrl: override,
+      outDir: join(dir, "alpha"),
+    });
+    expect(exitCode).toBe(0);
+    // The deep-risk stage actually read the chain at the override endpoint, NOT the on-disk fallback.
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((u) => u === override)).toBe(true);
+    // The deep-risk evidence was gathered (honest, executed), proving the stage ran over the override.
+    const index = readJson("alpha/evidence-index.json") as { candidates: Array<{ stages: Array<{ stage: string; status: string }> }> };
+    expect(index.candidates[0]!.stages.some((s) => s.stage === "deep-risk" && s.status === "executed")).toBe(true);
+  });
+
+  it("with no --rpc-url the deep-risk read falls back to the configured/env endpoint", async () => {
+    const candidatesPath = candidates([WSOL]);
+    const seen: string[] = [];
+    const { exitCode } = await paperSniperCampaignAutoRunReport(captureCtx(seen, "https://env-fallback.example.com"), {
+      candidatesPath,
+      mode: "mainnet-dry-run",
+      allowReadonlyNetwork: true,
+      providerHealthPath: rpcOnlyHealth(),
+      outDir: join(dir, "alpha"),
+    });
+    expect(exitCode).toBe(0);
+    expect(seen.every((u) => u === "https://env-fallback.example.com")).toBe(true);
+  });
+
+  it("a malformed --rpc-url makes deep-risk honestly unavailable without touching the network", async () => {
+    const candidatesPath = candidates([WSOL]);
+    const seen: string[] = [];
+    const { exitCode } = await paperSniperCampaignAutoRunReport(captureCtx(seen, "https://env-fallback.example.com"), {
+      candidatesPath,
+      mode: "mainnet-dry-run",
+      allowReadonlyNetwork: true,
+      providerHealthPath: rpcOnlyHealth(),
+      rpcUrl: "not a url",
+      outDir: join(dir, "alpha"),
+    });
+    expect(exitCode).toBe(0); // the campaign still completes; the candidate just lacks risk evidence
+    expect(seen).toEqual([]); // the invalid override never reached a client
+    const index = readJson("alpha/evidence-index.json") as { candidates: Array<{ stages: Array<{ stage: string; status: string }> }> };
+    const deepRisk = index.candidates[0]!.stages.find((s) => s.stage === "deep-risk");
+    expect(deepRisk?.status === "unavailable" || deepRisk?.status === "failed").toBe(true);
+  });
+});
+
 describe("paper:sniper:campaign:diff — compare two auto-run campaigns", () => {
   it("diffs two campaign.json files and validates", async () => {
     const candidatesPath = candidates([WSOL]);
