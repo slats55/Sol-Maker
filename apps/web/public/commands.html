@@ -668,6 +668,26 @@
   </span>
           </div>
     <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:sniper:watchlist:prepare</code>
+    <p class="sm-cmd__summary">The S104-C operator watchlist (sniper.watchlist.v1): create / normalize a list of candidate mints to monitor by merging an existing watchlist, a candidate list, and/or --add &lt;mint[=label]&gt; entries (deduped by mint; mints validated as public keys, secret-length input refused). A status (watch / review / blocked / archived) is bookkeeping ONLY — never a trade signal and never trade readiness. LOCAL-ONLY: no RPC, network, or wallet; writes nothing unless --out.</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="The S104-C operator watchlist: a deterministic, offline list of candidate mints to monitor, each with a status (watch | review | blocked | archived) that is bookkeeping ONLY. Every mint is validated as a public key (secret-length input refused); a status NEVER implies trade readiness (statusIsNotTradeReadiness is pinned true and there is no readiness/execution field); distinct/duplicate-mint lists and status counts are re-derived. Produced by paper:sniper:watchlist:prepare.">
+    <code>sniper.watchlist.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
+  </article><article class="sm-cmd">
+    <code class="sm-cmd__code">pnpm soulmaker paper:sniper:campaign:run</code>
+    <p class="sm-cmd__summary">The S104-C dry-run campaign (sniper.dryrun.campaign.v1): COMPARE candidates across the evidence already gathered (--score, --preflight, --risk &lt;mint=path&gt;, --routequote, --release-candidate &lt;mint=path&gt;, joined BY MINT) into a no-send campaign folder. Each candidate&#39;s verdict (watch / review / blocked / insufficient-evidence) is RE-DERIVED — a high score can NEVER override a blocker, and missing evidence shows as insufficient-evidence. liveSendStatus is pinned disabled; LOCAL-ONLY (no RPC / network / wallet / signer / send).</p>
+    <div class="sm-cmd__artifact">
+            <span class="sm-cmd__artifact-label">artifact</span>
+            <span class="sm-schema sm-schema--stable" title="The S104-C no-send campaign: a comparison of candidates across the paper / dry-run evidence already gathered (ranking, watchlist status, deep risk, route quote, unsigned build, simulation, mainnet dry-run release-candidate verdict, token preflight). Each candidate&#39;s finalOperatorVerdict (watch | review | blocked | insufficient-evidence) is RE-DERIVED from the structured evidence — a candidate&#39;s score is never read by the derivation, so a high score can NEVER override a blocker; missing evidence shows as insufficient-evidence, never hidden. liveSendStatus is pinned &quot;disabled&quot; and the closed schema refuses any signature / txid / send-result field. Produced by paper:sniper:campaign:run.">
+    <code>sniper.dryrun.campaign.v1</code>
+  </span>
+          </div>
+    <span class="sm-pill sm-pill--safe">offline · injected data</span>
   </article>
         </div></div>
   </section><section class="sm-section">

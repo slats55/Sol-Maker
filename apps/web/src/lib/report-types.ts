@@ -560,6 +560,24 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
       "The S104-A no-send readiness check: IF a human later gives a separate, explicit S104 execution authorization, are the required inputs present? It folds the written Phase 7 sign-off, the reconciled devnet broadcast proof, a complete mainnet dry-run release candidate, a public burner wallet, a bounded max-spend, a manual-confirmation label, and the release candidate's risk/quote/simulation posture into one re-derived verdict. It DOES NOT execute a trade: it never signs, never sends, never loads a key, and the best verdict — ready-for-separate-execution-authorization — authorizes NOTHING. liveExecutionAuthorized/authorizesLiveTrading are pinned false; the closed schema refuses any send result or signature. Produced by paper:phase7:microtrade:preflight.",
     cli: "paper:phase7:microtrade:preflight",
   },
+  {
+    id: "sniper.watchlist.v1",
+    title: "Sniper watchlist",
+    family: "sniper",
+    stability: "stable",
+    description:
+      "The S104-C operator watchlist: a deterministic, offline list of candidate mints to monitor, each with a status (watch | review | blocked | archived) that is bookkeeping ONLY. Every mint is validated as a public key (secret-length input refused); a status NEVER implies trade readiness (statusIsNotTradeReadiness is pinned true and there is no readiness/execution field); distinct/duplicate-mint lists and status counts are re-derived. Produced by paper:sniper:watchlist:prepare.",
+    cli: "paper:sniper:watchlist:prepare",
+  },
+  {
+    id: "sniper.dryrun.campaign.v1",
+    title: "Sniper dry-run campaign",
+    family: "sniper",
+    stability: "stable",
+    description:
+      "The S104-C no-send campaign: a comparison of candidates across the paper / dry-run evidence already gathered (ranking, watchlist status, deep risk, route quote, unsigned build, simulation, mainnet dry-run release-candidate verdict, token preflight). Each candidate's finalOperatorVerdict (watch | review | blocked | insufficient-evidence) is RE-DERIVED from the structured evidence — a candidate's score is never read by the derivation, so a high score can NEVER override a blocker; missing evidence shows as insufficient-evidence, never hidden. liveSendStatus is pinned \"disabled\" and the closed schema refuses any signature / txid / send-result field. Produced by paper:sniper:campaign:run.",
+    cli: "paper:sniper:campaign:run",
+  },
 ];
 
 /** Look up schema metadata by id, or `undefined` for an unknown schema. */

@@ -3846,6 +3846,174 @@ function renderPhase7MicrotradePreflightView(rec: Record<string, unknown>): RawH
   `;
 }
 
+function renderSniperWatchlistView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const watchlistId = need(missing, "watchlistId", readString(rec, "watchlistId"));
+  const counts = asRecord(rec["statusCounts"]);
+  const entries = Array.isArray(rec["entries"])
+    ? (rec["entries"] as unknown[]).filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null && !Array.isArray(e))
+    : [];
+  const duplicateMints = readStringArray(rec, "duplicateMints");
+  const caveats = readStringArray(rec, "caveats");
+  // A watchlist status is bookkeeping only — these literals prove it carries no trade/execution meaning.
+  const safe =
+    rec.statusIsNotTradeReadiness === true &&
+    rec.neverSends === true &&
+    rec.paperOnly === true &&
+    rec.notLiveResult === true;
+  return html`
+    ${RiskNotice({
+      tone: safe ? "info" : "caution",
+      title: safe
+        ? `Sniper watchlist — ${num(readNumber(rec, "entryCount"))} entry(ies); a status is bookkeeping only`
+        : "Watchlist is missing its paper-only / not-trade-readiness markers — do NOT trust this artifact",
+      body: html`A deterministic, offline list of candidate mints to monitor. A status
+        (<code>watch</code> / <code>review</code> / <code>blocked</code> / <code>archived</code>) is
+        <strong>bookkeeping only</strong> — it is never a trade signal and never means a candidate is
+        ready or safe to trade. Every mint is validated as a public key; nothing here signs, sends, or
+        trades. Live trading stays disabled.`,
+    })}
+    ${kvSection("Watchlist", undefined, [
+      { term: "id", detail: code(watchlistId) },
+      { term: "network", detail: code(readString(rec, "network")) },
+      { term: "source", detail: text(readString(rec, "sourceLabel") ?? DASH) },
+      { term: "entries", detail: text(`${num(readNumber(rec, "entryCount"))} (${String(readStringArray(rec, "distinctMints").total)} distinct mint(s))`) },
+      {
+        term: "status tally",
+        detail: counts === null
+          ? text(DASH)
+          : text(`watch ${num(readNumber(counts, "watch"))} · review ${num(readNumber(counts, "review"))} · blocked ${num(readNumber(counts, "blocked"))} · archived ${num(readNumber(counts, "archived"))}`),
+      },
+    ])}
+    ${tableSection({
+      title: `Entries (${String(entries.length)})`,
+      description: "Operator-supplied; a status is monitoring bookkeeping, never trade readiness.",
+      columns: [{ header: "Status" }, { header: "Entry" }, { header: "Mint" }, { header: "Label" }, { header: "Via" }, { header: "Tags" }],
+      rows: entries.slice(0, 100).map((e) => {
+        const tags = readStringArray(e, "tags");
+        return [
+          code(readString(e, "status")),
+          code(readString(e, "entryId")),
+          text(readString(e, "mint") ?? DASH),
+          text(readString(e, "label") ?? DASH),
+          text(readString(e, "provider") ?? DASH),
+          text(tags.items.length > 0 ? tags.items.join(", ") : DASH),
+        ];
+      }),
+      empty: "No entries.",
+    })}
+    ${duplicateMints.total === 0 ? "" : Section({
+      title: `Duplicate mints (${String(duplicateMints.total)})`,
+      description: "Allowed, but surfaced — the same mint appears on more than one entry.",
+      body: html`<ul class="sm-bullets sm-bullets--plain">${duplicateMints.items.map((m) => html`<li>${code(m)}</li>`)}</ul>`,
+    })}
+    ${caveats.total === 0 ? "" : Section({
+      title: `Caveats (${String(caveats.total)})`,
+      body: html`<ul class="sm-bullets sm-bullets--plain">${caveats.items.map((c) => html`<li>${c}</li>`)}</ul>`,
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderSniperDryRunCampaignView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const campaignId = need(missing, "campaignId", readString(rec, "campaignId"));
+  const liveSendStatus = need(missing, "liveSendStatus", readString(rec, "liveSendStatus"));
+  const counts = asRecord(rec["verdictCounts"]);
+  const candidates = Array.isArray(rec["candidates"])
+    ? (rec["candidates"] as unknown[]).filter((c): c is Record<string, unknown> => typeof c === "object" && c !== null && !Array.isArray(c))
+    : [];
+  const stages = Array.isArray(rec["stages"])
+    ? (rec["stages"] as unknown[]).filter((s): s is Record<string, unknown> => typeof s === "object" && s !== null && !Array.isArray(s))
+    : [];
+  const caveats = readStringArray(rec, "caveats");
+  const refs = readStringArray(rec, "artifactRefs");
+  // The campaign can never report a live send; a score can never override a blocker.
+  const safe =
+    liveSendStatus === "disabled" &&
+    rec.neverSends === true &&
+    rec.notExecutable === true &&
+    rec.phase7LiveTradingReady === false &&
+    rec.scoreCannotOverrideBlock === true;
+  const blockedCount = counts === null ? null : readNumber(counts, "blocked");
+  const blockedCandidates = candidates.filter((c) => readString(c, "finalOperatorVerdict") === "blocked");
+  return html`
+    ${RiskNotice({
+      tone: safe && (blockedCount ?? 0) === 0 ? "info" : "caution",
+      title: safe
+        ? `Sniper dry-run campaign — ${num(readNumber(rec, "candidateCount"))} candidate(s); LIVE SENDING DISABLED`
+        : "Campaign is missing its no-send / no-override safety literals — do NOT trust this artifact",
+      body: html`A no-send comparison of candidates across the paper / dry-run evidence already
+        gathered. Live sending is <strong>${liveSendStatus}</strong> by policy; this artifact is
+        structurally incapable of reporting a live send, a signature, or an armed state. Each
+        candidate's verdict is re-derived from risk / build / simulation / preflight evidence — a
+        candidate score is <strong>never</strong> read by the derivation, so a high score can never
+        override a blocker. <code>watch</code> is the best a candidate reaches: it means keep
+        monitoring, never ready or safe to trade.`,
+    })}
+    ${kvSection("Campaign", undefined, [
+      { term: "id", detail: code(campaignId) },
+      { term: "mode / network", detail: text(`${readString(rec, "mode") ?? DASH} / ${readString(rec, "network") ?? DASH}`) },
+      { term: "live-send status", detail: text(liveSendStatus ?? DASH) },
+      {
+        term: "verdict tally",
+        detail: counts === null
+          ? text(DASH)
+          : text(`watch ${num(readNumber(counts, "watch"))} · review ${num(readNumber(counts, "review"))} · BLOCKED ${num(readNumber(counts, "blocked"))} · insufficient ${num(readNumber(counts, "insufficientEvidence"))}`),
+      },
+    ])}
+    ${tableSection({
+      title: `Candidates (${String(candidates.length)})`,
+      description: "Ranked / risked / quoted / dry-run comparison. A blocked candidate stays blocked no matter the score.",
+      columns: [
+        { header: "Verdict" }, { header: "Candidate" }, { header: "Mint" }, { header: "Score" }, { header: "Risk" },
+        { header: "Quote" }, { header: "Build" }, { header: "Sim" }, { header: "Preflight" }, { header: "RC" },
+      ],
+      rows: candidates.slice(0, 100).map((c) => [
+        code(readString(c, "finalOperatorVerdict")),
+        code(readString(c, "candidateId")),
+        text(readString(c, "mint") ?? DASH),
+        text(num(readNumber(c, "score"))),
+        text(readString(c, "riskDecision") ?? DASH),
+        text(readString(c, "quoteStatus") ?? DASH),
+        text(readString(c, "buildStatus") ?? DASH),
+        text(readString(c, "simulationStatus") ?? DASH),
+        text(readString(c, "preflightVerdict") ?? DASH),
+        text(readString(c, "releaseCandidateVerdict") ?? DASH),
+      ]),
+      empty: "No candidates.",
+    })}
+    ${blockedCandidates.length === 0 ? "" : Section({
+      title: `Blocked candidates (${String(blockedCandidates.length)})`,
+      description: "The blockers below are derived from the evidence — never overridable by a score.",
+      body: html`<ul class="sm-bullets sm-bullets--plain">${blockedCandidates.map((c) => {
+        const blockers = readStringArray(c, "blockers");
+        return html`<li>${code(readString(c, "candidateId"))}: ${blockers.items.length > 0 ? blockers.items.join("; ") : DASH}</li>`;
+      })}</ul>`,
+    })}
+    ${stages.length === 0 ? "" : tableSection({
+      title: "Stage coverage",
+      description: "How many candidates carry evidence for each pipeline stage.",
+      columns: [{ header: "Stage" }, { header: "Covered" }],
+      rows: stages.map((s) => [
+        code(readString(s, "stage")),
+        text(`${num(readNumber(s, "candidatesCovered"))} / ${num(readNumber(s, "candidateCount"))}`),
+      ]),
+      empty: "No stages.",
+    })}
+    ${Section({ title: "Next safe action", body: html`<p>${readString(rec, "nextSafeAction") ?? DASH}</p>` })}
+    ${refs.total === 0 ? "" : Section({
+      title: `Evidence references (${String(refs.total)})`,
+      body: html`<ul class="sm-bullets sm-bullets--plain">${refs.items.map((l) => html`<li>${code(l)}</li>`)}</ul>`,
+    })}
+    ${caveats.total === 0 ? "" : Section({
+      title: `Caveats (${String(caveats.total)})`,
+      body: html`<ul class="sm-bullets sm-bullets--plain">${caveats.items.map((c) => html`<li>${c}</li>`)}</ul>`,
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
 function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml | null {
   switch (schema) {
     case "backtest.report.v1":
@@ -3924,6 +4092,10 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderPhase7MicrotradePreflightView(rec);
     case "sniper.operator_demo.manifest.v1":
       return renderSniperOperatorDemoView(rec);
+    case "sniper.watchlist.v1":
+      return renderSniperWatchlistView(rec);
+    case "sniper.dryrun.campaign.v1":
+      return renderSniperDryRunCampaignView(rec);
     case "execution.readiness.report.v1":
       return renderExecutionReadinessView(rec);
     case "execution.devnet.rehearsal.report.v1":

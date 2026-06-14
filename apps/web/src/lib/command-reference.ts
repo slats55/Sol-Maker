@@ -538,6 +538,20 @@ export const COMMANDS: readonly CommandRef[] = [
     readsChain: false,
   },
   {
+    command: "paper:sniper:watchlist:prepare",
+    summary:
+      "The S104-C operator watchlist (sniper.watchlist.v1): create / normalize a list of candidate mints to monitor by merging an existing watchlist, a candidate list, and/or --add <mint[=label]> entries (deduped by mint; mints validated as public keys, secret-length input refused). A status (watch / review / blocked / archived) is bookkeeping ONLY — never a trade signal and never trade readiness. LOCAL-ONLY: no RPC, network, or wallet; writes nothing unless --out.",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
+  {
+    command: "paper:sniper:campaign:run",
+    summary:
+      "The S104-C dry-run campaign (sniper.dryrun.campaign.v1): COMPARE candidates across the evidence already gathered (--score, --preflight, --risk <mint=path>, --routequote, --release-candidate <mint=path>, joined BY MINT) into a no-send campaign folder. Each candidate's verdict (watch / review / blocked / insufficient-evidence) is RE-DERIVED — a high score can NEVER override a blocker, and missing evidence shows as insufficient-evidence. liveSendStatus is pinned disabled; LOCAL-ONLY (no RPC / network / wallet / signer / send).",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
+  {
     command: "execution:session:status",
     summary:
       "S96 read-only session accounting status: the latest execution session's ledger entries and the continuation decision a NEW devnet attempt would face (allowed only after reconciled / not-sent / funding-blocked / an explicit audited acknowledgment). Writes nothing unless --out.",
