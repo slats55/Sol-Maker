@@ -850,6 +850,16 @@ pnpm soulmaker paper:sniper:alpha:report --campaign runs/alpha/campaign.json --p
 pnpm soulmaker paper:sniper:alpha:history --runs-dir runs --out runs/alpha-history.json
 pnpm soulmaker paper:sniper:alpha:history --run before=runs/alpha-before --run after=runs/alpha-after --out runs/alpha-history.json
 
+# Sprint 107 — ALPHA HISTORY DIFF: paper:sniper:alpha:history:diff compares two no-send sniper.alpha_history.v1
+# rollups (--base / --next; a path may be a folder holding alpha-history.json) into sniper.alpha_history.diff.v1.
+# It reports MOVEMENT only — runs added/removed/changed (keyed by runRef), per-run candidate-count + verdict-count
+# + provider + provenance deltas, the aggregate verdict / provider-health / evidence-provenance rollup movement,
+# the blocker-reason frequency movement, the Phase 7 posture movement, plus a one-line operator summary. It NEVER
+# re-derives a verdict; both inputs are re-validated + deep-scanned and a malformed / live-authorizing rollup is
+# refused. "Movement is not momentum" — never a buy signal, never a profitability claim. LOCAL-ONLY — live trading
+# stays DISABLED, authorizes nothing. --fail-on-worsened gates CI when the aggregate blocked count rose.
+pnpm soulmaker paper:sniper:alpha:history:diff --base runs/alpha-history-mon.json --next runs/alpha-history-tue.json --out runs/alpha-history-diff.json
+
 # Sprint 106 — STRATEGY INTELLIGENCE: paper:sniper:strategy:intel projects a campaign (--campaign) +
 # per-mint token:risk reports (--risk <mint=path>) into read-only per-candidate intelligence cards — the
 # notable risk flags by NAME (freeze/mint authority, Token-2022 risks, holder concentration, mutable

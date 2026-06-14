@@ -52,6 +52,7 @@ const EXPECTED_COMMANDS: readonly string[] = [
   "paper:sniper:campaign:diff",
   "paper:sniper:alpha:report",
   "paper:sniper:alpha:history",
+  "paper:sniper:alpha:history:diff",
   "paper:sniper:strategy:intel",
   "paper:phase6:prereqs",
   "paper:phase6:intent:plan",

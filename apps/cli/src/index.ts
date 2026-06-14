@@ -73,6 +73,7 @@ import {
   paperSniperCampaignDiffReport,
   paperSniperAlphaReportReport,
   paperSniperAlphaHistoryReport,
+  paperSniperAlphaHistoryDiffReport,
   paperSniperStrategyIntelReport,
   executionSessionStatusReport,
   executionSessionReconcileReport,
@@ -3733,6 +3734,35 @@ program
       if (exitCode !== 0) process.exitCode = exitCode;
     },
   );
+
+program
+  .command("paper:sniper:alpha:history:diff")
+  .description(
+    "Sprint 107 alpha history diff: compare two `sniper.alpha_history.v1` rollups (--base / --next; a path may be a folder holding alpha-history.json) into `sniper.alpha_history.diff.v1`. Reports MOVEMENT only — runs added / removed / changed (keyed by runRef), per-run candidate-count + verdict-count + provider + provenance deltas, the aggregate verdict / provider-health / evidence-provenance rollup movement, the blocker-reason frequency movement, and the Phase 7 posture movement, plus a one-line operator summary. It NEVER re-derives or overrides a history's counts and authorizes NOTHING; both inputs are re-validated and deep-scanned and a malformed or live-authorizing rollup is refused. liveTradingStatus is pinned disabled and the diff can NEVER report a live send. LOCAL-ONLY (no RPC / network / wallet / signer / send)",
+  )
+  .option("--base <path>", "the earlier sniper.alpha_history.v1 file (or a folder holding alpha-history.json)")
+  .option("--next <path>", "the later sniper.alpha_history.v1 file (or a folder holding alpha-history.json)")
+  .option("--diff-id <label>", "operator label echoed into the diff")
+  .option("--json", "emit the diff as stable JSON")
+  .option("--out <path>", "write ONLY the diff JSON to this path (refused if it exists without --force)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-worsened", "exit non-zero when the aggregate blocked count rose across the two histories")
+  .action((opts: { base?: string; next?: string; diffId?: string; json?: boolean; out?: string; force?: boolean; failOnWorsened?: boolean }) => {
+    const { text, exitCode } = paperSniperAlphaHistoryDiffReport(
+      {},
+      {
+        basePath: opts.base,
+        nextPath: opts.next,
+        diffId: opts.diffId,
+        json: Boolean(opts.json),
+        outPath: opts.out,
+        force: Boolean(opts.force),
+        failOnWorsened: Boolean(opts.failOnWorsened),
+      },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
 
 program
   .command("paper:sniper:strategy:intel")

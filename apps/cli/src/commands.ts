@@ -263,9 +263,12 @@ import {
   type SniperAlphaRunEvidenceProvenance,
   type SniperAlphaRunReport,
   buildSniperAlphaHistory,
+  validateSniperAlphaHistory,
   formatSniperAlphaHistory,
   type SniperAlphaHistoryRunInput,
   type SniperAlphaHistoryInvalidArtifactInput,
+  diffSniperAlphaHistories,
+  formatSniperAlphaHistoryDiff,
   buildSniperStrategyIntelligence,
   formatSniperStrategyIntelligence,
   type SniperStrategyRiskInput,
@@ -9503,6 +9506,96 @@ export function paperSniperAlphaHistoryReport(
   const lines = [formatSniperAlphaHistory(history, { label: opts.historyId })];
   if (opts.outPath) lines.push("", `wrote: ${resolvePath(ctx, opts.outPath)}`);
   if (gateNotes.length > 0) lines.push("", ...gateNotes);
+  return { text: redactString(lines.join("\n")), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 107 — `paper:sniper:alpha:history:diff`: compare two no-send alpha
+//   history rollups (sniper.alpha_history.v1) into sniper.alpha_history.diff.v1.
+//   Pure read of two artifacts (a path may also be a folder holding
+//   alpha-history.json); reports MOVEMENT only — runs added / removed / changed,
+//   per-run verdict-count + provider + provenance deltas, the aggregate verdict /
+//   provider / provenance rollup movement, the blocker-reason frequency movement,
+//   and the Phase 7 posture movement. It NEVER re-derives a verdict and authorizes
+//   nothing; both inputs are re-validated + deep-scanned and a live-authorizing one
+//   is refused. LOCAL-ONLY: no RPC, no network, no wallet, no signer, no send.
+// ---------------------------------------------------------------------------
+
+const ALPHA_HISTORY_DIFF_FILE = "alpha-history.json";
+
+export interface PaperSniperAlphaHistoryDiffCommandOptions {
+  /** The earlier sniper.alpha_history.v1 file (or a folder holding alpha-history.json). */
+  basePath?: string;
+  /** The later sniper.alpha_history.v1 file (or a folder holding alpha-history.json). */
+  nextPath?: string;
+  diffId?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit non-zero when any candidate-run moved into a blocked state (aggregate blocked rose). */
+  failOnWorsened?: boolean;
+}
+
+/** Resolve a --base/--next path that may be a file or a folder holding alpha-history.json. */
+function resolveAlphaHistoryFile(ctx: CommandContext, sourcePath: string): string {
+  const resolved = resolvePath(ctx, sourcePath);
+  let isDir = false;
+  try {
+    isDir = statSync(resolved).isDirectory();
+  } catch {
+    isDir = false;
+  }
+  return isDir ? join(resolved, ALPHA_HISTORY_DIFF_FILE) : resolved;
+}
+
+/**
+ * `soulmaker paper:sniper:alpha:history:diff` — diff two `sniper.alpha_history.v1` rollups into a
+ * deterministic `sniper.alpha_history.diff.v1`. Reads the two named files only (a folder resolves to its
+ * `alpha-history.json`) — NO RPC / network / wallet / signer / send. Both inputs are re-validated and
+ * deep-scanned; a malformed or live-authorizing rollup is refused. Reports movement only; live trading
+ * stays disabled and the diff can never report a live send.
+ */
+export function paperSniperAlphaHistoryDiffReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperAlphaHistoryDiffCommandOptions = {},
+): CliReport {
+  if (!opts.basePath || !opts.nextPath) {
+    return { text: "Refusing: --base <alpha-history.json> and --next <alpha-history.json> are both required.", exitCode: 1 };
+  }
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+  }
+  let diff;
+  try {
+    const base = validateSniperAlphaHistory(readJsonValue(ctx, resolveAlphaHistoryFile(ctx, opts.basePath), "base alpha history"));
+    const next = validateSniperAlphaHistory(readJsonValue(ctx, resolveAlphaHistoryFile(ctx, opts.nextPath), "next alpha history"));
+    diff = diffSniperAlphaHistories({
+      diffId: opts.diffId ?? null,
+      comparedAt: null,
+      base,
+      next,
+      baseRef: basename(opts.basePath),
+      nextRef: basename(opts.nextPath),
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    try {
+      writeFileSync(resolvePath(ctx, opts.outPath), JSON.stringify(redactValue(diff), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the diff to ${resolvePath(ctx, opts.outPath)}`), exitCode: 1 };
+    }
+  }
+
+  // Honest gate: a rising aggregate blocked count is the "worsened" signal for a rollup-vs-rollup diff.
+  const exitCode = opts.failOnWorsened && diff.summary.aggregateBlockedDelta > 0 ? 1 : 0;
+  if (opts.json) return { text: JSON.stringify(redactValue(diff), null, 2), exitCode };
+  const lines = [formatSniperAlphaHistoryDiff(diff, { label: opts.diffId })];
+  if (opts.outPath) lines.push("", `wrote: ${resolvePath(ctx, opts.outPath)}`);
+  if (exitCode !== 0) lines.push("", `--fail-on-worsened: aggregate blocked rose by ${diff.summary.aggregateBlockedDelta} across the two histories.`);
   return { text: redactString(lines.join("\n")), exitCode };
 }
 

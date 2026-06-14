@@ -755,6 +755,34 @@ export type {
 } from "./alpha-history.js";
 
 export {
+  diffSniperAlphaHistories,
+  validateSniperAlphaHistoryDiff,
+  formatSniperAlphaHistoryDiff,
+  SniperAlphaHistoryDiffError,
+  SNIPER_ALPHA_HISTORY_DIFF_SCHEMA_VERSION,
+  SNIPER_ALPHA_HISTORY_DIFF_BANNER,
+  SNIPER_ALPHA_HISTORY_DIFF_DISCLAIMERS,
+  SNIPER_ALPHA_HISTORY_DIFF_RUN_STATUSES,
+  SNIPER_ALPHA_HISTORY_DIFF_LIVE_TRADING_STATUS,
+} from "./alpha-history-diff.js";
+
+export type {
+  SniperAlphaHistoryDiffRunStatus,
+  DiffSniperAlphaHistoriesInput,
+  SniperAlphaHistoryMovementTriple,
+  SniperAlphaHistoryProviderRollupMovement,
+  SniperAlphaHistoryVerdictMovement,
+  SniperAlphaHistoryRunChange,
+  SniperAlphaHistoryBlockerReasonMovement,
+  SniperAlphaHistoryPhase7PostureMovement,
+  SniperAlphaHistoryDiffRunIdentity,
+  SniperAlphaHistoryDiffSummary,
+  SniperAlphaHistoryDiffSensitiveScan,
+  SniperAlphaHistoryDiff,
+  FormatSniperAlphaHistoryDiffOptions,
+} from "./alpha-history-diff.js";
+
+export {
   buildSniperStrategyIntelligence,
   validateSniperStrategyIntelligence,
   formatSniperStrategyIntelligence,
