@@ -14,7 +14,12 @@ import { mkdtempSync, existsSync, readFileSync, readdirSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { validatePhase7AuthorizationAudit, validatePhase7HumanSignoff, validateDevnetFundingStatus } from "@soulmaker/execution";
-import { validateSniperOperatorDemoManifest as validateManifest, validateMainnetDryRunReleaseCandidate as validateRc } from "@soulmaker/sniper";
+import {
+  validateSniperOperatorDemoManifest as validateManifest,
+  validateMainnetDryRunReleaseCandidate as validateRc,
+  validateSniperWatchlist,
+  validateSniperDryRunCampaign,
+} from "@soulmaker/sniper";
 import { paperSniperOperatorDemoReport } from "./commands.js";
 
 function withTmp<T>(fn: (tmp: string) => T): T {
@@ -37,10 +42,10 @@ describe("paper:sniper:operator-demo", () => {
       expect(r.exitCode, r.text.slice(0, 600)).toBe(0);
       const manifest = validateManifest(JSON.parse(r.text));
 
-      expect(manifest.artifactCount).toBe(5);
+      expect(manifest.artifactCount).toBe(7);
       expect(manifest.realReadonlyCount).toBe(2);
       expect(manifest.fixtureCount).toBe(1);
-      expect(manifest.fictionalExampleCount).toBe(2);
+      expect(manifest.fictionalExampleCount).toBe(4); // candidate + release-candidate + watchlist + campaign
       expect(manifest.allArtifactsValid).toBe(true);
       expect(manifest.liveExecutionDisabled).toBe(true);
       expect(manifest.neverSends).toBe(true);
@@ -64,6 +69,12 @@ describe("paper:sniper:operator-demo", () => {
       const funding = validateDevnetFundingStatus(JSON.parse(readFileSync(join(dir, "devnet-funding-status.json"), "utf8")));
       expect(funding.fundingSourceStatus).toBe("unfunded"); // honest funding-blocked fixture
       validateRc(JSON.parse(readFileSync(join(dir, "release-candidate.json"), "utf8")));
+      // S104-C operator workflow artifacts: a watchlist + a no-send campaign comparing the candidates.
+      validateSniperWatchlist(JSON.parse(readFileSync(join(dir, "watchlist.json"), "utf8")));
+      const campaign = validateSniperDryRunCampaign(JSON.parse(readFileSync(join(dir, "campaign.json"), "utf8")));
+      expect(campaign.liveSendStatus).toBe("disabled");
+      // The demo campaign shows a re-derived spread (watch / review / blocked) — never authorizing a trade.
+      expect(campaign.verdictCounts.blocked).toBeGreaterThanOrEqual(1);
 
       // Every showcased stage points at a present artifact role.
       const roles = new Set(manifest.artifacts.map((a) => a.role));

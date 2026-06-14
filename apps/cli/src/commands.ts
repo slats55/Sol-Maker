@@ -247,6 +247,7 @@ import {
   type SniperWatchlistEntryInput,
   type SniperWatchlistStatus,
   buildSniperDryRunCampaign,
+  validateSniperDryRunCampaign,
   formatSniperDryRunCampaign,
   SNIPER_DRYRUN_CAMPAIGN_SCHEMA_VERSION,
   type SniperDryRunCampaign,
@@ -7271,6 +7272,8 @@ export function paperSniperOperatorDemoReport(
     "devnet-funding-status.json",
     "candidates.json",
     "release-candidate.json",
+    "watchlist.json",
+    "campaign.json",
     OPERATOR_DEMO_MANIFEST_FILE,
     OPERATOR_DEMO_README_FILE,
   ];
@@ -7410,6 +7413,88 @@ export function paperSniperOperatorDemoReport(
     "a no-send mainnet dry-run release candidate (fictional mints) folding in candidate ranking, risk, quote score, tx build, tx inspection, simulation, and readiness",
   );
 
+  // f/g) Operator watchlist + dry-run campaign — FICTIONAL-EXAMPLE, built over the SAME fictional
+  // candidate mints copied above so the demo shows the S104-C operator workflow end to end.
+  {
+    let ficCandidates: Array<{ candidateId: string; mint: string }> = [];
+    try {
+      const raw = readJsonValue(inner, "candidates.json", "demo candidates");
+      if (isPlainObject(raw) && Array.isArray(raw.candidates)) {
+        ficCandidates = (raw.candidates as unknown[])
+          .filter((c): c is Record<string, unknown> => isPlainObject(c) && typeof c.mint === "string")
+          .map((c) => ({ candidateId: typeof c.candidateId === "string" ? c.candidateId : String(c.mint), mint: String(c.mint) }));
+      }
+    } catch {
+      ficCandidates = [];
+    }
+
+    // f) Watchlist — every fictional candidate, status watch (bookkeeping only).
+    {
+      let valid = false;
+      let schemaVersion: string | null = null;
+      try {
+        const watchlist = normalizeSniperWatchlist({
+          watchlistId: "operator-demo-watchlist",
+          sourceLabel: "operator demo (fictional)",
+          entries: ficCandidates.map((c) => ({ entryId: c.candidateId, mint: c.mint, status: "watch", provider: "operator-demo" })),
+        });
+        writeFileSync(join(outDir, "watchlist.json"), JSON.stringify(redactValue(watchlist), null, 2) + "\n");
+        validateSniperWatchlist(readJsonValue(inner, "watchlist.json", "demo watchlist"));
+        valid = true;
+        schemaVersion = watchlist.schemaVersion;
+      } catch {
+        valid = false;
+      }
+      artifacts.push({
+        role: "watchlist",
+        fileName: "watchlist.json",
+        schemaVersion,
+        evidenceClass: "fictional-example",
+        present: existsSync(join(outDir, "watchlist.json")),
+        valid,
+        summary: "a fictional operator watchlist of the candidate mints to monitor (a status is bookkeeping only, never trade readiness)",
+      });
+    }
+
+    // g) Dry-run campaign — representative mixed verdicts (watch / review / blocked) over the same set.
+    {
+      let valid = false;
+      let schemaVersion: string | null = null;
+      try {
+        const candidates: SniperDryRunCampaignCandidateInput[] = ficCandidates.map((c, i) => {
+          const base: SniperDryRunCampaignCandidateInput = { candidateId: c.candidateId, mint: c.mint, watchlistStatus: "watch" };
+          if (i === 0) {
+            return { ...base, score: 90, riskDecision: "PASS_FOR_PAPER_EVALUATION", preflightVerdict: "pass", quoteStatus: "observed", buildStatus: "succeeded", simulationStatus: "simulated-ok", releaseCandidateVerdict: "dryrun-complete-blocked-live" };
+          }
+          if (i === 1) return { ...base, score: 60, riskDecision: "CAUTION", preflightVerdict: "warn" };
+          if (i === 2) return { ...base, score: 80, riskDecision: "REJECT", preflightVerdict: "fail" };
+          return base;
+        });
+        const campaign = buildSniperDryRunCampaign({
+          campaignId: "operator-demo-campaign",
+          mode: "mainnet-dry-run",
+          candidates,
+          artifactRefs: ["watchlist.json", "release-candidate.json"],
+        });
+        writeFileSync(join(outDir, "campaign.json"), JSON.stringify(redactValue(campaign), null, 2) + "\n");
+        validateSniperDryRunCampaign(readJsonValue(inner, "campaign.json", "demo campaign"));
+        valid = true;
+        schemaVersion = campaign.schemaVersion;
+      } catch {
+        valid = false;
+      }
+      artifacts.push({
+        role: "dryrun-campaign",
+        fileName: "campaign.json",
+        schemaVersion,
+        evidenceClass: "fictional-example",
+        present: existsSync(join(outDir, "campaign.json")),
+        valid,
+        summary: "a fictional no-send dry-run campaign comparing the candidates (watch / review / blocked verdicts re-derived; a score never overrides a blocker; live sending pinned disabled)",
+      });
+    }
+  }
+
   // The pipeline stages the demo showcases, each evidenced by one of the artifacts above.
   const stages: OperatorDemoStage[] = [
     { stage: "candidate-ranking", description: "candidates scored 0-100 and ranked (intelligence only; never a buy signal)", evidencedBy: "mainnet-dry-run-release-candidate" },
@@ -7421,6 +7506,8 @@ export function paperSniperOperatorDemoReport(
     { stage: "readiness", description: "the fourteen-condition readiness checklist (verdict always blocked)", evidencedBy: "mainnet-dry-run-release-candidate" },
     { stage: "release-candidate", description: "the no-send release candidate verdict (live-send pinned disabled)", evidencedBy: "mainnet-dry-run-release-candidate" },
     { stage: "candidate-input", description: "the fictional candidate list that seeds the ranking", evidencedBy: "candidate-input" },
+    { stage: "watchlist", description: "the S104-C operator watchlist of candidate mints to monitor (a status is bookkeeping only, never trade readiness)", evidencedBy: "watchlist" },
+    { stage: "dryrun-campaign", description: "the S104-C no-send dry-run campaign comparing candidates across score / risk / quote / dry-run evidence (verdicts re-derived; a score never overrides a blocker)", evidencedBy: "dryrun-campaign" },
     { stage: "phase7-authorization-audit", description: "the read-only Phase 7 authorization audit verdict", evidencedBy: "phase7-authorization-audit" },
     { stage: "phase7-signoff", description: "the blank human sign-off template (the future authorization mechanism)", evidencedBy: "phase7-human-signoff" },
     { stage: "devnet-funding-status", description: "the devnet funding/proof status for the throwaway key", evidencedBy: "devnet-funding-status" },
