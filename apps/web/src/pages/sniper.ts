@@ -164,9 +164,9 @@ function alphaWorkflowSection(): RawHtml {
     },
     {
       command:
-        "pnpm soulmaker paper:sniper:campaign:auto-run --candidates runs/alpha/candidates.json --mode mainnet-dry-run --allow-readonly-network --check-providers --out runs/alpha",
+        "pnpm soulmaker paper:sniper:campaign:auto-run --candidates runs/alpha/candidates.json --mode mainnet-dry-run --allow-readonly-network --check-providers --rpc-url <RPC_URL> --out runs/alpha",
       summary:
-        "Run the live-read-only auto campaign: it checks providers, then gathers deep risk + route quotes itself. An unreachable provider SKIPS its stage as honest evidence — it never fakes a result and never kills the run. No send, no signer, no key.",
+        "Run the live-read-only auto campaign: it checks providers, then gathers deep risk + route quotes itself. An unreachable provider SKIPS its stage as honest evidence — it never fakes a result and never kills the run. --rpc-url drives the provider probe, deep risk, AND simulation at the SAME read-only endpoint (a key in the URL is never printed). No send, no signer, no key.",
     },
     {
       command: "pnpm soulmaker paper:sniper:campaign:diff --before runs/prev/campaign.json --after runs/alpha/campaign.json --out runs/alpha/campaign-diff.json",
@@ -210,8 +210,10 @@ function alphaWorkflowSection(): RawHtml {
           is <strong>honest evidence</strong>, never a candidate risk verdict — and the campaign skips that stage
           rather than faking a result. Default endpoints are public and keyless; a key embedded in a custom
           <code>--rpc-url</code> / <code>--jupiter-url</code> is <strong>never printed</strong> (every endpoint is
-          reduced to its host). <code>canRunLiveReadonlyCampaign</code> means only that the read-only network is
-          reachable — it <strong>never</strong> means a trade is authorized.`,
+          reduced to its host). An explicit <code>--rpc-url</code> is honored consistently — the doctor probe, the
+          deep-risk read, and the simulation all use that <em>same</em> endpoint (flag &gt; <code>SOULMAKER_RPC_URL</code>
+          &gt; default), so the gathered evidence is internally consistent. <code>canRunLiveReadonlyCampaign</code>
+          means only that the read-only network is reachable — it <strong>never</strong> means a trade is authorized.`,
       })}
       <div class="sm-cmdgrid">
         ${commands.map(

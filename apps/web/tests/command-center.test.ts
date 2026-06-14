@@ -230,6 +230,23 @@ describe("the static Sniper Command Center page", () => {
     expect(page).not.toContain("ready to ape");
     expect(page).not.toContain("live ready");
   });
+
+  it("carries the no-send alpha workflow with its commands and a LIVE TRADING DISABLED banner (S105-B/C)", () => {
+    // The operator alpha workflow section with its real command blocks.
+    expect(page).toContain("Operator alpha workflow");
+    expect(page).toContain("paper:sniper:provider:doctor");
+    expect(page).toContain("paper:sniper:campaign:auto-run");
+    expect(page).toContain("paper:sniper:alpha:report");
+    // The live-disabled framing appears (no green live state anywhere on the page).
+    expect(page).toContain("LIVE TRADING DISABLED");
+  });
+
+  it("documents the S105-C --rpc-url consistency (same endpoint for doctor / deep risk / simulation)", () => {
+    expect(page).toContain("--rpc-url");
+    // The consistency claim is stated, and the precedence is honest.
+    expect(page).toMatch(/same endpoint|same.{0,12}read-only endpoint/i);
+    expect(page).toContain("SOULMAKER_RPC_URL");
+  });
 });
 
 describe("loadSampleDryRun", () => {
