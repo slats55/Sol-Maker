@@ -1235,6 +1235,27 @@ end-to-end; live trading does not begin until Sprint 104, separately authorized 
 - **S105** — bounded live sniper session (attended, loss-capped, kill-switch rehearsed).
 - **S106+** — production hardening: latency, provider failover, strategy optimization.
 
+## Sprint 105-A — live-read-only auto campaign (the alpha, no-send)
+
+Delivered the **safe track** the S104-C plan named: a real alpha operator workflow that is still
+**no-send / no-signer / no-live-trading**. This is distinct from the gated live "S105" below — nothing
+here sends.
+
+- `paper:sniper:campaign:auto-run` GATHERS the safe read-only evidence itself across candidates (Rust
+  candidate scoring offline, deep risk, route-quote fetch + score, and an unsigned build dry-run +
+  simulation in `--mode mainnet-dry-run` with the explicit `--allow-readonly-network` opt-in) and
+  writes a no-send alpha folder: `sniper.readonly_campaign.plan.v1` + `sniper.dryrun.campaign.v1` +
+  `sniper.alpha_run.report.v1` + per-candidate evidence + `RUN_SUMMARY.md`. A risk REJECT
+  short-circuits the candidate's downstream stages; an unavailable provider / Rust engine is recorded
+  honestly, never faked; the network candidate count is bounded.
+- `paper:sniper:campaign:diff` (`sniper.dryrun.campaign.diff.v1`) and `paper:sniper:alpha:report`
+  (`sniper.alpha_run.report.v1`) — pure projections that authorize nothing.
+- Command-center typed views for all three schemas (LIVE TRADING DISABLED banner); the operator demo
+  ships the full alpha workflow. See [docs/ALPHA_RELEASE_CHECKLIST.md](ALPHA_RELEASE_CHECKLIST.md).
+- **All Phase 7 locks intact:** the audit stays `authorized-for-design-only` and the micro-trade
+  preflight stays `blocked-missing-signoff`. The written human sign-off is still the only live blocker;
+  live trading remains 0% by policy.
+
 ## Definition of done (every phase)
 
 1. `pnpm check` (typecheck + lint + test) is green.

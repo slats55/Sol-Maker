@@ -248,7 +248,62 @@ artifact, and pins `liveExecutionDisabled: true` / `neverSends: true`. The folde
 the inspector (`pnpm web:inspect --dir <dir>`) and the `/sniper` command center carries a calm Phase 7
 posture section. Nothing in the demo sends, signs, or trades — it is a "look what Sol Maker can do"
 exhibit, not a live bot. As of S104-C the demo also ships a fictional `watchlist.json` and
-`campaign.json`, so the operator watchlist → campaign workflow below is visible in the demo too.
+`campaign.json`, so the operator watchlist → campaign workflow below is visible in the demo too. As of
+S105-A it additionally ships `readonly-campaign-plan.json`, `campaign-diff.json`, and
+`alpha-report.json` — the full alpha workflow, all labelled `fictional-example`.
+
+## Sprint 105-A — live-read-only auto campaign + diff + alpha report
+
+`paper:sniper:campaign:run` (above) aggregates evidence the operator already produced. **S105-A adds
+`paper:sniper:campaign:auto-run`, which GATHERS the safe read-only evidence ITSELF** across many
+candidates and assembles a no-send alpha folder. It is the alpha operator workflow — and it still never
+sends, signs, or loads a key.
+
+Per candidate it runs (each stage isolated; a failure is recorded honestly and the run continues):
+
+1. **candidate scoring** — a `sniper.score.input.v1` bundle scored by the Rust engine (offline,
+   intelligence only; a score never moves a verdict). Honest `unavailable` when the engine is absent.
+2. **deep risk** — `token:risk --deep` per candidate, **only with `--mode mainnet-dry-run
+   --allow-readonly-network`**; otherwise `--risk <mint=path>` is ingested or risk stays unknown.
+3. **short-circuit** — a risk **REJECT** / critical flag / Token-2022 blocker marks the candidate's
+   quote / build / simulation stages `not-attempted` and skips them.
+4. **route quote** — a live fetch + prepare + Rust quote score over the non-rejected candidates
+   (network only).
+5. **unsigned build + tx-inspect + simulation** — only when the build is fully configured (`--wallet`
+   + the explicit caps) and network is on; the build is refusal-first and **never signs or sends**.
+
+It writes `readonly-campaign-plan.json` (`sniper.readonly_campaign.plan.v1` — the constitution it bound
+itself to: allowed read-only stages only, no send / sign / arm stage, `noSend`/`noSigner`/
+`noLiveTrading` pinned), `campaign.json` (`sniper.dryrun.campaign.v1`), `alpha-report.json`
+(`sniper.alpha_run.report.v1`), `evidence-index.json`, per-candidate evidence, and `RUN_SUMMARY.md`.
+
+```
+# Offline (no network): ingest risk files; Rust scoring runs offline; network stages not-attempted.
+pnpm soulmaker paper:sniper:campaign:auto-run --watchlist runs/watchlist.json \
+  --risk <MINT>=risk.<MINT>.json --out runs/alpha
+
+# Live read-only (mainnet-dry-run): gather deep risk + quotes itself. No send, no signer.
+pnpm soulmaker paper:sniper:campaign:auto-run --candidates runs/candidates.json \
+  --mode mainnet-dry-run --allow-readonly-network --out runs/alpha
+```
+
+`paper:sniper:campaign:diff --before <a>/campaign.json --after <b>/campaign.json --out diff.json`
+(`sniper.dryrun.campaign.diff.v1`) compares two campaigns by mint — added / removed / unchanged /
+changed, score deltas, verdict transitions, and improved / worsened / newly-blocked / newly-watch — and
+**reports movement only; it never overrides a verdict and authorizes nothing**.
+
+`paper:sniper:alpha:report --campaign <c>/campaign.json` (`sniper.alpha_run.report.v1`) assembles the
+showable summary: top / blocked / insufficient-evidence candidates, stage coverage, provider + Rust
+engine health, the Phase 7 posture, and **evidence provenance** (real read-only vs fixture /
+fictional-example — never faked). It can never claim profitability or live readiness;
+`liveTradingStatus` is pinned `"disabled"`. Inspect the whole folder with
+`pnpm web:inspect --dir runs/alpha` — the command center renders the plan, the ranked campaign, the
+diff, and the alpha report under a **LIVE TRADING DISABLED** banner.
+
+**Real read-only evidence (2026-06-13):** a live `--mode mainnet-dry-run --allow-readonly-network` run
+over WSOL + USDC produced valid artifacts with `provenance: real-readonly`; in the sandbox the public
+RPC / quote providers were honestly recorded `unavailable` and both candidates fell to
+`insufficient-evidence` — the pipeline faked nothing and sent nothing. Live trading stays disabled.
 
 ## Sprint 104-C — operator watchlists + dry-run campaigns
 
