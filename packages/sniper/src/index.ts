@@ -673,3 +673,57 @@ export type {
   SniperReadonlyCampaignPlan,
   FormatSniperReadonlyCampaignPlanOptions,
 } from "./readonly-campaign-plan.js";
+
+export {
+  buildSniperAlphaRunReport,
+  validateSniperAlphaRunReport,
+  formatSniperAlphaRunReport,
+  SniperAlphaRunReportError,
+  SNIPER_ALPHA_RUN_REPORT_SCHEMA_VERSION,
+  SNIPER_ALPHA_RUN_REPORT_BANNER,
+  SNIPER_ALPHA_RUN_REPORT_DISCLAIMERS,
+  SNIPER_ALPHA_RUN_REPORT_MODES,
+  SNIPER_ALPHA_RUN_REPORT_NETWORKS,
+  SNIPER_ALPHA_RUN_EVIDENCE_PROVENANCE,
+  SNIPER_ALPHA_RUN_RUST_ENGINE_STATUSES,
+  SNIPER_ALPHA_RUN_PROVIDER_STATUSES,
+  SNIPER_ALPHA_RUN_LIVE_TRADING_STATUS,
+} from "./alpha-run-report.js";
+
+export type {
+  SniperAlphaRunReportMode,
+  SniperAlphaRunReportNetwork,
+  SniperAlphaRunEvidenceProvenance,
+  SniperAlphaRunRustEngineStatus,
+  SniperAlphaRunProviderStatus,
+  SniperAlphaRunProviderHealthInput,
+  BuildSniperAlphaRunReportInput,
+  SniperAlphaTopCandidate,
+  SniperAlphaBlockedCandidate,
+  SniperAlphaInsufficientCandidate,
+  SniperAlphaStageCoverage,
+  SniperAlphaProviderHealthSummary,
+  SniperAlphaRunReport,
+  FormatSniperAlphaRunReportOptions,
+} from "./alpha-run-report.js";
+
+export {
+  diffSniperDryRunCampaigns,
+  validateSniperDryRunCampaignDiff,
+  formatSniperDryRunCampaignDiff,
+  SniperDryRunCampaignDiffError,
+  SNIPER_DRYRUN_CAMPAIGN_DIFF_SCHEMA_VERSION,
+  SNIPER_DRYRUN_CAMPAIGN_DIFF_BANNER,
+  SNIPER_DRYRUN_CAMPAIGN_DIFF_DISCLAIMERS,
+  SNIPER_CAMPAIGN_DIFF_STATUSES,
+  SNIPER_DRYRUN_CAMPAIGN_DIFF_LIVE_SEND_STATUS,
+} from "./dryrun-campaign-diff.js";
+
+export type {
+  SniperCampaignDiffStatus,
+  DiffSniperDryRunCampaignsInput,
+  SniperCampaignCandidateChange,
+  SniperCampaignDiffSummary,
+  SniperDryRunCampaignDiff,
+  FormatSniperDryRunCampaignDiffOptions,
+} from "./dryrun-campaign-diff.js";
