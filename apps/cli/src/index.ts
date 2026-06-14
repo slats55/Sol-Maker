@@ -3462,7 +3462,7 @@ program
     (value: string, previous: string[]) => previous.concat(value),
     [] as string[],
   )
-  .option("--wallet <publicKey>", "PUBLIC key to build the unsigned dry-run for (a public key; never a secret)")
+  .option("--build-wallet <publicKey>", "PUBLIC key to build the unsigned dry-run for (a public key; never a secret)")
   .option("--slippage-bps <bps>", "slippage for the unsigned build dry-run")
   .option("--max-spend-sol <sol>", "explicit max-spend cap for the unsigned build dry-run (nothing is defaulted)")
   .option("--slippage-cap-bps <bps>", "explicit slippage cap for the unsigned build dry-run")
@@ -3489,7 +3489,7 @@ program
       amountSol?: string;
       score?: string;
       risk?: string[];
-      wallet?: string;
+      buildWallet?: string;
       slippageBps?: string;
       maxSpendSol?: string;
       slippageCapBps?: string;
@@ -3518,7 +3518,7 @@ program
           amountSol: opts.amountSol,
           scorePath: opts.score,
           risks: opts.risk,
-          wallet: opts.wallet,
+          wallet: opts.buildWallet,
           slippageBps: opts.slippageBps,
           maxSpendSol: opts.maxSpendSol,
           slippageCapBps: opts.slippageCapBps,
