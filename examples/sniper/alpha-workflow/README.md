@@ -94,6 +94,100 @@ A provider being down is **never** a candidate risk verdict.
 
 ---
 
+## C. Alpha history rollup (Sprint 106 · offline)
+
+Once you have **more than one** alpha run folder, fold them into ONE deterministic rollup. Re-run the
+offline demo (A) into two folders first, then:
+
+```sh
+# Two runs side by side (re-run step 3 twice into two dirs).
+pnpm soulmaker paper:sniper:campaign:auto-run --watchlist runs/alpha/watchlist.json --out runs/alpha-1 --force
+pnpm soulmaker paper:sniper:campaign:auto-run --watchlist runs/alpha/watchlist.json --out runs/alpha-2 --force
+
+# Roll up explicit folders by label…
+pnpm soulmaker paper:sniper:alpha:history \
+  --run day-1=runs/alpha-1 --run day-2=runs/alpha-2 \
+  --out runs/alpha-history.json
+
+# …or auto-discover every run folder under a parent.
+pnpm soulmaker paper:sniper:alpha:history --runs-dir runs --out runs/alpha-history.json --force
+
+# Inspect the rollup as a typed view.
+pnpm web:inspect --input runs/alpha-history.json
+```
+
+The `sniper.alpha_history.v1` artifact aggregates, across runs: the candidate total, the
+`watch` / `review` / `blocked` / `insufficient-evidence` tally, the provider-health and
+evidence-provenance rollups, the most common blocker reasons, and the Phase 7 postures. A
+missing / malformed / unrecognized artifact is listed under `invalidArtifacts` and **never** counted as
+a run; a run that claims live authorization is **refused**. Add `--fail-on-invalid` /
+`--fail-on-blocked` to gate CI. It authorizes nothing and can never report a live send.
+
+## D. Strategy intelligence (Sprint 106)
+
+Explain a campaign's candidates — the read-only "why a verdict + what to study next". The **offline**
+form works from the campaign alone (verdicts come from the campaign; candidates without a risk report
+read as low confidence):
+
+```sh
+pnpm soulmaker paper:sniper:strategy:intel \
+  --campaign runs/alpha/campaign.json \
+  --out runs/alpha/strategy-intel.json
+
+pnpm web:inspect --input runs/alpha/strategy-intel.json
+```
+
+To surface the notable risk flags **by name** (freeze / mint authority, Token-2022 risks, holder
+concentration, mutable metadata, thin liquidity), first gather a read-only `token:risk` report per mint
+(this is the only step that reaches a public RPC — read-only, no key, no send), then pass each by mint:
+
+```sh
+# token:risk takes the mint as a positional argument; the read-only RPC comes from SOULMAKER_RPC_URL
+# (or the keyless public default). --deep adds the holder-concentration + metadata-mutability reads.
+pnpm soulmaker token:risk So11111111111111111111111111111111111111112 --deep \
+  --json --out runs/alpha/risk.wsol.json
+pnpm soulmaker token:risk EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v --deep \
+  --json --out runs/alpha/risk.usdc.json
+
+pnpm soulmaker paper:sniper:strategy:intel \
+  --campaign runs/alpha/campaign.json \
+  --risk So11111111111111111111111111111111111111112=runs/alpha/risk.wsol.json \
+  --risk EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v=runs/alpha/risk.usdc.json \
+  --out runs/alpha/strategy-intel.json --force
+```
+
+The `sniper.strategy_intelligence.v1` artifact then surfaces, per candidate: the notable risk flags by
+name, a mint class (`wrapped-sol` / `stablecoin` / `other`), a **confidence** label (evidence
+completeness — never price direction), closed reason codes, and plain-English `whyItMatters` /
+`whatToStudyNext`. Verdicts come from the campaign's own re-derivation — a high score can **never**
+override a blocker, and a flag is shown ONLY when its risk report carries it. It is **never** a buy
+signal and **never** a profitability claim.
+
+## What "good" vs "blocked" looks like
+
+| Candidate verdict | What it means | What you should do |
+| --- | --- | --- |
+| `watch` | clean read-only evidence (risk PASS, no blocking flag) | keep on the watchlist; keep monitoring. **NOT** a buy signal |
+| `review` | a concern, or a positive clean signal is missing | re-check risk / quote / simulation before any next step |
+| `blocked` | failed a read-only gate (risk REJECT, critical flag, Token-2022 blocker, refused build, failed simulation, fail preflight) | drop or remediate; a score can never override it |
+| `insufficient-evidence` | core evidence (risk / preflight / release candidate) is missing | gather the missing evidence and re-run |
+
+A **good** offline run with the committed fixture yields a mix of `watch` and `insufficient-evidence`
+(paper mode reaches no network, so candidates without ingested `--risk` are honestly
+`insufficient-evidence`). A candidate with a critical risk flag is **blocked**. In every artifact,
+`liveTradingStatus` / `liveSendStatus` read `"disabled"` and `authorizesLiveTrading` is `false`.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `Refusing: --out … already exists` | the target file/dir is present | add `--force`, or write to a fresh path |
+| every candidate is `insufficient-evidence` | paper mode reaches no network and no `--risk` was ingested | ingest `token:risk` files via `--risk <mint>=path`, or run the live-read-only demo (B) |
+| `provider unavailable` in the doctor report | the RPC / quote endpoint is down or throttled | supply a healthier `--rpc-url` / `--jupiter-url`, or fall back to the offline demo (A) — a down provider is never a candidate risk verdict |
+| `Refusing: … is secret-shaped` | a candidate / label looks like a key | candidates carry PUBLIC mints only; never pass a private key or seed anywhere |
+| `alpha:history` shows an `invalidArtifacts` entry | a run folder lacks `campaign.json`, or it is malformed | re-generate that run with `campaign:auto-run`; the rollup never counts it as a run |
+| `strategy:intel` candidate is low-confidence | no `token:risk` report was supplied for that mint | run `token:risk --deep --json --out` for the mint and pass it via `--risk` |
+
 ## Provenance labels you will see
 
 | label | meaning |

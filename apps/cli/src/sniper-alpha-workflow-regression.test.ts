@@ -27,6 +27,8 @@ import {
   validateSniperAlphaRunReport,
   validateSniperProviderHealthReport,
   validateSniperWatchlist,
+  validateSniperAlphaHistory,
+  validateSniperStrategyIntelligence,
   buildSniperProviderHealthReport,
   type SniperProviderHealthCheckInput,
 } from "@soulmaker/sniper";
@@ -36,6 +38,8 @@ import {
   paperSniperCampaignAutoRunReport,
   paperSniperCampaignDiffReport,
   paperSniperAlphaReportReport,
+  paperSniperAlphaHistoryReport,
+  paperSniperStrategyIntelReport,
 } from "./commands.js";
 
 const WSOL = "So11111111111111111111111111111111111111112";
@@ -330,5 +334,66 @@ describe("alpha workflow regression — reliability + determinism (S105-C)", () 
     await paperSniperCampaignAutoRunReport(ctx, { candidatesPath: cands, limit: 2, outDir: out, risks: [`${WSOL}=${riskFixture("r.json", "PASS_FOR_PAPER_EVALUATION")}`] });
     const campaign = validateSniperDryRunCampaign(JSON.parse(readFileSync(join(out, "campaign.json"), "utf8")));
     expect(campaign.candidateCount).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 106 — the alpha workflow now extends to the HISTORY rollup and the
+// STRATEGY INTELLIGENCE projection. This block drives the documented demo
+// (examples/sniper/alpha-workflow/README.md sections C + D) end-to-end so the
+// operator demo can never silently drift toward live trading.
+// ---------------------------------------------------------------------------
+describe("alpha workflow regression — S106 history + strategy intelligence", () => {
+  it("alpha:history rolls up two run folders; the artifact validates, stays live-disabled, smuggles no send field", async () => {
+    const before = await runAlphaWorkflow({ provenance: "fixture" });
+    const after = await runAlphaWorkflowAfter();
+    const historyPath = join(dir, "alpha-history.json");
+    const history = paperSniperAlphaHistoryReport(ctx, {
+      runs: [`before=${before}`, `after=${after}`],
+      historyId: "regr-history",
+      outPath: historyPath,
+    });
+    expect(history.exitCode).toBe(0);
+    const rolled = validateSniperAlphaHistory(readJson("alpha-history.json"));
+    expect(rolled.runCount).toBe(2);
+    expect(rolled.invalidArtifactCount).toBe(0);
+    expect(rolled.totalCandidateCount).toBe(4);
+    assertLiveDisabled(rolled as unknown as Record<string, unknown>, "alpha-history");
+    expect(rolled.anyRunAuthorizesLiveTrading).toBe(false);
+    assertNoSendArtifact(readJson("alpha-history.json"), "alpha-history.json");
+  });
+
+  it("alpha:history lists a missing/unrecognized artifact honestly and never counts it as a run", async () => {
+    const before = await runAlphaWorkflow({ provenance: "fixture" });
+    const history = paperSniperAlphaHistoryReport(ctx, {
+      runs: [`good=${before}`, `missing=${join(dir, "does-not-exist")}`],
+      json: true,
+    });
+    expect(history.exitCode).toBe(0);
+    const rolled = JSON.parse(history.text);
+    expect(rolled.runCount).toBe(1);
+    expect(rolled.invalidArtifactCount).toBe(1);
+    expect(rolled.invalidArtifacts[0].ref).toBe("missing/campaign.json");
+  });
+
+  it("strategy:intel explains a campaign, surfaces freeze-authority by name, and stays live-disabled", async () => {
+    const out = await runAlphaWorkflow({ provenance: "fixture" });
+    const intelPath = join(dir, "strategy-intel.json");
+    const intel = paperSniperStrategyIntelReport(ctx, {
+      campaignPath: join(out, "campaign.json"),
+      risks: [`${WSOL}=${join(dir, "risk.wsol.json")}`, `${USDC}=${join(dir, "risk.usdc.json")}`],
+      intelligenceId: "regr-intel",
+      evidenceProvenance: "fixture",
+      outPath: intelPath,
+    });
+    expect(intel.exitCode).toBe(0);
+    const projected = validateSniperStrategyIntelligence(readJson("strategy-intel.json"));
+    expect(projected.candidateCount).toBe(2);
+    assertLiveDisabled(projected as unknown as Record<string, unknown>, "strategy-intel");
+    expect(projected.notAProfitabilityClaim).toBe(true);
+    const usdc = projected.candidates.find((c) => c.mint === USDC)!;
+    expect(usdc.verdict).toBe("blocked");
+    expect(usdc.notableFlags.map((f) => f.id)).toContain("freeze-authority");
+    assertNoSendArtifact(readJson("strategy-intel.json"), "strategy-intel.json");
   });
 });
