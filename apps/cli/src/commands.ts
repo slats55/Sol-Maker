@@ -261,6 +261,12 @@ import {
   type SniperAlphaRunProviderStatus,
   type SniperAlphaRunRustEngineStatus,
   type SniperAlphaRunEvidenceProvenance,
+  type SniperAlphaRunReport,
+  buildSniperAlphaHistory,
+  validateSniperAlphaHistory,
+  formatSniperAlphaHistory,
+  type SniperAlphaHistoryRunInput,
+  type SniperAlphaHistoryInvalidArtifactInput,
   diffSniperDryRunCampaigns,
   validateSniperDryRunCampaignDiff,
   formatSniperDryRunCampaignDiff,
@@ -9320,6 +9326,182 @@ export function paperSniperAlphaReportReport(ctx: CommandContext = {}, opts: Pap
   const lines = [formatSniperAlphaRunReport(alpha, { label: opts.runId })];
   if (opts.outPath) lines.push("", `wrote: ${resolvePath(ctx, opts.outPath)}`);
   return { text: redactString(lines.join("\n")), exitCode: 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 106 — `paper:sniper:alpha:history`: roll up MANY no-send alpha run
+//   folders into ONE deterministic sniper.alpha_history.v1 artifact. LOCAL-ONLY:
+//   reads campaign.json (+ optional alpha-report.json) from each run folder —
+//   no RPC, no network, no wallet, no signer, no send. Recognized-but-invalid
+//   and unrecognized artifacts are listed honestly and NEVER counted as runs.
+// ---------------------------------------------------------------------------
+
+const ALPHA_HISTORY_CAMPAIGN_FILE = "campaign.json";
+const ALPHA_HISTORY_REPORT_FILE = "alpha-report.json";
+
+export interface PaperSniperAlphaHistoryCommandOptions {
+  /** Repeatable "label=path" alpha run folders (path may also be a campaign.json file directly). */
+  runs?: string[];
+  /** Parent directory whose immediate subfolders are each an alpha run (auto-discovered by folder name). */
+  runsDir?: string;
+  historyId?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit non-zero when any artifact was invalid / unrecognized. */
+  failOnInvalid?: boolean;
+  /** Exit non-zero when any candidate-run across the history ended blocked. */
+  failOnBlocked?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:alpha:history` — fold many no-send alpha run folders into ONE deterministic
+ * `sniper.alpha_history.v1` rollup. Each run's spine is its validated `campaign.json`; its optional
+ * `alpha-report.json` enriches it with provider health / provenance / Rust / Phase 7. Reads the named
+ * folders only — NO RPC / network / wallet / signer / send. A recognized-but-invalid or unrecognized
+ * artifact is listed honestly and never counted as a run; a run that claims live authorization is
+ * refused. Live trading stays disabled; the rollup can never report a live send.
+ */
+export function paperSniperAlphaHistoryReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperAlphaHistoryCommandOptions = {},
+): CliReport {
+  const runFlags = opts.runs ?? [];
+  if (runFlags.length === 0 && !opts.runsDir) {
+    return {
+      text: "Refusing: provide at least one --run <label=path> or --runs-dir <parent> (the alpha run folders to roll up).",
+      exitCode: 1,
+    };
+  }
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) {
+      return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+  }
+
+  const runs: SniperAlphaHistoryRunInput[] = [];
+  const invalidArtifacts: SniperAlphaHistoryInvalidArtifactInput[] = [];
+
+  /** Resolve one (label, path) into a validated run input OR an invalid-artifact record. */
+  const ingestOne = (label: string, sourcePath: string): void => {
+    const resolved = resolvePath(ctx, sourcePath);
+    let isDir = false;
+    try {
+      isDir = statSync(resolved).isDirectory();
+    } catch {
+      isDir = false;
+    }
+    const campaignFile = isDir ? join(resolved, ALPHA_HISTORY_CAMPAIGN_FILE) : resolved;
+    const reportFile = isDir ? join(resolved, ALPHA_HISTORY_REPORT_FILE) : join(dirname(resolved), ALPHA_HISTORY_REPORT_FILE);
+    const campaignRef = `${label}/${ALPHA_HISTORY_CAMPAIGN_FILE}`;
+    const reportRef = `${label}/${ALPHA_HISTORY_REPORT_FILE}`;
+
+    if (!existsSync(campaignFile)) {
+      invalidArtifacts.push({ ref: campaignRef, reason: "missing recognized artifact (campaign.json)" });
+      return;
+    }
+    let campaign: SniperDryRunCampaign;
+    try {
+      campaign = validateSniperDryRunCampaign(readJsonValue(ctx, campaignFile, "campaign"));
+    } catch (err) {
+      invalidArtifacts.push({ ref: campaignRef, reason: `invalid campaign: ${(err as Error).message}` });
+      return;
+    }
+
+    let report: SniperAlphaRunReport | null = null;
+    if (existsSync(reportFile)) {
+      try {
+        report = validateSniperAlphaRunReport(readJsonValue(ctx, reportFile, "alpha report"));
+      } catch (err) {
+        invalidArtifacts.push({ ref: reportRef, reason: `invalid alpha report: ${(err as Error).message}` });
+        report = null;
+      }
+    }
+    runs.push({ runRef: label, campaign, report });
+  };
+
+  // --- explicit --run label=path entries --------------------------------------
+  for (const flag of runFlags) {
+    let label: string;
+    let path: string;
+    try {
+      const parsed = parseMintPathArg(flag);
+      label = parsed.mint;
+      path = parsed.path;
+    } catch {
+      return { text: redactString(`Refusing: --run expects "label=path" but got "${flag}".`), exitCode: 1 };
+    }
+    if (label.length === 0 || path.length === 0) {
+      return { text: redactString(`Refusing: --run expects a non-empty label AND path but got "${flag}".`), exitCode: 1 };
+    }
+    ingestOne(label, path);
+  }
+
+  // --- auto-discovered --runs-dir subfolders ----------------------------------
+  if (opts.runsDir) {
+    const parent = resolvePath(ctx, opts.runsDir);
+    let names: string[];
+    try {
+      if (!statSync(parent).isDirectory()) {
+        return { text: redactString(`Refusing: --runs-dir ${parent} is not a directory.`), exitCode: 1 };
+      }
+      names = readdirSync(parent);
+    } catch {
+      return { text: redactString(`Refusing: cannot read --runs-dir at ${parent}.`), exitCode: 1 };
+    }
+    // Deterministic order; only subfolders that contain a campaign.json are runs.
+    for (const name of [...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
+      const child = join(parent, name);
+      let childIsDir = false;
+      try {
+        childIsDir = statSync(child).isDirectory();
+      } catch {
+        childIsDir = false;
+      }
+      if (!childIsDir) continue;
+      if (!existsSync(join(child, ALPHA_HISTORY_CAMPAIGN_FILE))) continue;
+      ingestOne(name, child);
+    }
+  }
+
+  let history;
+  try {
+    history = buildSniperAlphaHistory({
+      historyId: opts.historyId ?? null,
+      generatedAt: null,
+      runs,
+      invalidArtifacts,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    try {
+      writeFileSync(resolvePath(ctx, opts.outPath), JSON.stringify(redactValue(history), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the alpha history to ${resolvePath(ctx, opts.outPath)}`), exitCode: 1 };
+    }
+  }
+
+  // Honest gates: a missing/invalid artifact or a blocked candidate-run can fail the command.
+  let exitCode = 0;
+  const gateNotes: string[] = [];
+  if (opts.failOnInvalid && history.invalidArtifactCount > 0) {
+    exitCode = 1;
+    gateNotes.push(`--fail-on-invalid: ${history.invalidArtifactCount} artifact(s) were invalid / unrecognized.`);
+  }
+  if (opts.failOnBlocked && history.aggregateVerdictCounts.blocked > 0) {
+    exitCode = 1;
+    gateNotes.push(`--fail-on-blocked: ${history.aggregateVerdictCounts.blocked} candidate-run(s) ended blocked.`);
+  }
+
+  if (opts.json) return { text: JSON.stringify(redactValue(history), null, 2), exitCode };
+  const lines = [formatSniperAlphaHistory(history, { label: opts.historyId })];
+  if (opts.outPath) lines.push("", `wrote: ${resolvePath(ctx, opts.outPath)}`);
+  if (gateNotes.length > 0) lines.push("", ...gateNotes);
+  return { text: redactString(lines.join("\n")), exitCode };
 }
 
 export interface ExecutionBuildCommandOptions {

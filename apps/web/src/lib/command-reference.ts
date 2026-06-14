@@ -580,6 +580,13 @@ export const COMMANDS: readonly CommandRef[] = [
     readsChain: false,
   },
   {
+    command: "paper:sniper:alpha:history",
+    summary:
+      "The S106 alpha history rollup (sniper.alpha_history.v1): fold MANY no-send alpha run folders into ONE deterministic rollup via --run <label=path> (repeatable) or --runs-dir <parent>. Each run's spine is its validated campaign.json (verdicts come from the campaign's own re-derivation); its optional alpha-report.json adds provider health / provenance / Rust / Phase 7. Aggregates the candidate total, the watch / review / blocked / insufficient-evidence tally, the provider-health + evidence-provenance rollups, the most common blocker reasons, and the Phase 7 postures across runs. A recognized-but-invalid or unrecognized artifact is listed honestly and NEVER counted as a run; a run claiming live authorization is refused. liveTradingStatus is pinned disabled; authorizesLiveTrading / anyRunAuthorizesLiveTrading are false. LOCAL-ONLY (no RPC / network / wallet / signer / send); --fail-on-invalid / --fail-on-blocked gate CI.",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
+  {
     command: "execution:session:status",
     summary:
       "S96 read-only session accounting status: the latest execution session's ledger entries and the continuation decision a NEW devnet attempt would face (allowed only after reconciled / not-sent / funding-blocked / an explicit audited acknowledgment). Writes nothing unless --out.",

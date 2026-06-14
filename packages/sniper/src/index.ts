@@ -729,6 +729,32 @@ export type {
 } from "./dryrun-campaign-diff.js";
 
 export {
+  buildSniperAlphaHistory,
+  validateSniperAlphaHistory,
+  formatSniperAlphaHistory,
+  SniperAlphaHistoryError,
+  SNIPER_ALPHA_HISTORY_SCHEMA_VERSION,
+  SNIPER_ALPHA_HISTORY_BANNER,
+  SNIPER_ALPHA_HISTORY_DISCLAIMERS,
+  SNIPER_ALPHA_HISTORY_LIVE_TRADING_STATUS,
+} from "./alpha-history.js";
+
+export type {
+  SniperAlphaHistoryRunInput,
+  SniperAlphaHistoryInvalidArtifactInput,
+  BuildSniperAlphaHistoryInput,
+  SniperAlphaHistoryVerdictCounts,
+  SniperAlphaHistoryProviderRollup,
+  SniperAlphaHistoryProvenanceRollup,
+  SniperAlphaHistoryRun,
+  SniperAlphaHistoryInvalidArtifact,
+  SniperAlphaHistoryBlockerFrequency,
+  SniperAlphaHistorySensitiveScan,
+  SniperAlphaHistory,
+  FormatSniperAlphaHistoryOptions,
+} from "./alpha-history.js";
+
+export {
   resolveReadonlyProviderConfig,
   ReadonlyProviderConfigError,
   READONLY_PROVIDER_MODES,

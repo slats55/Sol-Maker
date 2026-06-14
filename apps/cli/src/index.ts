@@ -72,6 +72,7 @@ import {
   paperSniperCampaignAutoRunReport,
   paperSniperCampaignDiffReport,
   paperSniperAlphaReportReport,
+  paperSniperAlphaHistoryReport,
   executionSessionStatusReport,
   executionSessionReconcileReport,
   executionSessionAcknowledgeReport,
@@ -3678,6 +3679,53 @@ program
           json: Boolean(opts.json),
           outPath: opts.out,
           force: Boolean(opts.force),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:alpha:history")
+  .description(
+    "Sprint 106 alpha history: roll up MANY no-send alpha run folders into ONE deterministic `sniper.alpha_history.v1`. Each run's spine is its validated campaign.json; its optional alpha-report.json enriches it with provider health / provenance / Rust / Phase 7. Aggregates the candidate total, the watch / review / blocked / insufficient-evidence tally, the provider-health and evidence-provenance rollups, the most common blocker reasons, and the Phase 7 postures across runs. A recognized-but-invalid or unrecognized artifact is listed honestly and NEVER counted as a run; a run that claims live authorization is refused. liveTradingStatus is pinned disabled and the rollup can NEVER report a live send. LOCAL-ONLY (no RPC / network / wallet / signer / send)",
+  )
+  .option(
+    "--run <label=path>",
+    "an alpha run to include as label=path (path is a run folder or a campaign.json file); repeatable",
+    (value: string, previous: string[]) => previous.concat(value),
+    [] as string[],
+  )
+  .option("--runs-dir <parent>", "a parent directory whose immediate subfolders (each holding a campaign.json) are auto-discovered as runs")
+  .option("--history-id <label>", "operator label echoed into the rollup")
+  .option("--json", "emit the rollup as stable JSON")
+  .option("--out <path>", "write ONLY the rollup JSON to this path (refused if it exists without --force)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-invalid", "exit non-zero when any artifact was invalid / unrecognized")
+  .option("--fail-on-blocked", "exit non-zero when any candidate-run across the history ended blocked")
+  .action(
+    (opts: {
+      run?: string[];
+      runsDir?: string;
+      historyId?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnInvalid?: boolean;
+      failOnBlocked?: boolean;
+    }) => {
+      const { text, exitCode } = paperSniperAlphaHistoryReport(
+        {},
+        {
+          runs: opts.run,
+          runsDir: opts.runsDir,
+          historyId: opts.historyId,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
+          failOnInvalid: Boolean(opts.failOnInvalid),
+          failOnBlocked: Boolean(opts.failOnBlocked),
         },
       );
       console.log(text);

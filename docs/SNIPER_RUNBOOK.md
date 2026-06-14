@@ -145,6 +145,14 @@ writes a no-send alpha folder. **Live trading stays disabled — it never sends,
    runs/alpha/alpha-report.json` (`sniper.alpha_run.report.v1`).
 5. **Inspect in the command center**: `pnpm web:inspect --dir runs/alpha` renders the plan, the ranked
    campaign, the diff, and the alpha report with a **LIVE TRADING DISABLED** banner.
+6. **Roll up many runs** (Sprint 106) — once you have several run folders, fold them into ONE history:
+   `paper:sniper:alpha:history --runs-dir runs --out runs/alpha-history.json` (or repeat
+   `--run <label=path>` per folder). It aggregates the candidate total, the
+   watch / review / blocked / insufficient-evidence tally, the provider-health + evidence-provenance
+   rollups, the most common blocker reasons, and the Phase 7 postures into a `sniper.alpha_history.v1`.
+   A missing / malformed / unrecognized artifact is listed honestly and NEVER counted as a run; a run
+   claiming live authorization is refused. `--fail-on-invalid` / `--fail-on-blocked` gate CI. It
+   authorizes nothing and can never report a live send.
 
 ## What exists now
 
@@ -220,6 +228,7 @@ invariants.
 | `paper:sniper:provider:doctor` | (none — flags / env / defaults) | `--out` only | the S105-B READ-ONLY provider readiness check — resolve the read-only provider config (`--rpc-url` / `--jupiter-url` / env > safe public defaults) and run BOUNDED read-only probes (RPC health, a tiny WSOL→USDC Jupiter quote, the Rust engine) into a `sniper.provider_health.report.v1`. REACHABILITY only (`available` / `unavailable` / `timeout` / `rate-limited` / `misconfigured` / `error` / `skipped`); a provider being down is honest evidence, NOT a candidate risk verdict. No raw endpoint printed; never sends, signs, loads a key, or builds/simulates. `--fail-on-unavailable` gates CI |
 | `paper:sniper:watchlist:prepare` | one of `--watchlist` / `--candidates` / `--add` | `--out` only | the S104-C operator watchlist — create / normalize a `sniper.watchlist.v1` by merging an existing watchlist, a candidate list, and/or `--add <mint[=label]>` entries (deduped by mint, first wins; mints validated as public keys). A status (`watch` / `review` / `blocked` / `archived`) is bookkeeping ONLY — never a trade signal, never trade readiness |
 | `paper:sniper:campaign:run` | `--candidates` or `--watchlist` | a full directory | the S104-C dry-run CAMPAIGN — COMPARE candidates across the evidence you already gathered (`--score`, `--preflight`, `--risk <mint=path>`, `--routequote`, `--release-candidate <mint=path>`, joined BY MINT) into a no-send `sniper.dryrun.campaign.v1` + `RUN_SUMMARY.md`. Each candidate's verdict (`watch` / `review` / `blocked` / `insufficient-evidence`) is RE-DERIVED — a high score can NEVER override a blocker; missing evidence shows as `insufficient-evidence`. LOCAL-ONLY; live sending pinned disabled |
+| `paper:sniper:alpha:history` | one of `--run <label=path>` (repeatable) / `--runs-dir <parent>` | `--out` only | the S106 alpha HISTORY rollup — fold MANY no-send alpha run folders into ONE deterministic `sniper.alpha_history.v1`. Each run's spine is its validated `campaign.json` (verdicts come from the campaign's own re-derivation); its optional `alpha-report.json` enriches it with provider health / provenance / Rust / Phase 7. Aggregates the candidate total, the watch / review / blocked / insufficient-evidence tally, the provider-health + evidence-provenance rollups, the most common blocker reasons, and the Phase 7 postures across runs. A recognized-but-invalid or unrecognized artifact is listed honestly and NEVER counted as a run; a run claiming live authorization is refused. LOCAL-ONLY; `liveTradingStatus` pinned disabled, `authorizesLiveTrading` / `anyRunAuthorizesLiveTrading` false. `--fail-on-invalid` / `--fail-on-blocked` gate CI |
 
 Common flags: `--json` (stable JSON), `--out <path>` + `--force` (write the artifact; refuse overwrite
 without `--force`), and command-specific `--fail-on-*` CI gates (see [CI gates](#ci-gates)).

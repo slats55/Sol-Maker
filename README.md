@@ -840,6 +840,16 @@ pnpm soulmaker paper:sniper:campaign:diff --before runs/prev/campaign.json --aft
 # plan/diff/watchlist refs). It can never claim live readiness or profitability; live trading stays DISABLED.
 pnpm soulmaker paper:sniper:alpha:report --campaign runs/alpha/campaign.json --plan runs/alpha/readonly-campaign-plan.json --out runs/alpha/alpha-report.json
 
+# Sprint 106 — ALPHA HISTORY: paper:sniper:alpha:history folds MANY no-send alpha run folders into ONE
+# deterministic sniper.alpha_history.v1 rollup (per-run mode/network/provenance, the watch/review/blocked/
+# insufficient-evidence tally, provider-health + evidence-provenance rollups, the most common blocker
+# reasons, and the Phase 7 postures across runs). Each run's spine is its validated campaign.json; a
+# missing / malformed / unrecognized artifact is listed honestly and NEVER counted as a run; a run
+# claiming live authorization is refused. LOCAL-ONLY — live trading stays DISABLED, authorizes nothing.
+# --fail-on-invalid / --fail-on-blocked gate CI.
+pnpm soulmaker paper:sniper:alpha:history --runs-dir runs --out runs/alpha-history.json
+pnpm soulmaker paper:sniper:alpha:history --run before=runs/alpha-before --run after=runs/alpha-after --out runs/alpha-history.json
+
 # Sprint 27 — PAPER SNIPER DECISIONS: fold the candidate list + preflight + optional operator rules
 # into a per-candidate SIMULATED decision — skip / watch / paper-enter / paper-reject / unknown — with
 # reasons. A paper-enter is a PAPER-ONLY decision, NOT a buy/sell order, NOT a transaction, NOT live

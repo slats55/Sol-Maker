@@ -606,6 +606,15 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
     cli: "paper:sniper:alpha:report",
   },
   {
+    id: "sniper.alpha_history.v1",
+    title: "Sniper alpha history",
+    family: "sniper",
+    stability: "stable",
+    description:
+      "The S106 no-send rollup across MANY live-read-only alpha runs: per-run mode / network / provenance, the watch / review / blocked / insufficient-evidence tally, the provider-health and evidence-provenance rollups, the most common blocker reasons, and the Phase 7 postures. Each run's spine is its own validated campaign (verdicts come from the campaign's re-derivation — a score never overrides a blocker); a recognized-but-invalid or unrecognized artifact is listed honestly and NEVER counted as a run, and a run claiming live authorization is refused. liveTradingStatus is pinned \"disabled\", authorizesLiveTrading / anyRunAuthorizesLiveTrading are false, and the closed schema refuses any signature / send result. Produced by paper:sniper:alpha:history.",
+    cli: "paper:sniper:alpha:history",
+  },
+  {
     id: "sniper.provider_health.report.v1",
     title: "Sniper provider health report",
     family: "sniper",
