@@ -171,6 +171,47 @@ describe("buildSniperAlphaHistory — determinism + stable sorting", () => {
   });
 });
 
+describe("buildSniperAlphaHistory — reliability + bounded output at scale", () => {
+  // Build N distinct runs (each a campaign with one clean + one rejected candidate).
+  function manyRuns(n: number): SniperAlphaHistoryRunInput[] {
+    const runs: SniperAlphaHistoryRunInput[] = [];
+    for (let i = 0; i < n; i++) {
+      const label = `runs/r-${String(i).padStart(3, "0")}`;
+      runs.push(runWith(label, [cleanCandidate(`clean-${i}`, WRAPPED_SOL), cand({ candidateId: `rej-${i}`, mint: USDC, riskDecision: "REJECT" })]));
+    }
+    return runs;
+  }
+
+  it("is order-independent: shuffled input yields the byte-identical artifact (stable sort)", () => {
+    const runs = manyRuns(40);
+    const inOrder = buildSniperAlphaHistory({ historyId: "scale", runs });
+    const reversed = buildSniperAlphaHistory({ historyId: "scale", runs: [...runs].reverse() });
+    expect(JSON.stringify(inOrder)).toBe(JSON.stringify(reversed));
+    expect(inOrder.runCount).toBe(40);
+    expect(inOrder.runs.map((r) => r.runRef)).toEqual([...inOrder.runs.map((r) => r.runRef)].sort());
+  });
+
+  it("bounds the blocker-reason rollup (never an unbounded list)", () => {
+    // Each run contributes a distinct blocker reason via a unique critical flag count.
+    const runs: SniperAlphaHistoryRunInput[] = [];
+    for (let i = 0; i < 60; i++) {
+      runs.push(runWith(`runs/r-${String(i).padStart(3, "0")}`, [cand({ candidateId: `rej-${i}`, mint: USDC, riskDecision: "REJECT", riskCriticalFlagCount: (i % 9) + 1 })]));
+    }
+    const h = buildSniperAlphaHistory({ runs });
+    expect(h.runCount).toBe(60);
+    expect(h.topBlockerReasons.length).toBeLessThanOrEqual(24); // MAX_TOP_BLOCKER_REASONS
+    expect(() => validateSniperAlphaHistory(h)).not.toThrow();
+  });
+
+  it("validates a large rollup and re-derives every aggregate", () => {
+    const h = buildSniperAlphaHistory({ runs: manyRuns(100) });
+    expect(h.totalCandidateCount).toBe(200);
+    expect(h.aggregateVerdictCounts.watch).toBe(100);
+    expect(h.aggregateVerdictCounts.blocked).toBe(100);
+    expect(() => validateSniperAlphaHistory(h)).not.toThrow();
+  });
+});
+
 describe("buildSniperAlphaHistory — invalid / unrecognized artifacts", () => {
   it("records invalid artifacts honestly and never counts them as runs", () => {
     const h = buildSniperAlphaHistory({

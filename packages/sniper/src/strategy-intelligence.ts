@@ -319,14 +319,11 @@ function projectRisk(report: unknown): ProjectedRisk {
   const decision = typeof report.decision === "string" && RISK_DECISIONS.has(report.decision) ? report.decision : null;
   const score = typeof report.score === "number" && Number.isFinite(report.score) ? report.score : null;
   const rawFlags = Array.isArray(report.flags) ? report.flags : [];
-  const flags: SniperStrategyNotableFlag[] = rawFlags
-    .filter(isObject)
-    .map((f) => ({
-      id: typeof f.id === "string" && f.id.trim().length > 0 ? f.id.trim() : "(unknown)",
-      severity: typeof f.severity === "string" && RISK_SEVERITIES.has(f.severity) ? f.severity : "info",
-      title: typeof f.title === "string" && f.title.trim().length > 0 ? f.title.trim() : "(untitled)",
-    }))
-    .map((f) => ({ id: f.id, severity: f.severity, title: f.title }));
+  const flags: SniperStrategyNotableFlag[] = rawFlags.filter(isObject).map((f) => ({
+    id: typeof f.id === "string" && f.id.trim().length > 0 ? f.id.trim() : "(unknown)",
+    severity: typeof f.severity === "string" && RISK_SEVERITIES.has(f.severity) ? f.severity : "info",
+    title: typeof f.title === "string" && f.title.trim().length > 0 ? f.title.trim() : "(untitled)",
+  }));
   return { present: true, decision, score, flags };
 }
 
