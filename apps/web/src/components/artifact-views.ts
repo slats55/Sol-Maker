@@ -4014,6 +4014,217 @@ function renderSniperDryRunCampaignView(rec: Record<string, unknown>): RawHtml {
   `;
 }
 
+function renderSniperReadonlyCampaignPlanView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const planId = need(missing, "planId", readString(rec, "planId"));
+  const liveSendStatus = need(missing, "liveSendStatus", readString(rec, "liveSendStatus"));
+  const allowed = readStringArray(rec, "allowedStages");
+  const disabled = readStringArray(rec, "disabledStages");
+  const caveats = readStringArray(rec, "caveats");
+  // A plan can never send / sign / authorize a live path — these literals prove it.
+  const safe =
+    liveSendStatus === "disabled" &&
+    rec.noSend === true &&
+    rec.noSigner === true &&
+    rec.noLiveTrading === true &&
+    rec.phase7LiveTradingReady === false;
+  return html`
+    ${RiskNotice({
+      tone: safe ? "info" : "caution",
+      title: safe
+        ? "Read-only auto-campaign plan — LIVE TRADING DISABLED · THIS DOES NOT SEND TRANSACTIONS"
+        : "Plan is missing its no-send / no-signer safety literals — do NOT trust this artifact",
+      body: html`The constitution a no-send live-read-only auto-campaign binds itself to BEFORE it runs.
+        Every allowed stage is read-only intelligence / inspection — there is no send, sign, arm, or
+        broadcast stage. <code>noSend</code> / <code>noSigner</code> / <code>noLiveTrading</code> are
+        pinned, <code>liveSendStatus</code> is <strong>${liveSendStatus}</strong>, and a plan can never
+        imply readiness to trade.`,
+    })}
+    ${kvSection("Plan", undefined, [
+      { term: "id", detail: code(planId) },
+      { term: "campaign", detail: code(readString(rec, "campaignId")) },
+      { term: "mode / network", detail: text(`${readString(rec, "mode") ?? DASH} / ${readString(rec, "network") ?? DASH}`) },
+      { term: "provider policy", detail: code(readString(rec, "providerPolicy")) },
+      { term: "candidate limit", detail: text(num(readNumber(rec, "candidateLimit"))) },
+      { term: "max quote age", detail: text(rec.maxQuoteAgeMs === null || rec.maxQuoteAgeMs === undefined ? DASH : `${num(readNumber(rec, "maxQuoteAgeMs"))} ms`) },
+      { term: "live-send status", detail: text(liveSendStatus ?? DASH) },
+    ])}
+    ${Section({
+      title: `Allowed stages (${String(allowed.total)})`,
+      description: "Read-only stages this campaign may run. No send / sign / arm stage can appear here.",
+      body: html`<ul class="sm-bullets sm-bullets--plain">${allowed.items.length > 0 ? allowed.items.map((s) => html`<li>${code(s)}</li>`) : html`<li>${text("(none)")}</li>`}</ul>`,
+    })}
+    ${Section({
+      title: `Disabled stages (${String(disabled.total)})`,
+      description: "The re-derived complement — off for this run.",
+      body: html`<ul class="sm-bullets sm-bullets--plain">${disabled.items.length > 0 ? disabled.items.map((s) => html`<li>${code(s)}</li>`) : html`<li>${text("(none)")}</li>`}</ul>`,
+    })}
+    ${caveats.total === 0 ? "" : Section({
+      title: `Caveats (${String(caveats.total)})`,
+      body: html`<ul class="sm-bullets sm-bullets--plain">${caveats.items.map((c) => html`<li>${c}</li>`)}</ul>`,
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderSniperCampaignDiffView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const diffId = need(missing, "diffId", readString(rec, "diffId"));
+  const liveSendStatus = need(missing, "liveSendStatus", readString(rec, "liveSendStatus"));
+  const summary = asRecord(rec["summary"]);
+  const changes = Array.isArray(rec["candidateChanges"])
+    ? (rec["candidateChanges"] as unknown[]).filter((c): c is Record<string, unknown> => typeof c === "object" && c !== null && !Array.isArray(c))
+    : [];
+  const caveats = readStringArray(rec, "caveats");
+  const safe = liveSendStatus === "disabled" && rec.authorizesLiveTrading === false && rec.neverSends === true;
+  const moved = changes.filter((c) => readString(c, "status") !== "unchanged");
+  return html`
+    ${RiskNotice({
+      tone: safe ? "info" : "caution",
+      title: safe
+        ? "Sniper campaign diff — LIVE TRADING DISABLED · reports movement only, authorizes nothing"
+        : "Diff is missing its no-send / authorizes-nothing literals — do NOT trust this artifact",
+      body: html`A no-send comparison of two campaigns, keyed by mint. It NEVER re-derives or overrides a
+        campaign verdict; improved / worsened are counted only when both verdicts are present (no fake
+        movement on a one-sided add / remove). <code>liveSendStatus</code> is
+        <strong>${liveSendStatus}</strong> and it authorizes nothing.`,
+    })}
+    ${kvSection("Diff", undefined, [
+      { term: "id", detail: code(diffId) },
+      { term: "before", detail: text(readString(rec, "beforeCampaignRef") ?? DASH) },
+      { term: "after", detail: text(readString(rec, "afterCampaignRef") ?? DASH) },
+      {
+        term: "summary",
+        detail: summary === null
+          ? text(DASH)
+          : text(`+${num(readNumber(summary, "addedCount"))} added · -${num(readNumber(summary, "removedCount"))} removed · ${num(readNumber(summary, "changedCount"))} changed · ${num(readNumber(summary, "unchangedCount"))} unchanged`),
+      },
+      {
+        term: "movement",
+        detail: summary === null
+          ? text(DASH)
+          : text(`${num(readNumber(summary, "improvedCount"))} improved · ${num(readNumber(summary, "worsenedCount"))} worsened · ${num(readNumber(summary, "newlyBlockedCount"))} newly-blocked · ${num(readNumber(summary, "newlyWatchCount"))} newly-watch`),
+      },
+    ])}
+    ${tableSection({
+      title: `Changes (${String(moved.length)})`,
+      description: "Candidate movement between the two campaigns.",
+      columns: [{ header: "Status" }, { header: "Mint" }, { header: "Verdict" }, { header: "Score Δ" }, { header: "Risk" }, { header: "Quote" }, { header: "Build" }, { header: "Sim" }],
+      rows: moved.slice(0, 100).map((c) => [
+        code(readString(c, "status")),
+        text(readString(c, "mint") ?? DASH),
+        text(`${readString(c, "verdictBefore") ?? DASH} → ${readString(c, "verdictAfter") ?? DASH}`),
+        text(c["scoreDelta"] === null || c["scoreDelta"] === undefined ? DASH : num(readNumber(c, "scoreDelta"))),
+        text(readString(c, "riskChange") ?? DASH),
+        text(readString(c, "quoteChange") ?? DASH),
+        text(readString(c, "buildChange") ?? DASH),
+        text(readString(c, "simulationChange") ?? DASH),
+      ]),
+      empty: "No changes.",
+    })}
+    ${caveats.total === 0 ? "" : Section({
+      title: `Caveats (${String(caveats.total)})`,
+      body: html`<ul class="sm-bullets sm-bullets--plain">${caveats.items.map((c) => html`<li>${c}</li>`)}</ul>`,
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderSniperAlphaRunReportView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const runId = need(missing, "runId", readString(rec, "runId"));
+  const liveTradingStatus = need(missing, "liveTradingStatus", readString(rec, "liveTradingStatus"));
+  const health = asRecord(rec["providerHealthSummary"]);
+  const top = Array.isArray(rec["topCandidates"])
+    ? (rec["topCandidates"] as unknown[]).filter((c): c is Record<string, unknown> => typeof c === "object" && c !== null && !Array.isArray(c))
+    : [];
+  const blocked = Array.isArray(rec["blockedCandidates"])
+    ? (rec["blockedCandidates"] as unknown[]).filter((c): c is Record<string, unknown> => typeof c === "object" && c !== null && !Array.isArray(c))
+    : [];
+  const insufficient = Array.isArray(rec["insufficientEvidenceCandidates"])
+    ? (rec["insufficientEvidenceCandidates"] as unknown[]).filter((c): c is Record<string, unknown> => typeof c === "object" && c !== null && !Array.isArray(c))
+    : [];
+  const stages = Array.isArray(rec["stageCoverage"])
+    ? (rec["stageCoverage"] as unknown[]).filter((s): s is Record<string, unknown> => typeof s === "object" && s !== null && !Array.isArray(s))
+    : [];
+  const nextActions = readStringArray(rec, "nextSafeActions");
+  const caveats = readStringArray(rec, "caveats");
+  const safe = liveTradingStatus === "disabled" && rec.authorizesLiveTrading === false && rec.neverSends === true && rec.phase7LiveTradingReady === false;
+  return html`
+    ${RiskNotice({
+      tone: safe ? "info" : "caution",
+      title: safe
+        ? "Sniper alpha run report — LIVE TRADING DISABLED · THIS DOES NOT SEND TRANSACTIONS"
+        : "Alpha report is missing its no-send / not-authorized safety literals — do NOT trust this artifact",
+      body: html`A no-send summary of a live-read-only campaign, projected from a validated campaign.
+        Candidate verdicts come from the campaign's own re-derivation. <strong>Real read-only</strong>
+        evidence is labelled separately from fixture / fictional-example
+        (<code>${readString(rec, "evidenceProvenance") ?? DASH}</code>). It is never a profitability
+        claim and never a live-readiness claim; <code>liveTradingStatus</code> is
+        <strong>${liveTradingStatus}</strong>.`,
+    })}
+    ${kvSection("Alpha run", undefined, [
+      { term: "run id", detail: code(runId) },
+      { term: "mode / network", detail: text(`${readString(rec, "mode") ?? DASH} / ${readString(rec, "network") ?? DASH}`) },
+      { term: "provenance", detail: code(readString(rec, "evidenceProvenance")) },
+      { term: "live-trading status", detail: text(liveTradingStatus ?? DASH) },
+      { term: "phase 7", detail: text(readString(rec, "phase7Status") ?? DASH) },
+      { term: "candidates", detail: text(`${num(readNumber(rec, "candidateCount"))} (top ${String(top.length)} · blocked ${String(blocked.length)} · insufficient ${String(insufficient.length)})`) },
+      {
+        term: "providers",
+        detail: health === null
+          ? text(DASH)
+          : text(`risk=${readString(health, "risk") ?? DASH} quote=${readString(health, "quote") ?? DASH} sim=${readString(health, "simulation") ?? DASH} · rust=${readString(rec, "rustEngineStatus") ?? DASH}`),
+      },
+    ])}
+    ${tableSection({
+      title: `Top candidates (${String(top.length)})`,
+      description: "Best-ranked watch / review candidates on the current evidence — never a buy list.",
+      columns: [{ header: "Verdict" }, { header: "Candidate" }, { header: "Mint" }, { header: "Score" }, { header: "Risk" }, { header: "Quote" }, { header: "Build" }, { header: "Sim" }],
+      rows: top.slice(0, 100).map((c) => [
+        code(readString(c, "verdict")),
+        code(readString(c, "candidateId")),
+        text(readString(c, "mint") ?? DASH),
+        text(num(readNumber(c, "score"))),
+        text(readString(c, "riskDecision") ?? DASH),
+        text(readString(c, "quoteStatus") ?? DASH),
+        text(readString(c, "buildStatus") ?? DASH),
+        text(readString(c, "simulationStatus") ?? DASH),
+      ]),
+      empty: "No top candidates.",
+    })}
+    ${blocked.length === 0 ? "" : Section({
+      title: `Blocked candidates (${String(blocked.length)})`,
+      description: "Hard-blocked by the evidence — never overridable by a score.",
+      body: html`<ul class="sm-bullets sm-bullets--plain">${blocked.map((c) => {
+        const blockers = readStringArray(c, "blockers");
+        return html`<li>${code(readString(c, "candidateId"))} ${text(readString(c, "mint") ?? DASH)}: ${blockers.items.length > 0 ? blockers.items.join("; ") : DASH}</li>`;
+      })}</ul>`,
+    })}
+    ${insufficient.length === 0 ? "" : Section({
+      title: `Insufficient evidence (${String(insufficient.length)})`,
+      description: "Evidence is missing — gather risk / quote / dry-run evidence and re-run.",
+      body: html`<ul class="sm-bullets sm-bullets--plain">${insufficient.map((c) => html`<li>${code(readString(c, "candidateId"))} ${text(readString(c, "mint") ?? DASH)}</li>`)}</ul>`,
+    })}
+    ${stages.length === 0 ? "" : tableSection({
+      title: "Stage coverage",
+      description: "How many candidates carry evidence for each pipeline stage.",
+      columns: [{ header: "Stage" }, { header: "Covered" }],
+      rows: stages.map((s) => [code(readString(s, "stage")), text(`${num(readNumber(s, "candidatesCovered"))} / ${num(readNumber(s, "candidateCount"))}`)]),
+      empty: "No stages.",
+    })}
+    ${nextActions.total === 0 ? "" : Section({
+      title: "Next safe actions",
+      body: html`<ul class="sm-bullets sm-bullets--plain">${nextActions.items.map((a) => html`<li>${a}</li>`)}</ul>`,
+    })}
+    ${caveats.total === 0 ? "" : Section({
+      title: `Caveats (${String(caveats.total)})`,
+      body: html`<ul class="sm-bullets sm-bullets--plain">${caveats.items.map((c) => html`<li>${c}</li>`)}</ul>`,
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
 function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml | null {
   switch (schema) {
     case "backtest.report.v1":
@@ -4096,6 +4307,12 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderSniperWatchlistView(rec);
     case "sniper.dryrun.campaign.v1":
       return renderSniperDryRunCampaignView(rec);
+    case "sniper.readonly_campaign.plan.v1":
+      return renderSniperReadonlyCampaignPlanView(rec);
+    case "sniper.dryrun.campaign.diff.v1":
+      return renderSniperCampaignDiffView(rec);
+    case "sniper.alpha_run.report.v1":
+      return renderSniperAlphaRunReportView(rec);
     case "execution.readiness.report.v1":
       return renderExecutionReadinessView(rec);
     case "execution.devnet.rehearsal.report.v1":

@@ -578,6 +578,33 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
       "The S104-C no-send campaign: a comparison of candidates across the paper / dry-run evidence already gathered (ranking, watchlist status, deep risk, route quote, unsigned build, simulation, mainnet dry-run release-candidate verdict, token preflight). Each candidate's finalOperatorVerdict (watch | review | blocked | insufficient-evidence) is RE-DERIVED from the structured evidence — a candidate's score is never read by the derivation, so a high score can NEVER override a blocker; missing evidence shows as insufficient-evidence, never hidden. liveSendStatus is pinned \"disabled\" and the closed schema refuses any signature / txid / send-result field. Produced by paper:sniper:campaign:run.",
     cli: "paper:sniper:campaign:run",
   },
+  {
+    id: "sniper.readonly_campaign.plan.v1",
+    title: "Read-only auto-campaign plan",
+    family: "sniper",
+    stability: "stable",
+    description:
+      "The S105-A constitution for a no-send live-read-only auto-campaign: what it is ALLOWED to do BEFORE it runs — allowedStages (a CLOSED read-only stage set), the re-derived disabledStages complement, the candidate cap, the quote-age cap, and the provider policy. The stage set carries no send / sign / arm / broadcast stage (such a stage is rejected as unknown); noSend / noSigner / noLiveTrading are pinned true; liveSendStatus is pinned \"disabled\"; and a plan can never imply readiness to trade (it has no readiness/execution field). Produced by paper:sniper:campaign:auto-run.",
+    cli: "paper:sniper:campaign:auto-run",
+  },
+  {
+    id: "sniper.dryrun.campaign.diff.v1",
+    title: "Sniper campaign diff",
+    family: "sniper",
+    stability: "stable",
+    description:
+      "The S105-A no-send comparison of two campaigns: candidate-by-candidate (keyed by mint) added / removed / unchanged / changed, score deltas, verdict transitions, risk / quote / build / simulation / blocker changes, and re-derived improved / worsened / newly-blocked / newly-watch tallies. It NEVER re-derives or overrides a campaign verdict and reports movement only — improved / worsened are counted ONLY when both verdicts are present (no fake movement on a one-sided add / remove). liveSendStatus is pinned \"disabled\", authorizesLiveTrading is false, and the closed schema refuses any signature / send result. Produced by paper:sniper:campaign:diff.",
+    cli: "paper:sniper:campaign:diff",
+  },
+  {
+    id: "sniper.alpha_run.report.v1",
+    title: "Sniper alpha run report",
+    family: "sniper",
+    stability: "stable",
+    description:
+      "The S105-A showable summary of a no-send live-read-only alpha run, projected from a validated campaign: top / blocked / insufficient-evidence candidates, stage coverage, provider + Rust engine health, the Phase 7 posture, and evidence provenance (real-readonly vs fixture / fictional-example — never faked). Candidate verdicts come from the campaign's own re-derivation; the report can never claim profitability or live readiness, liveTradingStatus is pinned \"disabled\", authorizesLiveTrading is false, and the closed schema refuses any signature / send result. Produced by paper:sniper:alpha:report (and paper:sniper:campaign:auto-run).",
+    cli: "paper:sniper:alpha:report",
+  },
 ];
 
 /** Look up schema metadata by id, or `undefined` for an unknown schema. */

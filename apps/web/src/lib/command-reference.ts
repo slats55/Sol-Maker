@@ -552,6 +552,27 @@ export const COMMANDS: readonly CommandRef[] = [
     readsChain: false,
   },
   {
+    command: "paper:sniper:campaign:auto-run",
+    summary:
+      "The S105-A live-read-only auto campaign (sniper.readonly_campaign.plan.v1 + sniper.dryrun.campaign.v1 + sniper.alpha_run.report.v1): GATHER the safe read-only evidence itself across candidates — Rust candidate scoring, deep risk, route-quote fetch/score, and an unsigned build dry-run + simulation in mainnet-dry-run mode — and write a no-send alpha folder. Network reads happen ONLY with --mode mainnet-dry-run + the explicit --allow-readonly-network opt-in; a risk REJECT short-circuits the downstream stages; an unavailable provider / Rust engine is recorded honestly. NEVER sends, signs, or loads a key; live trading stays disabled.",
+    group: "Sniper (paper-only)",
+    readsChain: true,
+  },
+  {
+    command: "paper:sniper:campaign:diff",
+    summary:
+      "The S105-A campaign diff (sniper.dryrun.campaign.diff.v1): compare two campaigns (--before / --after) candidate-by-candidate (keyed by mint) into added / removed / unchanged / changed records with score deltas, verdict transitions, and improved / worsened / newly-blocked / newly-watch tallies. It NEVER re-derives or overrides a campaign verdict and authorizes nothing; liveSendStatus is pinned disabled. LOCAL-ONLY (no RPC / network / wallet / signer / send).",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
+  {
+    command: "paper:sniper:alpha:report",
+    summary:
+      "The S105-A alpha run report (sniper.alpha_run.report.v1): assemble a showable summary from a campaign (--campaign) plus optional plan / diff / watchlist refs — top / blocked / insufficient candidates, stage coverage, provider + Rust engine health, Phase 7 posture, and evidence provenance. Candidate verdicts come from the campaign; the report can never claim live readiness or profitability, liveTradingStatus is pinned disabled. LOCAL-ONLY (no RPC / network / wallet / signer / send).",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
+  {
     command: "execution:session:status",
     summary:
       "S96 read-only session accounting status: the latest execution session's ledger entries and the continuation decision a NEW devnet attempt would face (allowed only after reconciled / not-sent / funding-blocked / an explicit audited acknowledgment). Writes nothing unless --out.",
