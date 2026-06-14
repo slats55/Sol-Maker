@@ -251,6 +251,16 @@ import {
   formatSniperDryRunCampaign,
   type SniperDryRunCampaign,
   type SniperDryRunCampaignCandidateInput,
+  buildSniperReadonlyCampaignPlan,
+  type SniperReadonlyCampaignStage,
+  buildSniperAlphaRunReport,
+  formatSniperAlphaRunReport,
+  type SniperAlphaRunProviderStatus,
+  type SniperAlphaRunRustEngineStatus,
+  type SniperAlphaRunEvidenceProvenance,
+  diffSniperDryRunCampaigns,
+  validateSniperDryRunCampaignDiff,
+  formatSniperDryRunCampaignDiff,
   buildPaperSniperDecisionReport,
   formatPaperSniperDecisionReport,
   buildPaperSniperDecisionReportV2,
@@ -8066,6 +8076,750 @@ export function paperSniperCampaignRunReport(
     lines.push("", `inspect: pnpm web:inspect --dir "${resolvePath(ctx, opts.outDir)}"`);
   }
   return { text: redactString(lines.join("\n")), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 105-A — `paper:sniper:campaign:auto-run`: the LIVE-READ-ONLY auto
+//   campaign. Unlike campaign:run (which folds operator-supplied evidence),
+//   this command GATHERS the safe read-only evidence itself per candidate:
+//   candidate scoring (Rust, offline), deep risk, route-quote fetch/score, an
+//   unsigned build dry-run + simulation (mainnet-dry-run mode only), then folds
+//   it into sniper.dryrun.campaign.v1 + a sniper.readonly_campaign.plan.v1 + a
+//   sniper.alpha_run.report.v1. It NEVER sends, signs, loads a key, or arms
+//   anything; network reads happen ONLY in --mode mainnet-dry-run with the
+//   explicit --allow-readonly-network opt-in, and a risk REJECT short-circuits
+//   the downstream quote/build/simulation stages for that candidate. Honest:
+//   an unavailable provider / Rust engine is recorded, never faked.
+// ---------------------------------------------------------------------------
+
+const READONLY_CAMPAIGN_PLAN_FILE = "readonly-campaign-plan.json";
+const ALPHA_REPORT_FILE = "alpha-report.json";
+const ALPHA_EVIDENCE_INDEX_FILE = "evidence-index.json";
+/** Bound the number of candidates that reach the read-only network in one auto-run. */
+const MAX_AUTO_NETWORK_CANDIDATES = 25;
+
+type AutoStageStatus = "executed" | "ingested" | "skipped" | "unavailable" | "not-attempted" | "failed";
+
+interface AutoStageRecord {
+  stage: string;
+  status: AutoStageStatus;
+  detail: string;
+}
+
+interface AutoCandidateEvidence {
+  candidateId: string;
+  mint: string;
+  stages: AutoStageRecord[];
+}
+
+/** Project a parsed token:risk report object onto the campaign's risk fields. */
+function projectAutoRiskReport(rr: unknown): { decision: string | null; criticalFlagCount: number | null; token2022Blocker: boolean } | null {
+  if (!isPlainObject(rr) || typeof rr.decision !== "string") return null;
+  const flags = Array.isArray(rr.flags) ? (rr.flags as Array<{ id?: string; severity?: string }>) : [];
+  return {
+    decision: rr.decision,
+    criticalFlagCount: flags.filter((f) => f.severity === "critical").length,
+    token2022Blocker: flags.some((f) => typeof f.id === "string" && TOKEN2022_RISK_FLAG_IDS.has(f.id) && (f.severity === "critical" || f.severity === "high")),
+  };
+}
+
+export interface PaperSniperCampaignAutoRunCommandOptions {
+  candidatesPath?: string;
+  watchlistPath?: string;
+  /** paper | mainnet-dry-run (default paper). devnet quotes do not exist, so devnet is not offered here. */
+  mode?: string;
+  network?: string;
+  limit?: number;
+  campaignId?: string;
+  runId?: string;
+  /** Enable LIVE read-only network reads (deep risk / quote fetch / simulation). Mainnet-dry-run only. */
+  allowReadonlyNetwork?: boolean;
+  maxQuoteAgeMs?: string;
+  amountSol?: string;
+  /** Ingest a pre-computed engine.sniper.score.report.v1 instead of running the Rust scorer. */
+  scorePath?: string;
+  /** Repeatable "mint=path" token:risk JSON files (used when network reads are off / as an override). */
+  risks?: string[];
+  // Optional build/simulation params (the build is attempted ONLY when ALL are present + network on):
+  wallet?: string;
+  slippageBps?: string;
+  maxSpendSol?: string;
+  slippageCapBps?: string;
+  riskScoreCap?: string;
+  endpoint?: string;
+  rpcUrl?: string;
+  /** Optional Phase 7 posture label echoed into the alpha report (e.g. authorized-for-design-only). */
+  phase7Status?: string;
+  /** Optional provenance override; defaults to real-readonly when network is on, else mixed. */
+  evidenceProvenance?: string;
+  json?: boolean;
+  outDir?: string;
+  force?: boolean;
+  failOnBlocked?: boolean;
+}
+
+/**
+ * `soulmaker paper:sniper:campaign:auto-run` — gather safe read-only evidence across many candidates
+ * and assemble a no-send alpha run folder (plan + campaign + alpha report + per-candidate evidence +
+ * RUN_SUMMARY.md). Never signs, sends, loads a key, or arms anything. Returns a {@link CliReport}.
+ */
+export async function paperSniperCampaignAutoRunReport(
+  ctx: CommandContext = {},
+  opts: PaperSniperCampaignAutoRunCommandOptions = {},
+): Promise<CliReport> {
+  if (!opts.candidatesPath && !opts.watchlistPath) {
+    return { text: "Refusing: provide --candidates <path> or --watchlist <path> (the candidate spine).", exitCode: 1 };
+  }
+  if (opts.candidatesPath && opts.watchlistPath) {
+    return { text: "Refusing: --candidates and --watchlist are mutually exclusive (pick one spine).", exitCode: 1 };
+  }
+  if (!opts.outDir) {
+    return { text: "Refusing: --out <dir> is required (the auto-run writes the plan, campaign, alpha report and per-candidate evidence under it).", exitCode: 1 };
+  }
+  const mode = opts.mode ?? "paper";
+  if (mode !== "paper" && mode !== "mainnet-dry-run") {
+    return { text: "Refusing: --mode must be paper | mainnet-dry-run. There is NO live mode; nothing here ever sends.", exitCode: 1 };
+  }
+  const networkActive = mode === "mainnet-dry-run" && opts.allowReadonlyNetwork === true;
+  const network = opts.network ?? (mode === "mainnet-dry-run" ? "mainnet-beta" : "mainnet-beta");
+
+  const outDir = resolvePath(ctx, opts.outDir);
+  const planPath = join(outDir, READONLY_CAMPAIGN_PLAN_FILE);
+  const campaignPath = join(outDir, CAMPAIGN_OUTPUT_FILE);
+  const alphaPath = join(outDir, ALPHA_REPORT_FILE);
+  const guardFiles = [planPath, campaignPath, alphaPath, join(outDir, ALPHA_EVIDENCE_INDEX_FILE), join(outDir, CAMPAIGN_SUMMARY_FILE)];
+  if (!opts.force) {
+    for (const f of guardFiles) {
+      if (existsSync(f)) return { text: redactString(`Refusing: ${f} already exists (pass --force to overwrite).`), exitCode: 1 };
+    }
+  }
+  try {
+    mkdirSync(outDir, { recursive: true });
+  } catch {
+    return { text: redactString(`Refusing: cannot create output directory at ${outDir}`), exitCode: 1 };
+  }
+
+  // --- spine: candidates or watchlist -----------------------------------------
+  const spine: CampaignSpineCandidate[] = [];
+  try {
+    if (opts.watchlistPath) {
+      const raw = readJsonValue(ctx, opts.watchlistPath, "watchlist");
+      const wl = validateSniperWatchlist(
+        isPlainObject(raw) && raw.schemaVersion === SNIPER_WATCHLIST_SCHEMA_VERSION ? raw : normalizeSniperWatchlist(raw as never),
+      );
+      for (const e of wl.entries) spine.push({ candidateId: e.entryId, mint: e.mint, watchlistStatus: e.status });
+    } else {
+      const raw = readJsonValue(ctx, opts.candidatesPath!, "candidate list");
+      if (!isPlainObject(raw) || !Array.isArray(raw.candidates)) throw new Error("candidate list must be a JSON object with a candidates array");
+      if (raw.schemaVersion !== undefined && raw.schemaVersion !== SNIPER_CANDIDATE_LIST_SCHEMA_VERSION) {
+        throw new Error(`candidate schemaVersion must be "${SNIPER_CANDIDATE_LIST_SCHEMA_VERSION}"`);
+      }
+      for (const c of raw.candidates as unknown[]) {
+        if (!isPlainObject(c) || typeof c.mint !== "string") throw new Error("each candidate must have a mint");
+        const mint = parseMintAddress(c.mint);
+        const candidateId = typeof c.candidateId === "string" && c.candidateId.trim().length > 0 ? c.candidateId.trim() : mint;
+        spine.push({ candidateId, mint, watchlistStatus: null });
+      }
+    }
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+  if (spine.length === 0) return { text: "Refusing: the spine has no candidates.", exitCode: 1 };
+
+  const hardLimit = networkActive ? MAX_AUTO_NETWORK_CANDIDATES : 1000;
+  const requestedLimit = opts.limit !== undefined && opts.limit > 0 ? Math.min(opts.limit, hardLimit) : hardLimit;
+  const limited = spine.slice(0, requestedLimit);
+  const truncated = limited.length < spine.length;
+
+  const warnings: string[] = [];
+  if (truncated) warnings.push(`--limit / network cap truncated the run to ${limited.length} of ${spine.length} candidate(s).`);
+  if (opts.allowReadonlyNetwork === true && mode !== "mainnet-dry-run") {
+    warnings.push("--allow-readonly-network has no effect in paper mode (paper reaches no network); run --mode mainnet-dry-run for live read-only evidence.");
+  }
+
+  // --- evidence accumulators (per mint) ---------------------------------------
+  const evidence = new Map<string, AutoCandidateEvidence>();
+  for (const c of limited) evidence.set(c.mint, { candidateId: c.candidateId, mint: c.mint, stages: [] });
+  const pushStage = (mint: string, stage: string, status: AutoStageStatus, detail: string): void => {
+    evidence.get(mint)?.stages.push({ stage, status, detail: redactString(detail).slice(0, 300) });
+  };
+
+  const riskByMint = new Map<string, { decision: string | null; criticalFlagCount: number | null; token2022Blocker: boolean }>();
+  const riskReportByMint = new Map<string, unknown>();
+  const riskPathByMint = new Map<string, string>();
+  const quoteByMint = new Map<string, SniperDryRunCampaignCandidateInput["quoteStatus"]>();
+  const buildByMint = new Map<string, SniperDryRunCampaignCandidateInput["buildStatus"]>();
+  const simByMint = new Map<string, SniperDryRunCampaignCandidateInput["simulationStatus"]>();
+  const scoreByMint = new Map<string, { rank: number | null; score: number | null }>();
+  const artifactRefs: string[] = [];
+
+  // --- ingest operator-supplied --risk files first (override / offline source) -
+  try {
+    for (const arg of opts.risks ?? []) {
+      const { mint, path } = parseMintPathArg(arg);
+      const canonical = parseMintAddress(mint);
+      const rr = readJsonValue(ctx, path, `risk report for ${canonical}`);
+      const projected = projectAutoRiskReport(rr);
+      if (projected === null) throw new Error(`risk report for ${canonical} is missing a decision`);
+      riskByMint.set(canonical, projected);
+      riskReportByMint.set(canonical, rr);
+      if (evidence.has(canonical)) pushStage(canonical, "deep-risk", "ingested", `operator-supplied token:risk (${projected.decision})`);
+      artifactRefs.push(`risk:${basename(path)}`);
+    }
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // --- ingest operator-supplied --score (engine.sniper.score.report.v1) --------
+  let scoreSource: "ingested" | "rust" | "none" = "none";
+  if (opts.scorePath) {
+    try {
+      const raw = readJsonValue(ctx, opts.scorePath, "candidate score report");
+      if (!isPlainObject(raw) || raw.schemaVersion !== ENGINE_SNIPER_SCORE_SCHEMA_VERSION) {
+        throw new Error(`score report schemaVersion must be "${ENGINE_SNIPER_SCORE_SCHEMA_VERSION}"`);
+      }
+      for (const e of (raw.rankedCandidates as unknown[]) ?? []) {
+        if (isPlainObject(e) && typeof e.mint === "string") {
+          scoreByMint.set(parseMintAddress(e.mint), {
+            rank: typeof e.rank === "number" ? e.rank : null,
+            score: typeof e.score === "number" ? e.score : null,
+          });
+        }
+      }
+      scoreSource = "ingested";
+      artifactRefs.push(`score:${basename(opts.scorePath)}`);
+    } catch (err) {
+      return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+    }
+  }
+
+  // --- Stage: deep risk per candidate (network only) --------------------------
+  const candidatesDir = join(outDir, "candidates");
+  let riskProviderFetched = 0;
+  let riskProviderFailed = 0;
+  if (networkActive) {
+    try {
+      mkdirSync(candidatesDir, { recursive: true });
+    } catch {
+      return { text: redactString(`Refusing: cannot create ${candidatesDir}`), exitCode: 1 };
+    }
+    for (const c of limited) {
+      if (riskByMint.has(c.mint)) continue; // operator override already present
+      const riskOut = join(candidatesDir, `risk.${c.mint}.json`);
+      try {
+        await tokenRiskReport(c.mint, ctx, { deep: true, outPath: riskOut, force: opts.force, allowPaperRead: true });
+        if (existsSync(riskOut)) {
+          const rr = JSON.parse(stripJsonBom(readFileSync(riskOut, "utf8")));
+          const projected = projectAutoRiskReport(rr);
+          if (projected !== null) {
+            riskByMint.set(c.mint, projected);
+            riskReportByMint.set(c.mint, rr);
+            riskPathByMint.set(c.mint, riskOut);
+            riskProviderFetched++;
+            pushStage(c.mint, "deep-risk", "executed", `deep token:risk fetched (${projected.decision})`);
+          } else {
+            riskProviderFailed++;
+            pushStage(c.mint, "deep-risk", "unavailable", "deep risk report had no decision");
+          }
+        } else {
+          riskProviderFailed++;
+          pushStage(c.mint, "deep-risk", "unavailable", "deep risk read unavailable / refused (no report written)");
+        }
+      } catch (err) {
+        riskProviderFailed++;
+        pushStage(c.mint, "deep-risk", "failed", `deep risk failed: ${(err as Error).message}`);
+      }
+    }
+  } else {
+    for (const c of limited) {
+      if (!riskByMint.has(c.mint)) pushStage(c.mint, "deep-risk", "not-attempted", "read-only network is off (paper mode or no --allow-readonly-network); supply --risk <mint=path> for offline risk");
+    }
+  }
+
+  // Which candidates are blocked by risk and must SKIP the downstream stages?
+  const riskBlocked = (mint: string): boolean => {
+    const r = riskByMint.get(mint);
+    return r !== undefined && (r.decision === "REJECT" || (r.criticalFlagCount ?? 0) > 0 || r.token2022Blocker);
+  };
+
+  // --- Stage: route-quote fetch + prepare + score (network only) --------------
+  let quoteObservedCount = 0;
+  let quoteAttempted = false;
+  let quoteScoreRustAvailable: boolean | null = null;
+  if (networkActive) {
+    const nonRejected = limited.filter((c) => !riskBlocked(c.mint));
+    for (const c of limited) {
+      if (riskBlocked(c.mint)) {
+        quoteByMint.set(c.mint, "not-attempted");
+        pushStage(c.mint, "quote-fetch", "skipped", "risk REJECTED this candidate — downstream quote/build/simulation skipped");
+      }
+    }
+    if (nonRejected.length > 0) {
+      quoteAttempted = true;
+      const quotesDir = join(outDir, "quotes");
+      const quoteCandidatesPath = join(outDir, "quote-candidates.json");
+      try {
+        mkdirSync(quotesDir, { recursive: true });
+        writeFileSync(quoteCandidatesPath, JSON.stringify({ candidates: nonRejected.map((c) => ({ candidateId: c.candidateId, mint: c.mint })) }, null, 2) + "\n");
+        const fetch = await paperRouteQuoteFetchReport(ctx, {
+          candidatesPath: quoteCandidatesPath,
+          amountSol: opts.amountSol ?? "0.01",
+          slippageBps: opts.slippageBps,
+          endpoint: opts.endpoint,
+          allowPaperRead: true,
+          outDir: quotesDir,
+          force: opts.force,
+        });
+        const fetchReportPath = join(quotesDir, "fetch-report.json");
+        if (existsSync(fetchReportPath)) {
+          const quoteFiles = readdirSync(quotesDir).filter((f) => f.startsWith("quote.") && f.endsWith(".json"));
+          artifactRefs.push("quotes/fetch-report.json");
+          if (quoteFiles.length > 0) {
+            const preparedPath = join(outDir, "routequote-prepared.json");
+            const prepare = paperRouteQuotePrepareReport(ctx, {
+              candidatesPath: quoteCandidatesPath,
+              quotePaths: quoteFiles.map((f) => join(quotesDir, f)),
+              sourceLabel: "paper:sniper:campaign:auto-run quote fetch",
+              outPath: preparedPath,
+              force: opts.force,
+            });
+            if (prepare.exitCode === 0 && existsSync(preparedPath)) {
+              const prepared = validateRouteQuotePrepared(JSON.parse(stripJsonBom(readFileSync(preparedPath, "utf8"))));
+              for (const e of prepared.entries) {
+                const status = projectQuoteStatus(e.quoteStatus);
+                quoteByMint.set(e.mint, status);
+                if (status === "observed") quoteObservedCount++;
+                if (evidence.has(e.mint)) pushStage(e.mint, "quote-fetch", "executed", `route quote ${e.quoteStatus}`);
+              }
+            }
+            // Rust quote scoring (offline; intelligence only).
+            const quoteScorePath = join(outDir, "quote-scores.json");
+            const qScore = await engineQuoteScoreReport(ctx, { reportPath: fetchReportPath, maxQuoteAgeMs: opts.maxQuoteAgeMs ?? "60000", outPath: quoteScorePath, force: opts.force });
+            quoteScoreRustAvailable = qScore.exitCode === 0 && existsSync(quoteScorePath);
+          } else {
+            for (const c of nonRejected) {
+              quoteByMint.set(c.mint, "unavailable");
+              pushStage(c.mint, "quote-fetch", "unavailable", `quote provider returned no observation (fetch exit ${fetch.exitCode})`);
+            }
+          }
+        } else {
+          for (const c of nonRejected) {
+            quoteByMint.set(c.mint, "unavailable");
+            pushStage(c.mint, "quote-fetch", "unavailable", `quote fetch produced no report: ${fetch.text.slice(0, 120)}`);
+          }
+        }
+      } catch (err) {
+        for (const c of nonRejected) {
+          if (!quoteByMint.has(c.mint)) quoteByMint.set(c.mint, "error");
+          pushStage(c.mint, "quote-fetch", "failed", `quote fetch failed: ${(err as Error).message}`);
+        }
+      }
+    }
+  } else {
+    for (const c of limited) pushStage(c.mint, "quote-fetch", "not-attempted", "read-only network is off — no live quote fetched");
+  }
+
+  // --- Stage: unsigned build dry-run + tx-inspect + simulation (network only) --
+  const buildConfigured = Boolean(opts.wallet && opts.slippageBps && opts.maxSpendSol && opts.slippageCapBps && opts.riskScoreCap);
+  let simAttempted = false;
+  let simOkCount = 0;
+  let simFailedCount = 0;
+  let txInspectRustAvailable: boolean | null = null;
+  if (networkActive && buildConfigured) {
+    const target = limited.find((c) => !riskBlocked(c.mint) && quoteByMint.get(c.mint) === "observed" && (riskPathByMint.has(c.mint) || riskByMint.has(c.mint)));
+    if (target !== undefined) {
+      const effectiveRiskPath = riskPathByMint.get(target.mint);
+      if (effectiveRiskPath === undefined) {
+        pushStage(target.mint, "tx-build-dryrun", "not-attempted", "no on-disk token:risk report for the build target (build needs --risk evidence)");
+      } else {
+        const envelopePath = join(outDir, "envelope.json");
+        const buildReportPath = join(outDir, "txbuild-report.json");
+        try {
+          const build = await executionBuildReport(ctx, {
+            candidateMint: target.mint,
+            amountSol: opts.amountSol ?? "0.01",
+            slippageBps: opts.slippageBps,
+            wallet: opts.wallet,
+            riskPath: effectiveRiskPath,
+            request: "mainnet-dry-run",
+            maxSpendSol: opts.maxSpendSol,
+            slippageCapBps: opts.slippageCapBps,
+            riskScoreCap: opts.riskScoreCap,
+            maxQuoteAgeMs: opts.maxQuoteAgeMs,
+            endpoint: opts.endpoint,
+            allowPaperRead: true,
+            outPath: envelopePath,
+            reportOutPath: buildReportPath,
+            force: opts.force,
+          });
+          if (build.exitCode === 0 && existsSync(envelopePath)) {
+            buildByMint.set(target.mint, "succeeded");
+            pushStage(target.mint, "tx-build-dryrun", "executed", "UNSIGNED mainnet-dry-run envelope built (nothing signed, nothing sent)");
+            // Rust tx inspection (offline).
+            const inspectPath = join(outDir, "tx-inspect.json");
+            const inspect = await engineTxInspectReport(ctx, { envelopePath, outPath: inspectPath, force: opts.force });
+            txInspectRustAvailable = inspect.exitCode === 0 && existsSync(inspectPath);
+            // Real simulation.
+            simAttempted = true;
+            const simPath = join(outDir, "tx-simulation.json");
+            const sim = await paperSimulationTxReport(ctx, { envelopePath, rpcUrl: opts.rpcUrl, allowPaperRead: true, outPath: simPath, force: opts.force });
+            let simOutcome: string | null = null;
+            if (existsSync(simPath)) {
+              try {
+                simOutcome = (JSON.parse(stripJsonBom(readFileSync(simPath, "utf8"))) as { outcome?: string }).outcome ?? null;
+              } catch {
+                simOutcome = null;
+              }
+            }
+            if (simOutcome === "simulated-ok") {
+              simByMint.set(target.mint, "simulated-ok");
+              simOkCount++;
+              pushStage(target.mint, "simulate", "executed", "the exact envelope simulated ok against recent chain state");
+            } else if (simOutcome === null) {
+              simByMint.set(target.mint, "unavailable");
+              pushStage(target.mint, "simulate", "unavailable", `simulation produced no report (exit ${sim.exitCode})`);
+            } else {
+              simByMint.set(target.mint, "failed");
+              simFailedCount++;
+              pushStage(target.mint, "simulate", "failed", `simulation outcome: ${simOutcome}`);
+            }
+          } else {
+            buildByMint.set(target.mint, "refused");
+            let codes: string[] = [];
+            if (existsSync(buildReportPath)) {
+              try {
+                codes = ((JSON.parse(stripJsonBom(readFileSync(buildReportPath, "utf8"))) as { refusals?: Array<{ code?: string }> }).refusals ?? [])
+                  .map((r) => r.code)
+                  .filter((c): c is string => typeof c === "string");
+              } catch {
+                codes = [];
+              }
+            }
+            pushStage(target.mint, "tx-build-dryrun", "failed", codes.length > 0 ? `build refused: ${codes.join(", ")}` : `build refused: ${build.text.slice(0, 120)}`);
+            pushStage(target.mint, "simulate", "skipped", "nothing to simulate without a build");
+          }
+        } catch (err) {
+          buildByMint.set(target.mint, "refused");
+          pushStage(target.mint, "tx-build-dryrun", "failed", `build failed: ${(err as Error).message}`);
+        }
+      }
+    }
+  }
+
+  // --- Stage: candidate scoring (Rust, offline) -------------------------------
+  // Intelligence only: a score never moves a verdict. Skipped when --score was ingested.
+  let rustScoreAvailable: boolean | null = null;
+  if (scoreSource === "none") {
+    try {
+      const entries = limited.map((c) => {
+        const quote = quoteByMint.get(c.mint);
+        const sim = simByMint.get(c.mint);
+        return {
+          candidateId: c.candidateId,
+          mint: c.mint,
+          source: "paper:sniper:campaign:auto-run",
+          risk: riskReportByMint.get(c.mint),
+          quoteObserved: quote === "observed" ? true : quote !== undefined && quote !== "not-attempted" ? false : null,
+          simulationOutcome: sim === "simulated-ok" ? ("simulated-ok" as const) : sim === "failed" ? ("failed" as const) : sim === "unavailable" ? ("unavailable" as const) : null,
+          txBuildRefused: buildByMint.get(c.mint) === "refused" ? true : null,
+        };
+      });
+      const bundle = normalizeSniperScoreInput({ sourceLabel: "paper:sniper:campaign:auto-run", mode: mode === "mainnet-dry-run" ? "mainnet-dry-run" : "paper", network: networkActive ? network : null, entries });
+      const scoreInputPath = join(outDir, "sniper-score-input.json");
+      writeFileSync(scoreInputPath, JSON.stringify(bundle, null, 2) + "\n");
+      const scorePath = join(outDir, "candidate-scores.json");
+      const score = await engineSniperScoreReport(ctx, { inputPath: scoreInputPath, outPath: scorePath, force: opts.force });
+      if (score.exitCode === 0 && existsSync(scorePath)) {
+        rustScoreAvailable = true;
+        scoreSource = "rust";
+        const parsed = JSON.parse(stripJsonBom(readFileSync(scorePath, "utf8"))) as { rankedCandidates?: Array<{ mint?: string; rank?: number; score?: number }> };
+        for (const e of parsed.rankedCandidates ?? []) {
+          if (typeof e.mint === "string") scoreByMint.set(parseMintAddress(e.mint), { rank: typeof e.rank === "number" ? e.rank : null, score: typeof e.score === "number" ? e.score : null });
+        }
+        for (const c of limited) pushStage(c.mint, "candidate-score", "executed", "Rust candidate scoring written (intelligence only)");
+      } else {
+        rustScoreAvailable = false;
+        for (const c of limited) pushStage(c.mint, "candidate-score", "unavailable", "Rust candidate scoring unavailable (the paper pipeline is unaffected)");
+      }
+    } catch (err) {
+      rustScoreAvailable = false;
+      for (const c of limited) pushStage(c.mint, "candidate-score", "failed", `candidate scoring failed: ${(err as Error).message}`);
+    }
+  } else {
+    for (const c of limited) pushStage(c.mint, "candidate-score", "ingested", "operator-supplied candidate score (engine.sniper.score.report.v1)");
+  }
+
+  // --- fold per-candidate evidence into the campaign --------------------------
+  const candidateInputs: SniperDryRunCampaignCandidateInput[] = limited.map((c) => {
+    const risk = riskByMint.get(c.mint);
+    const score = scoreByMint.get(c.mint);
+    return {
+      candidateId: c.candidateId,
+      mint: c.mint,
+      rank: score?.rank ?? null,
+      score: score?.score ?? null,
+      watchlistStatus: c.watchlistStatus,
+      riskDecision: risk?.decision ?? null,
+      riskCriticalFlagCount: risk?.criticalFlagCount ?? null,
+      token2022Blocker: risk?.token2022Blocker ?? false,
+      quoteStatus: quoteByMint.get(c.mint) ?? null,
+      buildStatus: buildByMint.get(c.mint) ?? null,
+      simulationStatus: simByMint.get(c.mint) ?? null,
+      releaseCandidateVerdict: null,
+      preflightVerdict: null,
+    };
+  });
+
+  if (opts.candidatesPath) artifactRefs.unshift(`candidates:${basename(opts.candidatesPath)}`);
+  if (opts.watchlistPath) artifactRefs.unshift(`watchlist:${basename(opts.watchlistPath)}`);
+
+  // --- assemble the plan, campaign and alpha report ---------------------------
+  const allowedStages: SniperReadonlyCampaignStage[] = ["candidate-score"];
+  if (networkActive) {
+    allowedStages.push("deep-risk", "quote-fetch", "quote-score", "routequote-prepare");
+    if (buildConfigured) allowedStages.push("tx-build-dryrun", "tx-inspect", "simulate");
+  }
+  let plan, campaign, alpha;
+  try {
+    plan = buildSniperReadonlyCampaignPlan({
+      planId: opts.runId ? `${opts.runId}-plan` : null,
+      campaignId: opts.campaignId ?? null,
+      createdAt: null,
+      mode,
+      network,
+      inputWatchlistRef: opts.watchlistPath ? basename(opts.watchlistPath) : null,
+      inputCandidatesRef: opts.candidatesPath ? basename(opts.candidatesPath) : null,
+      candidateLimit: requestedLimit,
+      allowedStages,
+      maxQuoteAgeMs: opts.maxQuoteAgeMs ? Number.parseInt(opts.maxQuoteAgeMs, 10) : null,
+      providerPolicy: networkActive ? "live-readonly-when-allowed" : "operator-supplied-only",
+    });
+    campaign = buildSniperDryRunCampaign({
+      campaignId: opts.campaignId ?? null,
+      generatedAt: null,
+      mode,
+      network,
+      candidates: candidateInputs,
+      artifactRefs,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: cannot assemble the campaign — ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  const providerStatus = (attempted: boolean, observed: number, failed: number): SniperAlphaRunProviderStatus => {
+    if (!attempted) return "not-attempted";
+    if (observed > 0 && failed === 0) return "ok";
+    if (observed > 0) return "degraded";
+    return "unavailable";
+  };
+  const rustParts = [rustScoreAvailable, quoteScoreRustAvailable, txInspectRustAvailable].filter((p): p is boolean => p !== null);
+  const rustEngineStatus: SniperAlphaRunRustEngineStatus =
+    scoreSource === "ingested" && rustParts.length === 0
+      ? "not-used"
+      : rustParts.length === 0
+        ? "not-used"
+        : rustParts.every((p) => p)
+          ? "available"
+          : rustParts.some((p) => p)
+            ? "mixed"
+            : "unavailable";
+  const evidenceProvenance = (opts.evidenceProvenance as SniperAlphaRunEvidenceProvenance | undefined) ?? (networkActive ? "real-readonly" : "mixed");
+
+  try {
+    alpha = buildSniperAlphaRunReport({
+      runId: opts.runId ?? null,
+      generatedAt: null,
+      campaign,
+      campaignRef: CAMPAIGN_OUTPUT_FILE,
+      campaignPlanRef: READONLY_CAMPAIGN_PLAN_FILE,
+      watchlistRef: opts.watchlistPath ? basename(opts.watchlistPath) : null,
+      diffRef: null,
+      providerHealth: {
+        risk: networkActive ? providerStatus(true, riskProviderFetched, riskProviderFailed) : riskByMint.size > 0 ? "ok" : "not-attempted",
+        quote: networkActive ? providerStatus(quoteAttempted, quoteObservedCount, quoteAttempted && quoteObservedCount === 0 ? 1 : 0) : "not-attempted",
+        simulation: networkActive && simAttempted ? providerStatus(true, simOkCount, simFailedCount) : "not-attempted",
+      },
+      rustEngineStatus,
+      phase7Status: opts.phase7Status ?? "authorized-for-design-only",
+      evidenceProvenance,
+      artifactRefs: [READONLY_CAMPAIGN_PLAN_FILE, CAMPAIGN_OUTPUT_FILE, ALPHA_EVIDENCE_INDEX_FILE],
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: cannot assemble the alpha report — ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  // --- write the alpha run folder ---------------------------------------------
+  try {
+    writeFileSync(planPath, JSON.stringify(redactValue(plan), null, 2) + "\n");
+    writeFileSync(campaignPath, JSON.stringify(redactValue(campaign), null, 2) + "\n");
+    writeFileSync(alphaPath, JSON.stringify(redactValue(alpha), null, 2) + "\n");
+    writeFileSync(
+      join(outDir, ALPHA_EVIDENCE_INDEX_FILE),
+      JSON.stringify(redactValue({ runId: opts.runId ?? "sniper-alpha-run", mode, network, networkActive, candidates: [...evidence.values()] }), null, 2) + "\n",
+    );
+    const summary = [
+      `# Sniper Alpha Run — ${alpha.runId}`,
+      "",
+      "> **LIVE TRADING DISABLED — THIS DOES NOT SEND TRANSACTIONS.** Nothing here signs, sends, or trades.",
+      "",
+      `- **Mode:** ${mode} (${network}) · read-only network: ${networkActive ? "ON" : "off"}`,
+      `- **Provenance:** ${alpha.evidenceProvenance}`,
+      `- **Candidates:** ${campaign.candidateCount}`,
+      `- **Verdicts:** watch ${campaign.verdictCounts.watch} · review ${campaign.verdictCounts.review} · BLOCKED ${campaign.verdictCounts.blocked} · insufficient ${campaign.verdictCounts.insufficientEvidence}`,
+      `- **Providers:** risk=${alpha.providerHealthSummary.risk} quote=${alpha.providerHealthSummary.quote} sim=${alpha.providerHealthSummary.simulation} · rust=${alpha.rustEngineStatus}`,
+      `- **Phase 7:** ${alpha.phase7Status}`,
+      "",
+      "## Candidates",
+      "",
+      "| verdict | candidate | mint | score | risk | quote | build | sim | next safe action |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+      ...campaign.candidates.map(
+        (c) =>
+          `| ${c.finalOperatorVerdict} | ${c.candidateId} | ${c.mint} | ${c.score ?? "—"} | ${c.riskDecision ?? "—"} | ${c.quoteStatus ?? "—"} | ${c.buildStatus ?? "—"} | ${c.simulationStatus ?? "—"} | ${c.nextSafeAction.replace(/\n/g, " ").slice(0, 80)} |`,
+      ),
+      "",
+      ...(warnings.length > 0 ? ["## Notes", "", ...warnings.map((w) => `- ${w}`), ""] : []),
+      "## Next safe actions",
+      "",
+      ...alpha.nextSafeActions.map((a) => `- ${a}`),
+      "",
+      "Inspect: `pnpm web:inspect --dir <this folder>`",
+      "",
+    ];
+    writeFileSync(join(outDir, CAMPAIGN_SUMMARY_FILE), redactString(summary.join("\n")));
+  } catch {
+    return { text: redactString(`Refusing: cannot write the alpha run folder at ${outDir}`), exitCode: 1 };
+  }
+
+  const exitCode = opts.failOnBlocked && campaign.verdictCounts.blocked > 0 ? 1 : 0;
+  if (opts.json) {
+    return { text: JSON.stringify(redactValue(alpha), null, 2), exitCode };
+  }
+  const out: string[] = [formatSniperAlphaRunReport(alpha, { label: opts.runId })];
+  for (const w of warnings) out.push("", `note: ${w}`);
+  out.push("", `wrote: ${planPath}`, `       ${campaignPath}`, `       ${alphaPath}`, `       ${join(outDir, CAMPAIGN_SUMMARY_FILE)}`);
+  out.push("", `inspect: pnpm web:inspect --dir "${outDir}"`);
+  return { text: redactString(out.join("\n")), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 105-A — `paper:sniper:campaign:diff`: compare two campaign.json files
+//   into sniper.dryrun.campaign.diff.v1. Pure read of two artifacts; authorizes
+//   nothing, sends nothing.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperCampaignDiffCommandOptions {
+  beforePath?: string;
+  afterPath?: string;
+  diffId?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+  /** Exit non-zero when any candidate worsened or became newly blocked. */
+  failOnWorsened?: boolean;
+}
+
+/** `soulmaker paper:sniper:campaign:diff` — diff two campaigns (sniper.dryrun.campaign.diff.v1). */
+export function paperSniperCampaignDiffReport(ctx: CommandContext = {}, opts: PaperSniperCampaignDiffCommandOptions = {}): CliReport {
+  if (!opts.beforePath || !opts.afterPath) {
+    return { text: "Refusing: --before <campaign.json> and --after <campaign.json> are both required.", exitCode: 1 };
+  }
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+  }
+  let diff;
+  try {
+    const before = validateSniperDryRunCampaign(readJsonValue(ctx, opts.beforePath, "before campaign"));
+    const after = validateSniperDryRunCampaign(readJsonValue(ctx, opts.afterPath, "after campaign"));
+    diff = diffSniperDryRunCampaigns({
+      diffId: opts.diffId ?? null,
+      comparedAt: null,
+      before,
+      after,
+      beforeCampaignRef: basename(opts.beforePath),
+      afterCampaignRef: basename(opts.afterPath),
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    try {
+      writeFileSync(resolvePath(ctx, opts.outPath), JSON.stringify(redactValue(diff), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the diff to ${resolvePath(ctx, opts.outPath)}`), exitCode: 1 };
+    }
+  }
+
+  const worsened = diff.summary.worsenedCount + diff.summary.newlyBlockedCount;
+  const exitCode = opts.failOnWorsened && worsened > 0 ? 1 : 0;
+  if (opts.json) return { text: JSON.stringify(redactValue(diff), null, 2), exitCode };
+  const lines = [formatSniperDryRunCampaignDiff(diff, { label: opts.diffId })];
+  if (opts.outPath) lines.push("", `wrote: ${resolvePath(ctx, opts.outPath)}`);
+  return { text: redactString(lines.join("\n")), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 105-A — `paper:sniper:alpha:report`: assemble a sniper.alpha_run.report.v1
+//   from a campaign (+ optional plan / diff / watchlist refs). Pure projection;
+//   authorizes nothing, sends nothing.
+// ---------------------------------------------------------------------------
+
+export interface PaperSniperAlphaReportCommandOptions {
+  campaignPath?: string;
+  planPath?: string;
+  diffPath?: string;
+  watchlistPath?: string;
+  runId?: string;
+  phase7Status?: string;
+  evidenceProvenance?: string;
+  rustEngineStatus?: string;
+  json?: boolean;
+  outPath?: string;
+  force?: boolean;
+}
+
+/** `soulmaker paper:sniper:alpha:report` — assemble the showable alpha run report from a campaign. */
+export function paperSniperAlphaReportReport(ctx: CommandContext = {}, opts: PaperSniperAlphaReportCommandOptions = {}): CliReport {
+  if (!opts.campaignPath) return { text: "Refusing: --campaign <campaign.json> is required (the campaign this report projects).", exitCode: 1 };
+  if (opts.outPath) {
+    const resolved = resolvePath(ctx, opts.outPath);
+    if (!opts.force && existsSync(resolved)) return { text: redactString(`Refusing: ${resolved} already exists (pass --force to overwrite).`), exitCode: 1 };
+  }
+  let alpha;
+  try {
+    const campaign = validateSniperDryRunCampaign(readJsonValue(ctx, opts.campaignPath, "campaign"));
+    // Optional refs are validated for shape but only their basenames are recorded.
+    if (opts.diffPath) validateSniperDryRunCampaignDiff(readJsonValue(ctx, opts.diffPath, "campaign diff"));
+    alpha = buildSniperAlphaRunReport({
+      runId: opts.runId ?? null,
+      generatedAt: null,
+      campaign,
+      campaignRef: basename(opts.campaignPath),
+      campaignPlanRef: opts.planPath ? basename(opts.planPath) : "readonly-campaign-plan.json",
+      watchlistRef: opts.watchlistPath ? basename(opts.watchlistPath) : null,
+      diffRef: opts.diffPath ? basename(opts.diffPath) : null,
+      rustEngineStatus: opts.rustEngineStatus ?? null,
+      phase7Status: opts.phase7Status ?? "authorized-for-design-only",
+      evidenceProvenance: opts.evidenceProvenance ?? null,
+    });
+  } catch (err) {
+    return { text: redactString(`Refusing: ${(err as Error).message}`), exitCode: 1 };
+  }
+
+  if (opts.outPath) {
+    try {
+      writeFileSync(resolvePath(ctx, opts.outPath), JSON.stringify(redactValue(alpha), null, 2) + "\n");
+    } catch {
+      return { text: redactString(`Refusing: cannot write the alpha report to ${resolvePath(ctx, opts.outPath)}`), exitCode: 1 };
+    }
+  }
+
+  if (opts.json) return { text: JSON.stringify(redactValue(alpha), null, 2), exitCode: 0 };
+  const lines = [formatSniperAlphaRunReport(alpha, { label: opts.runId })];
+  if (opts.outPath) lines.push("", `wrote: ${resolvePath(ctx, opts.outPath)}`);
+  return { text: redactString(lines.join("\n")), exitCode: 0 };
 }
 
 export interface ExecutionBuildCommandOptions {

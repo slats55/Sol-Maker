@@ -810,6 +810,25 @@ pnpm soulmaker paper:sniper:watchlist:prepare --candidates <candidates.json> --o
 # insufficient-evidence) is RE-DERIVED; a high score can NEVER override a blocker. Live stays DISABLED.
 pnpm soulmaker paper:sniper:campaign:run --watchlist runs/watchlist.json --preflight preflight.json --out runs/campaign
 
+# Sprint 105-A — LIVE-READ-ONLY AUTO CAMPAIGN: paper:sniper:campaign:auto-run GATHERS the safe read-only
+# evidence ITSELF across candidates (Rust scoring, deep risk, route-quote fetch/score, unsigned build +
+# simulation in mainnet-dry-run mode) and writes a no-send alpha folder — sniper.readonly_campaign.plan.v1
+# + sniper.dryrun.campaign.v1 + sniper.alpha_run.report.v1 + per-candidate evidence + RUN_SUMMARY.md.
+# Network reads happen ONLY with --mode mainnet-dry-run + the explicit --allow-readonly-network opt-in;
+# a risk REJECT short-circuits the downstream stages; unavailable providers/Rust are recorded honestly.
+# It NEVER sends, signs, or loads a key — live trading stays DISABLED.
+pnpm soulmaker paper:sniper:campaign:auto-run --watchlist runs/watchlist.json --risk <MINT>=risk.<MINT>.json --out runs/alpha
+pnpm soulmaker paper:sniper:campaign:auto-run --candidates runs/candidates.json --mode mainnet-dry-run --allow-readonly-network --out runs/alpha
+
+# paper:sniper:campaign:diff compares two campaigns (--before/--after) into sniper.dryrun.campaign.diff.v1
+# (added/removed/unchanged/changed, score deltas, verdict transitions, improved/worsened/newly-blocked/
+# newly-watch). It authorizes nothing and never overrides a verdict.
+pnpm soulmaker paper:sniper:campaign:diff --before runs/prev/campaign.json --after runs/alpha/campaign.json --out runs/alpha/campaign-diff.json
+
+# paper:sniper:alpha:report assembles a showable sniper.alpha_run.report.v1 from a campaign (+ optional
+# plan/diff/watchlist refs). It can never claim live readiness or profitability; live trading stays DISABLED.
+pnpm soulmaker paper:sniper:alpha:report --campaign runs/alpha/campaign.json --plan runs/alpha/readonly-campaign-plan.json --out runs/alpha/alpha-report.json
+
 # Sprint 27 — PAPER SNIPER DECISIONS: fold the candidate list + preflight + optional operator rules
 # into a per-candidate SIMULATED decision — skip / watch / paper-enter / paper-reject / unknown — with
 # reasons. A paper-enter is a PAPER-ONLY decision, NOT a buy/sell order, NOT a transaction, NOT live

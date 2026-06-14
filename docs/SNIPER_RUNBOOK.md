@@ -96,6 +96,36 @@ sending, live trading stays disabled.**
 See [docs/MAINNET_DRY_RUN.md](MAINNET_DRY_RUN.md#sprint-104-c--operator-watchlists--dry-run-campaigns)
 for the full campaign reference.
 
+## Sprint 105-A — live-read-only auto campaign (the alpha workflow)
+
+`paper:sniper:campaign:run` aggregates evidence you already gathered. The S105-A
+`paper:sniper:campaign:auto-run` GATHERS the safe read-only evidence ITSELF across many candidates and
+writes a no-send alpha folder. **Live trading stays disabled — it never sends, signs, or loads a key.**
+
+1. **Prepare a watchlist or candidate list** (`paper:sniper:watchlist:prepare`).
+2. **Run the auto campaign** — offline (paper) or with live read-only network reads:
+   ```
+   # Offline (no network): ingest risk files, Rust scoring runs offline, network stages not-attempted.
+   pnpm soulmaker paper:sniper:campaign:auto-run --watchlist runs/watchlist.json \
+     --risk <MINT>=risk.<MINT>.json --out runs/alpha --campaign-id alpha-1
+
+   # Live read-only (mainnet-dry-run): gather deep risk + route quotes itself. No send, no signer.
+   pnpm soulmaker paper:sniper:campaign:auto-run --candidates runs/candidates.json \
+     --mode mainnet-dry-run --allow-readonly-network --out runs/alpha
+   ```
+   It writes `readonly-campaign-plan.json` (`sniper.readonly_campaign.plan.v1`), `campaign.json`
+   (`sniper.dryrun.campaign.v1`), `alpha-report.json` (`sniper.alpha_run.report.v1`),
+   `evidence-index.json`, per-candidate evidence, and `RUN_SUMMARY.md`. A risk REJECT short-circuits the
+   downstream quote/build/simulation stages; an unavailable provider / Rust engine is recorded honestly.
+3. **Diff against a previous run** — `paper:sniper:campaign:diff --before <old>/campaign.json
+   --after runs/alpha/campaign.json --out runs/alpha/campaign-diff.json` (`sniper.dryrun.campaign.diff.v1`).
+   It reports movement only — improved / worsened / newly-blocked / newly-watch — and authorizes nothing.
+4. **(Re)generate the alpha report** — `paper:sniper:alpha:report --campaign runs/alpha/campaign.json
+   --plan runs/alpha/readonly-campaign-plan.json --diff runs/alpha/campaign-diff.json --out
+   runs/alpha/alpha-report.json` (`sniper.alpha_run.report.v1`).
+5. **Inspect in the command center**: `pnpm web:inspect --dir runs/alpha` renders the plan, the ranked
+   campaign, the diff, and the alpha report with a **LIVE TRADING DISABLED** banner.
+
 ## What exists now
 
 | Stage | Command | Artifact schema | What it does |

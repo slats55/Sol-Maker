@@ -68,6 +68,9 @@ import {
   paperSniperOperatorDemoReport,
   paperSniperWatchlistPrepareReport,
   paperSniperCampaignRunReport,
+  paperSniperCampaignAutoRunReport,
+  paperSniperCampaignDiffReport,
+  paperSniperAlphaReportReport,
   executionSessionStatusReport,
   executionSessionReconcileReport,
   executionSessionAcknowledgeReport,
@@ -3430,6 +3433,184 @@ program
           outDir: opts.out,
           force: Boolean(opts.force),
           failOnBlocked: Boolean(opts.failOnBlocked),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:campaign:auto-run")
+  .description(
+    "Sprint 105-A LIVE-READ-ONLY auto campaign: GATHER the safe read-only evidence itself across many candidates (candidate scoring via the Rust engine, deep risk, route-quote fetch + score, and an unsigned build dry-run + simulation in mainnet-dry-run mode) and assemble a no-send alpha folder — `sniper.readonly_campaign.plan.v1` + `sniper.dryrun.campaign.v1` + `sniper.alpha_run.report.v1` + per-candidate evidence + RUN_SUMMARY.md. Network reads happen ONLY in --mode mainnet-dry-run with the explicit --allow-readonly-network opt-in; a risk REJECT short-circuits the downstream quote/build/simulation stages for that candidate; an unavailable provider or Rust engine is recorded HONESTLY, never faked. It NEVER sends, NEVER signs, NEVER loads a key, and adds no mainnet send surface — live trading stays DISABLED",
+  )
+  .option("--candidates <path>", "candidate list spine (raw operator input or canonical sniper.candidate.list.v1)")
+  .option("--watchlist <path>", "watchlist spine (sniper.watchlist.v1; supplies the per-mint watchlist status too)")
+  .option("--mode <mode>", "paper | mainnet-dry-run (default paper; there is no live mode)")
+  .option("--network <network>", "network label echoed into the artifacts (default mainnet-beta)")
+  .option("--allow-readonly-network", "opt in to LIVE read-only network reads (mainnet-dry-run only): deep risk, route quote, simulation")
+  .option("--limit <n>", "cap the number of candidates (network runs are also hard-capped)", (v: string) => Number.parseInt(v, 10))
+  .option("--run-id <label>", "operator label echoed into the alpha report / plan")
+  .option("--campaign-id <label>", "operator label echoed into the campaign")
+  .option("--max-quote-age-ms <ms>", "quote-age cap fed to the route-quote scorer (default 60000)")
+  .option("--amount-sol <sol>", "probe amount in SOL for the route-quote fetch (default 0.01)")
+  .option("--score <path>", "ingest a pre-computed engine.sniper.score.report.v1 instead of running the Rust scorer")
+  .option(
+    "--risk <mint=path>",
+    "token:risk JSON for a mint (used when network reads are off, or as an override; repeatable)",
+    (value: string, previous: string[]) => previous.concat(value),
+    [] as string[],
+  )
+  .option("--wallet <publicKey>", "PUBLIC key to build the unsigned dry-run for (a public key; never a secret)")
+  .option("--slippage-bps <bps>", "slippage for the unsigned build dry-run")
+  .option("--max-spend-sol <sol>", "explicit max-spend cap for the unsigned build dry-run (nothing is defaulted)")
+  .option("--slippage-cap-bps <bps>", "explicit slippage cap for the unsigned build dry-run")
+  .option("--risk-score-cap <score>", "explicit risk-score cap for the unsigned build dry-run")
+  .option("--endpoint <url>", "read-only RPC / quote endpoint override")
+  .option("--rpc-url <url>", "read-only RPC url for the simulation")
+  .option("--phase7-status <label>", "Phase 7 posture label echoed into the alpha report (default authorized-for-design-only)")
+  .option("--evidence-provenance <label>", "real-readonly | fixture | fictional-example | mixed (default derived from the run)")
+  .option("--json", "emit the alpha report as stable JSON")
+  .option("--out <dir>", "REQUIRED output directory for the alpha run folder")
+  .option("--force", "overwrite existing artifacts in the output directory")
+  .option("--fail-on-blocked", "exit non-zero when any candidate is blocked")
+  .action(
+    async (opts: {
+      candidates?: string;
+      watchlist?: string;
+      mode?: string;
+      network?: string;
+      allowReadonlyNetwork?: boolean;
+      limit?: number;
+      runId?: string;
+      campaignId?: string;
+      maxQuoteAgeMs?: string;
+      amountSol?: string;
+      score?: string;
+      risk?: string[];
+      wallet?: string;
+      slippageBps?: string;
+      maxSpendSol?: string;
+      slippageCapBps?: string;
+      riskScoreCap?: string;
+      endpoint?: string;
+      rpcUrl?: string;
+      phase7Status?: string;
+      evidenceProvenance?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnBlocked?: boolean;
+    }) => {
+      const { text, exitCode } = await paperSniperCampaignAutoRunReport(
+        {},
+        {
+          candidatesPath: opts.candidates,
+          watchlistPath: opts.watchlist,
+          mode: opts.mode,
+          network: opts.network,
+          allowReadonlyNetwork: Boolean(opts.allowReadonlyNetwork),
+          limit: opts.limit,
+          runId: opts.runId,
+          campaignId: opts.campaignId,
+          maxQuoteAgeMs: opts.maxQuoteAgeMs,
+          amountSol: opts.amountSol,
+          scorePath: opts.score,
+          risks: opts.risk,
+          wallet: opts.wallet,
+          slippageBps: opts.slippageBps,
+          maxSpendSol: opts.maxSpendSol,
+          slippageCapBps: opts.slippageCapBps,
+          riskScoreCap: opts.riskScoreCap,
+          endpoint: opts.endpoint,
+          rpcUrl: opts.rpcUrl,
+          phase7Status: opts.phase7Status,
+          evidenceProvenance: opts.evidenceProvenance,
+          json: Boolean(opts.json),
+          outDir: opts.out,
+          force: Boolean(opts.force),
+          failOnBlocked: Boolean(opts.failOnBlocked),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("paper:sniper:campaign:diff")
+  .description(
+    "Sprint 105-A campaign diff: compare two `sniper.dryrun.campaign.v1` files (--before / --after) candidate-by-candidate (keyed by mint) into `sniper.dryrun.campaign.diff.v1` — added / removed / unchanged / changed, score deltas, verdict transitions, and improved / worsened / newly-blocked / newly-watch tallies. It NEVER re-derives or overrides a campaign verdict and authorizes NOTHING; liveSendStatus is pinned disabled and the closed schema refuses any signature / send result. LOCAL-ONLY (no RPC / network / wallet / signer / send)",
+  )
+  .option("--before <path>", "the earlier sniper.dryrun.campaign.v1 file")
+  .option("--after <path>", "the later sniper.dryrun.campaign.v1 file")
+  .option("--diff-id <label>", "operator label echoed into the diff")
+  .option("--json", "emit the diff as stable JSON")
+  .option("--out <path>", "write ONLY the diff JSON to this path (refused if it exists without --force)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .option("--fail-on-worsened", "exit non-zero when any candidate worsened or became newly blocked")
+  .action((opts: { before?: string; after?: string; diffId?: string; json?: boolean; out?: string; force?: boolean; failOnWorsened?: boolean }) => {
+    const { text, exitCode } = paperSniperCampaignDiffReport(
+      {},
+      {
+        beforePath: opts.before,
+        afterPath: opts.after,
+        diffId: opts.diffId,
+        json: Boolean(opts.json),
+        outPath: opts.out,
+        force: Boolean(opts.force),
+        failOnWorsened: Boolean(opts.failOnWorsened),
+      },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("paper:sniper:alpha:report")
+  .description(
+    "Sprint 105-A alpha run report: assemble a showable `sniper.alpha_run.report.v1` from a campaign (--campaign) plus optional plan / diff / watchlist refs — top / blocked / insufficient-evidence candidates, stage coverage, provider + Rust engine health, Phase 7 posture, and evidence provenance. Candidate verdicts come from the campaign's own re-derivation; the report can NEVER claim live readiness or profitability, liveTradingStatus is pinned disabled and the closed schema refuses any signature / send result. LOCAL-ONLY (no RPC / network / wallet / signer / send)",
+  )
+  .option("--campaign <path>", "the sniper.dryrun.campaign.v1 this report projects (required)")
+  .option("--plan <path>", "the sniper.readonly_campaign.plan.v1 the campaign ran under (ref only)")
+  .option("--diff <path>", "an optional sniper.dryrun.campaign.diff.v1 to reference")
+  .option("--watchlist <path>", "an optional sniper.watchlist.v1 to reference")
+  .option("--run-id <label>", "operator label echoed into the report")
+  .option("--phase7-status <label>", "Phase 7 posture label (default authorized-for-design-only)")
+  .option("--evidence-provenance <label>", "real-readonly | fixture | fictional-example | mixed (default mixed)")
+  .option("--rust-engine-status <label>", "available | unavailable | mixed | not-used (default not-used)")
+  .option("--json", "emit the report as stable JSON")
+  .option("--out <path>", "write ONLY the report JSON to this path (refused if it exists without --force)")
+  .option("--force", "overwrite an existing --out file (refused by default)")
+  .action(
+    (opts: {
+      campaign?: string;
+      plan?: string;
+      diff?: string;
+      watchlist?: string;
+      runId?: string;
+      phase7Status?: string;
+      evidenceProvenance?: string;
+      rustEngineStatus?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+    }) => {
+      const { text, exitCode } = paperSniperAlphaReportReport(
+        {},
+        {
+          campaignPath: opts.campaign,
+          planPath: opts.plan,
+          diffPath: opts.diff,
+          watchlistPath: opts.watchlist,
+          runId: opts.runId,
+          phase7Status: opts.phase7Status,
+          evidenceProvenance: opts.evidenceProvenance,
+          rustEngineStatus: opts.rustEngineStatus,
+          json: Boolean(opts.json),
+          outPath: opts.out,
+          force: Boolean(opts.force),
         },
       );
       console.log(text);
