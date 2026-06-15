@@ -127,6 +127,19 @@ describe("buildSniperAlphaHistoryTrend — reason totals + provenance + provider
   });
 });
 
+describe("buildSniperAlphaHistoryTrend — empty snapshot handling", () => {
+  it("tolerates an empty-history snapshot mixed with a non-empty one (no crash, honest consistency)", () => {
+    const empty = buildSniperAlphaHistory({ historyId: "empty", runs: [] });
+    const full = history("full", [runWith("runs/a", [cand({ candidateId: "c1", mint: USDC, riskDecision: "REJECT" })], { providerHealth: { risk: "ok", quote: "ok", simulation: "ok" } })]);
+    const trend = buildSniperAlphaHistoryTrend({ snapshots: [snap("empty", empty), snap("full", full)] });
+    expect(trend.snapshots[0]!.runCount).toBe(0);
+    expect(trend.verdictSeries.blocked).toEqual([0, 1]);
+    // The only run-bearing snapshot has an ok risk provider, so consistency is "always-ok" over 1 run.
+    expect(trend.providerHealthConsistency.risk).toEqual({ okRuns: 1, totalRuns: 1, label: "always-ok" });
+    expect(() => validateSniperAlphaHistoryTrend(trend)).not.toThrow();
+  });
+});
+
 describe("buildSniperAlphaHistoryTrend — determinism", () => {
   it("produces byte-identical output for identical input", () => {
     const mk = () => [snap("mon", history("mon", [runWith("runs/a", [cleanCandidate("c1", WRAPPED_SOL)])])), snap("tue", history("tue", [runWith("runs/a", [cand({ candidateId: "c1", mint: WRAPPED_SOL, riskDecision: "REJECT" })])]))];

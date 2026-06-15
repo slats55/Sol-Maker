@@ -119,6 +119,28 @@ describe("diffSniperAlphaHistories — identical inputs are a no-op", () => {
   });
 });
 
+describe("diffSniperAlphaHistories — empty histories", () => {
+  it("diffs two empty histories into a valid, all-zero no-op diff (no crash)", () => {
+    const empty = (id: string) => buildSniperAlphaHistory({ historyId: id, runs: [] });
+    const diff = diffSniperAlphaHistories({ base: empty("a"), next: empty("b") });
+    expect(diff.runChanges).toEqual([]);
+    expect(diff.summary).toEqual({
+      runsAdded: 0,
+      runsRemoved: 0,
+      runsChanged: 0,
+      runsUnchanged: 0,
+      totalCandidateDelta: 0,
+      invalidArtifactDelta: 0,
+      aggregateWatchDelta: 0,
+      aggregateReviewDelta: 0,
+      aggregateBlockedDelta: 0,
+      aggregateInsufficientDelta: 0,
+    });
+    expect(diff.summaryLine).toContain("live trading DISABLED.");
+    expect(() => validateSniperAlphaHistoryDiff(diff)).not.toThrow();
+  });
+});
+
 describe("diffSniperAlphaHistories — run add / remove", () => {
   it("reports an added run and a removed run, keyed by runRef", () => {
     const base = history([runWith("runs/a", [cleanCandidate("c1", WRAPPED_SOL)])]);
