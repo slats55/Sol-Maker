@@ -389,6 +389,26 @@ Both are `liveTradingStatus: "disabled"`, authorize nothing, and refuse any send
 read evidence already gathered by the dry-run / live-read-only path — they reach no network themselves
 (`strategy:intel` reads the `token:risk` files you already wrote).
 
+## Sprint 107 — comparing alpha histories over time (read-only)
+
+Once you have **two or more** `sniper.alpha_history.v1` rollups (one per batch), two S107 commands let an
+operator see what moved — still **no-send / no-signer**:
+
+- `paper:sniper:alpha:history:diff --base <mon>.json --next <tue>.json` produces a
+  `sniper.alpha_history.diff.v1`: runs paired by `runRef` (an alpha history carries run-level counts, not
+  per-candidate identity), reporting MOVEMENT only — runs added / removed / changed, per-run + aggregate
+  verdict / provider / provenance deltas, the blocker-reason frequency movement, and the Phase 7 posture
+  movement. `--fail-on-worsened` gates CI when the aggregate blocked count rose.
+- `paper:sniper:alpha:history:trend --history mon=<mon>.json --history tue=<tue>.json` folds an ORDERED
+  list of rollups into a `sniper.alpha_history.trend.v1` series — the order is the **supplied order**, not
+  a wall-clock. It reports the verdict + candidate series across snapshots, step-to-step deltas, the
+  blocker-reason totals, and per-provider ok-run consistency.
+
+Both re-validate + deep-scan each input, refuse a live-authorizing rollup, never re-derive a verdict, and
+pin `liveTradingStatus: "disabled"`. **Movement is not momentum** — a falling blocked count is bookkeeping,
+never a buy signal. Committed redacted examples (history / diff / trend / strategy-intelligence) live in
+`examples/sniper/alpha-artifacts/`; inspect them with `pnpm web:inspect --dir examples/sniper/alpha-artifacts`.
+
 ## Sprint 104-C — operator watchlists + dry-run campaigns
 
 The S104-C operator layer turns the safe pipeline into a workbench for comparing many candidates,

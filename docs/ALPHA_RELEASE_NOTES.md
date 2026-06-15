@@ -57,6 +57,31 @@ A short, honest status of the no-send alpha. For the full checklist see
   suite now drives `alpha:history` and `strategy:intel` (artifacts validate, stay live-disabled, smuggle
   no send/signature field, surface the freeze-authority flag).
 
+## New in Sprint 107
+
+- **Alpha history diff** — `paper:sniper:alpha:history:diff` (`sniper.alpha_history.diff.v1`) compares two
+  `sniper.alpha_history.v1` rollups (`--base` / `--next`; a path may be a folder holding
+  `alpha-history.json`). Runs are paired by `runRef` (an alpha history carries run-level counts, not
+  per-candidate identity); it reports MOVEMENT only — runs added / removed / changed, per-run candidate +
+  verdict + provider + provenance + topMint + blocker deltas, the aggregate rollup movement, the
+  blocker-reason frequency movement, and the Phase 7 posture movement. It NEVER re-derives a verdict;
+  both inputs are re-validated + deep-scanned and a malformed / live-authorizing rollup is refused.
+  **Movement is not momentum.** `--fail-on-worsened` gates CI when the aggregate blocked count rose.
+- **Alpha history trend** — `paper:sniper:alpha:history:trend` (`sniper.alpha_history.trend.v1`) folds an
+  ORDERED list of rollups into one series. The order is the **supplied order** — no wall-clock, no fake
+  time series. It reports the verdict + candidate series across snapshots, step-to-step deltas, the
+  blocker-reason totals, the evidence-provenance totals, and the per-provider ok-run consistency.
+- **Committed redacted examples** — `examples/sniper/alpha-artifacts/` ships byte-deterministic example
+  artifacts (history, diff, trend, strategy-intelligence) produced through the production builders, so
+  `/sniper` and the docs render realistic artifacts without the gitignored `runs/` tree. Inspect them with
+  `pnpm web:inspect --dir examples/sniper/alpha-artifacts`.
+- **Typed web views** for both new schemas on `/sniper`, under the LIVE TRADING DISABLED banner, with a
+  do-NOT-trust caution when the safety literals are missing; hostile content escaped.
+- **Deliberately deferred (honest):** folding live quote / liquidity depth and the Rust candidate score
+  into the strategy-intelligence cards was NOT done — both would mutate the closed, stable
+  `sniper.strategy_intelligence.v1` schema and the live probe would break the pure builder's no-network
+  invariant; that work is a `sniper.strategy_intelligence.v2` sprint.
+
 ## What does NOT work (honest)
 
 - **Live trading** — not implemented; 0% by policy.

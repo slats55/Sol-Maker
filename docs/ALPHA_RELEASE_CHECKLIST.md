@@ -60,6 +60,19 @@ All of these are paper / dry-run / read-only and ship with tests:
   the notable risk flags BY NAME, a mint class, a confidence label (evidence completeness, never price
   direction), closed reason codes, and plain-English why-this-matters / what-to-study-next. Verdicts come
   from the campaign (a score never overrides a blocker). Never a buy signal, never a profitability claim.
+- **Alpha history diff (S107)** — `paper:sniper:alpha:history:diff` (`sniper.alpha_history.diff.v1`):
+  compare two `sniper.alpha_history.v1` rollups (`--base` / `--next`) into a movement-only diff — runs
+  added / removed / changed (paired by `runRef`), per-run + aggregate verdict / provider / provenance
+  deltas, blocker-reason frequency movement, Phase 7 posture movement. It never re-derives a verdict;
+  both inputs are re-validated + deep-scanned and a live-authorizing rollup is refused. **Movement is not
+  momentum.** `--fail-on-worsened` gates CI. `liveTradingStatus` pinned disabled; authorizes nothing.
+- **Alpha history trend (S107)** — `paper:sniper:alpha:history:trend` (`sniper.alpha_history.trend.v1`):
+  fold an ORDERED list of rollups into one series (the **supplied order** — no wall-clock). Reports the
+  verdict + candidate series, step-to-step deltas, blocker-reason totals, provenance totals, and
+  per-provider ok-run consistency. Authorizes nothing; `liveTradingStatus` pinned disabled.
+- **Committed redacted examples (S107)** — `examples/sniper/alpha-artifacts/` ships byte-deterministic
+  example artifacts (history, diff, trend, strategy-intelligence) produced through the production builders,
+  so `/sniper` and the docs render realistic artifacts without the gitignored `runs/` tree.
 - **UI command center** — `pnpm web:inspect --dir <folder>` renders typed views for every artifact above
   (plan / campaign / diff / alpha report included) under a **LIVE TRADING DISABLED** banner; the
   `/sniper` page carries the calm Phase 7 posture.
@@ -121,6 +134,17 @@ pnpm soulmaker paper:sniper:alpha:history --runs-dir runs --out runs/alpha-histo
 # 7. (S106) Explain a campaign's candidates (read-only why + what to study next).
 pnpm soulmaker paper:sniper:strategy:intel --campaign runs/alpha/campaign.json \
   --out runs/alpha/strategy-intel.json
+
+# 8. (S107) Compare two history rollups over time (movement only — never momentum).
+pnpm soulmaker paper:sniper:alpha:history:diff --base runs/alpha-history-mon.json \
+  --next runs/alpha-history-tue.json --out runs/alpha-history-diff.json
+
+# 9. (S107) Chart many history rollups as a series (supplied order; no wall-clock).
+pnpm soulmaker paper:sniper:alpha:history:trend --history mon=runs/alpha-history-mon.json \
+  --history tue=runs/alpha-history-tue.json --out runs/alpha-history-trend.json
+
+# Inspect the committed redacted examples without any runs/ folder.
+pnpm web:inspect --dir examples/sniper/alpha-artifacts
 ```
 
 Or run the curated workbench in one command: `paper:sniper:operator-demo --out runs/demo`, then

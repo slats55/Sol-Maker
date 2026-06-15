@@ -1355,6 +1355,57 @@ With the written human Phase 7 sign-off **still missing**, S104-B (the controlle
 Only once BOTH a written human Phase 7 sign-off AND a separate explicit S104 execution authorization
 exist should S104-B send-surface *design* even be revisited.
 
+## Sprint 107 — alpha history diff + trend, committed examples + release hardening (DONE)
+
+Built the next no-send alpha layer so an operator can **compare alpha runs over time** — still
+**no-send / no-signer / no-live-trading**, no new live surface.
+
+- **Alpha history diff** (`paper:sniper:alpha:history:diff` → `sniper.alpha_history.diff.v1`) — a
+  deterministic comparison of two `sniper.alpha_history.v1` rollups. It is faithful to the rollup's
+  RUN-LEVEL granularity (runs paired by `runRef`, never an invented per-candidate match) and reports
+  MOVEMENT only: runs added / removed / changed, per-run candidate-count + verdict-count + provider +
+  provenance + topMint + blocker deltas, the aggregate verdict / provider-health / evidence-provenance
+  rollup movement (base / next / delta triples), the blocker-reason run-frequency movement, the Phase 7
+  posture movement, and a one-line summary. It NEVER re-derives a verdict; both inputs are re-validated +
+  deep-scanned and a malformed / live-authorizing rollup is refused. `--fail-on-worsened` gates CI.
+- **Alpha history trend** (`paper:sniper:alpha:history:trend` → `sniper.alpha_history.trend.v1`) — a
+  deterministic series across an ORDERED list of rollups (two or more). The order is the **supplied
+  order** — no wall-clock, no fake time series. Reports the watch / review / blocked /
+  insufficient-evidence series + candidate series across snapshots, step-to-step deltas, the
+  blocker-reason totals, the evidence-provenance totals, and the per-provider ok-run consistency.
+- **Committed redacted examples** — `examples/sniper/alpha-artifacts/` ships byte-deterministic example
+  artifacts (history, diff, trend, strategy-intelligence) produced THROUGH the production builders
+  (`scripts/gen-alpha-artifact-examples.ts`), so `/sniper` and the docs render realistic artifacts without
+  the gitignored `runs/` tree. Well-known public mints are deterministic placeholders (not a
+  recommendation); provenance honestly `fixture`. A pin test fails on any byte drift.
+- **Web** — typed `/sniper` views for both new schemas (movement summary, run-change table, blocker /
+  Phase 7 movement; the trend snapshot table + step deltas + consistency) under the LIVE TRADING DISABLED
+  banner, with a do-NOT-trust caution when the safety literals are missing; the committed examples are
+  surfaced on `/sniper`; registry + command-reference updated (drift guards green); hostile content escaped.
+- **Safety, no drift** — both new pure modules carry a forbidden-capability / forbidden-import safety
+  regression; command-surface + cli-reference + safety-scan stay green; the only send command remains
+  `execution:devnet:send`; Phase 7 locks unchanged. **The written human sign-off is still the only live
+  blocker.**
+
+### Deliberately deferred (honest, NOT done)
+
+- **Strategy-intelligence live quote / liquidity depth** and **Rust candidate score folded into the
+  intelligence cards** were *not* done. Both would mutate the **CLOSED, stable**
+  `sniper.strategy_intelligence.v1` schema (which now has committed examples + a typed web view + extensive
+  tests), and the live quote probe would break the package-purity invariant the safety regression enforces
+  (no network in a pure builder). Quote availability is already reflected in the campaign's per-candidate
+  `quoteStatus` that strategy-intelligence reads, and the Rust advisory score is already in the
+  release-candidate / rehearse chain — so folding either in would duplicate pipeline data for schema
+  churn. Doing it right is a `sniper.strategy_intelligence.v2` sprint (its own diff / web / docs / tests).
+
+### Next recommended track (S108, no-send)
+
+With the written human Phase 7 sign-off **still missing**, the highest-value next track is a
+`sniper.strategy_intelligence.v2` that *additively* carries operator-supplied read-only quote / liquidity
+provenance (from the existing routequote / quotefetch artifacts, deterministic fixture mode for tests) and
+the advisory Rust candidate score — with its own validator parity wall, diff, typed web view, committed
+example, and docs. It authorizes nothing; live trading stays disabled.
+
 ## Definition of done (every phase)
 
 1. `pnpm check` (typecheck + lint + test) is green.

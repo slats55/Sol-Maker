@@ -123,6 +123,46 @@ missing / malformed / unrecognized artifact is listed under `invalidArtifacts` a
 a run; a run that claims live authorization is **refused**. Add `--fail-on-invalid` /
 `--fail-on-blocked` to gate CI. It authorizes nothing and can never report a live send.
 
+## C2. Compare + chart history rollups over time (Sprint 107 · offline)
+
+Once you have **two or more** history rollups (re-roll the campaign into different histories on
+different days), compare them and chart the series. Both are deterministic, read the named files only,
+and authorize nothing.
+
+```sh
+# Roll up two batches into two histories (a path may also be a folder holding alpha-history.json).
+pnpm soulmaker paper:sniper:alpha:history --run mon=runs/alpha-1 --out runs/alpha-history-mon.json --force
+pnpm soulmaker paper:sniper:alpha:history --run tue=runs/alpha-2 --out runs/alpha-history-tue.json --force
+
+# Diff: what MOVED between two rollups (runs added / removed / changed, verdict / provider deltas).
+pnpm soulmaker paper:sniper:alpha:history:diff \
+  --base runs/alpha-history-mon.json --next runs/alpha-history-tue.json \
+  --out runs/alpha-history-diff.json
+
+# Trend: an ORDERED series across many rollups (supplied order — NO wall-clock).
+pnpm soulmaker paper:sniper:alpha:history:trend \
+  --history mon=runs/alpha-history-mon.json --history tue=runs/alpha-history-tue.json \
+  --out runs/alpha-history-trend.json
+
+# Inspect either as a typed view.
+pnpm web:inspect --input runs/alpha-history-diff.json
+```
+
+The diff (`sniper.alpha_history.diff.v1`) pairs runs by `runRef` — an alpha history carries run-level
+counts, not per-candidate identity — and reports **movement only**: runs added / removed / changed,
+per-run + aggregate verdict / provider / provenance deltas, the blocker-reason frequency movement, and
+the Phase 7 posture movement. The trend (`sniper.alpha_history.trend.v1`) reports the verdict + candidate
+series across snapshots, step-to-step deltas, blocker-reason totals, and per-provider ok-run consistency.
+Neither re-derives a verdict; both re-validate + deep-scan each input and refuse a live-authorizing
+rollup. **Movement is not momentum** — a falling blocked count is bookkeeping, never a buy signal.
+`--fail-on-worsened` gates the diff in CI when the aggregate blocked count rose.
+
+Don't have run folders handy? Committed redacted examples live in `examples/sniper/alpha-artifacts/`:
+
+```sh
+pnpm web:inspect --dir examples/sniper/alpha-artifacts
+```
+
 ## D. Strategy intelligence (Sprint 106)
 
 Explain a campaign's candidates — the read-only "why a verdict + what to study next". The **offline**
