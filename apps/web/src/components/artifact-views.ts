@@ -4420,6 +4420,228 @@ function renderSniperAlphaHistoryView(rec: Record<string, unknown>): RawHtml {
   `;
 }
 
+/** Format a base/next/delta movement triple as "base -> next (+delta)". */
+function triple(rec: Record<string, unknown>, key: string): string {
+  const t = asRecord(rec[key]);
+  if (t === null) return DASH;
+  const base = readNumber(t, "base");
+  const next = readNumber(t, "next");
+  const delta = readNumber(t, "delta");
+  const d = typeof delta === "number" ? (delta > 0 ? `+${delta}` : `${delta}`) : DASH;
+  return `${num(base)} -> ${num(next)} (${d})`;
+}
+
+function renderSniperAlphaHistoryDiffView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const liveTradingStatus = need(missing, "liveTradingStatus", readString(rec, "liveTradingStatus"));
+  const summaryLine = readString(rec, "summaryLine");
+  const identity = asRecord(rec["runIdentity"]) ?? {};
+  const verdictMovement = asRecord(rec["aggregateVerdictMovement"]) ?? {};
+  const scan = asRecord(rec["sensitiveFieldScan"]);
+  const runChanges = Array.isArray(rec["runChanges"])
+    ? (rec["runChanges"] as unknown[]).filter((r): r is Record<string, unknown> => typeof r === "object" && r !== null && !Array.isArray(r))
+    : [];
+  const blockerMovement = Array.isArray(rec["blockerReasonMovement"])
+    ? (rec["blockerReasonMovement"] as unknown[]).filter((b): b is Record<string, unknown> => typeof b === "object" && b !== null && !Array.isArray(b))
+    : [];
+  const phase7 = asRecord(rec["phase7PostureMovement"]) ?? {};
+  const caveats = readStringArray(rec, "caveats");
+  // A diff can never report a live send / authorize a live path — these literals prove it.
+  const safe =
+    liveTradingStatus === "disabled" &&
+    rec.authorizesLiveTrading === false &&
+    rec.anyInputAuthorizesLiveTrading === false &&
+    rec.neverSends === true &&
+    rec.phase7LiveTradingReady === false;
+  const scanClean =
+    scan !== null &&
+    scan.signaturePresent === false &&
+    scan.txidPresent === false &&
+    scan.sendResultPresent === false &&
+    scan.keyLikePresent === false;
+  const phaseAdded = Array.isArray(phase7["added"]) ? (phase7["added"] as unknown[]).filter((x): x is string => typeof x === "string") : [];
+  const phaseRemoved = Array.isArray(phase7["removed"]) ? (phase7["removed"] as unknown[]).filter((x): x is string => typeof x === "string") : [];
+  return html`
+    ${RiskNotice({
+      tone: safe ? "info" : "caution",
+      title: safe
+        ? "Sniper alpha history diff — LIVE TRADING DISABLED · THIS DOES NOT SEND TRANSACTIONS"
+        : "Alpha history diff is missing its no-send / not-authorized safety literals — do NOT trust this artifact",
+      body: html`A no-send comparison of two alpha-history rollups. It reports MOVEMENT only and never
+        re-derives a verdict — runs are paired by <code>runRef</code> (an alpha history carries run-level
+        counts, not per-candidate identity). <strong>Movement is not momentum:</strong> a falling blocked
+        count is bookkeeping, never a buy signal. <code>authorizesLiveTrading</code> and
+        <code>anyInputAuthorizesLiveTrading</code> are <strong>false</strong>;
+        <code>liveTradingStatus</code> is <strong>${liveTradingStatus}</strong>.`,
+    })}
+    ${kvSection("Alpha history diff", undefined, [
+      { term: "base", detail: text(`${readString(rec, "baseHistoryId") ?? DASH} (${num(readNumber(identity, "baseRunCount"))} runs, ${num(readNumber(identity, "baseTotalCandidateCount"))} candidates)`) },
+      { term: "next", detail: text(`${readString(rec, "nextHistoryId") ?? DASH} (${num(readNumber(identity, "nextRunCount"))} runs, ${num(readNumber(identity, "nextTotalCandidateCount"))} candidates)`) },
+      { term: "summary", detail: text(summaryLine ?? DASH) },
+      { term: "watch movement", detail: text(triple(verdictMovement, "watch")) },
+      { term: "review movement", detail: text(triple(verdictMovement, "review")) },
+      { term: "blocked movement", detail: text(triple(verdictMovement, "blocked")) },
+      { term: "insufficient movement", detail: text(triple(verdictMovement, "insufficientEvidence")) },
+      { term: "invalid artifacts", detail: text(`${num(readNumber(identity, "baseInvalidArtifactCount"))} -> ${num(readNumber(identity, "nextInvalidArtifactCount"))}`) },
+      { term: "sensitive-field scan", detail: text(scanClean ? "clean (no signature / txid / send-result / key-shaped field)" : "INCOMPLETE — review") },
+      { term: "live-trading status", detail: text(liveTradingStatus ?? DASH) },
+    ])}
+    ${tableSection({
+      title: `Run changes (${String(runChanges.length)})`,
+      description: "Runs paired by runRef. A one-sided run is added / removed, never an improvement or a regression.",
+      columns: [{ header: "Run" }, { header: "Status" }, { header: "Candidate Δ" }, { header: "Verdict deltas" }, { header: "Movement" }],
+      rows: runChanges.slice(0, 200).map((c) => {
+        const vd = asRecord(c["verdictCountDeltas"]);
+        const candidateDelta = c["candidateCountDelta"];
+        const vdText = vd === null
+          ? DASH
+          : ["watch", "review", "blocked", "insufficientEvidence"]
+              .map((k) => ({ k, v: readNumber(vd, k) }))
+              .filter((e) => typeof e.v === "number" && e.v !== 0)
+              .map((e) => `${e.k} ${(e.v as number) > 0 ? "+" : ""}${e.v}`)
+              .join(", ");
+        return [
+          code(readString(c, "runRef")),
+          text(readString(c, "status") ?? DASH),
+          text(typeof candidateDelta === "number" ? (candidateDelta > 0 ? `+${candidateDelta}` : `${candidateDelta}`) : DASH),
+          text(vdText.length === 0 ? DASH : vdText),
+          text(readString(c, "movementNote") ?? DASH),
+        ];
+      }),
+      empty: "No run changes.",
+    })}
+    ${blockerMovement.length === 0 ? "" : tableSection({
+      title: "Blocker reason movement (by run frequency)",
+      description: "How many runs carried each blocker reason in the base vs the next history (movement only).",
+      columns: [{ header: "Reason" }, { header: "Base runs" }, { header: "Next runs" }, { header: "Δ" }],
+      rows: blockerMovement.slice(0, 100).map((m) => {
+        const delta = readNumber(m, "delta");
+        return [
+          text(readString(m, "reason") ?? DASH),
+          text(num(readNumber(m, "baseRunCount"))),
+          text(num(readNumber(m, "nextRunCount"))),
+          text(typeof delta === "number" ? (delta > 0 ? `+${delta}` : `${delta}`) : DASH),
+        ];
+      }),
+      empty: "No blocker reason movement.",
+    })}
+    ${phaseAdded.length === 0 && phaseRemoved.length === 0 ? "" : Section({
+      title: "Phase 7 posture movement",
+      body: html`<ul class="sm-bullets sm-bullets--plain">
+        ${phaseAdded.length === 0 ? "" : html`<li>appeared: ${text(phaseAdded.join(", "))}</li>`}
+        ${phaseRemoved.length === 0 ? "" : html`<li>gone: ${text(phaseRemoved.join(", "))}</li>`}
+      </ul>`,
+    })}
+    ${caveats.total === 0 ? "" : Section({
+      title: `Caveats (${String(caveats.total)})`,
+      body: html`<ul class="sm-bullets sm-bullets--plain">${caveats.items.map((c) => html`<li>${c}</li>`)}</ul>`,
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
+function renderSniperAlphaHistoryTrendView(rec: Record<string, unknown>): RawHtml {
+  const missing: string[] = [];
+  const liveTradingStatus = need(missing, "liveTradingStatus", readString(rec, "liveTradingStatus"));
+  const summaryLine = readString(rec, "summaryLine");
+  const scan = asRecord(rec["sensitiveFieldScan"]);
+  const consistency = asRecord(rec["providerHealthConsistency"]) ?? {};
+  const snapshots = Array.isArray(rec["snapshots"])
+    ? (rec["snapshots"] as unknown[]).filter((s): s is Record<string, unknown> => typeof s === "object" && s !== null && !Array.isArray(s))
+    : [];
+  const steps = Array.isArray(rec["stepDeltas"])
+    ? (rec["stepDeltas"] as unknown[]).filter((s): s is Record<string, unknown> => typeof s === "object" && s !== null && !Array.isArray(s))
+    : [];
+  const blockerTotals = Array.isArray(rec["blockerReasonTotals"])
+    ? (rec["blockerReasonTotals"] as unknown[]).filter((b): b is Record<string, unknown> => typeof b === "object" && b !== null && !Array.isArray(b))
+    : [];
+  const caveats = readStringArray(rec, "caveats");
+  const safe =
+    liveTradingStatus === "disabled" &&
+    rec.authorizesLiveTrading === false &&
+    rec.anyInputAuthorizesLiveTrading === false &&
+    rec.neverSends === true &&
+    rec.phase7LiveTradingReady === false;
+  const scanClean =
+    scan !== null &&
+    scan.signaturePresent === false &&
+    scan.txidPresent === false &&
+    scan.sendResultPresent === false &&
+    scan.keyLikePresent === false;
+  const consistencyLabel = (key: string): string => {
+    const c = asRecord(consistency[key]);
+    return c === null ? DASH : `${readString(c, "label") ?? DASH} (${num(readNumber(c, "okRuns"))}/${num(readNumber(c, "totalRuns"))})`;
+  };
+  const sign = (n: unknown): string => (typeof n === "number" ? (n > 0 ? `+${n}` : `${n}`) : DASH);
+  return html`
+    ${RiskNotice({
+      tone: safe ? "info" : "caution",
+      title: safe
+        ? "Sniper alpha history trend — LIVE TRADING DISABLED · THIS DOES NOT SEND TRANSACTIONS"
+        : "Alpha history trend is missing its no-send / not-authorized safety literals — do NOT trust this artifact",
+      body: html`A no-send series across ordered alpha-history snapshots. The order is the
+        <strong>supplied order</strong> — there is no wall-clock and no fake time series.
+        <strong>Movement is not momentum.</strong> <code>authorizesLiveTrading</code> and
+        <code>anyInputAuthorizesLiveTrading</code> are <strong>false</strong>;
+        <code>liveTradingStatus</code> is <strong>${liveTradingStatus}</strong>.`,
+    })}
+    ${kvSection("Alpha history trend", undefined, [
+      { term: "trend id", detail: code(readString(rec, "trendId")) },
+      { term: "snapshots", detail: text(num(readNumber(rec, "snapshotCount"))) },
+      { term: "summary", detail: text(summaryLine ?? DASH) },
+      { term: "provider consistency", detail: text(`risk ${consistencyLabel("risk")} · quote ${consistencyLabel("quote")} · sim ${consistencyLabel("simulation")}`) },
+      { term: "sensitive-field scan", detail: text(scanClean ? "clean (no signature / txid / send-result / key-shaped field)" : "INCOMPLETE — review") },
+      { term: "live-trading status", detail: text(liveTradingStatus ?? DASH) },
+    ])}
+    ${tableSection({
+      title: `Snapshots (${String(snapshots.length)}) — supplied order`,
+      description: "Each snapshot is one alpha-history rollup. Verdict counts come from each rollup's own re-derivation.",
+      columns: [{ header: "Label" }, { header: "Runs" }, { header: "Candidates" }, { header: "Watch" }, { header: "Review" }, { header: "Blocked" }, { header: "Insufficient" }],
+      rows: snapshots.slice(0, 200).map((s) => {
+        const vc = asRecord(s["verdictCounts"]) ?? {};
+        return [
+          code(readString(s, "label")),
+          text(num(readNumber(s, "runCount"))),
+          text(num(readNumber(s, "totalCandidateCount"))),
+          text(num(readNumber(vc, "watch"))),
+          text(num(readNumber(vc, "review"))),
+          text(num(readNumber(vc, "blocked"))),
+          text(num(readNumber(vc, "insufficientEvidence"))),
+        ];
+      }),
+      empty: "No snapshots.",
+    })}
+    ${steps.length === 0 ? "" : tableSection({
+      title: "Step deltas (consecutive snapshots)",
+      description: "Movement between each pair of consecutive snapshots — bookkeeping, never a forecast.",
+      columns: [{ header: "From" }, { header: "To" }, { header: "Blocked Δ" }, { header: "Watch Δ" }, { header: "Candidates Δ" }],
+      rows: steps.slice(0, 200).map((st) => {
+        const vd = asRecord(st["verdictDeltas"]) ?? {};
+        return [
+          code(readString(st, "fromLabel")),
+          code(readString(st, "toLabel")),
+          text(sign(readNumber(vd, "blocked"))),
+          text(sign(readNumber(vd, "watch"))),
+          text(sign(readNumber(st, "candidateDelta"))),
+        ];
+      }),
+      empty: "No step deltas.",
+    })}
+    ${blockerTotals.length === 0 ? "" : tableSection({
+      title: "Most common blocker reasons (across snapshots)",
+      description: "Total run-occurrences of each blocker reason across all snapshots (a blocker is never overridable by a score).",
+      columns: [{ header: "Reason" }, { header: "Run occurrences" }, { header: "Snapshots" }],
+      rows: blockerTotals.slice(0, 100).map((b) => [text(readString(b, "reason") ?? DASH), text(num(readNumber(b, "totalRunCount"))), text(num(readNumber(b, "snapshotCount")))]),
+      empty: "No blocker reasons.",
+    })}
+    ${caveats.total === 0 ? "" : Section({
+      title: `Caveats (${String(caveats.total)})`,
+      body: html`<ul class="sm-bullets sm-bullets--plain">${caveats.items.map((c) => html`<li>${c}</li>`)}</ul>`,
+    })}
+    ${partialNotice(missing)}
+  `;
+}
+
 function renderSniperStrategyIntelligenceView(rec: Record<string, unknown>): RawHtml {
   const missing: string[] = [];
   const intelligenceId = need(missing, "intelligenceId", readString(rec, "intelligenceId"));
@@ -4606,6 +4828,10 @@ function buildTypedView(schema: string, rec: Record<string, unknown>): RawHtml |
       return renderSniperAlphaRunReportView(rec);
     case "sniper.alpha_history.v1":
       return renderSniperAlphaHistoryView(rec);
+    case "sniper.alpha_history.diff.v1":
+      return renderSniperAlphaHistoryDiffView(rec);
+    case "sniper.alpha_history.trend.v1":
+      return renderSniperAlphaHistoryTrendView(rec);
     case "sniper.strategy_intelligence.v1":
       return renderSniperStrategyIntelligenceView(rec);
     case "sniper.provider_health.report.v1":

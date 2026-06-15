@@ -587,6 +587,20 @@ export const COMMANDS: readonly CommandRef[] = [
     readsChain: false,
   },
   {
+    command: "paper:sniper:alpha:history:diff",
+    summary:
+      "The S107 alpha history diff (sniper.alpha_history.diff.v1): compare two sniper.alpha_history.v1 rollups (--base / --next; a path may be a folder holding alpha-history.json) into a deterministic diff. Runs are paired by runRef (an alpha history carries run-level counts, not per-candidate identity); it reports MOVEMENT only — runs added / removed / changed, per-run candidate-count + verdict-count + provider + provenance + topMint + blocker deltas, the aggregate verdict / provider-health / evidence-provenance rollup movement, the blocker-reason frequency movement, and the Phase 7 posture movement, plus a one-line summary. It NEVER re-derives a verdict; both inputs are re-validated + deep-scanned and a malformed / live-authorizing rollup is refused. Movement is not momentum — never a buy signal. liveTradingStatus is pinned disabled; authorizesLiveTrading / anyInputAuthorizesLiveTrading are false. LOCAL-ONLY (no RPC / network / wallet / signer / send); --fail-on-worsened gates CI when the aggregate blocked count rose.",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
+  {
+    command: "paper:sniper:alpha:history:trend",
+    summary:
+      "The S107 alpha history trend (sniper.alpha_history.trend.v1): fold an ORDERED list of sniper.alpha_history.v1 rollups (--history <label=path>, repeatable, kept in supplied order; and/or --histories-dir <parent>) into a deterministic series. The order is the SUPPLIED order — NO wall-clock, no fake time series. Reports the watch / review / blocked / insufficient-evidence series + candidate series across snapshots, step-to-step deltas between consecutive snapshots, the blocker-reason totals (run-occurrences across snapshots), the evidence-provenance totals, and the per-provider ok-run consistency, plus a one-line summary. It NEVER re-derives a verdict; each snapshot is re-validated + deep-scanned and a malformed / live-authorizing rollup is refused. Needs at least two snapshots. liveTradingStatus is pinned disabled; authorizesLiveTrading / anyInputAuthorizesLiveTrading are false. LOCAL-ONLY (no RPC / network / wallet / signer / send).",
+    group: "Sniper (paper-only)",
+    readsChain: false,
+  },
+  {
     command: "paper:sniper:strategy:intel",
     summary:
       "The S106 strategy intelligence (sniper.strategy_intelligence.v1): project a campaign (--campaign) + per-mint token:risk reports (--risk <mint=path>) into read-only per-candidate intelligence cards — the notable risk flags by NAME (freeze / mint authority, Token-2022 risks, holder concentration, mutable metadata, thin liquidity), a mint class (wrapped-SOL / stablecoin / other), a confidence label (evidence completeness, never price direction), closed reason codes, and plain-English why-this-matters / what-to-study-next. Candidate verdicts come from the campaign's own re-derivation — a score can NEVER override a blocker; a flag is surfaced ONLY when its report carries it. Never a buy signal, never a profitability claim. LOCAL-ONLY (no RPC / network / wallet / signer / send); --fail-on-blocked gates CI.",

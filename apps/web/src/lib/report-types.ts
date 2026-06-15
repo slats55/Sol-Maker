@@ -615,6 +615,24 @@ export const KNOWN_REPORT_SCHEMAS: readonly ReportSchemaInfo[] = [
     cli: "paper:sniper:alpha:history",
   },
   {
+    id: "sniper.alpha_history.diff.v1",
+    title: "Sniper alpha history diff",
+    family: "sniper",
+    stability: "stable",
+    description:
+      "The S107 no-send comparison of two alpha-history rollups (a base and a next). It is faithful to the rollup's RUN-LEVEL granularity — runs are paired by runRef (never an invented per-candidate match) — and reports MOVEMENT only: runs added / removed / changed, per-run candidate-count + verdict-count + provider + provenance + topMint + blocker deltas, the aggregate verdict / provider-health / evidence-provenance rollup movement (base / next / delta triples), the blocker-reason run-frequency movement, the Phase 7 posture movement, and a one-line operator summary. It NEVER re-derives or overrides a history's counts; both inputs are re-validated and deep-scanned and a live-authorizing rollup is refused. Movement is not momentum — never a buy signal, never a profitability claim. liveTradingStatus is pinned \"disabled\", authorizesLiveTrading / anyInputAuthorizesLiveTrading are false, and the closed schema refuses any signature / send result. Produced by paper:sniper:alpha:history:diff.",
+    cli: "paper:sniper:alpha:history:diff",
+  },
+  {
+    id: "sniper.alpha_history.trend.v1",
+    title: "Sniper alpha history trend",
+    family: "sniper",
+    stability: "stable",
+    description:
+      "The S107 no-send series across an ORDERED list of alpha-history rollups (two or more snapshots). The order is the SUPPLIED order — there is no wall-clock and no fake time series. It reports the watch / review / blocked / insufficient-evidence series and candidate series across snapshots, step-to-step deltas between consecutive snapshots, the blocker-reason totals (run-occurrences across snapshots), the evidence-provenance totals, and the per-provider ok-run consistency (always-ok / sometimes-ok / never-ok / no-data), plus a one-line operator summary. It NEVER re-derives a verdict; each snapshot is re-validated and deep-scanned and a live-authorizing rollup is refused. liveTradingStatus is pinned \"disabled\", authorizesLiveTrading / anyInputAuthorizesLiveTrading are false, and the closed schema refuses any signature / send result. Produced by paper:sniper:alpha:history:trend.",
+    cli: "paper:sniper:alpha:history:trend",
+  },
+  {
     id: "sniper.strategy_intelligence.v1",
     title: "Sniper strategy intelligence",
     family: "sniper",

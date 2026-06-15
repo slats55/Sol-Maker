@@ -268,8 +268,18 @@ function alphaHistorySection(): RawHtml {
         "Roll up explicit run folders with --run <label=path> (repeatable). Each run's spine is its validated campaign.json (verdicts come from the campaign's own re-derivation); the optional alpha-report.json adds provider health / provenance / Rust / Phase 7.",
     },
     {
-      command: "pnpm web:inspect --input runs/alpha-history.json",
-      summary: "Render the rollup as a typed view — the run table, the verdict tally, the provider-health + provenance rollups, the most common blocker reasons, and the invalid-artifact list — under a LIVE TRADING DISABLED banner.",
+      command: "pnpm soulmaker paper:sniper:alpha:history:diff --base runs/alpha-history-mon.json --next runs/alpha-history-tue.json --out runs/alpha-history-diff.json",
+      summary:
+        "Sprint 107: compare two history rollups into a sniper.alpha_history.diff.v1. Runs are paired by runRef; it reports MOVEMENT only — runs added / removed / changed, per-run verdict / provider / provenance deltas, and the aggregate rollup movement. It never re-derives a verdict. Movement is not momentum.",
+    },
+    {
+      command: "pnpm soulmaker paper:sniper:alpha:history:trend --history mon=runs/alpha-history-mon.json --history tue=runs/alpha-history-tue.json --out runs/alpha-history-trend.json",
+      summary:
+        "Sprint 107: fold an ORDERED list of history rollups into a sniper.alpha_history.trend.v1 series. The order is the SUPPLIED order — no wall-clock, no fake time series. It shows the verdict + candidate series across snapshots, step-to-step deltas, blocker-reason totals, and per-provider ok-run consistency.",
+    },
+    {
+      command: "pnpm web:inspect --dir examples/sniper/alpha-artifacts",
+      summary: "Render the COMMITTED redacted examples (history, diff, trend, strategy-intelligence) as typed views — the run table, the verdict tally, the provider-health + provenance rollups, the movement summary, and the blocker reasons — each under a LIVE TRADING DISABLED banner. No runs/ folder needed.",
     },
   ];
   const rollups: readonly { readonly field: string; readonly meaning: string }[] = [
@@ -311,8 +321,13 @@ function alphaHistorySection(): RawHtml {
         </ul>`,
       })}
       <p class="sm-muted-line">Next safe action: gather a few alpha run folders (see the workflow above), then run
-        <code>paper:sniper:alpha:history --runs-dir runs</code>. Add <code>--fail-on-invalid</code> /
-        <code>--fail-on-blocked</code> to gate CI. Nothing here trades; live trading stays disabled.</p>
+        <code>paper:sniper:alpha:history --runs-dir runs</code>. Compare two rollups over time with
+        <code>paper:sniper:alpha:history:diff</code>, or chart many with
+        <code>paper:sniper:alpha:history:trend</code>. Committed redacted examples live in
+        <code>examples/sniper/alpha-artifacts</code> — inspect them with
+        <code>pnpm web:inspect --dir examples/sniper/alpha-artifacts</code>. Add <code>--fail-on-invalid</code> /
+        <code>--fail-on-blocked</code> / <code>--fail-on-worsened</code> to gate CI. Nothing here trades; live
+        trading stays disabled.</p>
     `,
   });
 }
