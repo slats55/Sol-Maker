@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "live.canary.request.v1",
+  "banner": "REAL-MONEY LIVE CANARY REQUEST — Solana mainnet-beta. The embedded transaction is UNSIGNED; the backend holds no key and authorizes nothing. You sign and confirm this transaction in Phantom yourself, or it never happens. This is not financial advice and not a claim of profit. Memecoin trading can lose the entire amount.",
+  "createdAt": "2026-06-18T00:00:00.000Z",
+  "chain": "solana",
+  "network": "mainnet-beta",
+  "walletProvider": "phantom",
+  "mode": "live_canary",
+  "state": "blocked_by_risk",
+  "candidate": {
+    "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "symbol": "USDC"
+  },
+  "policy": {
+    "mode": "live_canary",
+    "maxTradeSol": 0.005,
+    "maxSlippageBps": 100,
+    "riskScoreCap": 30,
+    "quoteTtlMs": 8000,
+    "cooldownMs": 30000,
+    "killSwitch": false
+  },
+  "quote": {
+    "provider": "jupiter-lite-api",
+    "inputMint": "So11111111111111111111111111111111111111112",
+    "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "inAmountRaw": "5000000",
+    "outAmountRaw": "4985000",
+    "slippageBps": 50,
+    "priceImpactPct": 0.18,
+    "quotedAt": "2026-06-18T00:00:00.000Z",
+    "ageMs": 1200,
+    "routeLabels": [
+      "jupiter"
+    ]
+  },
+  "risk": {
+    "score": 85,
+    "decision": "REJECT",
+    "criticalFlagCount": 1,
+    "flagIds": [
+      "freeze-authority-present"
+    ]
+  },
+  "preflight": {
+    "simulationOutcome": "simulated-ok",
+    "simulationClassification": "none"
+  },
+  "spendLamports": "5000000",
+  "envelope": {
+    "schemaVersion": "txpreview.envelope.v1",
+    "network": "mainnet-beta",
+    "feePayerPublicKey": "So11111111111111111111111111111111111111112",
+    "txBase64": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQABAgabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAgAADAIAAAABAAAAAAAAAAA=",
+    "builderId": "self-transfer-probe",
+    "candidateMint": null,
+    "routeCaveats": [
+      "self-transfer probe — exists only to exercise the unsigned simulation boundary; moves nothing (sender == recipient)"
+    ],
+    "constraints": {
+      "maxSpendLamports": "1",
+      "slippageBps": null
+    },
+    "quotedAt": null,
+    "unsigned": true,
+    "neverSigned": true,
+    "phase7LiveTradingReady": false
+  },
+  "blockingReasons": [
+    "safety-risk-over-cap"
+  ],
+  "warnings": [],
+  "prepared": true,
+  "signed": false,
+  "submitted": false,
+  "confirmed": false,
+  "backendCustodiesNoKeys": true,
+  "requiresPhantomHumanConfirmation": true,
+  "notProfitabilityClaim": true,
+  "phase7LiveTradingReady": false
+}

@@ -18,6 +18,35 @@ all pass.
 
 ## ⚠️ Status: Phases 0–5 complete (read-only watcher, advisory risk, simulated paper engine, paper strategy/backtest research lab through Sprint 24); the PAPER sniper pipeline is operator-runnable end to end (Sprints 25–90: intake → read-only inspect/risk → the S90 preflight **bridge** → preflight → policy → decisions → audit → governance specs → safety gates → Phase 6 prereqs → simulation intent plan → result → route resolution → chain audit → readiness → handoff → operator bundle, all through one `paper:sniper:dry-run` command with a local web inspector and a Sniper Command Center page). Route resolution is honestly UNAVAILABLE (no resolver capability exists), the real `simulateTransaction` dry-run is designed but unbuilt, and Phase 7 (live trading) is NOT started. No live trading. By design.
 
+> **Sprint 107 — Part 1 of the live build (NEW): a Phantom-signing live execution bridge.** Sol
+> Maker can now prepare a **real** unsigned Solana mainnet transaction and hand it to **your own
+> Phantom wallet** to sign — through a separate, isolated browser **Live Console**. It is
+> **disabled by default, micro-capped (0.005 SOL default trade), and human-confirmed**: the backend
+> holds **no key**, signs nothing, and there is **no mainnet CLI send surface**. No real canary
+> trade has been broadcast by this build, and **no profit is claimed or guaranteed**. See
+> [`docs/LIVE_EXECUTION_PHANTOM.md`](docs/LIVE_EXECUTION_PHANTOM.md). Paper mode and the whole paper
+> pipeline below are unchanged.
+
+### Live execution (Part 1) — quick reference
+
+```bash
+# Inspect the live-mode policy gate (read-only; default = everything blocked):
+pnpm soulmaker live:policy:inspect
+pnpm soulmaker live:chains            # chain readiness (only solana-mainnet is live)
+pnpm soulmaker live:kill-switch       # kill switch / emergency stop status
+
+# Assemble a Phantom-signable canary request from real artifacts (never signs/sends):
+pnpm soulmaker live:canary:prepare --candidate-mint <MINT> --risk runs/risk.json \
+  --envelope runs/envelope.json --simulation runs/sim.json --spend-sol 0.005 \
+  --mode live_canary --live-enabled --out runs/request.json
+
+# Then confirm in the browser, in YOUR Phantom wallet:
+pnpm web:build   # writes apps/web/public/live-console.html — open it with the Phantom extension
+```
+
+The full step-by-step canary flow, the four live modes, the hard caps, and the safety guarantees are
+in [`docs/LIVE_EXECUTION_PHANTOM.md`](docs/LIVE_EXECUTION_PHANTOM.md).
+
 ### Run the PAPER sniper right now
 
 ```bash

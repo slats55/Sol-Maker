@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { renderDocument } from "./lib/html.js";
 import { DashboardShell } from "./components/layout.js";
 import { PAGES } from "./pages/registry.js";
+import { LIVE_CONSOLE_FILENAME, renderLiveConsoleHtml } from "./live/console.js";
 
 const here = dirname(fileURLToPath(import.meta.url)); // apps/web/src
 const webRoot = dirname(here); // apps/web
@@ -44,4 +45,10 @@ for (const page of PAGES) {
   console.log(`wrote public/${page.nav.file}`);
 }
 
-console.log(`done: ${PAGES.length} pages + assets/theme.css`);
+// The LIVE CANARY CONSOLE is a SEPARATE, isolated surface — deliberately NOT in the paper-only
+// page registry above, so the paper pages keep their "no <script>, no signing" guarantee. It is
+// the one reviewed place where real Phantom signing lives (see apps/web/tests/live-console.test.ts).
+writeFileSync(join(publicDir, LIVE_CONSOLE_FILENAME), renderLiveConsoleHtml(), "utf8");
+console.log(`wrote public/${LIVE_CONSOLE_FILENAME} (live canary console)`);
+
+console.log(`done: ${PAGES.length} pages + live console + assets/theme.css`);

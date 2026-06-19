@@ -32,7 +32,14 @@ const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const BONK = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263";
 
 // Force the Rust engine absent so candidate scoring is honestly unavailable (deterministic, no spawn).
-const ctx = { engineBinaryExists: () => false };
+// engineBinaryExists:false skips the prebuilt binary; the ENOENT runner stub also short-circuits the
+// `cargo run` fallback, so the test is deterministic even on a machine with the Rust toolchain installed.
+const ctx = {
+  engineBinaryExists: () => false,
+  createEngineRunner: (): EngineProcessRunner => ({
+    run: () => Promise.resolve({ started: false, startError: "ENOENT", exitCode: null, timedOut: false, stdout: "", stderr: "", stdoutTruncated: false, stderrTruncated: false }),
+  }),
+};
 
 let dir: string;
 beforeEach(() => {

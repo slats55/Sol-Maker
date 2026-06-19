@@ -57,10 +57,36 @@ reference code we study), not just external attackers. Consequences of that:
 | Safe by default | `mode` defaults to `PAPER`, `killSwitch` defaults off | `packages/core/src/config/schema.ts` |
 | Hard caps | `max()` ceilings baked into the Zod schema | `packages/core/src/config/schema.ts` (`HARD_LIMITS`) |
 | Live gate fails closed | `evaluateLiveGate` collects every failing reason | `packages/core/src/live-gate.ts` |
-| No send code exists | There is literally no signing/sending code in the repo | (entire repo) |
+| No **backend** signing/sending | No key is ever loaded, signed with, or sent by the backend or the Rust engine | (entire backend; `crates/solmaker-engine/SAFETY.md`) |
 
 These are covered by tests in `packages/*/src/**/*.test.ts` and
 `apps/cli/src/commands.test.ts`.
+
+## Part 1: the Phantom live bridge (Sprint 107)
+
+Part 1 introduces the **first path that can lead to a real mainnet transaction** — and it does so
+**without the backend ever holding a key**. The design keeps every rule above intact:
+
+- **No backend key custody.** The backend and Rust engine never load, store, or sign with a key.
+  They prepare an **unsigned** transaction (`txpreview.envelope.v1`) and wrap it in a
+  `live.canary.request.v1`. Signing happens only in the operator's **Phantom** wallet, in the
+  browser.
+- **The only signing surface is the Live Console** (`apps/web/public/live-console.html`) — a single,
+  **isolated** page (deliberately not part of the paper-only page registry) that calls Phantom's
+  `signAndSendTransaction`. It is covered by its own dedicated test
+  (`apps/web/tests/live-console.test.ts`), which asserts there is **no seed-phrase / private-key
+  input**, that `@solana/web3.js` is pinned with an **SRI integrity hash**, and that the dangerous
+  controls are gated by default.
+- **Disabled by default, micro-capped, human-confirmed.** `@soulmaker/live` defaults to `paper` +
+  `liveEnabled:false`; every cap is clamped to an absolute hard ceiling; a green simulation, a
+  manual confirmation, and an audit log are all required before a request can reach `preflight_ready`.
+- **No mainnet CLI send surface.** As before, no CLI command can sign, send, or arm anything; the
+  command-surface audit (`apps/cli/src/command-surface-audit.test.ts`) still passes.
+- **Kill switch + emergency stop** block every live action (config `killSwitch`, or
+  `SOULMAKER_EMERGENCY_STOP=1`, or the Live Console's red button).
+
+See `docs/LIVE_EXECUTION_PHANTOM.md` for the full operator flow. Rules 1, 2, 7, 10, 11, and 12 above
+are unchanged and still binding.
 
 ## Secrets handling
 

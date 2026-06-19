@@ -2,6 +2,13 @@
 import { Command } from "commander";
 import { PHASE6_READINESS_EVIDENCE_AREAS } from "@soulmaker/simulation";
 import {
+  livePolicyInspectReport,
+  liveChainsReport,
+  liveKillSwitchReport,
+  liveCanaryPrepareReport,
+  liveSessionReport,
+} from "./live-commands.js";
+import {
   doctorReport,
   configCheckReport,
   modeReport,
@@ -3951,5 +3958,191 @@ program
       if (exitCode !== 0) process.exitCode = exitCode;
     },
   );
+
+// ---------------------------------------------------------------------------
+// Live (Phantom-bridge) commands — Sprint 107, Part 1.
+// Read-only / artifact-composing. NONE of these sign or send: a human signs every
+// transaction in Phantom, in the browser, never in this CLI. The backend holds no key.
+// ---------------------------------------------------------------------------
+
+program
+  .command("live:policy:inspect")
+  .description(
+    "Build (or load) the LIVE-MODE POLICY and SHOW its gate verdict (read-only; authorizes nothing). Live is disabled by default, micro-capped, and every cap is clamped to an absolute hard ceiling. The backend never signs and never sends — a human signs every transaction in Phantom. Mainnet sending has NO CLI surface; this command can never arm anything",
+  )
+  .option("--policy <path>", "load a live.policy.v1 JSON instead of building one from flags")
+  .option("--mode <mode>", "paper (default) | readonly | live_prepare | live_canary")
+  .option("--live-enabled", "the explicit master switch (never sufficient alone; default off)")
+  .option("--max-trade-sol <sol>", "per-trade spend cap in SOL (clamped to the hard ceiling)")
+  .option("--max-slippage-bps <bps>", "slippage cap in basis points (clamped to the hard ceiling)")
+  .option("--risk-score-cap <n>", "advisory risk score cap (clamped to the hard ceiling)")
+  .option("--cooldown-ms <ms>", "minimum milliseconds between live trades")
+  .option("--kill-switch", "force the kill switch on for this evaluation")
+  .option("--token-denylist <path>", "JSON array of mints that may never trade live")
+  .option("--token-allowlist <path>", "JSON array — when present, ONLY these mints may trade live")
+  .option("--json", "emit the policy + evaluation as stable JSON")
+  .option("--out <path>", "write the policy + evaluation JSON to this path (refused if it exists)")
+  .option("--force", "overwrite an existing --out file")
+  .action(
+    (opts: {
+      policy?: string;
+      mode?: string;
+      liveEnabled?: boolean;
+      maxTradeSol?: string;
+      maxSlippageBps?: string;
+      riskScoreCap?: string;
+      cooldownMs?: string;
+      killSwitch?: boolean;
+      tokenDenylist?: string;
+      tokenAllowlist?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+    }) => {
+      const { text, exitCode } = livePolicyInspectReport(
+        {},
+        {
+          policyPath: opts.policy,
+          mode: opts.mode,
+          liveEnabled: Boolean(opts.liveEnabled),
+          maxTradeSol: opts.maxTradeSol,
+          maxSlippageBps: opts.maxSlippageBps,
+          riskScoreCap: opts.riskScoreCap,
+          cooldownMs: opts.cooldownMs,
+          killSwitch: Boolean(opts.killSwitch),
+          tokenDenylistPath: opts.tokenDenylist,
+          tokenAllowlistPath: opts.tokenAllowlist,
+          json: Boolean(opts.json),
+          out: opts.out,
+          force: Boolean(opts.force),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("live:chains")
+  .description(
+    "SHOW chain readiness from the typed ChainAdapter boundary (read-only). Only solana-mainnet has a live implementation in Part 1; every other chain is an honest disabled stub that cannot quote, risk-check, preflight, or sign. No multi-chain live trading is claimed",
+  )
+  .option("--json", "emit the chain readiness as stable JSON")
+  .action((opts: { json?: boolean }) => {
+    const { text } = liveChainsReport({}, { json: Boolean(opts.json) });
+    console.log(text);
+  });
+
+program
+  .command("live:kill-switch")
+  .description(
+    "SHOW the live kill switch + emergency-stop state (read-only). When either is engaged, every live action is blocked. Explains how to engage it. This command never sends and never arms anything",
+  )
+  .option("--json", "emit the kill-switch status as stable JSON")
+  .action((opts: { json?: boolean }) => {
+    const { text, exitCode } = liveKillSwitchReport({}, { json: Boolean(opts.json) });
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("live:canary:prepare")
+  .description(
+    "ASSEMBLE a live.canary.request.v1 (a Phantom-signable, UNSIGNED canary) from real artifacts: a token:risk report (required), an UNSIGNED execution:build envelope, optional quote facts and a simulation report. The backend NEVER signs and NEVER sends — Phantom submits the transaction in your browser, not this CLI; mainnet sending has no CLI surface. The request re-derives its own state and can only ever reach blocked/quote_ready/preflight_ready; arming and signing happen in the web Live Console",
+  )
+  .option("--candidate-mint <mint>", "the mint to buy (required; cross-checked against the envelope and risk report)")
+  .option("--risk <path>", "token:risk --json report for the candidate (required)")
+  .option("--envelope <path>", "the UNSIGNED txpreview.envelope.v1 from execution:build (mainnet-beta)")
+  .option("--quote <path>", "OPTIONAL quote-facts JSON (provider/in-out mints/amounts/slippage/priceImpact/quotedAt)")
+  .option("--simulation <path>", "OPTIONAL txpreview.simulation.report.v1 — a green simulation is required to reach preflight_ready")
+  .option("--spend-sol <sol>", "planned spend in SOL (must be within the policy per-trade cap)")
+  .option("--spend-lamports <units>", "planned spend in lamports (alternative to --spend-sol)")
+  .option("--symbol <symbol>", "OPTIONAL candidate symbol for display")
+  .option("--audit-log <path>", "audit log path — its presence satisfies the audit-required control")
+  .option("--policy <path>", "load a live.policy.v1 JSON instead of building one from flags")
+  .option("--mode <mode>", "paper (default) | readonly | live_prepare | live_canary")
+  .option("--live-enabled", "the explicit master switch (never sufficient alone; default off)")
+  .option("--max-trade-sol <sol>", "per-trade spend cap in SOL (clamped to the hard ceiling)")
+  .option("--max-slippage-bps <bps>", "slippage cap in basis points (clamped to the hard ceiling)")
+  .option("--risk-score-cap <n>", "advisory risk score cap (clamped to the hard ceiling)")
+  .option("--cooldown-ms <ms>", "minimum milliseconds between live trades")
+  .option("--kill-switch", "force the kill switch on for this request")
+  .option("--token-denylist <path>", "JSON array of mints that may never trade live")
+  .option("--token-allowlist <path>", "JSON array — when present, ONLY these mints may trade live")
+  .option("--json", "emit the canary request as stable JSON")
+  .option("--out <path>", "write the live.canary.request.v1 JSON to this path (refused if it exists)")
+  .option("--force", "overwrite an existing --out file")
+  .option("--fail-on-blocked", "exit non-zero when the request is blocked by policy or risk")
+  .action(
+    (opts: {
+      candidateMint?: string;
+      risk?: string;
+      envelope?: string;
+      quote?: string;
+      simulation?: string;
+      spendSol?: string;
+      spendLamports?: string;
+      symbol?: string;
+      auditLog?: string;
+      policy?: string;
+      mode?: string;
+      liveEnabled?: boolean;
+      maxTradeSol?: string;
+      maxSlippageBps?: string;
+      riskScoreCap?: string;
+      cooldownMs?: string;
+      killSwitch?: boolean;
+      tokenDenylist?: string;
+      tokenAllowlist?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnBlocked?: boolean;
+    }) => {
+      const { text, exitCode } = liveCanaryPrepareReport(
+        {},
+        {
+          candidateMint: opts.candidateMint,
+          riskPath: opts.risk,
+          envelopePath: opts.envelope,
+          quotePath: opts.quote,
+          simulationPath: opts.simulation,
+          spendSol: opts.spendSol,
+          spendLamports: opts.spendLamports,
+          symbol: opts.symbol,
+          auditLog: opts.auditLog,
+          policyPath: opts.policy,
+          mode: opts.mode,
+          liveEnabled: Boolean(opts.liveEnabled),
+          maxTradeSol: opts.maxTradeSol,
+          maxSlippageBps: opts.maxSlippageBps,
+          riskScoreCap: opts.riskScoreCap,
+          cooldownMs: opts.cooldownMs,
+          killSwitch: Boolean(opts.killSwitch),
+          tokenDenylistPath: opts.tokenDenylist,
+          tokenAllowlistPath: opts.tokenAllowlist,
+          json: Boolean(opts.json),
+          out: opts.out,
+          force: Boolean(opts.force),
+          failOnBlocked: Boolean(opts.failOnBlocked),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("live:session:report")
+  .description(
+    "Summarize a LIVE CANARY SESSION log (read-only): tallies recorded canary states from an append-only JSONL log. Reports an honest empty state when there is nothing yet. This command never sends and moves no funds",
+  )
+  .option("--session-log <path>", "append-only JSONL log of canary attempts")
+  .option("--json", "emit the session summary as stable JSON")
+  .action((opts: { sessionLog?: string; json?: boolean }) => {
+    const { text, exitCode } = liveSessionReport({}, { sessionLog: opts.sessionLog, json: Boolean(opts.json) });
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
 
 program.parseAsync(process.argv);

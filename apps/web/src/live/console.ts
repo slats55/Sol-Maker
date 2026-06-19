@@ -1,0 +1,415 @@
+/**
+ * The LIVE CANARY CONSOLE (Sprint 107, Part 1).
+ *
+ * A SEPARATE, isolated web surface — NOT part of the paper-only static page registry, so the
+ * paper pages keep their "no <script>, no signing" guarantee intact (see apps/web/tests/pages.test.ts).
+ * This is the one reviewed place where real Phantom signing lives, and it has its own dedicated
+ * test (live-console.test.ts).
+ *
+ * How it works, honestly:
+ *   - The operator generates a `live.canary.request.v1` with `soulmaker live:canary:prepare`
+ *     (which wraps a REAL unsigned mainnet transaction from `execution:build`).
+ *   - They load that artifact here (file picker or paste). The page previews it and gates every
+ *     dangerous control behind: wallet connected + state preflight_ready + zero blocking reasons +
+ *     kill switch clear + an explicit "I understand this spends real money" confirmation.
+ *   - On "Arm" then "Open Phantom", the page deserializes the UNSIGNED transaction and calls
+ *     Phantom's `signAndSendTransaction`. PHANTOM signs and sends — this page never holds a key,
+ *     never asks for a seed phrase, and never signs anything itself.
+ *   - It then tracks confirmation against a public RPC and keeps an in-page audit log.
+ *
+ * @solana/web3.js is loaded from a PINNED CDN URL with a Subresource Integrity (SRI) hash, so the
+ * browser refuses to run a tampered build. No RPC key, no secret, is ever embedded.
+ */
+
+export const LIVE_CONSOLE_FILENAME = "live-console.html";
+export const LIVE_CONSOLE_TITLE = "Sol Maker — Live Canary Console";
+
+/** Pinned @solana/web3.js IIFE build (exposes the `solanaWeb3` global) + its SRI integrity hash. */
+export const LIVE_CONSOLE_WEB3_URL = "https://cdn.jsdelivr.net/npm/@solana/web3.js@1.95.8/lib/index.iife.min.js";
+export const LIVE_CONSOLE_WEB3_SRI = "sha384-ujeTtvHxhu2g5lnu14Roii2ajvVKJ74KQ6eo6GGfAi0IrKZ1YkF8N68Iw5VmIJO0";
+
+export const LIVE_CONSOLE_DEFAULT_RPC = "https://api.mainnet-beta.solana.com";
+
+/** The vanilla client script. Uses only the injected Phantom provider + the pinned web3 global.
+ * Written without template literals / `${}` so it can be embedded verbatim below. */
+const CLIENT_SCRIPT = String.raw`
+(function () {
+  "use strict";
+
+  var state = { provider: null, pubkey: null, request: null, armed: false, kill: false, audit: [] };
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function setText(id, t) { var el = $(id); if (el) el.textContent = t; }
+  function setHtml(id, h) { var el = $(id); if (el) el.innerHTML = h; }
+
+  function getProvider() {
+    if (window.phantom && window.phantom.solana && window.phantom.solana.isPhantom) return window.phantom.solana;
+    if (window.solana && window.solana.isPhantom) return window.solana;
+    return null;
+  }
+
+  function appendAudit(event, detail) {
+    var entry = { event: event, at: new Date().toISOString(), detail: detail || {} };
+    state.audit.push(entry);
+    var rows = state.audit.map(function (e) {
+      return '<tr><td>' + esc(e.at) + '</td><td>' + esc(e.event) + '</td><td>' + esc(JSON.stringify(e.detail)) + '</td></tr>';
+    }).join("");
+    setHtml("audit-rows", rows);
+  }
+
+  function refreshWallet() {
+    var p = getProvider();
+    if (!p) {
+      setText("wallet-status", "Phantom not detected — install the Phantom browser extension.");
+      $("connect-btn").disabled = true;
+      return;
+    }
+    $("connect-btn").disabled = false;
+    setText("wallet-status", state.pubkey ? ("connected: " + state.pubkey) : "Phantom detected — not connected.");
+    setText("wallet-pubkey", state.pubkey || "—");
+  }
+
+  async function connect() {
+    var p = getProvider();
+    if (!p) { setText("wallet-status", "Phantom not detected."); return; }
+    try {
+      var res = await p.connect();
+      state.provider = p;
+      state.pubkey = (res && res.publicKey ? res.publicKey.toString() : (p.publicKey ? p.publicKey.toString() : null));
+      appendAudit("wallet_connected", { publicKey: state.pubkey });
+      refreshWallet();
+      updateGate();
+    } catch (e) {
+      setText("wallet-status", "connection rejected: " + (e && e.message ? e.message : e));
+    }
+  }
+
+  async function disconnect() {
+    if (state.provider && state.provider.disconnect) { try { await state.provider.disconnect(); } catch (e) { void e; } }
+    state.provider = null; state.pubkey = null; state.armed = false;
+    $("sign-btn").style.display = "none";
+    appendAudit("wallet_disconnected", {});
+    refreshWallet(); updateGate();
+  }
+
+  function fieldRow(label, value) {
+    return '<div class="kv"><span class="k">' + esc(label) + '</span><span class="v">' + esc(value) + '</span></div>';
+  }
+
+  function renderPreview(req) {
+    var modeBadge = '<span class="badge mode">' + esc(req.mode) + '</span>';
+    var stateBadge = '<span class="badge ' + (req.state === "preflight_ready" ? "ok" : "warn") + '">' + esc(req.state) + '</span>';
+    setHtml("preview-head", modeBadge + " " + stateBadge);
+    var c = req.candidate || {};
+    var q = req.quote || {};
+    var r = req.risk || {};
+    var pf = req.preflight || {};
+    var html = "";
+    html += '<h3>Candidate</h3>';
+    html += fieldRow("mint", c.mint || "—");
+    html += fieldRow("symbol", c.symbol || "—");
+    html += fieldRow("network", req.network);
+    html += '<h3>Quote</h3>';
+    html += fieldRow("provider", q.provider || "—");
+    html += fieldRow("in / out", (q.inAmountRaw || "?") + " -> " + (q.outAmountRaw || "?"));
+    html += fieldRow("slippage bps", q.slippageBps == null ? "—" : q.slippageBps);
+    html += fieldRow("price impact %", q.priceImpactPct == null ? "—" : q.priceImpactPct);
+    html += fieldRow("quote age ms", q.ageMs == null ? "—" : q.ageMs);
+    html += '<h3>Risk</h3>';
+    html += fieldRow("score / decision", (r.score == null ? "—" : r.score) + " / " + (r.decision || "—"));
+    html += fieldRow("critical flags", r.criticalFlagCount == null ? "—" : r.criticalFlagCount);
+    html += '<h3>Preflight</h3>';
+    html += fieldRow("simulation", pf.simulationOutcome || "not run");
+    html += fieldRow("spend (lamports)", req.spendLamports == null ? "—" : req.spendLamports);
+    if (req.blockingReasons && req.blockingReasons.length) {
+      html += '<h3 class="danger-h">Blocking reasons</h3><ul class="reasons">';
+      for (var i = 0; i < req.blockingReasons.length; i++) html += '<li>' + esc(req.blockingReasons[i]) + '</li>';
+      html += '</ul>';
+    }
+    setHtml("preview-body", html);
+  }
+
+  function loadArtifact(text) {
+    var req;
+    try { req = JSON.parse(text); } catch (e) { setText("load-status", "Not valid JSON."); return; }
+    if (!req || req.schemaVersion !== "live.canary.request.v1") {
+      setText("load-status", "Not a live.canary.request.v1 artifact."); state.request = null; updateGate(); return;
+    }
+    if (req.signed === true || req.submitted === true || req.confirmed === true) {
+      setText("load-status", "Refused: this artifact claims it was already signed/submitted. A request must be pre-signature.");
+      state.request = null; updateGate(); return;
+    }
+    // Defense in depth: the backend only ever emits these four PRE-signature states. Refuse a
+    // hand-crafted artifact carrying a post-signature state (phantom_requested/submitted/…).
+    var PRE_SIGNATURE_STATES = ["blocked_by_policy", "blocked_by_risk", "quote_ready", "preflight_ready"];
+    if (PRE_SIGNATURE_STATES.indexOf(req.state) === -1) {
+      setText("load-status", "Refused: artifact state \"" + esc(String(req.state)) + "\" is not a pre-signature request state.");
+      state.request = null; updateGate(); return;
+    }
+    if (!req.envelope || !req.envelope.txBase64) {
+      setText("load-status", "Loaded, but the request carries no unsigned transaction — it cannot be signed.");
+    } else {
+      setText("load-status", "Loaded.");
+    }
+    state.request = req;
+    renderPreview(req);
+    updateGate();
+  }
+
+  function updateGate() {
+    var reasons = [];
+    if (state.kill) reasons.push("KILL SWITCH engaged");
+    if (!state.pubkey) reasons.push("Phantom wallet not connected");
+    if (!state.request) reasons.push("no canary request loaded");
+    else {
+      if (state.request.network !== "mainnet-beta") reasons.push("request is not mainnet-beta");
+      if (state.request.state !== "preflight_ready") reasons.push("request state is " + state.request.state + " (need preflight_ready)");
+      if (state.request.blockingReasons && state.request.blockingReasons.length) reasons.push(state.request.blockingReasons.length + " blocking reason(s)");
+      if (!state.request.envelope || !state.request.envelope.txBase64) reasons.push("no unsigned transaction in the request");
+    }
+    if (!$("understand").checked) reasons.push("you must confirm you understand this spends real money");
+
+    var armBtn = $("arm-btn");
+    armBtn.disabled = reasons.length > 0;
+    if (reasons.length) {
+      setHtml("gate-reasons", "Disabled because: " + reasons.map(esc).join("; "));
+      state.armed = false;
+      $("sign-btn").style.display = "none";
+    } else {
+      setHtml("gate-reasons", "All preconditions met — you may ARM the canary.");
+    }
+  }
+
+  function arm() {
+    if ($("arm-btn").disabled) return;
+    state.armed = true;
+    $("sign-btn").style.display = "inline-block";
+    appendAudit("armed", { mint: state.request.candidate ? state.request.candidate.mint : null });
+    setText("sign-status", "Armed. Click \"Open Phantom Confirmation\" to sign in your wallet.");
+  }
+
+  function bytesFromBase64(b64) {
+    var bin = atob(b64);
+    var len = bin.length;
+    var bytes = new Uint8Array(len);
+    for (var i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+
+  async function openPhantom() {
+    if (!state.armed) { setText("sign-status", "Arm the canary first."); return; }
+    if (!window.solanaWeb3) { setText("sign-status", "The Solana library failed to load (SRI/network) — cannot build the transaction."); return; }
+    if (!state.provider) { setText("sign-status", "Connect Phantom first."); return; }
+    var env = state.request.envelope;
+    var tx;
+    try {
+      tx = window.solanaWeb3.VersionedTransaction.deserialize(bytesFromBase64(env.txBase64));
+    } catch (e) {
+      setText("sign-status", "Failed to deserialize the unsigned transaction.");
+      appendAudit("deserialize_failed", { error: String(e && e.message ? e.message : e) });
+      return;
+    }
+    appendAudit("phantom_requested", { feePayer: env.feePayerPublicKey });
+    setText("sign-status", "Awaiting your confirmation in Phantom…");
+    try {
+      var res = await state.provider.signAndSendTransaction(tx);
+      var sig = res && res.signature ? res.signature : String(res);
+      appendAudit("submitted", { signature: sig });
+      setText("sign-status", "Sent to the network by Phantom (NOT yet confirmed on-chain). Signature: " + sig);
+      setText("sig-value", sig);
+      trackConfirmation(sig);
+    } catch (e) {
+      var msg = e && e.message ? e.message : String(e);
+      appendAudit("user_rejected", { error: msg });
+      setText("sign-status", "Rejected or failed in Phantom: " + msg);
+    }
+  }
+
+  async function trackConfirmation(sig) {
+    var rpc = ($("rpc-url").value || "").trim();
+    if (!rpc) { setText("conf-status", "No RPC URL set — cannot track confirmation."); return; }
+    if (!window.solanaWeb3) { setText("conf-status", "Solana library not loaded."); return; }
+    var conn;
+    try { conn = new window.solanaWeb3.Connection(rpc, "confirmed"); } catch (e) { setText("conf-status", "Bad RPC URL."); return; }
+    for (var i = 0; i < 30; i++) {
+      try {
+        var st = await conn.getSignatureStatus(sig);
+        var v = st && st.value;
+        if (v) {
+          var label = (v.confirmationStatus || "processed") + (v.err ? " (FAILED)" : "");
+          setText("conf-status", label);
+          if (v.err) { appendAudit("failed", { signature: sig }); return; }
+          if (v.confirmationStatus === "finalized") { appendAudit("confirmed", { signature: sig }); return; }
+        }
+      } catch (e) { void e; }
+      await sleep(2000);
+    }
+    setText("conf-status", "Still pending after polling — check a block explorer.");
+  }
+
+  function toggleKill() {
+    state.kill = !state.kill;
+    var btn = $("kill-btn");
+    btn.textContent = state.kill ? "KILL SWITCH: ENGAGED (click to release)" : "KILL SWITCH: off (click to engage)";
+    btn.className = state.kill ? "kill engaged" : "kill";
+    setText("mode-blocked", state.kill ? "LIVE BLOCKED by kill switch" : "");
+    appendAudit(state.kill ? "kill_engaged" : "kill_released", {});
+    updateGate();
+  }
+
+  function downloadAudit() {
+    var blob = new Blob([JSON.stringify({ schemaVersion: "live.console.audit.v1", entries: state.audit }, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = "live-console-audit.json"; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function init() {
+    $("connect-btn").addEventListener("click", connect);
+    $("disconnect-btn").addEventListener("click", disconnect);
+    $("kill-btn").addEventListener("click", toggleKill);
+    $("understand").addEventListener("change", updateGate);
+    $("arm-btn").addEventListener("click", arm);
+    $("sign-btn").addEventListener("click", openPhantom);
+    $("download-audit-btn").addEventListener("click", downloadAudit);
+    $("load-btn").addEventListener("click", function () { loadArtifact($("artifact-input").value); });
+    $("file-input").addEventListener("change", function (ev) {
+      var f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      var reader = new FileReader();
+      reader.onload = function () { $("artifact-input").value = String(reader.result); loadArtifact(String(reader.result)); };
+      reader.readAsText(f);
+    });
+    refreshWallet();
+    updateGate();
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
+}());
+`;
+
+export function renderLiveConsoleHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${LIVE_CONSOLE_TITLE}</title>
+<link rel="stylesheet" href="assets/theme.css" />
+<script src="${LIVE_CONSOLE_WEB3_URL}" integrity="${LIVE_CONSOLE_WEB3_SRI}" crossorigin="anonymous"></script>
+<style>
+  body { font-family: var(--font, system-ui, sans-serif); background: var(--bg, #0b0e14); color: var(--text, #e6e6e6); margin: 0; padding: 24px; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  .danger-banner { background: var(--danger-bg, #3a0d0d); border: 1px solid var(--danger, #e5484d); color: var(--danger, #ff6b6b); padding: 14px 16px; border-radius: var(--radius, 10px); font-weight: 600; margin-bottom: 18px; }
+  .panel { background: var(--bg-card, #141925); border: 1px solid var(--border, #232a3a); border-radius: var(--radius, 10px); padding: 16px; margin-bottom: 16px; }
+  .panel h2 { margin: 0 0 12px; font-size: 15px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-dim, #9aa4b2); }
+  .panel h3 { margin: 14px 0 6px; font-size: 13px; color: var(--text-dim, #9aa4b2); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  button { font-family: inherit; font-size: 14px; padding: 9px 14px; border-radius: var(--radius-sm, 8px); border: 1px solid var(--border, #232a3a); background: var(--bg-elev, #1b2130); color: var(--text, #e6e6e6); cursor: pointer; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--info, #3b82f6); border-color: var(--info, #3b82f6); color: #fff; }
+  button.danger { background: var(--danger, #e5484d); border-color: var(--danger, #e5484d); color: #fff; }
+  button.kill { background: var(--bg-elev, #1b2130); border-color: var(--caution, #d9a441); color: var(--caution, #d9a441); font-weight: 600; }
+  button.kill.engaged { background: var(--danger, #e5484d); border-color: var(--danger, #e5484d); color: #fff; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border, #232a3a); }
+  .badge.mode { background: var(--info-bg, #10233f); color: var(--info, #6ea8fe); }
+  .badge.ok { background: var(--safe-bg, #0f2a1a); color: var(--safe, #4ade80); border-color: var(--safe, #4ade80); }
+  .badge.warn { background: var(--caution-bg, #2a230f); color: var(--caution, #facc15); border-color: var(--caution, #facc15); }
+  .kv { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px solid var(--border-soft, #1b2130); font-size: 13px; }
+  .kv .k { color: var(--text-dim, #9aa4b2); }
+  .kv .v { font-family: var(--mono, ui-monospace, monospace); word-break: break-all; text-align: right; }
+  .reasons { margin: 4px 0; padding-left: 18px; }
+  .danger-h { color: var(--danger, #ff6b6b); }
+  textarea { width: 100%; min-height: 110px; box-sizing: border-box; background: var(--bg, #0b0e14); color: var(--text, #e6e6e6); border: 1px solid var(--border, #232a3a); border-radius: var(--radius-sm, 8px); font-family: var(--mono, ui-monospace, monospace); font-size: 12px; padding: 8px; }
+  input[type=text] { width: 100%; box-sizing: border-box; background: var(--bg, #0b0e14); color: var(--text, #e6e6e6); border: 1px solid var(--border, #232a3a); border-radius: var(--radius-sm, 8px); padding: 8px; font-family: var(--mono, ui-monospace, monospace); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border-soft, #1b2130); font-family: var(--mono, ui-monospace, monospace); word-break: break-all; }
+  .muted { color: var(--text-dim, #9aa4b2); font-size: 13px; }
+  .gate { margin: 8px 0; font-size: 13px; }
+  label.cb { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+  .mode-blocked { color: var(--danger, #ff6b6b); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="danger-banner">
+    REAL MONEY. This console can send a live Solana mainnet transaction from YOUR Phantom wallet.
+    The backend holds no key and signs nothing — you confirm every transaction in Phantom yourself.
+    Sol Maker never asks for a seed phrase or private key. Memecoin trading can lose the entire amount.
+    This is not financial advice and not a promise of profit.
+  </div>
+
+  <div class="panel">
+    <h2>Mode &amp; Kill Switch</h2>
+    <div class="row">
+      <button id="kill-btn" class="kill">KILL SWITCH: off (click to engage)</button>
+      <span id="mode-blocked" class="mode-blocked"></span>
+    </div>
+    <p class="muted">Engaging the kill switch immediately disables every dangerous control on this page.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Wallet (Phantom)</h2>
+    <div class="row">
+      <button id="connect-btn" class="primary">Connect Phantom</button>
+      <button id="disconnect-btn">Disconnect</button>
+    </div>
+    <p id="wallet-status" class="muted">Checking for Phantom…</p>
+    <div class="kv"><span class="k">public key</span><span class="v" id="wallet-pubkey">—</span></div>
+    <p class="muted">Make sure Phantom is set to <strong>Mainnet</strong>. This page never sees your seed phrase or keys.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Load Canary Request</h2>
+    <p class="muted">Generate one with <code>soulmaker live:canary:prepare --out request.json …</code>, then load it here.</p>
+    <div class="row">
+      <input type="file" id="file-input" accept="application/json,.json" />
+    </div>
+    <textarea id="artifact-input" placeholder="…or paste a live.canary.request.v1 JSON here"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button id="load-btn">Load &amp; Preview</button>
+      <span id="load-status" class="muted"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Request Preview <span id="preview-head"></span></h2>
+    <div id="preview-body" class="muted">No request loaded.</div>
+  </div>
+
+  <div class="panel">
+    <h2>Execution</h2>
+    <label class="cb"><input type="checkbox" id="understand" /> I understand this spends REAL money from my own wallet, that I am confirming the transaction in Phantom, and that Sol Maker makes no profit guarantee.</label>
+    <p id="gate-reasons" class="gate muted"></p>
+    <div class="row">
+      <button id="arm-btn" class="danger" disabled>Arm Canary Trade</button>
+      <button id="sign-btn" class="danger" style="display:none">Open Phantom Confirmation</button>
+    </div>
+    <p id="sign-status" class="muted"></p>
+    <div class="kv"><span class="k">RPC for confirmation</span><span class="v"></span></div>
+    <input type="text" id="rpc-url" value="${LIVE_CONSOLE_DEFAULT_RPC}" />
+    <div class="kv"><span class="k">signature</span><span class="v" id="sig-value">—</span></div>
+    <div class="kv"><span class="k">confirmation</span><span class="v" id="conf-status">—</span></div>
+  </div>
+
+  <div class="panel">
+    <h2>Audit Log</h2>
+    <div class="row" style="margin-bottom:8px"><button id="download-audit-btn">Download audit JSON</button></div>
+    <table><thead><tr><th>time</th><th>event</th><th>detail</th></tr></thead><tbody id="audit-rows"></tbody></table>
+  </div>
+
+  <p class="muted">Sol Maker — Part 1 live canary console. Disabled by default, micro-capped, human-confirmed. No autonomous trading.</p>
+</div>
+<script>${CLIENT_SCRIPT}</script>
+</body>
+</html>
+`;
+}

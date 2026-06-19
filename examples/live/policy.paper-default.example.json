@@ -1,0 +1,65 @@
+{
+  "policy": {
+    "schemaVersion": "live.policy.v1",
+    "mode": "paper",
+    "liveEnabled": false,
+    "chainAllowlist": [
+      "solana-mainnet"
+    ],
+    "walletProvider": null,
+    "caps": {
+      "maxTradeSol": 0.005,
+      "maxPositionSol": 0.005,
+      "maxDailyTrades": 1,
+      "maxDailyLossSol": 0.01,
+      "maxSlippageBps": 100,
+      "priorityFeeCapLamports": 1000000,
+      "riskScoreCap": 30
+    },
+    "liquidity": {
+      "minLiquidityUsd": 5000,
+      "minPoolAgeSeconds": 60,
+      "maxPoolAgeSeconds": null
+    },
+    "freshness": {
+      "quoteTtlMs": 8000,
+      "routeTtlMs": 8000
+    },
+    "requirePreflightSimulation": true,
+    "requireManualConfirmation": true,
+    "requireAuditLog": true,
+    "killSwitch": false,
+    "emergencyStopFilePresent": false,
+    "tokenAllowlist": null,
+    "tokenDenylist": [],
+    "cooldownMs": 30000,
+    "backendCustodiesNoKeys": true,
+    "phantomSignsInBrowser": true,
+    "notFinancialAdvice": true,
+    "notProfitabilityClaim": true
+  },
+  "evaluation": {
+    "schemaVersion": "live.policy.evaluation.v1",
+    "mode": "paper",
+    "prepareAllowed": false,
+    "canaryArmAllowed": false,
+    "blockingReasons": [
+      "live-disabled",
+      "mode-not-live",
+      "wallet-provider-not-phantom"
+    ],
+    "warnings": [],
+    "ceilings": {
+      "maxTradeSol": 0.05,
+      "maxPositionSol": 0.05,
+      "maxDailyTrades": 5,
+      "maxDailyLossSol": 0.05,
+      "maxSlippageBps": 300,
+      "priorityFeeCapLamports": 5000000,
+      "riskScoreCap": 50
+    },
+    "backendCustodiesNoKeys": true,
+    "phantomSignsInBrowser": true,
+    "notProfitabilityClaim": true
+  }
+}
