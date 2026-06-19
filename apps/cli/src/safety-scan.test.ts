@@ -13,6 +13,7 @@ import {
   isSecretFilename,
   runRepoSafetyScan,
   REQUIRED_GITIGNORE_RULES,
+  UNSIGNED_TX_EXAMPLE_BASE58_EXEMPT,
 } from "../../../scripts/safety-scan.js";
 
 // Fixtures below are intentional fake-secret SHAPES for the scanner's own test. safety-scan-ignore
@@ -25,6 +26,29 @@ describe("safety:scan — the real tracked tree is clean", () => {
     expect(result.contentFindings).toEqual([]);
     expect(result.missingGitignoreRules).toEqual([]);
     expect(result.filesScanned).toBeGreaterThan(100);
+  });
+});
+
+describe("safety:scan — the unsigned-tx-example base58 exemption is NARROW", () => {
+  it("exempts EXACTLY the three reviewed live canary example files", () => {
+    expect([...UNSIGNED_TX_EXAMPLE_BASE58_EXEMPT].sort()).toEqual([
+      "examples/live/canary-request.blocked-by-policy.example.json",
+      "examples/live/canary-request.blocked-by-risk.example.json",
+      "examples/live/canary-request.preflight-ready.example.json",
+    ]);
+  });
+
+  it("skips the base58-blob rule for an exempt file but STILL catches a planted keypair byte array", () => {
+    const exempt = "examples/live/canary-request.preflight-ready.example.json";
+    // A public unsigned-tx blob is not flagged here…
+    expect(scanContentForSecrets(`"txBase64": "${PLANTED_BASE58}"`, exempt).map((f) => f.rule)).not.toContain("base58-secret-blob");
+    // …but a real keypair byte array still is — the exemption is base58-rule-only.
+    const bytes = Array.from({ length: 64 }, (_, i) => (i * 7 + 13) % 256).join(",");
+    expect(scanContentForSecrets(`[${bytes}]`, exempt).map((f) => f.rule)).toContain("private-key-byte-array");
+  });
+
+  it("the SAME blob in any non-exempt file is still flagged (no broad weakening)", () => {
+    expect(scanContentForSecrets(`"x": "${PLANTED_BASE58}"`, "examples/live/other.json").map((f) => f.rule)).toContain("base58-secret-blob");
   });
 });
 

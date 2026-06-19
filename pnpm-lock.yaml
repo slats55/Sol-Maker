@@ -47,6 +47,9 @@ importers:
       '@soulmaker/execution':
         specifier: workspace:*
         version: link:../../packages/execution
+      '@soulmaker/live':
+        specifier: workspace:*
+        version: link:../../packages/live
       '@soulmaker/paper':
         specifier: workspace:*
         version: link:../../packages/paper
@@ -141,6 +144,21 @@ importers:
       '@solana/web3.js':
         specifier: ^1.95.0
         version: 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@soulmaker/security':
+        specifier: workspace:*
+        version: link:../security
+      '@soulmaker/txpreview':
+        specifier: workspace:*
+        version: link:../txpreview
+
+  packages/live:
+    dependencies:
+      '@soulmaker/core':
+        specifier: workspace:*
+        version: link:../core
+      '@soulmaker/execution':
+        specifier: workspace:*
+        version: link:../execution
       '@soulmaker/security':
         specifier: workspace:*
         version: link:../security

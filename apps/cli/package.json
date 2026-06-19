@@ -13,6 +13,7 @@
     "@soulmaker/core": "workspace:*",
     "@soulmaker/engine-bridge": "workspace:*",
     "@soulmaker/execution": "workspace:*",
+    "@soulmaker/live": "workspace:*",
     "@soulmaker/paper": "workspace:*",
     "@soulmaker/quotefetch": "workspace:*",
     "@soulmaker/realtime": "workspace:*",

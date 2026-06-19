@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "live.candidate.decision.v1",
+  "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "decision": "live_canary_candidate",
+  "score": 83,
+  "reasons": [
+    "risk score 8 within cap 30",
+    "liquidity $60000 ≥ live floor $5000",
+    "score 83 ≥ live threshold 70; all live preconditions met"
+  ],
+  "blockingReasons": [],
+  "missingData": [],
+  "timestamp": "2026-06-18T00:00:00.000Z",
+  "provenance": {
+    "providers": [
+      "jupiter-lite-api"
+    ]
+  },
+  "notProfitabilityClaim": true,
+  "liveCandidateStillRequiresPhantom": true
+}
