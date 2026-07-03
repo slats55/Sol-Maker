@@ -220,3 +220,34 @@ backend holds no key — and it says so instead of pretending.
 - Do **not** raise the size. Part 2 is canary-only; large trades are disabled.
 - Do **not** run unattended. Every real transaction requires your Phantom confirmation.
 - Do **not** treat a `would_enter` or a `live_canary_candidate` as a promise of profit. It is not.
+
+## 15. Sprint 109 additions — continuous daemon + hardened buy/sell
+
+Sprint 109 layers a continuous PAPER daemon, performance evidence, and HARDENED buy/sell prepare
+paths on top of this runbook. See `docs/S109_CONTINUOUS_SNIPER_RUNBOOK.md` for the full flow. In
+one breath:
+
+```
+# continuous paper daemon (real feeds, real risk via RPC, real quotes; nothing sent):
+pnpm soulmaker live:sniper:daemon --mode paper --duration-minutes 30 --poll-seconds 15 \
+  --out-dir runs/s109-paper-daemon --rpc-url <read-only-rpc> --apply-exits
+
+# performance evidence (honest edge verdict):
+pnpm soulmaker live:sniper:paper:report --session runs/s109-paper-daemon --out runs/s109-paper-daemon/performance.md
+
+# hardened buy prepare (refuses without ACTIVE approval + FRESH quote + clean risk + green policy):
+pnpm soulmaker live:canary:prepare-buy --candidate-mint <mint> --risk risk.json --quote quote.json \
+  --approval approval.json --policy policy.json --spend-sol 0.005 --out-dir runs/s109-live-canary
+
+# sell review (UNSIGNED; refuses unknown position / stale quote / unverified balance):
+pnpm soulmaker live:canary:prepare-sell --ledger runs/positions.json --mint <mint> \
+  --quote sell-quote.json --approval approval.json --policy policy.json --out-dir runs/s109-live-canary
+
+# reconcile a position against a REAL wallet observation (unknown stays unknown):
+pnpm soulmaker live:sniper:reconcile-position --ledger runs/positions.json --mint <mint> \
+  --observed-token-amount-raw <raw> --observation-source phantom-ui
+```
+
+The hardened paths only ever tighten this runbook: the daemon has no live mode, the buy path adds
+refusals on top of `live:canary:prepare`, and the sell path emits an UNSIGNED review — Phantom and
+you remain the only way anything is ever sent.

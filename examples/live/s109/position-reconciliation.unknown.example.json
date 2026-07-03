@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "live.position.reconciliation.v1",
+  "reconciledAt": "2026-07-02T12:00:00.000Z",
+  "positionId": "live_canary:EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v:2026-07-02T11:00:00.000Z",
+  "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "kind": "live_canary",
+  "status": "open",
+  "expectedTokenAmountRaw": "123456789",
+  "observedTokenAmountRaw": null,
+  "observationSource": "none",
+  "verdict": "unknown",
+  "notes": [
+    "the wallet/provider balance could not be observed — reported as unknown, never invented"
+  ],
+  "balancesNeverInvented": true,
+  "notProfitabilityClaim": true
+}

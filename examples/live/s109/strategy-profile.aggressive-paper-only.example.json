@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "live.strategy.profile.v1",
+  "name": "aggressive-paper-only",
+  "minLiquidityUsd": 5000,
+  "maxRiskScore": 45,
+  "maxSpendSol": 0.01,
+  "stopLossPct": 25,
+  "takeProfitPct": 100,
+  "trailingStopPct": 20,
+  "maxHoldMs": 3600000,
+  "quoteFreshnessTtlMs": 15000,
+  "maxSlippageBps": 250,
+  "maxOpenPositions": 5,
+  "sourcePreferences": [
+    "jupiter-recent-tokens",
+    "dexscreener-token-profiles"
+  ],
+  "riskAppetite": "aggressive",
+  "liveEligible": false,
+  "notProfitabilityClaim": true
+}

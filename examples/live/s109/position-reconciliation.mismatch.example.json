@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "live.position.reconciliation.v1",
+  "reconciledAt": "2026-07-02T12:00:00.000Z",
+  "positionId": "live_canary:EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v:2026-07-02T11:00:00.000Z",
+  "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "kind": "live_canary",
+  "status": "open",
+  "expectedTokenAmountRaw": "123456789",
+  "observedTokenAmountRaw": "1",
+  "observationSource": "phantom-ui",
+  "verdict": "mismatch",
+  "notes": [
+    "ledger expects 123456789 raw, wallet observed 1 raw — do NOT trust the ledger value until resolved"
+  ],
+  "balancesNeverInvented": true,
+  "notProfitabilityClaim": true
+}

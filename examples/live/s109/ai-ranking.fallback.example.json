@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "live.ai.ranking.v1",
+  "generatedAt": "2026-07-02T12:00:00.000Z",
+  "engine": "deterministic-fallback",
+  "model": null,
+  "promptVersion": null,
+  "inputsHash": "40e254d943e8eb3f7d452c906ac05ea6",
+  "rankings": [
+    {
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "rank": 1,
+      "score": 47,
+      "decision": "watch",
+      "aiRationale": null
+    }
+  ],
+  "excluded": [
+    {
+      "mint": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+      "reason": "hard-blocked"
+    }
+  ],
+  "aiAttemptedOverride": [],
+  "caveats": [
+    "example artifact — deterministic fallback; no AI call was made"
+  ],
+  "advisoryOnly": true,
+  "cannotOverrideSafety": true,
+  "notProfitabilityClaim": true
+}

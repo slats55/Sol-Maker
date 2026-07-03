@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "live.canary.sell_request.v1",
+  "banner": "SELL REVIEW — the embedded transaction (if any) is UNSIGNED; the backend holds no key and cannot sell. You sign and submit in Phantom yourself, or nothing happens. PnL figures are ESTIMATES from a quote, not results. Not financial advice; not a claim of profit.",
+  "createdAt": "2026-07-02T12:00:00.000Z",
+  "chain": "solana",
+  "network": "mainnet-beta",
+  "walletProvider": "phantom",
+  "state": "review_ready",
+  "emergencyReview": false,
+  "position": {
+    "positionId": "live_canary:EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v:2026-07-02T11:00:00.000Z",
+    "kind": "live_canary",
+    "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "symbol": null,
+    "openedAt": "2026-07-02T11:00:00.000Z",
+    "entrySpendLamports": 5000000,
+    "tokenAmountRaw": "123456789"
+  },
+  "quote": {
+    "provider": "jupiter-lite-api",
+    "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "outputMint": "So11111111111111111111111111111111111111112",
+    "inAmountRaw": "123456789",
+    "outAmountRaw": "6000000",
+    "slippageBps": 100,
+    "priceImpactPct": 0.3,
+    "quotedAt": "2026-07-02T12:00:00.000Z",
+    "ageMs": 1000,
+    "routeLabels": [
+      "ExampleDEX"
+    ]
+  },
+  "expectedSolOutLamports": "6000000",
+  "estimatedPnlLamports": 1000000,
+  "estimatedPnlPct": 20,
+  "approval": {
+    "supplied": true,
+    "active": true,
+    "reasons": []
+  },
+  "envelope": null,
+  "blockingReasons": [],
+  "warnings": [],
+  "prepared": true,
+  "signed": false,
+  "submitted": false,
+  "confirmed": false,
+  "backendCustodiesNoKeys": true,
+  "requiresPhantomHumanConfirmation": true,
+  "notProfitabilityClaim": true
+}

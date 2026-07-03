@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "live.strategy.profile.v1",
+  "name": "conservative",
+  "minLiquidityUsd": 25000,
+  "maxRiskScore": 20,
+  "maxSpendSol": 0.005,
+  "stopLossPct": 15,
+  "takeProfitPct": 30,
+  "trailingStopPct": 10,
+  "maxHoldMs": 900000,
+  "quoteFreshnessTtlMs": 8000,
+  "maxSlippageBps": 100,
+  "maxOpenPositions": 1,
+  "sourcePreferences": [
+    "jupiter-recent-tokens"
+  ],
+  "riskAppetite": "conservative",
+  "liveEligible": true,
+  "notProfitabilityClaim": true
+}
