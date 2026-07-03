@@ -26,6 +26,16 @@ export {
 } from "./jupiter-recent.js";
 export type { JupiterRecentAdapterOptions } from "./jupiter-recent.js";
 
+export {
+  DEXSCREENER_PROVIDER_ID,
+  DEXSCREENER_BASE_URL,
+  DEXSCREENER_MAX_OBSERVATIONS_PER_POLL,
+  dexscreenerCandidateIdForMint,
+  normalizeTokenProfileItem,
+  createDexscreenerAdapter,
+} from "./dexscreener.js";
+export type { DexscreenerAdapterOptions } from "./dexscreener.js";
+
 export { REPLAY_PROVIDER_ID, REPLAY_CAVEAT, createReplayCandidateAdapter } from "./replay.js";
 
 export {

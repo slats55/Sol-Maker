@@ -347,3 +347,83 @@ export type {
   CanaryReconciliationRecord,
   BuildCanaryReconciliationInput,
 } from "./canary-reconcile.js";
+
+// --- Sprint 109: continuous paper daemon + performance + profiles + sell side -----------------
+
+export {
+  LIVE_STRATEGY_PROFILE_SCHEMA_VERSION,
+  BUILTIN_PROFILE_NAMES,
+  PROFILE_MAX_OPEN_POSITIONS_CEILING,
+  PROFILE_QUOTE_TTL_BOUNDS,
+  STRATEGY_PROFILES,
+  StrategyProfileError,
+  validateStrategyProfile,
+  getBuiltinProfile,
+  profileExitPolicy,
+  requireLiveEligibleProfile,
+} from "./profiles.js";
+export type { BuiltinProfileName, StrategyProfile } from "./profiles.js";
+
+export {
+  LIVE_SNIPER_DAEMON_STATE_SCHEMA_VERSION,
+  LIVE_SNIPER_DAEMON_SUMMARY_SCHEMA_VERSION,
+  DAEMON_MODES,
+  DAEMON_RISK_CACHE_TTL_MS,
+  DAEMON_BACKOFF_BASE_MS,
+  DAEMON_BACKOFF_MAX_MS,
+  DAEMON_SUMMARY_CAVEATS,
+  DaemonStateError,
+  emptyDaemonTotals,
+  createDaemonState,
+  dedupeAcrossLoops,
+  riskCacheGet,
+  riskCachePut,
+  recordProviderOutcome,
+  providerAllowed,
+  recordNoTradeReasons,
+  bumpTotals,
+  completeLoop,
+  validateDaemonState,
+  buildDaemonSummary,
+} from "./daemon.js";
+export type {
+  DaemonMode,
+  DaemonRiskCacheEntry,
+  DaemonProviderHealth,
+  DaemonTotals,
+  DaemonState,
+  DaemonSummary,
+  DedupeAcrossLoopsResult,
+  ProviderOutcomeStatus,
+} from "./daemon.js";
+
+export {
+  LIVE_PAPER_PERFORMANCE_SCHEMA_VERSION,
+  EDGE_MIN_SAMPLE,
+  EDGE_VERDICTS,
+  buildPaperPerformanceReport,
+  formatPaperPerformanceMarkdown,
+} from "./performance.js";
+export type { EdgeVerdict, TradeStat, PaperPerformanceReport, BuildPerformanceInput } from "./performance.js";
+
+export {
+  LIVE_SELL_REQUEST_SCHEMA_VERSION,
+  LIVE_POSITION_RECONCILIATION_SCHEMA_VERSION,
+  LIVE_SELL_REQUEST_BANNER,
+  LIVE_SELL_REQUEST_STATES,
+  SELL_REQUEST_BLOCK_CODES,
+  POSITION_RECONCILIATION_VERDICTS,
+  LiveSellRequestError,
+  buildLiveSellRequest,
+  validateLiveSellRequest,
+  reconcilePosition,
+} from "./sell-request.js";
+export type {
+  LiveSellRequestState,
+  SellRequestBlockCode,
+  LiveSellRequest,
+  BuildLiveSellRequestInput,
+  PositionReconciliationVerdict,
+  PositionReconciliationRecord,
+  ReconcilePositionInput,
+} from "./sell-request.js";
