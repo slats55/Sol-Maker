@@ -65,7 +65,6 @@ import {
   providerAllowed,
   scoreStrategyV2,
   shadowDecide,
-  validateDaemonState,
   validateLedger,
   validateLivePolicy,
   validateOperatorApproval,
