@@ -152,6 +152,60 @@ PnL is reported as **unknown** unless you supplied before/after balances — it 
   `SOULMAKER_EMERGENCY_STOP=1`.
 - In the console, the **KILL SWITCH** button immediately disables every dangerous control.
 
+## 12. Rank candidates (advisory; optional AI)
+
+```
+pnpm soulmaker live:sniper:rank --snapshot runs/realtime-snapshot.json \
+  --risk <MINT>=runs/risk.json --quote <MINT>=runs/quote-facts.json --json
+```
+
+The default engine is a deterministic score ranking that works offline. Add `--ai` (requires
+`ANTHROPIC_API_KEY` in the env) for an Anthropic advisory ranking — its output is **clamped**:
+
+- A hard-blocked candidate (risk REJECT, critical flag, denylist, freeze/mint authority, missing
+  risk) is excluded **before** the AI sees anything; an AI naming one is discarded and recorded in
+  `aiAttemptedOverride`.
+- Invented mints are dropped; omitted eligible candidates are appended deterministically.
+- **Any** AI failure (no key, timeout, outage, malformed output) falls back to the deterministic
+  ranking with an honest caveat and exit 0 — an AI problem can never block the sniper.
+
+Every ranking logs the engine, model, prompt version, and a truncated sha256-128 hash of the exact
+inputs. A ranking is advisory only: it can never unblock, approve, or trade.
+
+## 13. Track positions and exits (paper parity)
+
+Open a PAPER position (simulation; capped at the same hard ceiling as a live canary):
+
+```
+pnpm soulmaker live:sniper:paper:open --mint <MINT> --spend-sol 0.005 \
+  --token-amount-raw <rawOut-from-quote> --ledger runs/positions.json
+```
+
+View, mark, and apply exit rules (stop-loss 20% / take-profit 50% / trailing 15% / max hold 30 min
+by default — override with `--exit-policy`):
+
+```
+pnpm soulmaker live:sniper:positions --ledger runs/positions.json \
+  --mark <MINT>=runs/mark.json --apply-exits
+```
+
+A mark file is a REAL sell-side observation: `{ "valueLamports": <what the position would fetch>,
+"source": "<provider>" }`. Without a mark, price rules are skipped honestly and only the time-box
+and emergency rules can fire. **A live (Phantom-opened) position is never auto-closed** — its exit
+is printed as a RECOMMENDATION; you sell in Phantom and record the close via
+`live:sniper:reconcile`. One open position per mint; duplicate intents are refused.
+
+## 14. Emergency stop
+
+```
+pnpm soulmaker live:sniper:emergency --ledger runs/positions.json
+```
+
+Closes every open PAPER position immediately (reason `emergency`; PnL from the last known mark or
+honestly unknown) and prints the exact manual steps for any live position: engage the kill switch,
+swap back to SOL in Phantom yourself, record the close. This CLI cannot sell a live position — the
+backend holds no key — and it says so instead of pretending.
+
 ## If a trade fails
 
 - A Phantom rejection or an on-chain failure is recorded honestly (`user_rejected` / `failed`).
