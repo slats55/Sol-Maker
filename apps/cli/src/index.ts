@@ -22,6 +22,13 @@ import {
   liveSniperSessionReport,
 } from "./live-sniper-commands.js";
 import {
+  liveSniperDaemonReport,
+  liveSniperPaperReportReport,
+  liveCanaryPrepareBuyReport,
+  liveCanaryPrepareSellReport,
+  liveSniperReconcilePositionReport,
+} from "./live-daemon-commands.js";
+import {
   doctorReport,
   configCheckReport,
   modeReport,
@@ -4318,11 +4325,12 @@ program
   .option("--quote <mint=path>", "quote facts JSON paired to a mint (repeatable)", collect, [])
   .option("--risk-appetite <a>", "conservative | standard (default) | aggressive")
   .option("--ai", "use the Anthropic advisory engine (needs ANTHROPIC_API_KEY; failures fall back)")
+  .option("--require-ai", "PROOF mode: exit 1 if the AI engine did not really run (implies --ai; never loosens the clamp)")
   .option("--model <id>", "Anthropic model id for --ai (default claude-opus-4-8)")
   .option("--json", "emit the ranking as stable JSON")
   .option("--out <path>", "write the ranking JSON (refused if it exists)")
   .option("--force", "overwrite an existing --out file")
-  .action(async (opts: { snapshot?: string; mint?: string[]; risk?: string[]; quote?: string[]; riskAppetite?: string; ai?: boolean; model?: string; json?: boolean; out?: string; force?: boolean }) => {
+  .action(async (opts: { snapshot?: string; mint?: string[]; risk?: string[]; quote?: string[]; riskAppetite?: string; ai?: boolean; requireAi?: boolean; model?: string; json?: boolean; out?: string; force?: boolean }) => {
     const { text, exitCode } = await liveSniperRankReport(
       {},
       {
@@ -4332,6 +4340,7 @@ program
         quotePairs: opts.quote,
         riskAppetite: opts.riskAppetite,
         ai: Boolean(opts.ai),
+        requireAi: Boolean(opts.requireAi),
         model: opts.model,
         json: Boolean(opts.json),
         out: opts.out,
@@ -4422,5 +4431,242 @@ program
     console.log(text);
     if (exitCode !== 0) process.exitCode = exitCode;
   });
+
+// ---------------------------------------------------------------------------
+// Continuous paper daemon + hardened canary buy/sell — Sprint 109.
+// The daemon is structurally PAPER-only. Buy/sell prepare emit UNSIGNED artifacts:
+// the human signs every real transaction in Phantom; this CLI never signs or sends.
+// ---------------------------------------------------------------------------
+
+program
+  .command("live:sniper:daemon")
+  .description(
+    "Run the CONTINUOUS PAPER sniper daemon over REAL market feeds (Jupiter recent-tokens + DexScreener): dedupes candidates across loops, runs real token:risk (cached, TTL) when --rpc-url is set, fetches real Jupiter quotes, opens/exits PAPER positions by deterministic rule, journals every decision, and writes a session summary. Mode is structurally 'paper' — there is no live daemon mode; nothing here can sign or send. Graceful Ctrl+C writes the summary",
+  )
+  .option("--mode <mode>", "must be 'paper' (the only mode; refused otherwise)")
+  .option("--duration-minutes <n>", "session length in minutes (default 10; max 480)")
+  .option("--poll-seconds <n>", "seconds between loops (default 15; min 5)")
+  .option("--out-dir <dir>", "session artifact folder (e.g. runs/s109-paper-daemon; required)")
+  .option("--max-candidates-per-loop <n>", "fully process at most this many NEW candidates per loop (default 5)")
+  .option("--max-paper-positions <n>", "cap on concurrently open paper positions (default: profile)")
+  .option("--paper-spend-sol <sol>", "paper entry spend in SOL (default: profile; caps only tighten)")
+  .option("--apply-exits", "auto-close fired PAPER positions (default: exits are journaled as recommendations)")
+  .option("--profile <name|path>", "strategy profile: conservative | balanced | aggressive-paper-only | a profile JSON (default balanced)")
+  .option("--rpc-url <url>", "read-only RPC endpoint enabling REAL per-candidate token:risk checks (without it, risk stays missing and no position can open)")
+  .option("--sources <list>", "comma-separated candidate sources: jupiter,dexscreener (default both)")
+  .option("--max-loops <n>", "stop after N loops (bounded proof runs)")
+  .option("--json", "emit the session summary as stable JSON")
+  .option("--force", "overwrite an existing session in --out-dir")
+  .action(
+    async (opts: {
+      mode?: string;
+      durationMinutes?: string;
+      pollSeconds?: string;
+      outDir?: string;
+      maxCandidatesPerLoop?: string;
+      maxPaperPositions?: string;
+      paperSpendSol?: string;
+      applyExits?: boolean;
+      profile?: string;
+      rpcUrl?: string;
+      sources?: string;
+      maxLoops?: string;
+      json?: boolean;
+      force?: boolean;
+    }) => {
+      const { text, exitCode } = await liveSniperDaemonReport(
+        {},
+        {
+          mode: opts.mode,
+          durationMinutes: opts.durationMinutes,
+          pollSeconds: opts.pollSeconds,
+          outDir: opts.outDir,
+          maxCandidatesPerLoop: opts.maxCandidatesPerLoop,
+          maxPaperPositions: opts.maxPaperPositions,
+          paperSpendSol: opts.paperSpendSol,
+          applyExits: Boolean(opts.applyExits),
+          profile: opts.profile,
+          rpcUrl: opts.rpcUrl,
+          sources: opts.sources,
+          maxLoops: opts.maxLoops,
+          json: Boolean(opts.json),
+          force: Boolean(opts.force),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("live:sniper:paper:report")
+  .description(
+    "Generate the PAPER PERFORMANCE EVIDENCE report from one daemon session folder: funnel counts, realized/unrealized PnL (known values only; unknown stays unknown), drawdown, best/worst trade, hold times, exit tallies, quote stale rate, no-trade reasons, and an HONEST edge verdict — small sample says inconclusive, a loss says no edge, and 'edge proven' does not exist in the vocabulary",
+  )
+  .option("--session <dir>", "a live:sniper:daemon --out-dir (reads summary.json + ledger.json)")
+  .option("--out <path>", "write the Markdown report here (+ a .json beside it; refused if it exists)")
+  .option("--json", "emit the performance report as stable JSON")
+  .option("--force", "overwrite an existing --out file")
+  .action((opts: { session?: string; out?: string; json?: boolean; force?: boolean }) => {
+    const { text, exitCode } = liveSniperPaperReportReport({}, { sessionDir: opts.session, out: opts.out, json: Boolean(opts.json), force: Boolean(opts.force) });
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("live:canary:prepare-buy")
+  .description(
+    "HARDENED buy prepare: REFUSES unless every gate is green up front — an ACTIVE time-boxed operator approval, a FRESH quote, clean risk (no REJECT/critical flag/over-cap), a canary-green live policy, spend within EVERY ceiling (policy, escalation, profile) and slippage within cap — then assembles the UNSIGNED live.canary.request.v1 plus an operator buy review (json+md) showing risk, quote, amount, slippage, expected tokens and max loss. Never signs, never sends; the human confirms in Phantom",
+  )
+  .option("--candidate-mint <mint>", "the mint to buy (required)")
+  .option("--risk <path>", "token:risk --json report (required)")
+  .option("--quote <path>", "FRESH quote facts JSON (required; stale/unknown age is refused)")
+  .option("--approval <path>", "a live.operator.approval.v1 from live:sniper:approve (required; expired = refused)")
+  .option("--policy <path>", "a live.policy.v1 JSON that is green for a canary (required; the default policy blocks)")
+  .option("--envelope <path>", "OPTIONAL unsigned txpreview.envelope.v1 from execution:build")
+  .option("--simulation <path>", "OPTIONAL simulation report — required to reach preflight_ready")
+  .option("--spend-sol <sol>", "planned spend in SOL (required; must be within every ceiling)")
+  .option("--profile <name|path>", "strategy profile (default conservative; paper-only profiles refused)")
+  .option("--symbol <symbol>", "display symbol")
+  .option("--out-dir <dir>", "write buy-review.json / buy-review.md / canary-request.json here")
+  .option("--json", "emit the buy review as stable JSON")
+  .option("--force", "overwrite existing files in --out-dir")
+  .action(
+    (opts: {
+      candidateMint?: string;
+      risk?: string;
+      quote?: string;
+      approval?: string;
+      policy?: string;
+      envelope?: string;
+      simulation?: string;
+      spendSol?: string;
+      profile?: string;
+      symbol?: string;
+      outDir?: string;
+      json?: boolean;
+      force?: boolean;
+    }) => {
+      const { text, exitCode } = liveCanaryPrepareBuyReport(
+        {},
+        {
+          candidateMint: opts.candidateMint,
+          riskPath: opts.risk,
+          quotePath: opts.quote,
+          approvalPath: opts.approval,
+          policyPath: opts.policy,
+          envelopePath: opts.envelope,
+          simulationPath: opts.simulation,
+          spendSol: opts.spendSol,
+          profile: opts.profile,
+          symbol: opts.symbol,
+          outDir: opts.outDir,
+          json: Boolean(opts.json),
+          force: Boolean(opts.force),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("live:canary:prepare-sell")
+  .description(
+    "Prepare an UNSIGNED SELL REVIEW for one ledger position: fetches nothing itself — pair a FRESH sell-side quote (token→SOL), an operator approval and a live policy; shows expected SOL out and the ESTIMATED PnL; REFUSES an unknown position, a stale/missing quote, an unverified token balance, a missing/expired approval, or a non-green policy. --emergency produces a blocked review-only artifact with the exact manual Phantom steps. This CLI cannot sell — the human signs in Phantom and records the real close with live:sniper:reconcile",
+  )
+  .option("--ledger <path>", "the position ledger JSON (required)")
+  .option("--position-id <id>", "the exact position id")
+  .option("--mint <mint>", "alternative: the open position's mint")
+  .option("--quote <path>", "FRESH sell-side quote facts JSON (inputMint must be the position mint)")
+  .option("--approval <path>", "a live.operator.approval.v1 (expired = refused)")
+  .option("--policy <path>", "a live.policy.v1 JSON (default: the blocking default policy)")
+  .option("--envelope <path>", "OPTIONAL unsigned sell envelope for Phantom")
+  .option("--emergency", "emergency review mode: blocked review-only artifact + manual Phantom steps")
+  .option("--profile <name|path>", "strategy profile (default conservative; paper-only profiles refused)")
+  .option("--out-dir <dir>", "write sell-review.json / sell-review.md here")
+  .option("--json", "emit the sell request as stable JSON")
+  .option("--force", "overwrite existing files in --out-dir")
+  .action(
+    (opts: {
+      ledger?: string;
+      positionId?: string;
+      mint?: string;
+      quote?: string;
+      approval?: string;
+      policy?: string;
+      envelope?: string;
+      emergency?: boolean;
+      profile?: string;
+      outDir?: string;
+      json?: boolean;
+      force?: boolean;
+    }) => {
+      const { text, exitCode } = liveCanaryPrepareSellReport(
+        {},
+        {
+          ledgerPath: opts.ledger,
+          positionId: opts.positionId,
+          mint: opts.mint,
+          quotePath: opts.quote,
+          approvalPath: opts.approval,
+          policyPath: opts.policy,
+          envelopePath: opts.envelope,
+          emergency: Boolean(opts.emergency),
+          profile: opts.profile,
+          outDir: opts.outDir,
+          json: Boolean(opts.json),
+          force: Boolean(opts.force),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("live:sniper:reconcile-position")
+  .description(
+    "Reconcile ONE ledger position against a REAL wallet/provider balance observation (or record that the balance could not be observed). Verdicts: matches | mismatch | unknown — an unobservable balance is UNKNOWN, never invented. A paper position honestly expects zero on-chain. Read-only; never queries the chain itself, never signs, never sends",
+  )
+  .option("--ledger <path>", "the position ledger JSON (required)")
+  .option("--position-id <id>", "the exact position id")
+  .option("--mint <mint>", "alternative: match by mint")
+  .option("--observed-token-amount-raw <raw>", "the REAL observed token balance (raw integer string)")
+  .option("--observation-source <label>", "where the observation came from (e.g. phantom-ui, rpc)")
+  .option("--unknown", "record that the balance could NOT be observed (honest unknown)")
+  .option("--json", "emit the reconciliation record as stable JSON")
+  .option("--out <path>", "write the reconciliation JSON (refused if it exists)")
+  .option("--force", "overwrite an existing --out file")
+  .action(
+    (opts: {
+      ledger?: string;
+      positionId?: string;
+      mint?: string;
+      observedTokenAmountRaw?: string;
+      observationSource?: string;
+      unknown?: boolean;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+    }) => {
+      const { text, exitCode } = liveSniperReconcilePositionReport(
+        {},
+        {
+          ledgerPath: opts.ledger,
+          positionId: opts.positionId,
+          mint: opts.mint,
+          observedTokenAmountRaw: opts.observedTokenAmountRaw,
+          observationSource: opts.observationSource,
+          unknown: Boolean(opts.unknown),
+          json: Boolean(opts.json),
+          out: opts.out,
+          force: Boolean(opts.force),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
 
 program.parseAsync(process.argv);

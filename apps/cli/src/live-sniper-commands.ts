@@ -649,6 +649,12 @@ export interface LiveSniperRankOptions {
   riskAppetite?: string;
   /** Opt in to the AI engine. Without it (or without ANTHROPIC_API_KEY) the deterministic fallback runs. */
   ai?: boolean;
+  /**
+   * S109: make an AI failure LOUD instead of silently falling back. When set (implies --ai), a
+   * missing key or failed AI call exits 1 — for PROOF runs that must show the AI engine really ran.
+   * The fallback stays the safe default; this flag only ever tightens.
+   */
+  requireAi?: boolean;
   model?: string;
   json?: boolean;
   out?: string;
@@ -680,11 +686,14 @@ export async function liveSniperRankReport(ctx: LiveSniperContext = {}, opts: Li
     let model: string | null = null;
     let ai: AiProviderRanking | null = null;
     const caveats: string[] = [];
+    /** Why the AI engine did not run, when --require-ai must turn that into a refusal. */
+    let aiFailure: string | null = null;
 
-    if (opts.ai) {
+    if (opts.ai || opts.requireAi) {
       const env = ctx.env ?? process.env;
       const apiKey = env.ANTHROPIC_API_KEY;
       if (!apiKey) {
+        aiFailure = "ANTHROPIC_API_KEY is not set";
         caveats.push("ai-unavailable: ANTHROPIC_API_KEY is not set — deterministic fallback used (the system never blocks on AI)");
       } else if (facts.eligible.length === 0) {
         caveats.push("ai-skipped: no eligible candidates to rank — nothing was sent to the AI provider");
@@ -699,9 +708,22 @@ export async function liveSniperRankReport(ctx: LiveSniperContext = {}, opts: Li
           model = requestedModel;
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
+          aiFailure = msg;
           caveats.push(`ai-failed: ${msg} — deterministic fallback used (the system never blocks on AI)`);
         }
       }
+    }
+
+    // --require-ai: a PROOF run must show the AI engine really ran; a fallback is a refusal here.
+    // (This only tightens: without the flag the fallback stays the safe default, exit 0.)
+    if (opts.requireAi && aiFailure !== null) {
+      return {
+        text: redactString(
+          `Refusing: --require-ai was set but the AI engine did not run (${aiFailure}). ` +
+            "Set ANTHROPIC_API_KEY (and check network access), or drop --require-ai to accept the deterministic fallback.",
+        ),
+        exitCode: 1,
+      };
     }
 
     const ranking = clampRanking({ facts, ai, engine, model, generatedAt: at, caveats });
