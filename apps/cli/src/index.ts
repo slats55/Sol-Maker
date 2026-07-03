@@ -14,6 +14,10 @@ import {
   liveSniperShadowReport,
   liveSniperRunReport,
   liveSniperApproveReport,
+  liveSniperRankReport,
+  liveSniperPaperOpenReport,
+  liveSniperPositionsReport,
+  liveSniperEmergencyReport,
   liveSniperReconcileReport,
   liveSniperSessionReport,
 } from "./live-sniper-commands.js";
@@ -4299,6 +4303,93 @@ program
       {},
       { operator: opts.operator, confirm: opts.confirm, ttlMinutes: opts.ttlMinutes, json: Boolean(opts.json), out: opts.out, force: Boolean(opts.force) },
     );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("live:sniper:rank")
+  .description(
+    "RANK candidates for operator attention (advisory only — a ranking can never unblock, approve, or trade). Default engine is a deterministic score ranking that works offline; --ai (requires ANTHROPIC_API_KEY) runs an Anthropic advisory ranking whose output is CLAMPED: hard-blocked candidates stay excluded whatever the AI says, invented mints are dropped, omissions are appended, and every AI failure falls back deterministically without blocking. Logs engine, model, prompt version and an inputs hash",
+  )
+  .option("--snapshot <path>", "a realtime.candidates.snapshot.v1 JSON")
+  .option("--mint <mint>", "a manual candidate mint (repeatable)", collect, [])
+  .option("--risk <mint=path>", "a token:risk --json report paired to a mint (repeatable)", collect, [])
+  .option("--quote <mint=path>", "quote facts JSON paired to a mint (repeatable)", collect, [])
+  .option("--risk-appetite <a>", "conservative | standard (default) | aggressive")
+  .option("--ai", "use the Anthropic advisory engine (needs ANTHROPIC_API_KEY; failures fall back)")
+  .option("--model <id>", "Anthropic model id for --ai (default claude-opus-4-8)")
+  .option("--json", "emit the ranking as stable JSON")
+  .option("--out <path>", "write the ranking JSON (refused if it exists)")
+  .option("--force", "overwrite an existing --out file")
+  .action(async (opts: { snapshot?: string; mint?: string[]; risk?: string[]; quote?: string[]; riskAppetite?: string; ai?: boolean; model?: string; json?: boolean; out?: string; force?: boolean }) => {
+    const { text, exitCode } = await liveSniperRankReport(
+      {},
+      {
+        snapshotPath: opts.snapshot,
+        mints: opts.mint,
+        riskPairs: opts.risk,
+        quotePairs: opts.quote,
+        riskAppetite: opts.riskAppetite,
+        ai: Boolean(opts.ai),
+        model: opts.model,
+        json: Boolean(opts.json),
+        out: opts.out,
+        force: Boolean(opts.force),
+      },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("live:sniper:paper:open")
+  .description(
+    "OPEN a PAPER position in a position ledger (simulation only — no funds are held or moved). The spend is capped at the same hard ceiling as a live canary so paper rehearses exactly what live could do; a second open position for the same mint is refused (duplicate-intent wall)",
+  )
+  .option("--mint <mint>", "the candidate mint")
+  .option("--symbol <symbol>", "display symbol")
+  .option("--spend-sol <sol>", "paper entry spend in SOL (default 0.005; ceiling-capped)")
+  .option("--token-amount-raw <raw>", "token amount received per the entry quote (raw integer string)")
+  .option("--ledger <path>", "the position ledger JSON (created if missing; e.g. runs/positions.json)")
+  .option("--json", "emit the opened position as stable JSON")
+  .action((opts: { mint?: string; symbol?: string; spendSol?: string; tokenAmountRaw?: string; ledger?: string; json?: boolean }) => {
+    const { text, exitCode } = liveSniperPaperOpenReport(
+      {},
+      { mint: opts.mint, symbol: opts.symbol, spendSol: opts.spendSol, tokenAmountRaw: opts.tokenAmountRaw, ledgerPath: opts.ledger, json: Boolean(opts.json) },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("live:sniper:positions")
+  .description(
+    "VIEW and manage the position ledger. Applies REAL sell-side marks paired by mint, evaluates the exit rules (stop-loss / take-profit / trailing stop / time exit / kill switch) and — with --apply-exits — closes fired PAPER positions. A live (Phantom-opened) position is NEVER auto-closed: its exit is a RECOMMENDATION and the human sells in Phantom. PnL is reported only when known",
+  )
+  .option("--ledger <path>", "the position ledger JSON")
+  .option("--mark <mint=path>", "a sell-side mark JSON ({ valueLamports, source }) paired to a mint (repeatable)", collect, [])
+  .option("--exit-policy <path>", "a live.exit.policy.v1 JSON (else conservative defaults)")
+  .option("--apply-exits", "close fired PAPER positions in the ledger (live positions are never auto-closed)")
+  .option("--json", "emit the positions report as stable JSON")
+  .action((opts: { ledger?: string; mark?: string[]; exitPolicy?: string; applyExits?: boolean; json?: boolean }) => {
+    const { text, exitCode } = liveSniperPositionsReport(
+      {},
+      { ledgerPath: opts.ledger, markPairs: opts.mark, exitPolicyPath: opts.exitPolicy, applyExits: Boolean(opts.applyExits), json: Boolean(opts.json) },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("live:sniper:emergency")
+  .description(
+    "EMERGENCY STOP for the position ledger: closes every open PAPER position immediately (reason `emergency`; PnL from the last known mark or honestly unknown) and prints the exact manual Phantom steps for any live position — this CLI cannot sell a live position because the backend holds no key, and it says so instead of pretending",
+  )
+  .option("--ledger <path>", "the position ledger JSON")
+  .option("--json", "emit the emergency report as stable JSON")
+  .action((opts: { ledger?: string; json?: boolean }) => {
+    const { text, exitCode } = liveSniperEmergencyReport({}, { ledgerPath: opts.ledger, json: Boolean(opts.json) });
     console.log(text);
     if (exitCode !== 0) process.exitCode = exitCode;
   });

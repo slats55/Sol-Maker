@@ -266,6 +266,73 @@ export type {
 } from "./operator-approval.js";
 
 export {
+  LIVE_POSITION_SCHEMA_VERSION,
+  LIVE_POSITION_LEDGER_SCHEMA_VERSION,
+  LIVE_EXIT_POLICY_SCHEMA_VERSION,
+  LIVE_EXIT_DECISION_SCHEMA_VERSION,
+  LAMPORTS_PER_SOL,
+  POSITION_KINDS,
+  POSITION_STATUSES,
+  EXIT_REASONS,
+  CLOSE_KINDS,
+  EXIT_POLICY_BOUNDS,
+  EXIT_POLICY_DEFAULTS,
+  POSITION_SPEND_CEILING_LAMPORTS,
+  LivePositionError,
+  buildExitPolicy,
+  validateExitPolicy,
+  openPosition,
+  applyMark,
+  evaluateExitRules,
+  closePosition,
+  buildLedger,
+  ledgerOpen,
+  ledgerReplace,
+  validateLedger,
+} from "./position.js";
+export type {
+  PositionKind,
+  PositionStatus,
+  ExitReason,
+  CloseKind,
+  LiveExitPolicy,
+  PositionMark,
+  PositionClose,
+  LivePosition,
+  ExitDecision,
+  OpenPositionInput,
+  EvaluateExitInput,
+  ClosePositionInput,
+  PositionLedger,
+  BuildExitPolicyInput,
+} from "./position.js";
+
+export {
+  LIVE_AI_RANKING_SCHEMA_VERSION,
+  AI_RANKER_PROMPT_VERSION,
+  AI_RANKING_ENGINES,
+  AiRankerError,
+  canonicalJson,
+  computeInputsHash,
+  buildRankingFacts,
+  rankDeterministic,
+  validateAiProviderRanking,
+  clampRanking,
+  validateAiRanking,
+  buildRankerPrompt,
+} from "./ai-ranker.js";
+export type {
+  AiRankingEngine,
+  AiRankingEntry,
+  AiRankingExclusion,
+  LiveAiRanking,
+  RankableCandidate,
+  RankingFacts,
+  AiProviderRanking,
+  ClampInput,
+} from "./ai-ranker.js";
+
+export {
   LIVE_CANARY_RECONCILIATION_SCHEMA_VERSION,
   CANARY_RECONCILIATION_STATUSES,
   CANARY_RECONCILIATION_VERDICTS,

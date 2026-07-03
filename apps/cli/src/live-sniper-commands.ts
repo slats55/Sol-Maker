@@ -17,39 +17,61 @@ import { isAbsolute, join, normalize } from "node:path";
 import { loadConfig, ConfigError } from "@soulmaker/core";
 import type { Config, LoadConfigOptions } from "@soulmaker/core";
 import { redactString, redactValue } from "@soulmaker/security";
+import { AI_PROVIDER_DEFAULT_MODEL, callAnthropicRanker } from "./ai-provider.js";
 import {
+  AiRankerError,
   CanaryReconciliationError,
   DiscoveryError,
+  LAMPORTS_PER_SOL,
   LiveEscalationError,
   LiveOperatorApprovalError,
   LivePolicyError,
+  LivePositionError,
   LIVE_ESCALATION_HARD_CEILINGS,
   OPERATOR_APPROVAL_CONFIRM_PHRASE,
   OPERATOR_APPROVAL_MAX_TTL_MINUTES,
   SNIPER_LOOP_MODES,
   SNIPER_LOOP_STAGES,
+  applyMark,
   buildCanaryReconciliation,
   buildEscalationPolicy,
+  buildExitPolicy,
+  buildLedger,
   buildLivePolicy,
   buildOperatorApproval,
+  buildRankerPrompt,
+  buildRankingFacts,
+  clampRanking,
+  closePosition,
   discoverCandidates,
   evaluateCandidatePipeline,
+  evaluateExitRules,
   evaluateOperatorApproval,
+  ledgerOpen,
+  ledgerReplace,
+  openPosition,
   scoreStrategyV2,
   shadowDecide,
   buildPaperShadowSession,
+  validateAiProviderRanking,
   validateEscalationPolicy,
+  validateExitPolicy,
+  validateLedger,
   validateLivePolicy,
   validateOperatorApproval,
 } from "@soulmaker/live";
 import type {
+  AiProviderRanking,
   CanaryReconciliationFacts,
   CanaryReconciliationStatus,
+  ExitDecision,
+  RankableCandidate,
   LiveEscalationPolicy,
   LiveModePolicy,
   ManualMintInput,
   ObservationInput,
   OperatorApprovalEvaluation,
+  PositionLedger,
   SniperCandidate,
   SniperCandidateRisk,
   SniperLoopMode,
@@ -62,6 +84,8 @@ export interface LiveSniperContext {
   env?: NodeJS.ProcessEnv;
   configPath?: string;
   now?: () => string;
+  /** Injectable AI provider seam (tests). Default: the bounded Anthropic adapter in ai-provider.ts. */
+  aiProvider?: (req: { system: string; user: string; apiKey: string; model?: string }) => Promise<unknown>;
 }
 
 export interface LiveSniperReport {
@@ -609,6 +633,322 @@ export function liveSniperReconcileReport(ctx: LiveSniperContext = {}, opts: Liv
     return { text: redactString(lines.join("\n")) + wrote, exitCode: 0 };
   } catch (err) {
     const msg = err instanceof CanaryReconciliationError || err instanceof Error ? err.message : String(err);
+    return { text: redactString(`Refusing: ${msg}`), exitCode: 1 };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// live:sniper:rank — advisory AI ranking with the deterministic clamp
+// ---------------------------------------------------------------------------
+
+export interface LiveSniperRankOptions {
+  snapshotPath?: string;
+  mints?: string[];
+  riskPairs?: string[];
+  quotePairs?: string[];
+  riskAppetite?: string;
+  /** Opt in to the AI engine. Without it (or without ANTHROPIC_API_KEY) the deterministic fallback runs. */
+  ai?: boolean;
+  model?: string;
+  json?: boolean;
+  out?: string;
+  force?: boolean;
+}
+
+/**
+ * Rank candidates for operator attention. The deterministic fallback is the default engine and
+ * works offline; --ai (plus ANTHROPIC_API_KEY in the env) runs the advisory Anthropic ranking,
+ * whose output is CLAMPED: it can reorder eligible candidates, and can never unblock, invent, or
+ * drop one. An AI failure of any kind falls back — it never blocks the system (exit 0).
+ */
+export async function liveSniperRankReport(ctx: LiveSniperContext = {}, opts: LiveSniperRankOptions = {}): Promise<LiveSniperReport> {
+  try {
+    const at = isoNow(ctx);
+    const discovery = gatherCandidates(ctx, opts, at);
+    const riskPairs = parsePairs(opts.riskPairs, "--risk");
+    const quotePairs = parsePairs(opts.quotePairs, "--quote");
+    const enriched = enrichCandidates(ctx, discovery.candidates, riskPairs, quotePairs);
+    const appetite = (opts.riskAppetite ?? "standard") as StrategyRiskAppetite;
+
+    const rankable: RankableCandidate[] = enriched.map(({ candidate, quote }) => ({
+      mint: candidate.mint,
+      strategy: scoreStrategyV2({ candidate, quote, riskAppetite: appetite, timestamp: at }),
+    }));
+    const facts = buildRankingFacts(rankable);
+
+    let engine: "deterministic-fallback" | "anthropic" = "deterministic-fallback";
+    let model: string | null = null;
+    let ai: AiProviderRanking | null = null;
+    const caveats: string[] = [];
+
+    if (opts.ai) {
+      const env = ctx.env ?? process.env;
+      const apiKey = env.ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        caveats.push("ai-unavailable: ANTHROPIC_API_KEY is not set — deterministic fallback used (the system never blocks on AI)");
+      } else if (facts.eligible.length === 0) {
+        caveats.push("ai-skipped: no eligible candidates to rank — nothing was sent to the AI provider");
+      } else {
+        const requestedModel = opts.model ?? AI_PROVIDER_DEFAULT_MODEL;
+        try {
+          const prompt = buildRankerPrompt(facts);
+          const provider = ctx.aiProvider ?? ((req: { system: string; user: string; apiKey: string; model?: string }) => callAnthropicRanker(req));
+          const raw = await provider({ system: prompt.system, user: prompt.user, apiKey, model: requestedModel });
+          ai = validateAiProviderRanking(raw);
+          engine = "anthropic";
+          model = requestedModel;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          caveats.push(`ai-failed: ${msg} — deterministic fallback used (the system never blocks on AI)`);
+        }
+      }
+    }
+
+    const ranking = clampRanking({ facts, ai, engine, model, generatedAt: at, caveats });
+
+    let wrote = "";
+    if (opts.out) {
+      const r = writeOut(ctx, opts.out, Boolean(opts.force), redactValue(ranking), "ai ranking");
+      if (typeof r !== "string") return r;
+      wrote = r;
+    }
+    if (opts.json) return { text: JSON.stringify(redactValue(ranking), null, 2), exitCode: 0 };
+    const lines: string[] = [];
+    lines.push("SNIPER CANDIDATE RANKING (advisory only; a ranking can never unblock or trade)");
+    lines.push("==============================================================================");
+    lines.push(`engine: ${ranking.engine}${ranking.model ? ` (${ranking.model}, prompt ${ranking.promptVersion})` : ""}   inputs sha256-128: ${ranking.inputsHash}`);
+    for (const r of ranking.rankings) {
+      lines.push(`  #${r.rank} ${r.mint} — score ${r.score}, ${r.decision}${r.aiRationale ? ` — "${r.aiRationale}"` : ""}`);
+    }
+    for (const x of ranking.excluded) lines.push(`  EXCLUDED ${x.mint} (${x.reason} — no ranking can rescue it)`);
+    for (const cv of ranking.caveats) lines.push(`note: ${cv}`);
+    return { text: redactString(lines.join("\n")) + wrote, exitCode: 0 };
+  } catch (err) {
+    const msg = err instanceof AiRankerError || err instanceof Error ? err.message : String(err);
+    return { text: redactString(`Refusing: ${msg}`), exitCode: 1 };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// live:sniper:paper:open / live:sniper:positions / live:sniper:emergency
+// The position ledger surface. Paper positions may auto-close by rule; a live
+// (Phantom-opened) position only ever gets an exit RECOMMENDATION — the human
+// sells in Phantom and records the close. Nothing here signs or sends.
+// ---------------------------------------------------------------------------
+
+function readLedgerFile(ctx: LiveSniperContext, path: string): PositionLedger {
+  const resolved = resolvePath(ctx, path);
+  if (!existsSync(resolved)) return buildLedger();
+  return validateLedger(readJson(ctx, path, "position ledger"));
+}
+
+function writeLedgerFile(ctx: LiveSniperContext, path: string, ledger: PositionLedger): void {
+  writeFileSync(resolvePath(ctx, path), JSON.stringify(redactValue(ledger), null, 2) + "\n");
+}
+
+function solToLamports(sol: string, label: string): number {
+  const n = Number(sol);
+  if (!Number.isFinite(n) || n <= 0) throw new Error(`${label} must be a positive SOL amount`);
+  return Math.round(n * LAMPORTS_PER_SOL);
+}
+
+/** A mark file supplies { valueLamports } or { outAmountLamports } — a REAL sell-side observation. */
+function readMarkValue(ctx: LiveSniperContext, path: string, mint: string): { valueLamports: number; source: string } {
+  const obj = asObject(readJson(ctx, path, `mark for ${mint}`), `mark for ${mint}`);
+  const raw = typeof obj.valueLamports === "number" ? obj.valueLamports : typeof obj.outAmountLamports === "number" ? obj.outAmountLamports : NaN;
+  if (!Number.isSafeInteger(raw) || raw <= 0) {
+    throw new Error(`mark for ${mint} needs a positive integer valueLamports (what the position would fetch, from a REAL sell-side quote)`);
+  }
+  return { valueLamports: raw, source: typeof obj.source === "string" ? obj.source : "operator-supplied" };
+}
+
+export interface LiveSniperPaperOpenOptions {
+  mint?: string;
+  symbol?: string;
+  spendSol?: string;
+  tokenAmountRaw?: string;
+  ledgerPath?: string;
+  json?: boolean;
+}
+
+export function liveSniperPaperOpenReport(ctx: LiveSniperContext = {}, opts: LiveSniperPaperOpenOptions = {}): LiveSniperReport {
+  if (!opts.mint) return { text: "Refusing: --mint is required.", exitCode: 1 };
+  if (!opts.ledgerPath) return { text: "Refusing: --ledger <path> is required (the position ledger JSON, e.g. under runs/).", exitCode: 1 };
+  try {
+    const at = isoNow(ctx);
+    const position = openPosition({
+      kind: "paper",
+      mint: opts.mint,
+      symbol: opts.symbol ?? null,
+      openedAt: at,
+      entrySpendLamports: solToLamports(opts.spendSol ?? "0.005", "--spend-sol"),
+      tokenAmountRaw: opts.tokenAmountRaw ?? null,
+    });
+    const ledger = ledgerOpen(readLedgerFile(ctx, opts.ledgerPath), position);
+    writeLedgerFile(ctx, opts.ledgerPath, ledger);
+    if (opts.json) return { text: JSON.stringify(redactValue({ opened: position, totals: ledger.totals }), null, 2), exitCode: 0 };
+    const lines: string[] = [];
+    lines.push("PAPER POSITION OPENED (simulation — no funds were held or moved)");
+    lines.push("===============================================================");
+    lines.push(`position:  ${position.positionId}`);
+    lines.push(`spend:     ${position.entrySpendLamports} lamports (paper)`);
+    lines.push(`ledger:    ${resolvePath(ctx, opts.ledgerPath)} (open ${ledger.totals.open}, closed ${ledger.totals.closed})`);
+    return { text: redactString(lines.join("\n")), exitCode: 0 };
+  } catch (err) {
+    const msg = err instanceof LivePositionError || err instanceof Error ? err.message : String(err);
+    return { text: redactString(`Refusing: ${msg}`), exitCode: 1 };
+  }
+}
+
+export interface LiveSniperPositionsOptions {
+  ledgerPath?: string;
+  markPairs?: string[];
+  exitPolicyPath?: string;
+  applyExits?: boolean;
+  json?: boolean;
+}
+
+export function liveSniperPositionsReport(ctx: LiveSniperContext = {}, opts: LiveSniperPositionsOptions = {}): LiveSniperReport {
+  if (!opts.ledgerPath) return { text: "Refusing: --ledger <path> is required.", exitCode: 1 };
+  let config: Config | null = null;
+  try {
+    config = loadConfig(toLoadOptions(ctx));
+  } catch {
+    config = null; // positions are readable without a config; the kill switch then reads as unknown/off
+  }
+  try {
+    const at = isoNow(ctx);
+    const nowMs = Date.parse(at);
+    const policy = opts.exitPolicyPath ? validateExitPolicy(readJson(ctx, opts.exitPolicyPath, "exit policy")) : buildExitPolicy();
+    const markPairs = parsePairs(opts.markPairs, "--mark");
+    let ledger = readLedgerFile(ctx, opts.ledgerPath);
+
+    // Apply real marks first (peak ratchets), then evaluate every open position.
+    for (const p of ledger.positions) {
+      if (p.status !== "open") continue;
+      const markPath = markPairs.get(p.mint);
+      if (!markPath) continue;
+      const m = readMarkValue(ctx, markPath, p.mint);
+      ledger = ledgerReplace(ledger, applyMark(p, { valueLamports: m.valueLamports, atMs: nowMs, source: m.source }));
+    }
+
+    const decisions: ExitDecision[] = [];
+    const applied: string[] = [];
+    const recommendations: string[] = [];
+    for (const p of ledger.positions) {
+      if (p.status !== "open") continue;
+      const decision = evaluateExitRules({ position: p, policy, nowMs, killSwitch: config?.killSwitch === true });
+      decisions.push(decision);
+      if (!decision.shouldExit || decision.reason === null) continue;
+      if (p.kind === "paper" && opts.applyExits) {
+        const closed = closePosition({
+          position: p,
+          closedAt: at,
+          reason: decision.reason,
+          closeKind: "paper-auto",
+          valueLamports: p.lastMark?.valueLamports ?? null,
+          detail: decision.detail,
+        });
+        ledger = ledgerReplace(ledger, closed);
+        applied.push(`${p.positionId} closed (${decision.reason})`);
+      } else if (p.kind === "live_canary") {
+        recommendations.push(`${p.positionId}: EXIT RECOMMENDED (${decision.reason}) — sell via Phantom yourself, then record it with live:sniper:reconcile / an operator-confirmed close. This CLI never sells.`);
+      }
+    }
+    if (opts.applyExits) writeLedgerFile(ctx, opts.ledgerPath, ledger);
+
+    const payload = {
+      schemaVersion: "live.sniper.positions.report.v1",
+      at,
+      exitPolicy: policy,
+      totals: ledger.totals,
+      positions: ledger.positions,
+      decisions,
+      applied,
+      liveExitIsRecommendationOnly: true,
+      notProfitabilityClaim: true,
+    };
+    if (opts.json) return { text: JSON.stringify(redactValue(payload), null, 2), exitCode: 0 };
+    const lines: string[] = [];
+    lines.push("SNIPER POSITIONS (paper auto-close by rule; live exits are RECOMMENDATIONS only)");
+    lines.push("===============================================================================");
+    lines.push(`open: ${ledger.totals.open}   closed: ${ledger.totals.closed}   realized PnL (known): ${ledger.totals.realizedPnlKnownLamports} lamports   closes w/ unknown PnL: ${ledger.totals.closedPnlUnknown}`);
+    for (const p of ledger.positions) {
+      if (p.status === "open") {
+        const d = decisions.find((x) => x.positionId === p.positionId);
+        lines.push(`  OPEN   ${p.positionId} — entry ${p.entrySpendLamports}, mark ${p.lastMark ? `${p.lastMark.valueLamports} (${d?.unrealizedPnlPct ?? "?"}%)` : "none (honest: unknown)"}${d?.shouldExit ? ` → EXIT: ${d.reason}` : ""}`);
+      } else {
+        lines.push(`  CLOSED ${p.positionId} — ${p.close?.reason} @ ${p.close?.closedAt}, pnl ${p.close?.pnlLamports ?? "unknown"}`);
+      }
+    }
+    for (const a of applied) lines.push(`applied: ${a}`);
+    for (const r of recommendations) lines.push(r);
+    if (!opts.applyExits && decisions.some((d) => d.shouldExit)) lines.push("(dry view — pass --apply-exits to close fired PAPER positions; live positions are never auto-closed)");
+    return { text: redactString(lines.join("\n")), exitCode: 0 };
+  } catch (err) {
+    const msg = err instanceof LivePositionError || err instanceof Error ? err.message : String(err);
+    return { text: redactString(`Refusing: ${msg}`), exitCode: 1 };
+  }
+}
+
+export interface LiveSniperEmergencyOptions {
+  ledgerPath?: string;
+  json?: boolean;
+}
+
+/**
+ * EMERGENCY: close every open PAPER position now (reason `emergency`, at the last known mark or
+ * unknown PnL), and print the exact manual steps for any live position. This command cannot sell a
+ * live position — the backend holds no key — so it says so, loudly, instead of pretending.
+ */
+export function liveSniperEmergencyReport(ctx: LiveSniperContext = {}, opts: LiveSniperEmergencyOptions = {}): LiveSniperReport {
+  if (!opts.ledgerPath) return { text: "Refusing: --ledger <path> is required.", exitCode: 1 };
+  try {
+    const at = isoNow(ctx);
+    let ledger = readLedgerFile(ctx, opts.ledgerPath);
+    const closedNow: string[] = [];
+    const liveOpen: string[] = [];
+    for (const p of ledger.positions) {
+      if (p.status !== "open") continue;
+      if (p.kind === "paper") {
+        ledger = ledgerReplace(
+          ledger,
+          closePosition({ position: p, closedAt: at, reason: "emergency", closeKind: "paper-auto", valueLamports: p.lastMark?.valueLamports ?? null, detail: "operator emergency stop" }),
+        );
+        closedNow.push(p.positionId);
+      } else {
+        liveOpen.push(`${p.mint}${p.symbol ? ` (${p.symbol})` : ""}`);
+      }
+    }
+    writeLedgerFile(ctx, opts.ledgerPath, ledger);
+    const payload = {
+      schemaVersion: "live.sniper.emergency.report.v1",
+      at,
+      paperClosed: closedNow,
+      liveStillOpen: liveOpen,
+      totals: ledger.totals,
+      backendCannotSellLivePositions: true,
+      notProfitabilityClaim: true,
+    };
+    if (opts.json) return { text: JSON.stringify(redactValue(payload), null, 2), exitCode: 0 };
+    const lines: string[] = [];
+    lines.push("EMERGENCY STOP");
+    lines.push("==============");
+    lines.push(`paper positions closed now: ${closedNow.length}`);
+    for (const id of closedNow) lines.push(`  closed ${id}`);
+    if (liveOpen.length > 0) {
+      lines.push("");
+      lines.push(`LIVE positions still open: ${liveOpen.length} — this CLI CANNOT sell them (it holds no key). Do this now:`);
+      lines.push("  1. Engage the kill switch: set killSwitch true in soulmaker.config.json or SOULMAKER_EMERGENCY_STOP=1 (blocks any new canary).");
+      lines.push("  2. Open Phantom yourself and swap each token back to SOL (Phantom/Jupiter UI), or prepare an unsigned sell and confirm it in Phantom:");
+      for (const m of liveOpen) lines.push(`       - ${m}`);
+      lines.push("  3. Record each real close with live:sniper:reconcile (honest accounting; PnL unknown unless you captured balances).");
+    } else {
+      lines.push("no live positions were open.");
+    }
+    return { text: redactString(lines.join("\n")), exitCode: 0 };
+  } catch (err) {
+    const msg = err instanceof LivePositionError || err instanceof Error ? err.message : String(err);
     return { text: redactString(`Refusing: ${msg}`), exitCode: 1 };
   }
 }
