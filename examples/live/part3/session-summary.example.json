@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "live.operator.session.summary.v1",
+  "sessionId": "part3-example-session",
+  "status": "ended",
+  "startedAt": "2026-07-03T12:00:00.000Z",
+  "endedAt": "2026-07-03T12:00:00.000Z",
+  "lastEventAt": "2026-07-03T12:00:00.000Z",
+  "events": 15,
+  "invalidLines": 0,
+  "byKind": {
+    "session_started": 1,
+    "candidate_observed": 2,
+    "risk_decision": 2,
+    "quote_refresh": 2,
+    "canary_recommended": 1,
+    "phantom_approval_pending": 1,
+    "phantom_submitted": 1,
+    "phantom_confirmed": 1,
+    "signature_recorded": 1,
+    "balance_snapshot": 1,
+    "reconciliation_recorded": 1,
+    "session_ended": 1
+  },
+  "canary": {
+    "recommended": 1,
+    "phantomPending": 1,
+    "submitted": 1,
+    "confirmed": 1,
+    "rejected": 0,
+    "timedOut": 0,
+    "signaturesRecorded": 1,
+    "reconciliationsRecorded": 1
+  },
+  "safety": {
+    "killSwitchEngagements": 0,
+    "emergencyStopEngagements": 0,
+    "pauses": 0,
+    "manualRearms": 0
+  },
+  "pausedPendingRearm": false,
+  "notes": [],
+  "backendNeverSends": true,
+  "notProfitabilityClaim": true
+}

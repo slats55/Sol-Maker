@@ -70,6 +70,36 @@ pnpm web:build   # also writes apps/web/public/sniper-dashboard.html — read-on
 The loop never signs or sends. When it recommends a canary, a human runs `live:canary:prepare`, loads
 the unsigned request into the Live Console, and confirms in Phantom. No mode trades autonomously.
 
+> **Sprint 109 — Part 3 of the live build (NEW): the supervised operator release.** One strict
+> fail-closed operator config drives everything; an append-only session journal makes caps,
+> cooldown, pauses and manual re-arms durable across restarts; the supervised run stays
+> recommend-only in every mode; reconciliation computes honest PnL (unknown when evidence is
+> missing); alerts are local-only and off by default. **No real canary has been executed** — the
+> truthful machine artifact is `examples/live/part3/ready-for-human-canary.report.json`. See
+> [`docs/FINAL_PART_3_PRODUCTION_CANARY_RUNBOOK.md`](docs/FINAL_PART_3_PRODUCTION_CANARY_RUNBOOK.md)
+> (the human canary procedure) and
+> [`docs/FINAL_LIVE_RELEASE_DOSSIER.md`](docs/FINAL_LIVE_RELEASE_DOSSIER.md) (capabilities,
+> guarantees, limitations, remaining work).
+
+### Production operator release (Part 3) — quick reference
+
+```bash
+pnpm soulmaker live:operator:validate --config runs/operator-config.json   # strict fail-closed validation
+pnpm soulmaker live:operator:session:start --session-log runs/session.jsonl --session-id s1 --operator you
+pnpm soulmaker live:operator:run --config runs/operator-config.json --mode observe_only \
+  --snapshot runs/snapshot.json --session-log runs/session.jsonl           # supervised pass (recommend-only)
+pnpm soulmaker live:operator:session:status --session-log runs/session.jsonl
+pnpm soulmaker live:operator:session:export --session-log runs/session.jsonl --out runs/session-export.json
+pnpm soulmaker live:operator:reconcile --candidate-mint <MINT> --facts runs/facts.json \
+  --pre runs/pre.json --post runs/post.json                                # honest post-canary accounting
+pnpm web:build   # also writes apps/web/public/operator-dashboard.html — the read-only operator view
+```
+
+Modes `off | observe_only | paper_shadow | armed_canary` — none trades; `armed_canary` may
+RECOMMEND at most one tiny canary per run and requires the journal + an explicit arm. Kill switch /
+emergency stop block everything. Large trades stay disabled. The backend never holds keys and never
+sends — the human signs in Phantom, always.
+
 ### Run the PAPER sniper right now
 
 ```bash

@@ -1,0 +1,308 @@
+/**
+ * The PRODUCTION OPERATOR DASHBOARD (Sprint 109, Part 3).
+ *
+ * A SEPARATE, isolated, READ-ONLY operator surface for the supervised canary release — distinct
+ * from both the paper-only page registry and the live canary console. It loads the Part 3
+ * artifacts the CLI emits and shows the whole operator picture in one place:
+ *
+ *   - live.operator.config.validation.v1 — mode, caps vs ceilings, kill-switch/emergency-stop state
+ *   - live.operator.run.report.v1        — candidate feed, risk decisions, the canary recommendation
+ *   - live.operator.session.export.v1    — the session timeline + the Phantom approval lifecycle
+ *   - live.operator.reconciliation.v1    — post-canary accounting: balances, slippage, honest PnL
+ *
+ * This dashboard does NOT sign or send anything and carries NO wallet code: Phantom signing lives
+ * ONLY in the reviewed live console (live-console.html). Every dangerous control here is DISABLED
+ * and explains why. No seed phrase, no private key, no profit language. The backend never holds keys.
+ */
+
+export const OPERATOR_DASHBOARD_FILENAME = "operator-dashboard.html";
+export const OPERATOR_DASHBOARD_TITLE = "Sol Maker — Production Operator Dashboard";
+
+/** Vanilla client script — read-only artifact viewer. No wallet, no signing, no network calls. */
+const CLIENT_SCRIPT = String.raw`
+(function () {
+  "use strict";
+  var state = { validation: null, run: null, session: null, recon: null, files: [] };
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function setText(id, t) { var el = $(id); if (el) el.textContent = t; }
+  function setHtml(id, h) { var el = $(id); if (el) el.innerHTML = h; }
+  function badge(text, cls) { return '<span class="badge ' + cls + '">' + esc(text) + '</span>'; }
+
+  function noteEvidence(name, schema) {
+    state.files.push(name + " (" + schema + ")");
+    setHtml("evidence-list", state.files.map(function (f) { return "<li>" + esc(f) + "</li>"; }).join(""));
+  }
+
+  function renderValidation(v, fileName) {
+    if (!v || v.schemaVersion !== "live.operator.config.validation.v1") { setText("cfg-status", "Not a live.operator.config.validation.v1 artifact."); return; }
+    state.validation = v;
+    setText("cfg-status", "Loaded.");
+    noteEvidence(fileName, v.schemaVersion);
+    setHtml("cfg-mode", 'configured mode: <strong>' + esc(v.mode) + '</strong> — operator ' + esc(v.operatorLabel));
+    var safety = [];
+    var blocked = (v.blockingReasons || []);
+    safety.push(blocked.indexOf("kill-switch-engaged") >= 0 ? badge("KILL SWITCH ENGAGED", "danger") : badge("kill switch clear", "ok"));
+    safety.push(blocked.indexOf("emergency-stop-engaged") >= 0 ? badge("EMERGENCY STOP ENGAGED", "danger") : badge("emergency stop clear", "ok"));
+    safety.push(v.armedCanaryPermitted ? badge("armed_canary permitted (recommend-only)", "warn") : badge("armed_canary NOT permitted", "muted"));
+    setHtml("cfg-safety", safety.join(" "));
+    var caps = v.caps || {}; var ceil = v.ceilings || {};
+    setHtml("cfg-caps",
+      'max canary ' + esc(caps.maxCanarySol) + ' SOL (ceiling ' + esc(ceil.maxCanarySol) + ') — ' +
+      esc(caps.maxCanariesPerSession) + '/session, ' + esc(caps.maxCanariesPerDay) + '/day — daily loss cap ' + esc(caps.maxDailyLossSol) +
+      ' SOL — slippage ' + esc(caps.maxSlippageBps) + ' bps — quote TTL ' + esc(caps.quoteTtlMs) + 'ms — cooldown ' + esc(caps.cooldownMs) + 'ms');
+    updateGate();
+  }
+
+  function renderRun(run, fileName) {
+    if (!run || run.schemaVersion !== "live.operator.run.report.v1") { setText("run-status", "Not a live.operator.run.report.v1 artifact."); return; }
+    state.run = run;
+    setText("run-status", "Loaded.");
+    noteEvidence(fileName, run.schemaVersion);
+    var t = run.totals || {};
+    setHtml("run-mode", 'run mode: <strong>' + esc(run.effectiveMode) + '</strong>' + (run.paused ? ' ' + badge("PAUSED: " + (run.pauseReasons || []).join(", "), "danger") : ''));
+    setHtml("run-totals",
+      'candidates ' + esc(t.candidatesSupplied) + ' supplied / ' + esc(t.processed) + ' processed — watch ' + esc(t.watch) +
+      ', shadow ' + esc(t.paperShadow) + ', blocked ' + esc(t.blocked) + ', canary-recommended ' + esc(t.canaryRecommended));
+    var rows = (run.results || []).map(function (r) {
+      var s = r.strategy || {};
+      var act = r.action === "prepare_canary_request" ? badge("CANARY-ELIGIBLE", "warn") : badge(String(r.action), r.action === "blocked" ? "danger" : "info");
+      return '<tr><td>' + esc(r.mint) + '</td><td>' + act + '</td><td>' + esc(s.decision || "—") + '</td><td>' + esc(s.score == null ? "—" : s.score) +
+        '</td><td class="reasons-cell">' + esc((r.blockingReasons || []).slice(0, 6).join(", ")) + '</td></tr>';
+    }).join("");
+    setHtml("feed-rows", rows || '<tr><td colspan="5" class="muted">No candidates in this run.</td></tr>');
+    // Risk decision cards.
+    var cards = (run.results || []).map(function (r) {
+      var s = r.strategy || {};
+      var blockedRisk = (s.hardBlocks || []).length > 0;
+      return '<div class="card ' + (blockedRisk ? "card-danger" : "card-ok") + '"><strong>' + esc(r.mint.slice(0, 8)) + '…</strong><br/>' +
+        esc(s.decision || "unscored") + ' — score ' + esc(s.score == null ? "—" : s.score) +
+        (blockedRisk ? '<br/><span class="reasons-cell">' + esc((s.hardBlocks || []).join(", ")) + '</span>' : '') + '</div>';
+    }).join("");
+    setHtml("risk-cards", cards || '<p class="muted">No risk decisions in this run.</p>');
+    // Paper positions = shadow would-enters; live positions come only from reconciliation evidence.
+    var shadows = (run.results || []).filter(function (r) { return r.action === "paper_shadow"; });
+    setHtml("positions-paper", shadows.length
+      ? shadows.map(function (r) { return '<li>' + esc(r.mint) + ' — paper shadow (no real position)</li>'; }).join("")
+      : '<li class="muted">none</li>');
+    // Canary recommendation status.
+    if (run.recommendation) {
+      setHtml("canary-status", badge("RECOMMENDED", "warn") + ' ' + esc(run.recommendation.mint) +
+        ' — awaiting HUMAN Phantom decision. Steps:<ol>' +
+        (run.recommendation.nextSteps || []).map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ol>");
+    } else {
+      setHtml("canary-status", badge("none", "muted") + ' <span class="muted">no canary recommended in the loaded run.</span>');
+    }
+    updateGate();
+  }
+
+  function renderSession(ex, fileName) {
+    if (!ex || ex.schemaVersion !== "live.operator.session.export.v1") { setText("sess-status", "Not a live.operator.session.export.v1 artifact."); return; }
+    state.session = ex;
+    setText("sess-status", "Loaded.");
+    noteEvidence(fileName, ex.schemaVersion);
+    var s = ex.summary || {}; var c = s.canary || {}; var sf = s.safety || {};
+    setHtml("sess-summary",
+      'session <strong>' + esc(s.sessionId || "?") + '</strong> — ' + esc(s.status || "?") + ', ' + esc(s.events || 0) + ' events, ' +
+      esc(s.invalidLines || 0) + ' invalid line(s)' + (s.pausedPendingRearm ? ' ' + badge("PAUSED — manual re-arm required", "danger") : ''));
+    // Phantom lifecycle.
+    var ph = [];
+    ph.push(badge("pending " + (c.phantomPending || 0), c.phantomPending ? "warn" : "muted"));
+    ph.push(badge("submitted " + (c.submitted || 0), c.submitted ? "info" : "muted"));
+    ph.push(badge("confirmed " + (c.confirmed || 0), c.confirmed ? "ok" : "muted"));
+    ph.push(badge("rejected " + (c.rejected || 0), c.rejected ? "danger" : "muted"));
+    ph.push(badge("timed out " + (c.timedOut || 0), c.timedOut ? "danger" : "muted"));
+    setHtml("phantom-life", ph.join(" ") + ' <span class="muted">kill-switch ' + esc(sf.killSwitchEngagements || 0) + ', emergency-stop ' + esc(sf.emergencyStopEngagements || 0) + ', re-arms ' + esc(sf.manualRearms || 0) + '</span>');
+    // Timeline (most recent last).
+    var rows = (ex.events || []).map(function (e) {
+      return '<tr><td>' + esc(e.seq) + '</td><td>' + esc(e.at) + '</td><td>' + esc(e.kind) + '</td><td>' + esc(e.detail) + '</td></tr>';
+    }).join("");
+    setHtml("timeline-rows", rows || '<tr><td colspan="4" class="muted">No events.</td></tr>');
+    updateGate();
+  }
+
+  function renderRecon(rec, fileName) {
+    if (!rec || rec.schemaVersion !== "live.operator.reconciliation.v1") { setText("recon-status", "Not a live.operator.reconciliation.v1 artifact."); return; }
+    state.recon = rec;
+    setText("recon-status", "Loaded.");
+    noteEvidence(fileName, rec.schemaVersion);
+    var cn = rec.canary || {};
+    var conf = rec.confidence === "high" ? badge("confidence HIGH", "ok") : badge("confidence " + rec.confidence, rec.confidence === "none" ? "danger" : "warn");
+    setHtml("recon-summary",
+      esc(rec.candidateMint) + ' — ' + esc(cn.status || "?") + ' / ' + esc(cn.verdict || "?") + ' ' + conf +
+      '<br/>token received: <strong>' + esc(rec.grossTokenReceivedRaw == null ? "unknown" : rec.grossTokenReceivedRaw) + '</strong> raw — SOL spent: <strong>' +
+      esc(rec.solSpentLamports == null ? "unknown" : rec.solSpentLamports) + '</strong> lamports — fees: ' + esc(rec.feesLamports == null ? "unknown" : rec.feesLamports) +
+      '<br/>slippage vs quote: ' + esc(rec.slippageRealizedBps == null ? "unknown" : rec.slippageRealizedBps + " bps") +
+      '<br/>PnL: ' + badge(String(rec.pnlStatus), rec.pnlStatus === "unknown" ? "muted" : "info") + ' <span class="muted">' + esc(rec.pnlNote || "") + '</span>');
+    setHtml("positions-live", (rec.grossTokenReceivedRaw && rec.grossTokenReceivedRaw !== "0")
+      ? '<li>' + esc(rec.candidateMint) + ' — ' + esc(rec.grossTokenReceivedRaw) + ' raw units (evidence: reconciliation)</li>'
+      : '<li class="muted">none evidenced</li>');
+  }
+
+  // The canary controls on THIS page are always disabled: signing lives in the Live Console only.
+  function updateGate() {
+    var reasons = [];
+    var v = state.validation;
+    if (!v) reasons.push("no config validation loaded");
+    else {
+      if ((v.blockingReasons || []).indexOf("kill-switch-engaged") >= 0) reasons.push("kill switch engaged");
+      if ((v.blockingReasons || []).indexOf("emergency-stop-engaged") >= 0) reasons.push("emergency stop engaged");
+      if (!v.armedCanaryPermitted) reasons.push("config does not permit armed_canary");
+    }
+    var rec = state.run && (state.run.totals || {}).canaryRecommended;
+    if (!rec) reasons.push("no canary recommendation in the loaded run report");
+    if (state.session && state.session.summary && state.session.summary.pausedPendingRearm) reasons.push("session paused pending a manual re-arm");
+    reasons.push("signing is only available in the Live Console (this dashboard never signs)");
+    setHtml("canary-gate", "Disabled because: " + reasons.map(esc).join("; "));
+  }
+
+  function wireFile(inputId, render) {
+    $(inputId).addEventListener("change", function (ev) {
+      var f = ev.target.files && ev.target.files[0]; if (!f) return;
+      var r = new FileReader();
+      r.onload = function () {
+        var obj = null;
+        try { obj = JSON.parse(String(r.result)); } catch (e) { obj = null; }
+        render(obj, f.name);
+      };
+      r.readAsText(f);
+    });
+  }
+
+  function init() {
+    wireFile("cfg-file", renderValidation);
+    wireFile("run-file", renderRun);
+    wireFile("sess-file", renderSession);
+    wireFile("recon-file", renderRecon);
+    updateGate();
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
+}());
+`;
+
+export function renderOperatorDashboardHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${OPERATOR_DASHBOARD_TITLE}</title>
+<link rel="stylesheet" href="assets/theme.css" />
+<style>
+  body { font-family: var(--font, system-ui, sans-serif); background: var(--bg, #0b0e14); color: var(--text, #e6e6e6); margin: 0; padding: 24px; }
+  .wrap { max-width: 1120px; margin: 0 auto; }
+  .danger-banner { background: var(--danger-bg, #3a0d0d); border: 1px solid var(--danger, #e5484d); color: var(--danger, #ff6b6b); padding: 14px 16px; border-radius: 10px; font-weight: 600; margin-bottom: 18px; }
+  .keys-banner { background: var(--info-bg, #10233f); border: 1px solid var(--info, #6ea8fe); color: var(--info, #6ea8fe); padding: 10px 14px; border-radius: 10px; margin-bottom: 18px; font-size: 14px; }
+  .panel { background: var(--bg-card, #141925); border: 1px solid var(--border, #232a3a); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .panel h2 { margin: 0 0 12px; font-size: 15px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-dim, #9aa4b2); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+  button { font-family: inherit; font-size: 14px; padding: 9px 14px; border-radius: 8px; border: 1px solid var(--border, #232a3a); background: var(--bg-elev, #1b2130); color: var(--text, #e6e6e6); cursor: pointer; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border, #232a3a); }
+  .badge.ok { background: var(--safe-bg, #0f2a1a); color: var(--safe, #4ade80); border-color: var(--safe, #4ade80); }
+  .badge.warn { background: var(--caution-bg, #2a230f); color: var(--caution, #facc15); border-color: var(--caution, #facc15); }
+  .badge.info { background: var(--info-bg, #10233f); color: var(--info, #6ea8fe); }
+  .badge.danger { background: var(--danger-bg, #3a0d0d); color: var(--danger, #ff6b6b); border-color: var(--danger, #e5484d); }
+  .badge.muted { color: var(--text-dim, #9aa4b2); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  td, th { text-align: left; padding: 5px 7px; border-bottom: 1px solid var(--border-soft, #1b2130); font-family: var(--mono, ui-monospace, monospace); word-break: break-all; vertical-align: top; }
+  th { color: var(--text-dim, #9aa4b2); text-transform: uppercase; font-size: 11px; letter-spacing: .04em; }
+  .reasons-cell { color: var(--caution, #d9a441); }
+  .muted { color: var(--text-dim, #9aa4b2); font-size: 13px; }
+  .gate { margin: 8px 0; font-size: 13px; color: var(--text-dim, #9aa4b2); }
+  .card { display: inline-block; min-width: 180px; margin: 4px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border, #232a3a); background: var(--bg-elev, #1b2130); font-size: 13px; }
+  .card-ok { border-color: var(--safe, #4ade80); }
+  .card-danger { border-color: var(--danger, #e5484d); }
+  .timeline-box { max-height: 320px; overflow-y: auto; }
+  a { color: var(--info, #6ea8fe); }
+  ol, ul { margin: 6px 0 6px 20px; padding: 0; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="danger-banner">
+    PRODUCTION OPERATOR DASHBOARD — READ-ONLY. This page visualizes the supervised operator artifacts.
+    It holds no key, signs nothing, and sends nothing. Real signing happens ONLY in the
+    <a href="live-console.html">Live Console</a>, where YOU confirm every transaction in Phantom.
+    Sol Maker never asks for a seed phrase or private key. Memecoin trading can lose the entire amount.
+    This is not financial advice and not a promise of profit.
+  </div>
+  <div class="keys-banner">
+    The backend never holds keys: the wallet lives in YOUR Phantom, the backend prepares at most an
+    UNSIGNED request, and large trades stay disabled. Every artifact below is local — nothing on this
+    page talks to a network.
+  </div>
+
+  <div class="panel">
+    <h2>Mode &amp; Safety State (from the validated config)</h2>
+    <div class="row"><input type="file" id="cfg-file" accept="application/json,.json" /> <span id="cfg-status" class="muted">Load a live.operator.config.validation.v1 JSON (live:operator:validate --out).</span></div>
+    <p id="cfg-mode" class="muted"></p>
+    <p id="cfg-safety"></p>
+    <p id="cfg-caps" class="muted"></p>
+  </div>
+
+  <div class="panel">
+    <h2>Active Candidate Feed (from the run report)</h2>
+    <div class="row"><input type="file" id="run-file" accept="application/json,.json" /> <span id="run-status" class="muted">Load a live.operator.run.report.v1 JSON (live:operator:run --out).</span></div>
+    <p id="run-mode" class="muted"></p>
+    <p id="run-totals" class="muted"></p>
+    <table><thead><tr><th>mint</th><th>action</th><th>decision</th><th>score</th><th>blocking reasons</th></tr></thead><tbody id="feed-rows"></tbody></table>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h2>Risk Decision Cards</h2>
+      <div id="risk-cards"><p class="muted">Load a run report above.</p></div>
+    </div>
+    <div class="panel">
+      <h2>Canary Recommendation &amp; Phantom Approval</h2>
+      <p id="canary-status" class="muted">Load a run report above.</p>
+      <p id="phantom-life" class="muted">Load a session export below for the Phantom lifecycle.</p>
+      <button disabled>Prepare Canary (use the CLI)</button>
+      <button disabled>Approve in Phantom (use the Live Console)</button>
+      <p id="canary-gate" class="gate"></p>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h2>Positions</h2>
+      <p class="muted">Paper (would-have) positions from the shadow pipeline:</p>
+      <ul id="positions-paper"><li class="muted">none</li></ul>
+      <p class="muted">Live position evidence (only from a loaded reconciliation — never assumed):</p>
+      <ul id="positions-live"><li class="muted">none evidenced</li></ul>
+    </div>
+    <div class="panel">
+      <h2>Reconciliation &amp; PnL (honest accounting)</h2>
+      <div class="row"><input type="file" id="recon-file" accept="application/json,.json" /> <span id="recon-status" class="muted">Load a live.operator.reconciliation.v1 JSON (live:operator:reconcile --out).</span></div>
+      <p id="recon-summary" class="muted"></p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Session Timeline (append-only journal)</h2>
+    <div class="row"><input type="file" id="sess-file" accept="application/json,.json" /> <span id="sess-status" class="muted">Load a live.operator.session.export.v1 JSON (live:operator:session:export --out).</span></div>
+    <p id="sess-summary" class="muted"></p>
+    <div class="timeline-box"><table><thead><tr><th>#</th><th>at</th><th>event</th><th>detail</th></tr></thead><tbody id="timeline-rows"></tbody></table></div>
+  </div>
+
+  <div class="panel">
+    <h2>Loaded Evidence Files</h2>
+    <ul id="evidence-list"><li class="muted">none loaded yet</li></ul>
+  </div>
+
+  <p class="muted">Sol Maker — Part 3 production operator dashboard. Read-only. The loop recommends; it never signs or sends.
+  Large trades remain disabled. No autonomous trading. Runbook: docs/FINAL_PART_3_PRODUCTION_CANARY_RUNBOOK.md.</p>
+</div>
+<script>${CLIENT_SCRIPT}</script>
+</body>
+</html>
+`;
+}

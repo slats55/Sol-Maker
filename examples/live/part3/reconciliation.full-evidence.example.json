@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "live.operator.reconciliation.v1",
+  "candidateMint": "So11111111111111111111111111111111111111112",
+  "canary": {
+    "schemaVersion": "live.canary.reconciliation.v1",
+    "network": "mainnet-beta",
+    "candidateMint": "So11111111111111111111111111111111111111112",
+    "signature": "3xJ9wPqRsTuVwXyZa1bCdEfGhJkMnPqRsTuVwXyZa1bC",
+    "submittedAt": "2026-07-03T12:00:00.000Z",
+    "lastStatusAt": "2026-07-03T12:00:00.000Z",
+    "status": "finalized",
+    "slot": 351000000,
+    "err": null,
+    "inputAmountRaw": "5000000",
+    "outputAmountRaw": "347306",
+    "solSpentLamports": "5005000",
+    "feesLamports": "5000",
+    "priorityFeeLamports": null,
+    "balanceBeforeLamports": "100000000",
+    "balanceAfterLamports": "94995000",
+    "netLamports": "-5005000",
+    "pnlKnown": true,
+    "pnlNote": "net balance change -5005000 lamports (gross of any token holdings acquired; not annualized; not a profit claim)",
+    "verdict": "reconciled",
+    "notes": [],
+    "notProfitabilityClaim": true,
+    "backendCustodiesNoKeys": true
+  },
+  "pre": {
+    "solLamports": "100000000",
+    "tokenRaw": "0",
+    "capturedAt": "2026-07-03T12:00:00.000Z"
+  },
+  "post": {
+    "solLamports": "94995000",
+    "tokenRaw": "347000",
+    "capturedAt": "2026-07-03T12:00:00.000Z"
+  },
+  "tokenDecimals": 6,
+  "grossTokenReceivedRaw": "347000",
+  "solSpentLamports": "5005000",
+  "feesLamports": "5000",
+  "priorityFeeLamports": null,
+  "quotedOutRaw": "347306",
+  "slippageRealizedBps": -8,
+  "pnlStatus": "unrealized-unpriced",
+  "unrealizedValueUsd": null,
+  "tokenPriceUsd": null,
+  "priceEvidence": null,
+  "pnlNote": "position OPEN and tokens were received, but no price evidence was supplied — unrealized PnL is UNKNOWN and is not estimated",
+  "confidence": "high",
+  "confidenceReasons": [
+    "signature-recorded",
+    "status-finalized",
+    "sol-balances-captured",
+    "token-balances-captured"
+  ],
+  "notes": [],
+  "notProfitabilityClaim": true,
+  "backendCustodiesNoKeys": true,
+  "backendNeverSends": true
+}

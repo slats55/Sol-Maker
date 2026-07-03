@@ -17,6 +17,14 @@ import {
   liveSniperSessionReport,
 } from "./live-sniper-commands.js";
 import {
+  liveOperatorValidateReport,
+  liveOperatorSessionStartReport,
+  liveOperatorSessionStatusReport,
+  liveOperatorSessionExportReport,
+  liveOperatorRunReport,
+  liveOperatorReconcileReport,
+} from "./live-operator-commands.js";
+import {
   doctorReport,
   configCheckReport,
   modeReport,
@@ -4310,5 +4318,197 @@ program
     console.log(text);
     if (exitCode !== 0) process.exitCode = exitCode;
   });
+
+// ---------------------------------------------------------------------------
+// Live OPERATOR commands — Sprint 109, Part 3 (production canary + supervised operator release).
+// Config validation, the durable session journal, the recommend-only supervised run, and
+// post-canary reconciliation. NONE of these sign or trade, and none can transmit a transaction:
+// every real canary requires a human Phantom confirmation in the browser. The backend holds no key.
+// ---------------------------------------------------------------------------
+
+program
+  .command("live:operator:validate")
+  .description(
+    "STRICTLY validate a live.operator.config.v1 production/canary operator config (fail-closed). Refuses missing/unknown fields, over-ceiling caps, unsafe RPC endpoints (userinfo/query keys), and ANY secret-named or secret-shaped material — a seed phrase or private key can never appear in an operator config. Reports whether armed_canary would be permitted; never an authorization. This command never signs and never sends",
+  )
+  .option("--config <path>", "the live.operator.config.v1 JSON to validate (required)")
+  .option("--json", "emit the validation artifact as stable JSON")
+  .option("--out <path>", "write the validation JSON (refused if it exists)")
+  .option("--force", "overwrite an existing --out file")
+  .action((opts: { config?: string; json?: boolean; out?: string; force?: boolean }) => {
+    const { text, exitCode } = liveOperatorValidateReport({}, { configPath: opts.config, json: Boolean(opts.json), out: opts.out, force: Boolean(opts.force) });
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("live:operator:session:start")
+  .description(
+    "START a durable operator session: creates the append-only JSONL journal with its session_started event. The journal records candidates, risk decisions, quote states, canary recommendations, the Phantom approval lifecycle, balance snapshots, reconciliations, kill-switch/emergency-stop events, pauses and manual re-arms — and never contains a secret. This command never signs and never sends",
+  )
+  .option("--session-log <path>", "journal file to create (refused if it already exists)")
+  .option("--session-id <id>", "session identifier (1-64 chars [a-zA-Z0-9._-])")
+  .option("--operator <label>", "operator label recorded in the first event")
+  .option("--mode <mode>", "intended run mode recorded in the first event (informational)")
+  .option("--json", "emit the started-session record as stable JSON")
+  .action((opts: { sessionLog?: string; sessionId?: string; operator?: string; mode?: string; json?: boolean }) => {
+    const { text, exitCode } = liveOperatorSessionStartReport({}, { sessionLog: opts.sessionLog, sessionId: opts.sessionId, operatorLabel: opts.operator, mode: opts.mode, json: Boolean(opts.json) });
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("live:operator:session:status")
+  .description(
+    "SHOW the status of an operator session journal (read-only): validated event tallies, the canary/Phantom lifecycle counts, safety engagements, and whether the loop is paused pending a manual re-arm. Unparseable lines are counted, never hidden. This command never signs and never sends",
+  )
+  .option("--session-log <path>", "the append-only JSONL journal to summarize")
+  .option("--json", "emit the summary as stable JSON")
+  .action((opts: { sessionLog?: string; json?: boolean }) => {
+    const { text, exitCode } = liveOperatorSessionStatusReport({}, { sessionLog: opts.sessionLog, json: Boolean(opts.json) });
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("live:operator:session:export")
+  .description(
+    "EXPORT an operator session journal as one validated live.operator.session.export.v1 artifact (summary + every valid event + honest invalid-line records). The operator dashboard loads this artifact. Read-only; never signs, never sends",
+  )
+  .option("--session-log <path>", "the append-only JSONL journal to export")
+  .option("--json", "emit the export artifact as stable JSON")
+  .option("--out <path>", "write the export JSON (refused if it exists)")
+  .option("--force", "overwrite an existing --out file")
+  .action((opts: { sessionLog?: string; json?: boolean; out?: string; force?: boolean }) => {
+    const { text, exitCode } = liveOperatorSessionExportReport({}, { sessionLog: opts.sessionLog, json: Boolean(opts.json), out: opts.out, force: Boolean(opts.force) });
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("live:operator:run")
+  .description(
+    "RUN one bounded, journaled, SUPERVISED operator pass (modes: off | observe_only | paper_shadow | armed_canary — none trades). Derives the live policy + escalation caps from ONE validated operator config; armed_canary may RECOMMEND preparing at most one tiny canary per run and REQUIRES the session journal (caps, cooldown, pause and manual re-arm are durable there). Auto-pauses on kill switch, emergency stop, Phantom rejection/timeout or caps; a paused session needs an explicit --record-manual-rearm. Alert sinks are DISABLED by default. This command never signs, never sends, and cannot transmit anything — a human confirms every real canary in Phantom",
+  )
+  .option("--config <path>", "validated live.operator.config.v1 JSON (required)")
+  .option("--mode <mode>", "off | observe_only (default) | paper_shadow | armed_canary — may only NARROW the config's mode")
+  .option("--snapshot <path>", "a realtime.candidates.snapshot.v1 JSON (real live/replay feed)")
+  .option("--mint <mint>", "a manual candidate mint (repeatable)", (v: string, acc: string[]) => [...acc, v], [])
+  .option("--risk <mint=path>", "a token:risk --json report paired to a mint (repeatable)", (v: string, acc: string[]) => [...acc, v], [])
+  .option("--quote <mint=path>", "quote facts JSON paired to a mint (repeatable)", (v: string, acc: string[]) => [...acc, v], [])
+  .option("--session-log <path>", "append-only session journal (REQUIRED for armed_canary)")
+  .option("--escalation-armed", "mark this invocation as manually armed (never sufficient alone; a paused journal still blocks)")
+  .option("--record-manual-rearm <label>", "journal an explicit human re-arm BEFORE the pass (requires --session-log)")
+  .option("--spend-sol <sol>", "planned canary spend in SOL (checked against the config ceiling)")
+  .option("--risk-appetite <a>", "conservative | standard (default) | aggressive")
+  .option("--max-candidates <n>", "process at most n candidates this pass")
+  .option("--max-runtime-ms <ms>", "stop processing when the pass exceeds this wall-clock budget")
+  .option("--alert-console", "enable the console alert sink (off by default)")
+  .option("--alert-webhook-file <path>", "append webhook-style alert JSON lines to this local file (off by default)")
+  .option("--json", "emit the run report as stable JSON")
+  .option("--out <path>", "write the run report JSON (refused if it exists)")
+  .option("--force", "overwrite an existing --out file")
+  .action(
+    (opts: {
+      config?: string;
+      mode?: string;
+      snapshot?: string;
+      mint?: string[];
+      risk?: string[];
+      quote?: string[];
+      sessionLog?: string;
+      escalationArmed?: boolean;
+      recordManualRearm?: string;
+      spendSol?: string;
+      riskAppetite?: string;
+      maxCandidates?: string;
+      maxRuntimeMs?: string;
+      alertConsole?: boolean;
+      alertWebhookFile?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+    }) => {
+      const { text, exitCode } = liveOperatorRunReport(
+        {},
+        {
+          configPath: opts.config,
+          mode: opts.mode,
+          snapshotPath: opts.snapshot,
+          mints: opts.mint,
+          riskPairs: opts.risk,
+          quotePairs: opts.quote,
+          sessionLog: opts.sessionLog,
+          escalationArmed: Boolean(opts.escalationArmed),
+          recordManualRearm: opts.recordManualRearm,
+          spendSol: opts.spendSol,
+          riskAppetite: opts.riskAppetite,
+          maxCandidates: opts.maxCandidates,
+          maxRuntimeMs: opts.maxRuntimeMs,
+          alertConsole: Boolean(opts.alertConsole),
+          alertWebhookFile: opts.alertWebhookFile,
+          json: Boolean(opts.json),
+          out: opts.out,
+          force: Boolean(opts.force),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("live:operator:reconcile")
+  .description(
+    "Build a live.operator.reconciliation.v1 from captured facts: the Part 2 canary confirmation facts PLUS pre/post wallet snapshots (SOL + token), the quoted output, and optional evidenced price. Computes gross token received, SOL spent, realized slippage bps and an HONEST PnL classification (unknown when evidence is missing — never estimated silently); confidence is re-derived from the facts. Reads facts only — never queries the chain, never signs, never sends",
+  )
+  .option("--candidate-mint <mint>", "the canary candidate mint (required)")
+  .option("--facts <path>", "captured confirmation facts JSON (required; same shape as live:sniper:reconcile)")
+  .option("--pre <path>", "pre-trade snapshot JSON { solLamports, tokenRaw, capturedAt }")
+  .option("--post <path>", "post-trade snapshot JSON { solLamports, tokenRaw, capturedAt }")
+  .option("--token-decimals <n>", "candidate token decimals (for display-unit math)")
+  .option("--quoted-out-raw <units>", "the quoted expected output in raw units (slippage baseline)")
+  .option("--token-price-usd <usd>", "optional token price in USD (requires --price-evidence)")
+  .option("--price-evidence <note>", "where the price came from (required with --token-price-usd)")
+  .option("--session-log <path>", "append a reconciliation_recorded event to this journal")
+  .option("--json", "emit the reconciliation as stable JSON")
+  .option("--out <path>", "write the reconciliation JSON (refused if it exists)")
+  .option("--force", "overwrite an existing --out file")
+  .action(
+    (opts: {
+      candidateMint?: string;
+      facts?: string;
+      pre?: string;
+      post?: string;
+      tokenDecimals?: string;
+      quotedOutRaw?: string;
+      tokenPriceUsd?: string;
+      priceEvidence?: string;
+      sessionLog?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+    }) => {
+      const { text, exitCode } = liveOperatorReconcileReport(
+        {},
+        {
+          candidateMint: opts.candidateMint,
+          factsPath: opts.facts,
+          prePath: opts.pre,
+          postPath: opts.post,
+          tokenDecimals: opts.tokenDecimals,
+          quotedOutRaw: opts.quotedOutRaw,
+          tokenPriceUsd: opts.tokenPriceUsd,
+          priceEvidence: opts.priceEvidence,
+          sessionLog: opts.sessionLog,
+          json: Boolean(opts.json),
+          out: opts.out,
+          force: Boolean(opts.force),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
 
 program.parseAsync(process.argv);

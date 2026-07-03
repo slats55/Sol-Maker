@@ -111,6 +111,26 @@ are unchanged and still binding.
   supplied balances; it never fabricates a profit and refuses to claim confirmed/finalized without a
   signature.
 
+## The Part 3 supervised operator release (Sprint 109)
+
+- **The operator config is a secrets-free zone.** `live:operator:validate` deep-scans the whole
+  document and refuses any sensitive-named field (seed/mnemonic/privateKey/apiKey/…) AND any
+  secret-shaped string value (long base58/hex), plus control characters. The RPC endpoint must be
+  plain `https://` with no userinfo and no query string — URL-embedded keys are refused, and
+  reports echo the host only.
+- **The session journal is append-only and secrets-free.** Strict consecutive sequence numbers, no
+  writes after `session_ended`, every event deep-scanned. Full transaction signatures are stored
+  only as prefix references (the slot is the durable key) so a journal can never trip the
+  secret-blob rules or leak signature-length base58 into committed files.
+- **The supervised run stays recommend-only.** A run may only NARROW the configured mode;
+  `armed_canary` requires the journal + an explicit per-invocation arm; kill switch / emergency
+  stop zero out every mode; a pause requires an explicit, journaled `--record-manual-rearm`.
+- **Alerts are local-only and off by default.** Console + local webhook-file sinks only; no
+  network sink exists here by design (a webhook URL is a secret and posting is a network side
+  effect). Operators who want Discord/Telegram run their own forwarder outside this codebase.
+- Runbook: `docs/FINAL_PART_3_PRODUCTION_CANARY_RUNBOOK.md`. Release statement:
+  `docs/FINAL_LIVE_RELEASE_DOSSIER.md`.
+
 ## Secrets handling
 
 - Real secrets live only in `.env` (gitignored) or, preferably later, an OS

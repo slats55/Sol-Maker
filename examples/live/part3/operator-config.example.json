@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "live.operator.config.v1",
+  "operatorLabel": "part3-example-operator",
+  "mode": "armed_canary",
+  "walletPublicKey": "CgGszXon2aemnsCYRSuguJqkFdSAwCPc31mFcHLDwbpV",
+  "rpcEndpointHttps": "https://api.mainnet-beta.solana.com",
+  "maxCanarySol": 0.005,
+  "maxCanariesPerSession": 1,
+  "maxCanariesPerDay": 1,
+  "maxDailyLossSol": 0.01,
+  "quoteTtlMs": 8000,
+  "maxSlippageBps": 100,
+  "cooldownMs": 300000,
+  "maxFailedAttempts": 1,
+  "killSwitchEngaged": false,
+  "emergencyStopEngaged": false,
+  "phantomApprovalRequired": true,
+  "largeTradesEnabled": false,
+  "backendCustodiesNoKeys": true,
+  "backendNeverSends": true
+}

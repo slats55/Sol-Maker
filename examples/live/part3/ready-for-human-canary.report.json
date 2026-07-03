@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "live.operator.human_canary_readiness.v1",
+  "generatedAt": "2026-07-03T12:00:00.000Z",
+  "operatorLabel": "part3-example-operator",
+  "configMode": "armed_canary",
+  "checks": {
+    "configValidated": true,
+    "sessionJournalWorks": true,
+    "observeRunProven": true,
+    "paperShadowRunProven": true,
+    "armedRecommendationProven": true,
+    "reconciliationPathProven": true,
+    "dashboardBuilt": true,
+    "alertsAvailable": true
+  },
+  "realCanaryExecuted": false,
+  "realCanaryStatusNote": "NO real canary has been executed — no human operator with a funded burner Phantom wallet was available. This is stated, not hidden.",
+  "verdict": "ready-for-human-canary",
+  "missing": [],
+  "humanPrerequisites": [
+    "a dedicated BURNER Phantom wallet (tiny funding only; never a main wallet)",
+    "tiny SOL funding (the canary spend + fees; nothing more)",
+    "a human at the keyboard who reviews the recommendation and clicks Approve/Reject in Phantom",
+    "time to reconcile immediately after (live:operator:reconcile) and to stop on anything odd"
+  ],
+  "requiresHumanPhantomApproval": true,
+  "backendCustodiesNoKeys": true,
+  "backendNeverSends": true,
+  "largeTradesEnabled": false,
+  "notProfitabilityClaim": true
+}

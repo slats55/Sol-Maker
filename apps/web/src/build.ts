@@ -22,6 +22,7 @@ import { DashboardShell } from "./components/layout.js";
 import { PAGES } from "./pages/registry.js";
 import { LIVE_CONSOLE_FILENAME, renderLiveConsoleHtml } from "./live/console.js";
 import { SNIPER_DASHBOARD_FILENAME, renderSniperDashboardHtml } from "./live/sniper-dashboard.js";
+import { OPERATOR_DASHBOARD_FILENAME, renderOperatorDashboardHtml } from "./live/operator-dashboard.js";
 
 const here = dirname(fileURLToPath(import.meta.url)); // apps/web/src
 const webRoot = dirname(here); // apps/web
@@ -58,4 +59,11 @@ console.log(`wrote public/${LIVE_CONSOLE_FILENAME} (live canary console)`);
 writeFileSync(join(publicDir, SNIPER_DASHBOARD_FILENAME), renderSniperDashboardHtml(), "utf8");
 console.log(`wrote public/${SNIPER_DASHBOARD_FILENAME} (sniper dashboard, read-only)`);
 
-console.log(`done: ${PAGES.length} pages + live console + sniper dashboard + assets/theme.css`);
+// The Part 3 PRODUCTION OPERATOR DASHBOARD: the supervised-release operator view (config
+// validation, candidate feed, canary/Phantom lifecycle, reconciliation/PnL, session timeline).
+// Read-only like the sniper dashboard; signing stays in the live console. See
+// apps/web/tests/operator-dashboard.test.ts.
+writeFileSync(join(publicDir, OPERATOR_DASHBOARD_FILENAME), renderOperatorDashboardHtml(), "utf8");
+console.log(`wrote public/${OPERATOR_DASHBOARD_FILENAME} (operator dashboard, read-only)`);
+
+console.log(`done: ${PAGES.length} pages + live console + sniper dashboard + operator dashboard + assets/theme.css`);

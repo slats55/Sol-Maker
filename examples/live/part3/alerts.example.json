@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "live.operator.alert.v1",
+  "note": "webhook-file sink payloads (one JSON object per line in the real file); sinks are DISABLED by default",
+  "alerts": [
+    {
+      "schemaVersion": "live.operator.alert.v1",
+      "kind": "canary_recommended",
+      "sessionId": "part3-example-session",
+      "at": "2026-07-03T12:00:00.000Z",
+      "detail": "canary recommended for So11111111111111111111111111111111111111112 — awaiting HUMAN Phantom approval",
+      "data": null,
+      "alertIsInformationalOnly": true,
+      "backendNeverSends": true
+    },
+    {
+      "schemaVersion": "live.operator.alert.v1",
+      "kind": "risk_rejected",
+      "sessionId": "part3-example-session",
+      "at": "2026-07-03T12:00:00.000Z",
+      "detail": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v risk-blocked: risk-rejected, freeze-authority-present",
+      "data": null,
+      "alertIsInformationalOnly": true,
+      "backendNeverSends": true
+    },
+    {
+      "schemaVersion": "live.operator.alert.v1",
+      "kind": "kill_switch_engaged",
+      "sessionId": "part3-example-session",
+      "at": "2026-07-03T12:00:00.000Z",
+      "detail": "kill switch engaged — loop blocked, nothing processed",
+      "data": null,
+      "alertIsInformationalOnly": true,
+      "backendNeverSends": true
+    }
+  ]
+}

@@ -256,3 +256,117 @@ export type {
   CanaryReconciliationRecord,
   BuildCanaryReconciliationInput,
 } from "./canary-reconcile.js";
+
+// --- Part 3: the production canary + supervised operator release ----------------------------
+//   operator-config.ts   — strict fail-closed production/canary operator config validator
+//   session-recorder.ts  — append-only JSONL operator session journal (durable pause/re-arm)
+//   operator-reconcile.ts— post-canary accounting: balances, slippage evidence, honest PnL
+//   operator-loop.ts     — the supervised recommend-only run unit for live:operator:run
+//   alerts.ts            — local alert hooks (console/file), disabled by default
+//   human-readiness.ts   — the truthful ready-for-human-canary report
+
+export {
+  LIVE_OPERATOR_CONFIG_SCHEMA_VERSION,
+  LIVE_OPERATOR_CONFIG_VALIDATION_SCHEMA_VERSION,
+  OPERATOR_RUN_MODES,
+  OPERATOR_MODE_RANK,
+  OPERATOR_QUOTE_TTL_BOUNDS,
+  OPERATOR_MAX_COOLDOWN_MS,
+  OPERATOR_CONFIG_BLOCK_CODES,
+  LiveOperatorConfigError,
+  assertNoSecretMaterial,
+  buildOperatorConfig,
+  validateOperatorConfig,
+  evaluateOperatorConfig,
+} from "./operator-config.js";
+export type {
+  OperatorRunMode,
+  LiveOperatorConfig,
+  OperatorConfigBlockCode,
+  OperatorConfigValidation,
+  BuildOperatorConfigInput,
+} from "./operator-config.js";
+
+export {
+  LIVE_OPERATOR_SESSION_EVENT_SCHEMA_VERSION,
+  LIVE_OPERATOR_SESSION_SUMMARY_SCHEMA_VERSION,
+  LIVE_OPERATOR_SESSION_EXPORT_SCHEMA_VERSION,
+  OPERATOR_SESSION_EVENT_KINDS,
+  OPERATOR_PAUSE_TRIGGER_KINDS,
+  OperatorSessionError,
+  buildSessionEvent,
+  validateSessionEvent,
+  parseSessionLog,
+  prepareSessionAppend,
+  summarizeSessionLog,
+  exportSessionLog,
+  deriveEscalationSession,
+  signatureRef,
+} from "./session-recorder.js";
+export type {
+  OperatorSessionEventKind,
+  OperatorSessionEvent,
+  BuildSessionEventInput,
+  SessionLogLine,
+  PreparedAppend,
+  OperatorSessionSummary,
+  OperatorSessionExport,
+  DerivedEscalationSession,
+  SignatureRef,
+} from "./session-recorder.js";
+
+export {
+  LIVE_OPERATOR_RECONCILIATION_SCHEMA_VERSION,
+  RECONCILIATION_CONFIDENCE_LEVELS,
+  PNL_STATUSES,
+  OperatorReconcileError,
+  buildOperatorReconciliation,
+  validateOperatorReconciliation,
+} from "./operator-reconcile.js";
+export type {
+  ReconciliationConfidence,
+  PnlStatus,
+  OperatorBalanceSnapshot,
+  OperatorReconcileInput,
+  OperatorReconciliationRecord,
+} from "./operator-reconcile.js";
+
+export {
+  LIVE_OPERATOR_RUN_REPORT_SCHEMA_VERSION,
+  OperatorLoopError,
+  runSupervisedOperatorLoop,
+  validateOperatorRunReport,
+} from "./operator-loop.js";
+export type {
+  OperatorLoopCandidate,
+  OperatorLoopSessionEvent,
+  OperatorLoopLimits,
+  OperatorLoopInput,
+  OperatorRunReport,
+} from "./operator-loop.js";
+
+export {
+  LIVE_OPERATOR_ALERT_SCHEMA_VERSION,
+  OPERATOR_ALERT_KINDS,
+  OPERATOR_ALERT_SINKS_DEFAULT,
+  OperatorAlertError,
+  buildOperatorAlert,
+  formatConsoleAlert,
+  formatWebhookFileLine,
+  validateOperatorAlert,
+} from "./alerts.js";
+export type { OperatorAlertKind, OperatorAlert, OperatorAlertSinks, BuildAlertInput } from "./alerts.js";
+
+export {
+  LIVE_HUMAN_CANARY_READINESS_SCHEMA_VERSION,
+  HUMAN_CANARY_READINESS_VERDICTS,
+  HumanReadinessError,
+  buildHumanCanaryReadiness,
+  validateHumanCanaryReadiness,
+} from "./human-readiness.js";
+export type {
+  HumanCanaryReadinessVerdict,
+  HumanCanaryWorkflowChecks,
+  HumanCanaryReadinessReport,
+  BuildHumanReadinessInput,
+} from "./human-readiness.js";

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "live.operator.config.validation.v1",
+  "verdict": "valid",
+  "mode": "armed_canary",
+  "operatorLabel": "part3-example-operator",
+  "rpcEndpointHost": "https://api.mainnet-beta.solana.com",
+  "walletPublicKeyPresent": true,
+  "caps": {
+    "maxCanarySol": 0.005,
+    "maxCanariesPerSession": 1,
+    "maxCanariesPerDay": 1,
+    "maxDailyLossSol": 0.01,
+    "quoteTtlMs": 8000,
+    "maxSlippageBps": 100,
+    "cooldownMs": 300000,
+    "maxFailedAttempts": 1
+  },
+  "ceilings": {
+    "maxCanarySol": 0.05,
+    "maxCanariesPerSession": 3,
+    "maxCanariesPerDay": 5,
+    "maxDailyLossSol": 0.05,
+    "maxSlippageBps": 300
+  },
+  "armedCanaryPermitted": true,
+  "blockingReasons": [],
+  "warnings": [],
+  "phantomApprovalRequired": true,
+  "largeTradesEnabled": false,
+  "backendCustodiesNoKeys": true,
+  "backendNeverSends": true,
+  "notProfitabilityClaim": true
+}

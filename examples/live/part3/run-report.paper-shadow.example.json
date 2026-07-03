@@ -1,0 +1,256 @@
+{
+  "schemaVersion": "live.operator.run.report.v1",
+  "sessionId": "part3-example-session",
+  "operatorLabel": "part3-example-operator",
+  "configMode": "armed_canary",
+  "requestedMode": "paper_shadow",
+  "effectiveMode": "paper_shadow",
+  "startedAt": "2026-07-03T12:00:00.000Z",
+  "loopNeverSends": true,
+  "backendCustodiesNoKeys": true,
+  "backendNeverSends": true,
+  "notProfitabilityClaim": true,
+  "totals": {
+    "candidatesSupplied": 2,
+    "processed": 2,
+    "skippedOverBudget": 0,
+    "watch": 0,
+    "paperShadow": 1,
+    "blocked": 0,
+    "ignored": 1,
+    "canaryRecommended": 0
+  },
+  "results": [
+    {
+      "schemaVersion": "live.sniper.pipeline.v1",
+      "mint": "So11111111111111111111111111111111111111112",
+      "mode": "paper_shadow",
+      "notProfitabilityClaim": true,
+      "loopNeverSends": true,
+      "stagesRun": [
+        "discover",
+        "normalize",
+        "risk_precheck",
+        "score",
+        "watchlist",
+        "refresh_quote",
+        "enforce_freshness",
+        "policy_eval",
+        "paper_shadow",
+        "mark_live_canary_candidate"
+      ],
+      "strategy": {
+        "schemaVersion": "live.strategy.score.v2",
+        "mint": "So11111111111111111111111111111111111111112",
+        "decision": "live_canary_candidate",
+        "score": 70,
+        "confidence": 0.25,
+        "hardBlocks": [],
+        "softWarnings": [],
+        "reasons": [
+          "risk score 5 within cap 30",
+          "liquidity $50000 ≥ live floor $5000",
+          "score 70 ≥ live threshold 70; all live preconditions met"
+        ],
+        "missingData": [
+          "risk",
+          "poolAgeSeconds",
+          "volumeUsd",
+          "routeProvider",
+          "quoteAvailable"
+        ],
+        "provenance": {
+          "providers": [
+            "example-feed"
+          ],
+          "sourceKind": "replay"
+        },
+        "riskAppetite": "standard",
+        "timestamp": "2026-07-03T12:00:00.000Z",
+        "notProfitabilityClaim": true,
+        "liveCandidateStillRequiresPhantom": true
+      },
+      "action": "paper_shadow",
+      "canaryEligible": true,
+      "canaryPreparable": false,
+      "blockingReasons": [
+        "mode:paper_shadow-cannot-prepare-canary"
+      ],
+      "events": [
+        {
+          "event": "candidate-scored",
+          "detail": "decision=live_canary_candidate score=70 confidence=0.25"
+        },
+        {
+          "event": "candidate-watchlisted",
+          "detail": "decision=live_canary_candidate"
+        },
+        {
+          "event": "candidate-quote-ready",
+          "detail": "provider=jupiter-lite-api"
+        }
+      ]
+    },
+    {
+      "schemaVersion": "live.sniper.pipeline.v1",
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "mode": "paper_shadow",
+      "notProfitabilityClaim": true,
+      "loopNeverSends": true,
+      "stagesRun": [
+        "discover",
+        "normalize",
+        "risk_precheck",
+        "score",
+        "refresh_quote",
+        "enforce_freshness",
+        "policy_eval"
+      ],
+      "strategy": {
+        "schemaVersion": "live.strategy.score.v2",
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "decision": "ignore",
+        "score": 33,
+        "confidence": 0.25,
+        "hardBlocks": [
+          "risk-rejected"
+        ],
+        "softWarnings": [],
+        "reasons": [
+          "liquidity $50000 ≥ live floor $5000"
+        ],
+        "missingData": [
+          "risk",
+          "poolAgeSeconds",
+          "volumeUsd",
+          "routeProvider",
+          "quoteAvailable"
+        ],
+        "provenance": {
+          "providers": [
+            "example-feed"
+          ],
+          "sourceKind": "replay"
+        },
+        "riskAppetite": "standard",
+        "timestamp": "2026-07-03T12:00:00.000Z",
+        "notProfitabilityClaim": true,
+        "liveCandidateStillRequiresPhantom": true
+      },
+      "action": "ignore",
+      "canaryEligible": false,
+      "canaryPreparable": false,
+      "blockingReasons": [
+        "risk-rejected"
+      ],
+      "events": [
+        {
+          "event": "candidate-scored",
+          "detail": "decision=ignore score=33 confidence=0.25"
+        },
+        {
+          "event": "candidate-risk-blocked",
+          "detail": "risk-rejected"
+        },
+        {
+          "event": "candidate-quote-ready",
+          "detail": "provider=jupiter-lite-api"
+        }
+      ]
+    }
+  ],
+  "recommendation": null,
+  "paused": false,
+  "pauseReasons": [],
+  "manualRearmRequiredToResume": false,
+  "sessionEvents": [
+    {
+      "kind": "candidate_observed",
+      "detail": "observed So11111111111111111111111111111111111111112",
+      "data": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "source": "replay"
+      }
+    },
+    {
+      "kind": "risk_decision",
+      "detail": "So11111111111111111111111111111111111111112: live_canary_candidate (score 70)",
+      "data": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "decision": "live_canary_candidate",
+        "score": 70,
+        "hardBlocks": []
+      }
+    },
+    {
+      "kind": "quote_refresh",
+      "detail": "So11111111111111111111111111111111111111112: quote fresh",
+      "data": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "present": true,
+        "fresh": true
+      }
+    },
+    {
+      "kind": "candidate_observed",
+      "detail": "observed EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "data": {
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "source": "replay"
+      }
+    },
+    {
+      "kind": "risk_decision",
+      "detail": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: ignore (score 33)",
+      "data": {
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "decision": "ignore",
+        "score": 33,
+        "hardBlocks": [
+          "risk-rejected"
+        ]
+      }
+    },
+    {
+      "kind": "quote_refresh",
+      "detail": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: quote fresh",
+      "data": {
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "present": true,
+        "fresh": true
+      }
+    }
+  ],
+  "alerts": [
+    {
+      "schemaVersion": "live.operator.alert.v1",
+      "kind": "candidate_found",
+      "sessionId": "part3-example-session",
+      "at": "2026-07-03T12:00:00.000Z",
+      "detail": "candidate So11111111111111111111111111111111111111112 (replay)",
+      "data": null,
+      "alertIsInformationalOnly": true,
+      "backendNeverSends": true
+    },
+    {
+      "schemaVersion": "live.operator.alert.v1",
+      "kind": "candidate_found",
+      "sessionId": "part3-example-session",
+      "at": "2026-07-03T12:00:00.000Z",
+      "detail": "candidate EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v (replay)",
+      "data": null,
+      "alertIsInformationalOnly": true,
+      "backendNeverSends": true
+    },
+    {
+      "schemaVersion": "live.operator.alert.v1",
+      "kind": "risk_rejected",
+      "sessionId": "part3-example-session",
+      "at": "2026-07-03T12:00:00.000Z",
+      "detail": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v risk-blocked: risk-rejected",
+      "data": null,
+      "alertIsInformationalOnly": true,
+      "backendNeverSends": true
+    }
+  ]
+}
