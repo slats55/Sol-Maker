@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "live.paper_shadow.session.v1",
+  "sessionId": "example-shadow",
+  "startedAt": "2026-06-18T00:00:00.000Z",
+  "endedAt": "2026-06-18T00:00:00.000Z",
+  "totals": {
+    "decisions": 2,
+    "wouldEnter": 1,
+    "wouldSkip": 1,
+    "outcomesKnown": 0
+  },
+  "decisions": [
+    {
+      "schemaVersion": "live.paper_shadow.decision.v1",
+      "mint": "So11111111111111111111111111111111111111112",
+      "symbol": "WSOL",
+      "decision": "would_enter",
+      "score": 85,
+      "confidence": 0.2,
+      "reasons": [
+        "risk score 5 within cap 30",
+        "liquidity $50000 ≥ live floor $5000",
+        "score 85 ≥ live threshold 70; all live preconditions met"
+      ],
+      "blockingReasons": [],
+      "quoteAtDecision": {
+        "provider": "jupiter-lite-api",
+        "priceImpactPct": 0.5,
+        "slippageBps": 50,
+        "ageMs": 1000,
+        "outAmountRaw": "347306"
+      },
+      "decidedAt": "2026-06-18T00:00:00.000Z",
+      "outcomeKnown": false,
+      "comparisonOutAmountRaw": null,
+      "notProfitabilityClaim": true
+    },
+    {
+      "schemaVersion": "live.paper_shadow.decision.v1",
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "decision": "would_skip",
+      "score": 48,
+      "confidence": 0.2,
+      "reasons": [
+        "liquidity $50000 ≥ live floor $5000"
+      ],
+      "blockingReasons": [
+        "risk-rejected"
+      ],
+      "quoteAtDecision": {
+        "provider": "jupiter-lite-api",
+        "priceImpactPct": 0.5,
+        "slippageBps": 50,
+        "ageMs": 1000,
+        "outAmountRaw": null
+      },
+      "decidedAt": "2026-06-18T00:00:00.000Z",
+      "outcomeKnown": false,
+      "comparisonOutAmountRaw": null,
+      "notProfitabilityClaim": true
+    }
+  ],
+  "caveats": [
+    "Paper-shadow decisions are SIMULATIONS — no order, no position, no chain, no key, no send.",
+    "A would_enter is not a profit: outcome is unknown unless a later comparison quote was captured.",
+    "This session evaluates the STRATEGY's would-have decisions; it makes no profitability claim."
+  ],
+  "notProfitabilityClaim": true
+}

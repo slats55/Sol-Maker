@@ -1,0 +1,255 @@
+/**
+ * The LIVE SNIPER DASHBOARD (Sprint 108, Part 2).
+ *
+ * A SEPARATE, isolated, READ-ONLY operator surface — NOT part of the paper-only static page
+ * registry, and distinct from the live canary console. It loads the Part 2 artifacts the CLI emits
+ * (`live.sniper.discovery.v1`, `live.sniper.run.report.v1`, `live.paper_shadow.session.v1`) and
+ * visualizes them: the loop mode, discovery, the watchlist, per-candidate detail, paper-shadow
+ * decisions, and the escalation posture.
+ *
+ * Crucially, this dashboard does NOT sign or send anything and carries NO wallet code: the actual
+ * Phantom signing lives ONLY in the reviewed live console (live-console.html). Every dangerous
+ * control here is DISABLED and explains exactly why, and routes the operator to the console for the
+ * single human signing step. No seed phrase, no private key, no "profit guaranteed" language.
+ */
+
+export const SNIPER_DASHBOARD_FILENAME = "sniper-dashboard.html";
+export const SNIPER_DASHBOARD_TITLE = "Sol Maker — Live Sniper Dashboard";
+
+/** Vanilla client script — read-only artifact viewer. No wallet, no signing, no network calls. */
+const CLIENT_SCRIPT = String.raw`
+(function () {
+  "use strict";
+  var state = { run: null, discovery: null, shadow: null, mode: "off", kill: false };
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function setText(id, t) { var el = $(id); if (el) el.textContent = t; }
+  function setHtml(id, h) { var el = $(id); if (el) el.innerHTML = h; }
+
+  function badge(text, cls) { return '<span class="badge ' + cls + '">' + esc(text) + '</span>'; }
+
+  function actionBadge(a) {
+    if (a === "prepare_canary_request") return badge("CANARY-ELIGIBLE", "warn");
+    if (a === "paper_shadow") return badge("paper_shadow", "info");
+    if (a === "watch") return badge("watch", "info");
+    if (a === "blocked") return badge("blocked", "danger");
+    return badge(String(a), "muted");
+  }
+
+  function renderRun(run) {
+    if (!run || run.schemaVersion !== "live.sniper.run.report.v1") { setText("run-status", "Not a live.sniper.run.report.v1 artifact."); return; }
+    state.run = run;
+    setText("run-status", "Loaded.");
+    var t = run.totals || {};
+    setHtml("run-totals",
+      'mode <strong>' + esc(run.mode) + '</strong> — candidates ' + esc(t.candidates) +
+      ', canary-recommended ' + esc(t.canaryRecommended) + ', paper_shadow ' + esc(t.paperShadow) + ', watch ' + esc(t.watch));
+    var rows = (run.results || []).map(function (r) {
+      var s = r.strategy || {};
+      var reasons = (r.blockingReasons || []).slice(0, 6).join(", ");
+      return '<tr>' +
+        '<td>' + esc(r.mint) + '</td>' +
+        '<td>' + actionBadge(r.action) + '</td>' +
+        '<td>' + esc(s.decision || "—") + '</td>' +
+        '<td>' + esc(s.score == null ? "—" : s.score) + '</td>' +
+        '<td>' + esc(s.confidence == null ? "—" : s.confidence) + '</td>' +
+        '<td class="reasons-cell">' + esc(reasons) + '</td>' +
+      '</tr>';
+    }).join("");
+    setHtml("watchlist-rows", rows || '<tr><td colspan="6" class="muted">No candidates.</td></tr>');
+    updateCanaryGate();
+  }
+
+  function renderDiscovery(d) {
+    if (!d || d.schemaVersion !== "live.sniper.discovery.v1") { setText("disc-status", "Not a live.sniper.discovery.v1 artifact."); return; }
+    state.discovery = d;
+    setText("disc-status", "Loaded.");
+    var rows = (d.candidates || []).map(function (c) {
+      return '<tr><td>' + esc(c.mint) + '</td><td>' + esc(c.symbol || "—") + '</td><td>' + esc(c.sourceKind) + '</td><td>' + esc(c.sourceProvider) + '</td><td>' + esc(c.confidence) + '</td></tr>';
+    }).join("");
+    var rej = (d.rejections || []).map(function (r) {
+      return '<tr><td>' + esc(r.mint || "?") + '</td><td colspan="4" class="muted">' + esc(r.reason) + '</td></tr>';
+    }).join("");
+    setHtml("disc-rows", (rows + rej) || '<tr><td colspan="5" class="muted">No candidates.</td></tr>');
+  }
+
+  function renderShadow(s) {
+    if (!s || s.schemaVersion !== "live.paper_shadow.session.v1") { setText("shadow-status", "Not a live.paper_shadow.session.v1 artifact."); return; }
+    state.shadow = s;
+    setText("shadow-status", "Loaded.");
+    var t = s.totals || {};
+    setHtml("shadow-totals", 'decisions ' + esc(t.decisions) + ' — would_enter ' + esc(t.wouldEnter) + ', would_skip ' + esc(t.wouldSkip));
+    var rows = (s.decisions || []).map(function (d) {
+      return '<tr><td>' + esc(d.mint) + '</td><td>' + (d.decision === "would_enter" ? badge("would_enter", "ok") : badge("would_skip", "muted")) + '</td><td>' + esc(d.score) + '</td><td class="reasons-cell">' + esc((d.blockingReasons || []).join(", ")) + '</td></tr>';
+    }).join("");
+    setHtml("shadow-rows", rows || '<tr><td colspan="4" class="muted">No decisions.</td></tr>');
+  }
+
+  function loadInto(text, render) {
+    var obj;
+    try { obj = JSON.parse(text); } catch (e) { return null; }
+    render(obj);
+    return obj;
+  }
+
+  function selectMode(m) {
+    state.mode = m;
+    var modes = ["off", "observe_only", "paper_shadow", "armed_canary", "paused", "killed"];
+    for (var i = 0; i < modes.length; i++) {
+      var el = $("mode-" + modes[i]);
+      if (el) el.className = "mode-pill" + (modes[i] === m ? " active" : "");
+    }
+    setText("mode-note", m === "armed_canary"
+      ? "ARMED: the loop may RECOMMEND preparing a canary. Preparing + signing still happen out-of-band: CLI live:canary:prepare, then the human signs in the Live Console."
+      : (m === "killed" ? "KILLED: every loop action is blocked." : "This dashboard is a viewer; the backend mode is set by your CLI/policy. The loop never sends."));
+    updateCanaryGate();
+  }
+
+  function toggleKill() {
+    state.kill = !state.kill;
+    var btn = $("kill-btn");
+    btn.textContent = state.kill ? "KILL SWITCH: ENGAGED (click to release)" : "KILL SWITCH: off (click to engage)";
+    btn.className = state.kill ? "kill engaged" : "kill";
+    updateCanaryGate();
+  }
+
+  // The canary controls on THIS page are always disabled: signing lives in the Live Console only.
+  function updateCanaryGate() {
+    var reasons = [];
+    if (state.kill) reasons.push("kill switch engaged");
+    if (state.mode !== "armed_canary") reasons.push("loop mode is " + state.mode + " (need armed_canary)");
+    var rec = state.run && (state.run.totals || {}).canaryRecommended;
+    if (!rec) reasons.push("no canary-eligible candidate in the loaded run report");
+    reasons.push("signing is only available in the Live Console (this dashboard never signs)");
+    setHtml("canary-gate", "Disabled because: " + reasons.map(esc).join("; "));
+  }
+
+  function init() {
+    var modes = ["off", "observe_only", "paper_shadow", "armed_canary", "paused", "killed"];
+    for (var i = 0; i < modes.length; i++) {
+      (function (m) { var el = $("mode-" + m); if (el) el.addEventListener("click", function () { selectMode(m); }); }(modes[i]));
+    }
+    $("kill-btn").addEventListener("click", toggleKill);
+    $("run-file").addEventListener("change", function (ev) {
+      var f = ev.target.files && ev.target.files[0]; if (!f) return;
+      var r = new FileReader(); r.onload = function () { loadInto(String(r.result), renderRun); }; r.readAsText(f);
+    });
+    $("disc-file").addEventListener("change", function (ev) {
+      var f = ev.target.files && ev.target.files[0]; if (!f) return;
+      var r = new FileReader(); r.onload = function () { loadInto(String(r.result), renderDiscovery); }; r.readAsText(f);
+    });
+    $("shadow-file").addEventListener("change", function (ev) {
+      var f = ev.target.files && ev.target.files[0]; if (!f) return;
+      var r = new FileReader(); r.onload = function () { loadInto(String(r.result), renderShadow); }; r.readAsText(f);
+    });
+    selectMode("off");
+    updateCanaryGate();
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
+}());
+`;
+
+export function renderSniperDashboardHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${SNIPER_DASHBOARD_TITLE}</title>
+<link rel="stylesheet" href="assets/theme.css" />
+<style>
+  body { font-family: var(--font, system-ui, sans-serif); background: var(--bg, #0b0e14); color: var(--text, #e6e6e6); margin: 0; padding: 24px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  .danger-banner { background: var(--danger-bg, #3a0d0d); border: 1px solid var(--danger, #e5484d); color: var(--danger, #ff6b6b); padding: 14px 16px; border-radius: 10px; font-weight: 600; margin-bottom: 18px; }
+  .panel { background: var(--bg-card, #141925); border: 1px solid var(--border, #232a3a); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .panel h2 { margin: 0 0 12px; font-size: 15px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-dim, #9aa4b2); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  button { font-family: inherit; font-size: 14px; padding: 9px 14px; border-radius: 8px; border: 1px solid var(--border, #232a3a); background: var(--bg-elev, #1b2130); color: var(--text, #e6e6e6); cursor: pointer; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.kill { border-color: var(--caution, #d9a441); color: var(--caution, #d9a441); font-weight: 600; }
+  button.kill.engaged { background: var(--danger, #e5484d); border-color: var(--danger, #e5484d); color: #fff; }
+  .mode-pill { padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border, #232a3a); background: var(--bg-elev, #1b2130); color: var(--text-dim, #9aa4b2); cursor: pointer; font-size: 13px; }
+  .mode-pill.active { background: var(--info-bg, #10233f); color: var(--info, #6ea8fe); border-color: var(--info, #6ea8fe); font-weight: 600; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border, #232a3a); }
+  .badge.ok { background: var(--safe-bg, #0f2a1a); color: var(--safe, #4ade80); border-color: var(--safe, #4ade80); }
+  .badge.warn { background: var(--caution-bg, #2a230f); color: var(--caution, #facc15); border-color: var(--caution, #facc15); }
+  .badge.info { background: var(--info-bg, #10233f); color: var(--info, #6ea8fe); }
+  .badge.danger { background: var(--danger-bg, #3a0d0d); color: var(--danger, #ff6b6b); border-color: var(--danger, #e5484d); }
+  .badge.muted { color: var(--text-dim, #9aa4b2); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  td, th { text-align: left; padding: 5px 7px; border-bottom: 1px solid var(--border-soft, #1b2130); font-family: var(--mono, ui-monospace, monospace); word-break: break-all; vertical-align: top; }
+  th { color: var(--text-dim, #9aa4b2); text-transform: uppercase; font-size: 11px; letter-spacing: .04em; }
+  .reasons-cell { color: var(--caution, #d9a441); }
+  .muted { color: var(--text-dim, #9aa4b2); font-size: 13px; }
+  .gate { margin: 8px 0; font-size: 13px; color: var(--text-dim, #9aa4b2); }
+  a { color: var(--info, #6ea8fe); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="danger-banner">
+    READ-ONLY OPERATOR DASHBOARD. This page visualizes the sniper loop's artifacts. It holds no key,
+    signs nothing, and sends nothing. Real signing happens ONLY in the <a href="live-console.html">Live Console</a>,
+    where YOU confirm every transaction in Phantom. Sol Maker never asks for a seed phrase or private key.
+    Memecoin trading can lose the entire amount. This is not financial advice and not a promise of profit.
+  </div>
+
+  <div class="panel">
+    <h2>Global Mode &amp; Kill Switch</h2>
+    <div class="row" style="margin-bottom:8px">
+      <span class="mode-pill" id="mode-off">off</span>
+      <span class="mode-pill" id="mode-observe_only">observe_only</span>
+      <span class="mode-pill" id="mode-paper_shadow">paper_shadow</span>
+      <span class="mode-pill" id="mode-armed_canary">armed_canary</span>
+      <span class="mode-pill" id="mode-paused">paused</span>
+      <span class="mode-pill" id="mode-killed">killed</span>
+    </div>
+    <div class="row"><button id="kill-btn" class="kill">KILL SWITCH: off (click to engage)</button></div>
+    <p id="mode-note" class="muted"></p>
+  </div>
+
+  <div class="panel">
+    <h2>Discovery</h2>
+    <div class="row"><input type="file" id="disc-file" accept="application/json,.json" /> <span id="disc-status" class="muted">Load a live.sniper.discovery.v1 JSON.</span></div>
+    <table><thead><tr><th>mint</th><th>symbol</th><th>source</th><th>provider</th><th>confidence</th></tr></thead><tbody id="disc-rows"></tbody></table>
+  </div>
+
+  <div class="panel">
+    <h2>Watchlist &amp; Candidate Detail (from a run report)</h2>
+    <div class="row"><input type="file" id="run-file" accept="application/json,.json" /> <span id="run-status" class="muted">Load a live.sniper.run.report.v1 JSON.</span></div>
+    <p id="run-totals" class="muted"></p>
+    <table><thead><tr><th>mint</th><th>action</th><th>decision</th><th>score</th><th>confidence</th><th>blocking reasons</th></tr></thead><tbody id="watchlist-rows"></tbody></table>
+  </div>
+
+  <div class="panel">
+    <h2>Paper Shadow</h2>
+    <div class="row"><input type="file" id="shadow-file" accept="application/json,.json" /> <span id="shadow-status" class="muted">Load a live.paper_shadow.session.v1 JSON.</span></div>
+    <p id="shadow-totals" class="muted"></p>
+    <table><thead><tr><th>mint</th><th>decision</th><th>score</th><th>why skip</th></tr></thead><tbody id="shadow-rows"></tbody></table>
+  </div>
+
+  <div class="panel">
+    <h2>Live Canary</h2>
+    <p class="muted">Preparing and signing a canary is intentionally NOT on this dashboard. When a candidate is canary-eligible:</p>
+    <ol class="muted">
+      <li>Run <code>soulmaker live:canary:prepare --out request.json …</code> to build the UNSIGNED request.</li>
+      <li>Open the <a href="live-console.html">Live Console</a>, connect Phantom on mainnet, and verify mint / amount / slippage.</li>
+      <li>Arm, then confirm in Phantom. You are the only signer.</li>
+    </ol>
+    <button disabled>Prepare Canary (use the CLI)</button>
+    <button disabled>Arm &amp; Sign (use the Live Console)</button>
+    <p id="canary-gate" class="gate"></p>
+  </div>
+
+  <p class="muted">Sol Maker — Part 2 sniper dashboard. Read-only. Default mode off. The loop recommends; it never signs or sends. No autonomous trading.</p>
+</div>
+<script>${CLIENT_SCRIPT}</script>
+</body>
+</html>
+`;
+}

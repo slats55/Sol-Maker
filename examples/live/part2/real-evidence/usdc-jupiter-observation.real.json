@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "routequote.observation.input.v1",
+  "source": "jupiter-lite-api",
+  "candidateMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "quoteStatus": "quote-observed",
+  "inputMint": "So11111111111111111111111111111111111111112",
+  "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "amountInLabel": "5000000 raw in (ExactIn)",
+  "amountOutLabel": "347306 raw out; min 345570 @ 50 bps slippage",
+  "venueLabel": "GoonFi V2 > AlphaQ",
+  "feeLabel": null,
+  "observedAtLabel": "2026-06-19T02:40:21.681Z",
+  "statusReason": null,
+  "notes": [
+    "fetched by jupiter-lite-api via lite-api.jup.ag",
+    "a quote is NOT execution and does NOT prove route readiness",
+    "price impact 0% (provider-reported)",
+    "context slot 427416958"
+  ]
+}

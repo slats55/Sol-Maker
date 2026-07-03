@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "perf.live.latency.report.v1",
+  "generatedAt": "2026-06-19T02:49:35.882Z",
+  "iterations": 200,
+  "stages": [
+    {
+      "stage": "candidate-score",
+      "engine": "typescript",
+      "availability": "measured",
+      "count": 200,
+      "minMs": 0.001,
+      "medianMs": 0.001,
+      "p95Ms": 0.001,
+      "maxMs": 0.002,
+      "note": null
+    },
+    {
+      "stage": "policy-build-eval",
+      "engine": "typescript",
+      "availability": "measured",
+      "count": 200,
+      "minMs": 0.001,
+      "medianMs": 0.002,
+      "p95Ms": 0.003,
+      "maxMs": 0.046,
+      "note": null
+    },
+    {
+      "stage": "canary-request-build",
+      "engine": "typescript",
+      "availability": "measured",
+      "count": 200,
+      "minMs": 0.03,
+      "medianMs": 0.037,
+      "p95Ms": 0.118,
+      "maxMs": 1.181,
+      "note": null
+    },
+    {
+      "stage": "rust-engine-status-spawn",
+      "engine": "rust",
+      "availability": "measured",
+      "count": 25,
+      "minMs": 9.727,
+      "medianMs": 10.457,
+      "p95Ms": 13.962,
+      "maxMs": 14.394,
+      "note": null
+    }
+  ],
+  "measuredOnThisMachine": true,
+  "notThroughputClaim": true,
+  "notProfitabilityClaim": true
+}

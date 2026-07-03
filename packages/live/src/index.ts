@@ -1,5 +1,5 @@
 /**
- * @soulmaker/live — the Phantom-signing LIVE bridge (Sprint 107, Part 1 of 3).
+ * @soulmaker/live — the Phantom-signing LIVE bridge (Sprint 107 Part 1 + Sprint 108 Part 2 of 3).
  *
  * The single place where the system crosses from "paper / read-only / dry-run" toward a real,
  * human-confirmed Solana mainnet trade — and it does so WITHOUT ever holding a key. The backend
@@ -7,11 +7,23 @@
  * wallet. Live is disabled by default, micro-capped, manual-arm, and audited. This package
  * authorizes nothing on its own and makes no profitability claim.
  *
+ * Part 1 (the Phantom bridge):
  *   policy.ts          — the default-BLOCKED live-mode policy + hard caps + gate verdict
  *   chain-adapter.ts   — the typed chain boundary (Solana mainnet live; others disabled stubs)
  *   canary-request.ts  — the Phantom-signable `live.canary.request.v1` (wraps a real unsigned tx)
  *   canary-state.ts    — the closed canary lifecycle state machine
  *   candidate-score.ts — the deterministic live-candidate decision
+ *
+ * Part 2 (the armed sniper loop — recommends, never sends):
+ *   discovery.ts       — real-time candidate normalization (`live.sniper.candidate.v1`)
+ *   strategy.ts        — memecoin strategy scoring v2 (`live.strategy.score.v2`)
+ *   escalation.ts      — the conservative canary escalation policy (caps/cooldown/auto-pause)
+ *   sniper-loop.ts     — the operator-controlled loop mode machine + pure per-candidate pipeline
+ *   paper-shadow.ts    — paper-shadow "would-have" simulation + session report
+ *   quote-refresh.ts   — continuous quote refresh + provider redundancy (fail-closed on stale/missing)
+ *   operator-approval.ts — the time-boxed, confirm-phrase human approval (`live.operator.approval.v1`)
+ *   position.ts        — paper position ledger + exit rules (stop-loss/take-profit/trailing/time/emergency)
+ *   ai-ranker.ts       — advisory AI ranking with a deterministic clamp (AI can reorder, never unblock)
  */
 
 export {
@@ -112,3 +124,159 @@ export type {
   LiveCandidateDecisionResult,
   ScoreLiveCandidateInput,
 } from "./candidate-score.js";
+
+// --- Part 2: the armed sniper loop -----------------------------------------------------------
+
+export {
+  LIVE_SNIPER_CANDIDATE_SCHEMA_VERSION,
+  LIVE_SNIPER_CANDIDATE_CHAIN,
+  DISCOVERY_SOURCE_KINDS,
+  DISCOVERY_EVENTS,
+  DiscoveryError,
+  isValidMint,
+  computeConfidence,
+  normalizeObservation,
+  normalizeManualMint,
+  dedupeCandidates,
+  discoverCandidates,
+  validateSniperCandidate,
+} from "./discovery.js";
+export type {
+  DiscoverySourceKind,
+  DiscoveryEvent,
+  SniperCandidateRisk,
+  SniperCandidateProvenance,
+  SniperCandidate,
+  DiscoveryRejection,
+  ObservationInput,
+  ManualMintInput,
+  DedupeResult,
+  DiscoverInput,
+  DiscoveryResult,
+} from "./discovery.js";
+
+export {
+  LIVE_STRATEGY_SCORE_SCHEMA_VERSION,
+  STRATEGY_DECISIONS,
+  STRATEGY_RISK_APPETITES,
+  STRATEGY_HARD_BLOCK_CODES,
+  scoreStrategyV2,
+} from "./strategy.js";
+export type { StrategyDecision, StrategyRiskAppetite, StrategyQuoteFacts, StrategyScoreResult, ScoreStrategyInput } from "./strategy.js";
+
+export {
+  LIVE_ESCALATION_POLICY_SCHEMA_VERSION,
+  LIVE_ESCALATION_HARD_CEILINGS,
+  LIVE_ESCALATION_MIN_COOLDOWN_MS,
+  LIVE_ESCALATION_DEFAULTS,
+  LIVE_ESCALATION_BLOCK_CODES,
+  LiveEscalationError,
+  buildEscalationPolicy,
+  validateEscalationPolicy,
+  evaluateEscalation,
+} from "./escalation.js";
+export type {
+  LiveEscalationPolicy,
+  LiveEscalationBlockCode,
+  BuildEscalationPolicyInput,
+  EscalationSessionState,
+  EscalationEvaluation,
+  EvaluateEscalationInput,
+} from "./escalation.js";
+
+export {
+  LIVE_SNIPER_LOOP_SCHEMA_VERSION,
+  SNIPER_LOOP_MODES,
+  SNIPER_LOOP_DEFAULT_MODE,
+  SNIPER_LOOP_STAGES,
+  SNIPER_LOOP_EVENTS,
+  PIPELINE_ACTIONS,
+  isSniperLoopMode,
+  sniperLoopModeTransition,
+  loopModeCanTrade,
+  loopModeCanPrepareCanary,
+  loopModeRunsPaperShadow,
+  loopModeProcesses,
+  evaluateCandidatePipeline,
+} from "./sniper-loop.js";
+export type {
+  SniperLoopMode,
+  SniperLoopStage,
+  SniperLoopEvent,
+  SniperLoopModeTransition,
+  PipelineAction,
+  CandidatePipelineResult,
+  CandidatePipelineContext,
+  CandidatePipelineInput,
+} from "./sniper-loop.js";
+
+export {
+  LIVE_PAPER_SHADOW_DECISION_SCHEMA_VERSION,
+  LIVE_PAPER_SHADOW_SESSION_SCHEMA_VERSION,
+  PAPER_SHADOW_DECISIONS,
+  PAPER_SHADOW_SESSION_CAVEATS,
+  shadowDecide,
+  buildPaperShadowSession,
+} from "./paper-shadow.js";
+export type {
+  PaperShadowDecision,
+  PaperShadowQuoteSnapshot,
+  PaperShadowDecisionRecord,
+  ShadowDecideInput,
+  PaperShadowSessionReport,
+} from "./paper-shadow.js";
+
+export {
+  LIVE_QUOTE_REFRESH_SCHEMA_VERSION,
+  QUOTE_PROVIDER_ROLES,
+  QUOTE_OBSERVATION_OUTCOMES,
+  QUOTE_REFRESH_BLOCK_CODES,
+  quoteAgeFresh,
+  refreshQuotes,
+} from "./quote-refresh.js";
+export type {
+  QuoteProviderRole,
+  QuoteObservationOutcome,
+  QuoteProviderObservation,
+  QuoteRefreshBlockCode,
+  SelectedQuote,
+  QuoteRefreshResult,
+  RefreshQuotesInput,
+} from "./quote-refresh.js";
+
+export {
+  LIVE_OPERATOR_APPROVAL_SCHEMA_VERSION,
+  LIVE_OPERATOR_APPROVAL_EVALUATION_SCHEMA_VERSION,
+  OPERATOR_APPROVAL_CONFIRM_PHRASE,
+  OPERATOR_APPROVAL_MAX_TTL_MINUTES,
+  OPERATOR_APPROVAL_DEFAULT_TTL_MINUTES,
+  OPERATOR_APPROVAL_MAX_FUTURE_SKEW_MS,
+  OPERATOR_APPROVAL_SCOPE,
+  OPERATOR_APPROVAL_EVALUATION_REASONS,
+  LiveOperatorApprovalError,
+  buildOperatorApproval,
+  validateOperatorApproval,
+  evaluateOperatorApproval,
+} from "./operator-approval.js";
+export type {
+  LiveOperatorApproval,
+  OperatorApprovalEvaluation,
+  OperatorApprovalEvaluationReason,
+  BuildOperatorApprovalInput,
+} from "./operator-approval.js";
+
+export {
+  LIVE_CANARY_RECONCILIATION_SCHEMA_VERSION,
+  CANARY_RECONCILIATION_STATUSES,
+  CANARY_RECONCILIATION_VERDICTS,
+  CanaryReconciliationError,
+  buildCanaryReconciliation,
+  validateCanaryReconciliation,
+} from "./canary-reconcile.js";
+export type {
+  CanaryReconciliationStatus,
+  CanaryReconciliationVerdict,
+  CanaryReconciliationFacts,
+  CanaryReconciliationRecord,
+  BuildCanaryReconciliationInput,
+} from "./canary-reconcile.js";

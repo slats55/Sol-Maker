@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "live.sniper.run.report.v1",
+  "mode": "armed_canary",
+  "ranAt": "2026-06-18T00:00:00.000Z",
+  "totals": {
+    "candidates": 1,
+    "rejected": 0,
+    "canaryRecommended": 0,
+    "paperShadow": 0,
+    "watch": 0
+  },
+  "results": [
+    {
+      "schemaVersion": "live.sniper.pipeline.v1",
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "mode": "armed_canary",
+      "notProfitabilityClaim": true,
+      "loopNeverSends": true,
+      "stagesRun": [
+        "discover",
+        "normalize",
+        "risk_precheck",
+        "score",
+        "refresh_quote",
+        "enforce_freshness",
+        "policy_eval"
+      ],
+      "strategy": {
+        "schemaVersion": "live.strategy.score.v2",
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "decision": "ignore",
+        "score": 48,
+        "confidence": 0.2,
+        "hardBlocks": [
+          "risk-rejected"
+        ],
+        "softWarnings": [],
+        "reasons": [
+          "liquidity $50000 ≥ live floor $5000"
+        ],
+        "missingData": [
+          "risk",
+          "liquidityUsd",
+          "poolAgeSeconds",
+          "volumeUsd",
+          "routeProvider",
+          "quoteAvailable"
+        ],
+        "provenance": {
+          "providers": [
+            "operator-manual"
+          ],
+          "sourceKind": "manual"
+        },
+        "riskAppetite": "standard",
+        "timestamp": "2026-06-18T00:00:00.000Z",
+        "notProfitabilityClaim": true,
+        "liveCandidateStillRequiresPhantom": true
+      },
+      "action": "ignore",
+      "canaryEligible": false,
+      "canaryPreparable": false,
+      "blockingReasons": [
+        "risk-rejected"
+      ],
+      "events": [
+        {
+          "event": "candidate-scored",
+          "detail": "decision=ignore score=48 confidence=0.2"
+        },
+        {
+          "event": "candidate-risk-blocked",
+          "detail": "risk-rejected"
+        },
+        {
+          "event": "candidate-quote-ready",
+          "detail": "provider=jupiter-lite-api"
+        }
+      ]
+    }
+  ],
+  "rejections": [],
+  "loopNeverSends": true,
+  "notProfitabilityClaim": true
+}

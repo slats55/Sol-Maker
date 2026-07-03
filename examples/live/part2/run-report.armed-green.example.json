@@ -1,0 +1,91 @@
+{
+  "schemaVersion": "live.sniper.run.report.v1",
+  "mode": "armed_canary",
+  "ranAt": "2026-06-18T00:00:00.000Z",
+  "totals": {
+    "candidates": 1,
+    "rejected": 0,
+    "canaryRecommended": 1,
+    "paperShadow": 0,
+    "watch": 0
+  },
+  "results": [
+    {
+      "schemaVersion": "live.sniper.pipeline.v1",
+      "mint": "So11111111111111111111111111111111111111112",
+      "mode": "armed_canary",
+      "notProfitabilityClaim": true,
+      "loopNeverSends": true,
+      "stagesRun": [
+        "discover",
+        "normalize",
+        "risk_precheck",
+        "score",
+        "watchlist",
+        "refresh_quote",
+        "enforce_freshness",
+        "policy_eval",
+        "paper_shadow",
+        "mark_live_canary_candidate",
+        "prepare_canary_request"
+      ],
+      "strategy": {
+        "schemaVersion": "live.strategy.score.v2",
+        "mint": "So11111111111111111111111111111111111111112",
+        "decision": "live_canary_candidate",
+        "score": 85,
+        "confidence": 0.2,
+        "hardBlocks": [],
+        "softWarnings": [],
+        "reasons": [
+          "risk score 5 within cap 30",
+          "liquidity $50000 ≥ live floor $5000",
+          "score 85 ≥ live threshold 70; all live preconditions met"
+        ],
+        "missingData": [
+          "risk",
+          "liquidityUsd",
+          "poolAgeSeconds",
+          "volumeUsd",
+          "routeProvider",
+          "quoteAvailable"
+        ],
+        "provenance": {
+          "providers": [
+            "operator-manual"
+          ],
+          "sourceKind": "manual"
+        },
+        "riskAppetite": "standard",
+        "timestamp": "2026-06-18T00:00:00.000Z",
+        "notProfitabilityClaim": true,
+        "liveCandidateStillRequiresPhantom": true
+      },
+      "action": "prepare_canary_request",
+      "canaryEligible": true,
+      "canaryPreparable": true,
+      "blockingReasons": [],
+      "events": [
+        {
+          "event": "candidate-scored",
+          "detail": "decision=live_canary_candidate score=85 confidence=0.2"
+        },
+        {
+          "event": "candidate-watchlisted",
+          "detail": "decision=live_canary_candidate"
+        },
+        {
+          "event": "candidate-quote-ready",
+          "detail": "provider=jupiter-lite-api"
+        },
+        {
+          "event": "candidate-canary-eligible",
+          "detail": "all gates green — RECOMMEND preparing an unsigned Phantom canary request (human signs)"
+        }
+      ]
+    }
+  ],
+  "rejections": [],
+  "loopNeverSends": true,
+  "notProfitabilityClaim": true
+}

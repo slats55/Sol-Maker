@@ -1,0 +1,41 @@
+{
+  "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "score": 100,
+  "decision": "REJECT",
+  "flags": [
+    {
+      "id": "freeze-authority-present",
+      "severity": "critical",
+      "title": "Freeze authority present",
+      "detail": "A freeze authority can freeze your token account so you cannot sell. This is a classic honeypot vector — rejected outright.",
+      "evidence": {
+        "freezeAuthorityPresent": true
+      }
+    },
+    {
+      "id": "mint-authority-present",
+      "severity": "high",
+      "title": "Mint authority present",
+      "detail": "A mint authority can mint unlimited additional supply, diluting or rugging holders.",
+      "evidence": {
+        "mintAuthorityPresent": true
+      }
+    },
+    {
+      "id": "standard-spl-token-program",
+      "severity": "info",
+      "title": "Standard SPL token program",
+      "detail": "Owned by the standard SPL token program.",
+      "evidence": {
+        "programLabel": "spl-token"
+      }
+    }
+  ],
+  "summary": [
+    "This is an advisory READ-ONLY risk report — not a buy recommendation.",
+    "Decision REJECT: do not proceed; one or more serious risks were found.",
+    "No transaction was built, signed, simulated, or sent."
+  ],
+  "generatedAt": "2026-06-19T02:41:23.473Z",
+  "disclaimer": "Advisory READ-ONLY risk report. This is not a buy recommendation. PASS_FOR_PAPER_EVALUATION does not mean safe to live-trade. No transaction was built, signed, simulated, or sent."
+}

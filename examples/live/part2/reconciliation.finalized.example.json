@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "live.canary.reconciliation.v1",
+  "network": "mainnet-beta",
+  "candidateMint": "So11111111111111111111111111111111111111112",
+  "signature": "FixtureSig1example",
+  "submittedAt": "2026-06-18T00:00:00.000Z",
+  "lastStatusAt": "2026-06-18T00:00:00.000Z",
+  "status": "finalized",
+  "slot": 469219488,
+  "err": null,
+  "inputAmountRaw": "5000000",
+  "outputAmountRaw": "347306",
+  "solSpentLamports": "5005000",
+  "feesLamports": "5000",
+  "priorityFeeLamports": "1000",
+  "balanceBeforeLamports": null,
+  "balanceAfterLamports": null,
+  "netLamports": null,
+  "pnlKnown": false,
+  "pnlNote": "PnL unknown — balances/amounts not captured. A would-be outcome is never a claim of profit.",
+  "verdict": "reconciled",
+  "notes": [
+    "balances not both supplied — exact PnL cannot be known and is reported as unknown"
+  ],
+  "notProfitabilityClaim": true,
+  "backendCustodiesNoKeys": true
+}

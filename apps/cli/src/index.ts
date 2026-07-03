@@ -9,6 +9,15 @@ import {
   liveSessionReport,
 } from "./live-commands.js";
 import {
+  liveSniperPolicyReport,
+  liveSniperDiscoverReport,
+  liveSniperShadowReport,
+  liveSniperRunReport,
+  liveSniperApproveReport,
+  liveSniperReconcileReport,
+  liveSniperSessionReport,
+} from "./live-sniper-commands.js";
+import {
   doctorReport,
   configCheckReport,
   modeReport,
@@ -4141,6 +4150,184 @@ program
   .option("--json", "emit the session summary as stable JSON")
   .action((opts: { sessionLog?: string; json?: boolean }) => {
     const { text, exitCode } = liveSessionReport({}, { sessionLog: opts.sessionLog, json: Boolean(opts.json) });
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+// ---------------------------------------------------------------------------
+// Live SNIPER LOOP commands — Sprint 108, Part 2.
+// Read-only / artifact-composing. The loop DISCOVERS, SCORES, paper-SHADOWS, and at most
+// RECOMMENDS preparing a canary. It NEVER signs, sends, or trades. A human turns a recommendation
+// into a real UNSIGNED request via live:canary:prepare and signs it in Phantom.
+// ---------------------------------------------------------------------------
+
+const collect = (v: string, acc: string[]): string[] => [...acc, v];
+
+program
+  .command("live:sniper:policy")
+  .description(
+    "SHOW the sniper loop model + escalation policy (read-only). Lists the loop modes (default off), the pipeline stages, and the canary escalation caps (each clamped to a hard ceiling; large trades disabled). The loop NEVER signs or sends; only armed_canary can recommend preparing a canary",
+  )
+  .option("--escalation <path>", "load a live.escalation.policy.v1 JSON instead of building from flags")
+  .option("--max-canary-sol <sol>", "per-canary spend cap in SOL (clamped to the hard ceiling)")
+  .option("--max-canaries-per-session <n>", "canaries per session (clamped to the hard ceiling)")
+  .option("--cooldown-ms <ms>", "minimum ms between canaries (must be ≥ the floor)")
+  .option("--json", "emit the policy report as stable JSON")
+  .option("--out <path>", "write the policy report JSON (refused if it exists)")
+  .option("--force", "overwrite an existing --out file")
+  .action((opts: { escalation?: string; maxCanarySol?: string; maxCanariesPerSession?: string; cooldownMs?: string; json?: boolean; out?: string; force?: boolean }) => {
+    const { text, exitCode } = liveSniperPolicyReport(
+      {},
+      { escalationPath: opts.escalation, maxCanarySol: opts.maxCanarySol, maxCanariesPerSession: opts.maxCanariesPerSession, cooldownMs: opts.cooldownMs, json: Boolean(opts.json), out: opts.out, force: Boolean(opts.force) },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("live:sniper:discover")
+  .description(
+    "DISCOVER candidates (read-only observations) from a real @soulmaker/realtime snapshot and/or manual mints. Normalizes each into a live.sniper.candidate.v1 with provenance, missing-data and confidence; fails CLOSED per item (a bad mint or missing provenance is rejected, never invented). An observation is never an order and never a trade",
+  )
+  .option("--snapshot <path>", "a realtime.candidates.snapshot.v1 JSON (real live/replay feed)")
+  .option("--mint <mint>", "a manual candidate mint (repeatable)", collect, [])
+  .option("--json", "emit the discovery result as stable JSON")
+  .option("--out <path>", "write the discovery JSON (refused if it exists)")
+  .option("--force", "overwrite an existing --out file")
+  .action((opts: { snapshot?: string; mint?: string[]; json?: boolean; out?: string; force?: boolean }) => {
+    const { text, exitCode } = liveSniperDiscoverReport({}, { snapshotPath: opts.snapshot, mints: opts.mint, json: Boolean(opts.json), out: opts.out, force: Boolean(opts.force) });
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("live:sniper:shadow")
+  .description(
+    "Run a PAPER-SHADOW session over discovered candidates (simulation only; no order, no position, no send). Scores each candidate with strategy v2 and records what the strategy WOULD have done and why. Pair real token:risk reports and quote facts by mint. Makes no profitability claim",
+  )
+  .option("--snapshot <path>", "a realtime.candidates.snapshot.v1 JSON")
+  .option("--mint <mint>", "a manual candidate mint (repeatable)", collect, [])
+  .option("--risk <mint=path>", "a token:risk --json report paired to a mint (repeatable)", collect, [])
+  .option("--quote <mint=path>", "quote facts JSON paired to a mint (repeatable)", collect, [])
+  .option("--risk-appetite <a>", "conservative | standard (default) | aggressive")
+  .option("--session-id <id>", "label for the shadow session")
+  .option("--json", "emit the shadow session as stable JSON")
+  .option("--out <path>", "write the shadow session JSON (refused if it exists)")
+  .option("--force", "overwrite an existing --out file")
+  .action((opts: { snapshot?: string; mint?: string[]; risk?: string[]; quote?: string[]; riskAppetite?: string; sessionId?: string; json?: boolean; out?: string; force?: boolean }) => {
+    const { text, exitCode } = liveSniperShadowReport(
+      {},
+      { snapshotPath: opts.snapshot, mints: opts.mint, riskPairs: opts.risk, quotePairs: opts.quote, riskAppetite: opts.riskAppetite, sessionId: opts.sessionId, json: Boolean(opts.json), out: opts.out, force: Boolean(opts.force) },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("live:sniper:run")
+  .description(
+    "RUN the loop pipeline for one mode over discovered candidates and emit a live.sniper.run.report.v1 RECOMMENDATION. The strongest output is 'prepare_canary_request', reachable only in armed_canary with the live policy green, escalation permitting, a fresh quote and no risk block. This command NEVER signs, sends, or trades — a human prepares and signs the request in Phantom",
+  )
+  .option("--mode <mode>", "off | observe_only (default) | paper_shadow | armed_canary | paused | killed")
+  .option("--snapshot <path>", "a realtime.candidates.snapshot.v1 JSON")
+  .option("--mint <mint>", "a manual candidate mint (repeatable)", collect, [])
+  .option("--risk <mint=path>", "a token:risk --json report paired to a mint (repeatable)", collect, [])
+  .option("--quote <mint=path>", "quote facts JSON paired to a mint (repeatable)", collect, [])
+  .option("--policy <path>", "load a live.policy.v1 JSON (else derived from --mode)")
+  .option("--escalation <path>", "load a live.escalation.policy.v1 JSON")
+  .option("--approval <path>", "a live.operator.approval.v1 from live:sniper:approve (time-boxed; expired = powerless; there is deliberately no arming flag)")
+  .option("--spend-sol <sol>", "planned canary spend in SOL (checked against the escalation ceiling)")
+  .option("--risk-appetite <a>", "conservative | standard (default) | aggressive")
+  .option("--json", "emit the run report as stable JSON")
+  .option("--out <path>", "write the run report JSON (refused if it exists)")
+  .option("--force", "overwrite an existing --out file")
+  .option("--fail-on-no-candidate", "exit 2 if no candidate was produced")
+  .action(
+    (opts: {
+      mode?: string;
+      snapshot?: string;
+      mint?: string[];
+      risk?: string[];
+      quote?: string[];
+      policy?: string;
+      escalation?: string;
+      approval?: string;
+      spendSol?: string;
+      riskAppetite?: string;
+      json?: boolean;
+      out?: string;
+      force?: boolean;
+      failOnNoCandidate?: boolean;
+    }) => {
+      const { text, exitCode } = liveSniperRunReport(
+        {},
+        {
+          mode: opts.mode,
+          snapshotPath: opts.snapshot,
+          mints: opts.mint,
+          riskPairs: opts.risk,
+          quotePairs: opts.quote,
+          policyPath: opts.policy,
+          escalationPath: opts.escalation,
+          approvalPath: opts.approval,
+          spendSol: opts.spendSol,
+          riskAppetite: opts.riskAppetite,
+          json: Boolean(opts.json),
+          out: opts.out,
+          force: Boolean(opts.force),
+          failOnNoCandidate: Boolean(opts.failOnNoCandidate),
+        },
+      );
+      console.log(text);
+      if (exitCode !== 0) process.exitCode = exitCode;
+    },
+  );
+
+program
+  .command("live:sniper:approve")
+  .description(
+    "CREATE a time-boxed live.operator.approval.v1 — the deliberate human act that lets ONE armed_canary run include a prepare-canary RECOMMENDATION. Requires typing the exact confirm phrase; expires after --ttl-minutes (hard ceiling enforced). It cannot sign, cannot send, and cannot widen any cap; the human still confirms every transaction in Phantom",
+  )
+  .option("--operator <label>", "who is approving (short label, required)")
+  .option("--confirm <phrase>", "must be exactly the required confirm phrase (shown when omitted)")
+  .option("--ttl-minutes <n>", "approval lifetime in minutes (default 10; refused above the ceiling)")
+  .option("--json", "emit the approval as stable JSON")
+  .option("--out <path>", "write the approval JSON (refused if it exists)")
+  .option("--force", "overwrite an existing --out file")
+  .action((opts: { operator?: string; confirm?: string; ttlMinutes?: string; json?: boolean; out?: string; force?: boolean }) => {
+    const { text, exitCode } = liveSniperApproveReport(
+      {},
+      { operator: opts.operator, confirm: opts.confirm, ttlMinutes: opts.ttlMinutes, json: Boolean(opts.json), out: opts.out, force: Boolean(opts.force) },
+    );
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("live:sniper:reconcile")
+  .description(
+    "Build a live.canary.reconciliation.v1 from captured confirmation facts (signature, status, slot, amounts, fees, balances). Honest accounting: PnL is reported as unknown unless it can be computed from supplied balances, and a confirmed/finalized status REQUIRES a signature. Reads facts only — never queries the chain, never signs, never sends",
+  )
+  .option("--candidate-mint <mint>", "the canary candidate mint (required)")
+  .option("--facts <path>", "captured confirmation facts JSON (required)")
+  .option("--json", "emit the reconciliation record as stable JSON")
+  .option("--out <path>", "write the reconciliation JSON (refused if it exists)")
+  .option("--force", "overwrite an existing --out file")
+  .action((opts: { candidateMint?: string; facts?: string; json?: boolean; out?: string; force?: boolean }) => {
+    const { text, exitCode } = liveSniperReconcileReport({}, { candidateMint: opts.candidateMint, factsPath: opts.facts, json: Boolean(opts.json), out: opts.out, force: Boolean(opts.force) });
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("live:sniper:session")
+  .description(
+    "Summarize a LIVE SNIPER SESSION log (read-only): tallies recorded loop actions from an append-only JSONL log. Reports an honest empty state when there is nothing yet. This command never sends and moves no funds",
+  )
+  .option("--session-log <path>", "append-only JSONL log of loop actions")
+  .option("--json", "emit the session summary as stable JSON")
+  .action((opts: { sessionLog?: string; json?: boolean }) => {
+    const { text, exitCode } = liveSniperSessionReport({}, { sessionLog: opts.sessionLog, json: Boolean(opts.json) });
     console.log(text);
     if (exitCode !== 0) process.exitCode = exitCode;
   });

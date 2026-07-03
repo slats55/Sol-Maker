@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "live.sniper.discovery.v1",
+  "discoveredAt": "2026-06-18T00:00:00.000Z",
+  "candidates": [
+    {
+      "schemaVersion": "live.sniper.candidate.v1",
+      "chain": "solana",
+      "mint": "So11111111111111111111111111111111111111112",
+      "symbol": "WSOL",
+      "name": null,
+      "poolId": null,
+      "sourceProvider": "operator-manual",
+      "sourceKind": "manual",
+      "discoveredAt": "2026-06-18T00:00:00.000Z",
+      "slot": null,
+      "blockTime": null,
+      "liquidityUsd": null,
+      "quoteAvailable": null,
+      "routeProvider": null,
+      "poolAgeSeconds": null,
+      "volumeUsd": null,
+      "buys": null,
+      "sells": null,
+      "risk": null,
+      "provenance": {
+        "providers": [
+          "operator-manual"
+        ],
+        "sourceKind": "manual",
+        "note": "Manually entered by the operator — still requires real risk + quote + policy + Phantom confirmation."
+      },
+      "isObservationNotTrade": true,
+      "notProfitabilityClaim": true,
+      "missingData": [
+        "risk",
+        "liquidityUsd",
+        "poolAgeSeconds",
+        "volumeUsd",
+        "routeProvider",
+        "quoteAvailable"
+      ],
+      "confidence": 0.2
+    }
+  ],
+  "rejections": [
+    {
+      "mint": null,
+      "reason": "manual mint is not a valid base58 mint (32..44 chars) — never paste secret key material"
+    }
+  ],
+  "events": [
+    {
+      "event": "candidate-rejected",
+      "mint": null,
+      "detail": "manual mint is not a valid base58 mint (32..44 chars) — never paste secret key material"
+    },
+    {
+      "event": "candidate-discovered",
+      "mint": "So11111111111111111111111111111111111111112",
+      "detail": "manual via operator-manual"
+    }
+  ],
+  "notProfitabilityClaim": true
+}
