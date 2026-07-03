@@ -63,3 +63,43 @@ describe("sniper dashboard — read-only, never signs", () => {
     expect(html).toContain("KILL SWITCH");
   });
 });
+
+describe("sniper dashboard — S109 command-center sections", () => {
+  it("shows the five big posture banner states", () => {
+    for (const p of ["OFF", "PAPER", "DRY-RUN", "LIVE-GATED", "ARMED-CANARY"]) {
+      expect(html).toContain(`id="posture-${p}"`);
+    }
+  });
+
+  it("carries viewers for daemon session, performance, positions, buy review and sell review", () => {
+    for (const id of ["daemon-file", "perf-file", "ledger-file", "buy-file", "sell-file"]) {
+      expect(html).toContain(`id="${id}"`);
+    }
+    // Each viewer validates its schema and only renders known artifacts.
+    for (const schema of [
+      "live.sniper.daemon.summary.v1",
+      "live.paper.performance.report.v1",
+      "live.position.ledger.v1",
+      "live.canary.buy_review.v1",
+      "live.canary.sell_request.v1",
+    ]) {
+      expect(html).toContain(schema);
+    }
+  });
+
+  it("surfaces provider health, no-trade reasons and quote stale warnings", () => {
+    expect(html).toContain("Provider health");
+    expect(html).toContain("No-trade reasons");
+    expect(html).toContain("STALE");
+  });
+
+  it("shows the emergency / kill-switch instructions verbatim commands", () => {
+    expect(html).toContain("SOULMAKER_EMERGENCY_STOP=1");
+    expect(html).toContain("live:sniper:emergency");
+    expect(html).toContain("live:sniper:reconcile");
+  });
+
+  it("the sell viewer never claims a result — PnL is labelled an estimate", () => {
+    expect(html).toContain("estimate, not a result");
+  });
+});

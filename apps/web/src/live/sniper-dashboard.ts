@@ -90,6 +90,102 @@ const CLIENT_SCRIPT = String.raw`
     setHtml("shadow-rows", rows || '<tr><td colspan="4" class="muted">No decisions.</td></tr>');
   }
 
+  // --- Sprint 109: daemon session / performance / positions / buy + sell review viewers -------
+
+  function renderDaemon(s) {
+    if (!s || s.schemaVersion !== "live.sniper.daemon.summary.v1") { setText("daemon-status", "Not a live.sniper.daemon.summary.v1 artifact."); return; }
+    setText("daemon-status", "Loaded.");
+    var t = s.totals || {};
+    setHtml("daemon-totals",
+      'profile <strong>' + esc(s.profileName) + '</strong> — ' + esc(t.loops) + ' loop(s), ended by ' + esc(s.endedBy) +
+      '<br>candidates ' + esc(t.candidatesSeen) + ' seen (' + esc(t.newCandidates) + ' new, ' + esc(t.duplicatesSkipped) + ' duplicates), risk checked ' + esc(t.riskChecked) + ' (rejected ' + esc(t.riskRejected) + ')' +
+      '<br>quotes ' + esc(t.quotesFetched) + ' fetched' + (t.quotesStale > 0 ? ' — ' + badge(esc(t.quotesStale) + " STALE", "warn") : '') + ', ' + esc(t.quotesUnavailable) + ' unavailable' +
+      '<br>paper positions: ' + esc(t.positionsOpened) + ' opened, ' + esc(t.positionsClosed) + ' closed — known realized PnL ' + esc((s.positions || {}).realizedPnlKnownLamports) + ' lamports');
+    var reasons = s.noTradeReasons || {};
+    var reasonRows = Object.keys(reasons).sort(function (a, b) { return reasons[b] - reasons[a]; }).map(function (k) {
+      return '<tr><td>' + esc(reasons[k]) + '×</td><td class="reasons-cell">' + esc(k) + '</td></tr>';
+    }).join("");
+    setHtml("daemon-reason-rows", reasonRows || '<tr><td colspan="2" class="muted">No no-trade reasons recorded.</td></tr>');
+    var health = (s.providerHealth || []).map(function (h) {
+      var failing = h.consecutiveFailures > 0;
+      return '<tr><td>' + esc(h.provider) + '</td>' +
+        '<td>' + esc(h.observed) + '</td><td>' + esc(h.blocked) + '</td><td>' + esc(h.unavailable) + '</td><td>' + esc(h.error) + '</td>' +
+        '<td>' + (failing ? badge(esc(h.consecutiveFailures) + " fail(s), backing off", "danger") : badge("healthy", "ok")) + '</td></tr>';
+    }).join("");
+    setHtml("daemon-health-rows", health || '<tr><td colspan="6" class="muted">No providers recorded.</td></tr>');
+  }
+
+  function renderPerformance(p) {
+    if (!p || p.schemaVersion !== "live.paper.performance.report.v1") { setText("perf-status", "Not a live.paper.performance.report.v1 artifact."); return; }
+    setText("perf-status", "Loaded.");
+    var e = p.edge || {};
+    var cls = e.verdict === "possible-edge-unproven" ? "warn" : (e.verdict === "no-edge-in-sample" ? "danger" : "muted");
+    setHtml("perf-verdict", badge("EDGE: " + esc(e.verdict), cls) + ' <span class="muted">' + esc(e.explanation || "") + '</span>');
+    var pnl = p.pnl || {};
+    setHtml("perf-body",
+      'realized (known): <strong>' + esc(pnl.realizedKnownLamports) + ' lamports</strong> (' + esc(pnl.realizedKnownSol) + ' SOL)' +
+      '<br>unrealized (marked): ' + esc(pnl.unrealizedMarkedLamports == null ? "unknown" : pnl.unrealizedMarkedLamports + " lamports") +
+      (pnl.openUnmarked > 0 ? ' — ' + esc(pnl.openUnmarked) + ' open position(s) honestly unmarked' : '') +
+      '<br>max drawdown ' + esc(pnl.maxDrawdownLamports) + ' lamports, best ' + esc(pnl.bestTrade ? pnl.bestTrade.pnlLamports : "—") + ', worst ' + esc(pnl.worstTrade ? pnl.worstTrade.pnlLamports : "—") +
+      '<br>quote stale rate: ' + esc(p.quotes && p.quotes.staleRate != null ? (p.quotes.staleRate * 100).toFixed(2) + "%" : "n/a") +
+      ', provider failures: ' + esc(p.providerFailures));
+  }
+
+  function renderLedger(l) {
+    if (!l || l.schemaVersion !== "live.position.ledger.v1") { setText("ledger-status", "Not a live.position.ledger.v1 artifact."); return; }
+    setText("ledger-status", "Loaded.");
+    var t = l.totals || {};
+    setHtml("ledger-totals", 'open ' + esc(t.open) + ', closed ' + esc(t.closed) + ' — known realized PnL <strong>' + esc(t.realizedPnlKnownLamports) + ' lamports</strong> (' + esc(t.closedPnlUnknown) + ' close(s) with honestly unknown PnL)');
+    var rows = (l.positions || []).map(function (pos) {
+      var mark = pos.lastMark ? esc(pos.lastMark.valueLamports) : '<span class="muted">none (unknown)</span>';
+      var close = pos.close ? esc(pos.close.reason) + " → " + esc(pos.close.pnlLamports == null ? "pnl unknown" : pos.close.pnlLamports) : "—";
+      return '<tr><td>' + esc(pos.mint) + '</td><td>' + esc(pos.kind) + '</td><td>' + (pos.status === "open" ? badge("open", "info") : badge("closed", "muted")) + '</td><td>' + esc(pos.entrySpendLamports) + '</td><td>' + mark + '</td><td>' + close + '</td></tr>';
+    }).join("");
+    setHtml("ledger-rows", rows || '<tr><td colspan="6" class="muted">No positions.</td></tr>');
+  }
+
+  function renderBuyReview(b) {
+    if (!b || b.schemaVersion !== "live.canary.buy_review.v1") { setText("buy-status", "Not a live.canary.buy_review.v1 artifact."); return; }
+    setText("buy-status", "Loaded.");
+    var q = b.quote || {}; var r = b.risk || {}; var sp = b.spend || {};
+    setHtml("buy-body",
+      'candidate <strong>' + esc((b.candidate || {}).mint) + '</strong> — request state ' + badge(esc(b.requestState), b.requestState === "preflight_ready" ? "ok" : "warn") +
+      '<br>spend ' + esc(sp.sol) + ' SOL (max loss ' + esc(b.maxLossSol) + ' SOL — the full spend)' +
+      '<br>risk score ' + esc(r.score) + ' / ' + esc(r.decision) + ', ' + esc(r.criticalFlagCount) + ' critical flag(s)' +
+      '<br>quote: ' + esc(q.expectedTokensRaw) + ' tokens expected, slippage ' + esc(q.slippageBps) + ' bps, age ' + esc(q.ageMs) + 'ms / TTL ' + esc(q.ttlMs) + 'ms' +
+      '<br><span class="muted">' + esc(b.nextStep || "") + '</span>');
+  }
+
+  function renderSellReview(s) {
+    if (!s || s.schemaVersion !== "live.canary.sell_request.v1") { setText("sell-status", "Not a live.canary.sell_request.v1 artifact."); return; }
+    setText("sell-status", "Loaded.");
+    var pos = s.position || {};
+    var blocked = (s.blockingReasons || []).length > 0;
+    setHtml("sell-body",
+      'position <strong>' + esc(pos.positionId) + '</strong> (' + esc(pos.kind) + ') — state ' + badge(esc(s.state), blocked ? "danger" : "ok") +
+      '<br>expected SOL out: ' + esc(s.expectedSolOutLamports == null ? "unknown" : s.expectedSolOutLamports + " lamports") +
+      '<br>ESTIMATED PnL: ' + esc(s.estimatedPnlLamports == null ? "unknown" : s.estimatedPnlLamports + " lamports (" + s.estimatedPnlPct + "%)") + ' <span class="muted">(estimate, not a result)</span>' +
+      (blocked ? '<br>blocked: <span class="reasons-cell">' + esc((s.blockingReasons || []).join(", ")) + '</span>' : '') +
+      '<br><span class="muted">The backend cannot sell. You sign in Phantom; record the real close with live:sniper:reconcile.</span>');
+  }
+
+  // --- Big posture banner (OFF / PAPER / DRY-RUN / LIVE-GATED / ARMED-CANARY) ------------------
+  var POSTURES = {
+    OFF: { cls: "muted", note: "Nothing is running. Nothing can trade." },
+    PAPER: { cls: "info", note: "Continuous PAPER daemon posture: real market data, simulated positions, nothing sent. (live:sniper:daemon)" },
+    "DRY-RUN": { cls: "info", note: "Mainnet dry-run posture: real reads + unsigned builds, sending disabled. (paper:sniper:rehearse)" },
+    "LIVE-GATED": { cls: "warn", note: "Live-gated posture: unsigned canary artifacts can be prepared behind approval+policy walls; ONLY Phantom + a human can send." },
+    "ARMED-CANARY": { cls: "danger", note: "ARMED-CANARY: a time-boxed operator approval is active. The strongest backend output is still an UNSIGNED request — you sign in Phantom, or nothing happens." },
+  };
+  function selectPosture(name) {
+    var keys = Object.keys(POSTURES);
+    for (var i = 0; i < keys.length; i++) {
+      var el = $("posture-" + keys[i]);
+      if (el) el.className = "posture-pill " + POSTURES[keys[i]].cls + (keys[i] === name ? " active" : "");
+    }
+    setText("posture-note", POSTURES[name].note);
+  }
+
   function loadInto(text, render) {
     var obj;
     try { obj = JSON.parse(text); } catch (e) { return null; }
@@ -147,6 +243,21 @@ const CLIENT_SCRIPT = String.raw`
       var f = ev.target.files && ev.target.files[0]; if (!f) return;
       var r = new FileReader(); r.onload = function () { loadInto(String(r.result), renderShadow); }; r.readAsText(f);
     });
+    var s109 = [["daemon-file", renderDaemon], ["perf-file", renderPerformance], ["ledger-file", renderLedger], ["buy-file", renderBuyReview], ["sell-file", renderSellReview]];
+    for (var j = 0; j < s109.length; j++) {
+      (function (pair) {
+        var el = $(pair[0]);
+        if (el) el.addEventListener("change", function (ev) {
+          var f = ev.target.files && ev.target.files[0]; if (!f) return;
+          var r = new FileReader(); r.onload = function () { loadInto(String(r.result), pair[1]); }; r.readAsText(f);
+        });
+      }(s109[j]));
+    }
+    var postures = Object.keys(POSTURES);
+    for (var k = 0; k < postures.length; k++) {
+      (function (p) { var el = $("posture-" + p); if (el) el.addEventListener("click", function () { selectPosture(p); }); }(postures[k]));
+    }
+    selectPosture("OFF");
     selectMode("off");
     updateCanaryGate();
   }
@@ -175,6 +286,12 @@ export function renderSniperDashboardHtml(): string {
   button.kill.engaged { background: var(--danger, #e5484d); border-color: var(--danger, #e5484d); color: #fff; }
   .mode-pill { padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border, #232a3a); background: var(--bg-elev, #1b2130); color: var(--text-dim, #9aa4b2); cursor: pointer; font-size: 13px; }
   .mode-pill.active { background: var(--info-bg, #10233f); color: var(--info, #6ea8fe); border-color: var(--info, #6ea8fe); font-weight: 600; }
+  .posture-pill { padding: 10px 18px; border-radius: 10px; border: 1px solid var(--border, #232a3a); background: var(--bg-elev, #1b2130); color: var(--text-dim, #9aa4b2); cursor: pointer; font-size: 15px; font-weight: 700; letter-spacing: .05em; }
+  .posture-pill.active { outline: 2px solid currentColor; }
+  .posture-pill.info.active { color: var(--info, #6ea8fe); background: var(--info-bg, #10233f); }
+  .posture-pill.warn.active { color: var(--caution, #facc15); background: var(--caution-bg, #2a230f); }
+  .posture-pill.danger.active { color: var(--danger, #ff6b6b); background: var(--danger-bg, #3a0d0d); }
+  .posture-pill.muted.active { color: var(--text, #e6e6e6); }
   .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border, #232a3a); }
   .badge.ok { background: var(--safe-bg, #0f2a1a); color: var(--safe, #4ade80); border-color: var(--safe, #4ade80); }
   .badge.warn { background: var(--caution-bg, #2a230f); color: var(--caution, #facc15); border-color: var(--caution, #facc15); }
@@ -197,6 +314,20 @@ export function renderSniperDashboardHtml(): string {
     signs nothing, and sends nothing. Real signing happens ONLY in the <a href="live-console.html">Live Console</a>,
     where YOU confirm every transaction in Phantom. Sol Maker never asks for a seed phrase or private key.
     Memecoin trading can lose the entire amount. This is not financial advice and not a promise of profit.
+  </div>
+
+  <div class="panel">
+    <h2>Operating Posture</h2>
+    <div class="row" style="margin-bottom:8px">
+      <span class="posture-pill muted" id="posture-OFF">OFF</span>
+      <span class="posture-pill info" id="posture-PAPER">PAPER</span>
+      <span class="posture-pill info" id="posture-DRY-RUN">DRY-RUN</span>
+      <span class="posture-pill warn" id="posture-LIVE-GATED">LIVE-GATED</span>
+      <span class="posture-pill danger" id="posture-ARMED-CANARY">ARMED-CANARY</span>
+    </div>
+    <p id="posture-note" class="muted"></p>
+    <p class="muted">EMERGENCY: engage the kill switch (<code>killSwitch: true</code> in soulmaker.config.json or <code>SOULMAKER_EMERGENCY_STOP=1</code>) — every live action blocks immediately.
+    Close paper positions with <code>live:sniper:emergency --ledger &lt;path&gt;</code>. A live position can only be sold by YOU in Phantom (swap back to SOL), then record it with <code>live:sniper:reconcile</code>.</p>
   </div>
 
   <div class="panel">
@@ -231,6 +362,42 @@ export function renderSniperDashboardHtml(): string {
     <div class="row"><input type="file" id="shadow-file" accept="application/json,.json" /> <span id="shadow-status" class="muted">Load a live.paper_shadow.session.v1 JSON.</span></div>
     <p id="shadow-totals" class="muted"></p>
     <table><thead><tr><th>mint</th><th>decision</th><th>score</th><th>why skip</th></tr></thead><tbody id="shadow-rows"></tbody></table>
+  </div>
+
+  <div class="panel">
+    <h2>Daemon Session (S109)</h2>
+    <div class="row"><input type="file" id="daemon-file" accept="application/json,.json" /> <span id="daemon-status" class="muted">Load a daemon summary.json (live.sniper.daemon.summary.v1).</span></div>
+    <p id="daemon-totals" class="muted"></p>
+    <h3 class="muted" style="font-size:12px;text-transform:uppercase">No-trade reasons</h3>
+    <table><thead><tr><th>count</th><th>reason</th></tr></thead><tbody id="daemon-reason-rows"></tbody></table>
+    <h3 class="muted" style="font-size:12px;text-transform:uppercase">Provider health</h3>
+    <table><thead><tr><th>provider</th><th>observed</th><th>blocked</th><th>unavailable</th><th>error</th><th>state</th></tr></thead><tbody id="daemon-health-rows"></tbody></table>
+  </div>
+
+  <div class="panel">
+    <h2>Paper Performance (S109)</h2>
+    <div class="row"><input type="file" id="perf-file" accept="application/json,.json" /> <span id="perf-status" class="muted">Load a performance report JSON (live.paper.performance.report.v1).</span></div>
+    <p id="perf-verdict"></p>
+    <p id="perf-body" class="muted"></p>
+  </div>
+
+  <div class="panel">
+    <h2>Positions (S109)</h2>
+    <div class="row"><input type="file" id="ledger-file" accept="application/json,.json" /> <span id="ledger-status" class="muted">Load a position ledger JSON (live.position.ledger.v1).</span></div>
+    <p id="ledger-totals" class="muted"></p>
+    <table><thead><tr><th>mint</th><th>kind</th><th>status</th><th>entry (lamports)</th><th>last mark</th><th>close</th></tr></thead><tbody id="ledger-rows"></tbody></table>
+  </div>
+
+  <div class="panel">
+    <h2>Buy Review (S109)</h2>
+    <div class="row"><input type="file" id="buy-file" accept="application/json,.json" /> <span id="buy-status" class="muted">Load a buy-review.json (live.canary.buy_review.v1).</span></div>
+    <p id="buy-body" class="muted"></p>
+  </div>
+
+  <div class="panel">
+    <h2>Sell Review (S109)</h2>
+    <div class="row"><input type="file" id="sell-file" accept="application/json,.json" /> <span id="sell-status" class="muted">Load a sell-review.json (live.canary.sell_request.v1).</span></div>
+    <p id="sell-body" class="muted"></p>
   </div>
 
   <div class="panel">
