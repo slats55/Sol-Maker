@@ -47,6 +47,29 @@ pnpm web:build   # writes apps/web/public/live-console.html — open it with the
 The full step-by-step canary flow, the four live modes, the hard caps, and the safety guarantees are
 in [`docs/LIVE_EXECUTION_PHANTOM.md`](docs/LIVE_EXECUTION_PHANTOM.md).
 
+> **Sprint 108 — Part 2 of the live build (NEW): an armed, operator-controlled sniper loop.** It
+> discovers real candidates (real `@soulmaker/realtime` feeds or manual mints), scores them
+> transparently (v2), runs a paper-shadow "would-have" simulation, and — only in the explicitly-armed
+> mode with every gate green — **recommends** preparing one tiny canary. `loopModeCanTrade` is `false`
+> for **every** mode: the loop never signs, sends, or trades. A human still prepares the unsigned
+> request and signs it in Phantom. Real mainnet evidence (risk + quotes) and the honest live-capability
+> matrix are in [`docs/FINAL_PART_2_STATUS.md`](docs/FINAL_PART_2_STATUS.md); the human canary
+> procedure is in [`docs/LIVE_SNIPER_CANARY_RUNBOOK.md`](docs/LIVE_SNIPER_CANARY_RUNBOOK.md).
+
+### Live sniper loop (Part 2) — quick reference
+
+```bash
+pnpm soulmaker live:sniper:policy                      # loop modes (default off) + escalation caps
+pnpm soulmaker live:sniper:discover --mint <MINT>      # real-time / manual candidate discovery (read-only)
+pnpm soulmaker live:sniper:shadow --mint <MINT> --risk <MINT>=risk.json --quote <MINT>=q.json
+pnpm soulmaker live:sniper:run --mode armed_canary --escalation-armed --mint <MINT> \
+  --risk <MINT>=risk.json --quote <MINT>=q.json --spend-sol 0.005   # recommends only; never sends
+pnpm web:build   # also writes apps/web/public/sniper-dashboard.html — read-only operator dashboard
+```
+
+The loop never signs or sends. When it recommends a canary, a human runs `live:canary:prepare`, loads
+the unsigned request into the Live Console, and confirms in Phantom. No mode trades autonomously.
+
 ### Run the PAPER sniper right now
 
 ```bash

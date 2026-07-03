@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "live.escalation.policy.v1",
+  "maxCanarySol": 0.005,
+  "maxCanariesPerSession": 1,
+  "maxCanariesPerDay": 1,
+  "cooldownMs": 300000,
+  "maxFailedAttempts": 1,
+  "maxDailyLossSol": 0.01,
+  "autoPauseAfterFailure": true,
+  "autoPauseAfterRejection": true,
+  "autoPauseAfterConfirmTimeout": true,
+  "manualRearmRequired": true,
+  "largeTradesEnabled": false
+}

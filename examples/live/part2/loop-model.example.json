@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "live.sniper.policy.report.v1",
+  "modes": [
+    "off",
+    "observe_only",
+    "paper_shadow",
+    "armed_canary",
+    "paused",
+    "killed"
+  ],
+  "defaultMode": "off",
+  "stages": [
+    "discover",
+    "normalize",
+    "risk_precheck",
+    "score",
+    "watchlist",
+    "refresh_quote",
+    "enforce_freshness",
+    "policy_eval",
+    "paper_shadow",
+    "mark_live_canary_candidate",
+    "prepare_canary_request"
+  ],
+  "loopNeverSends": true
+}

@@ -21,6 +21,7 @@ import { renderDocument } from "./lib/html.js";
 import { DashboardShell } from "./components/layout.js";
 import { PAGES } from "./pages/registry.js";
 import { LIVE_CONSOLE_FILENAME, renderLiveConsoleHtml } from "./live/console.js";
+import { SNIPER_DASHBOARD_FILENAME, renderSniperDashboardHtml } from "./live/sniper-dashboard.js";
 
 const here = dirname(fileURLToPath(import.meta.url)); // apps/web/src
 const webRoot = dirname(here); // apps/web
@@ -51,4 +52,10 @@ for (const page of PAGES) {
 writeFileSync(join(publicDir, LIVE_CONSOLE_FILENAME), renderLiveConsoleHtml(), "utf8");
 console.log(`wrote public/${LIVE_CONSOLE_FILENAME} (live canary console)`);
 
-console.log(`done: ${PAGES.length} pages + live console + assets/theme.css`);
+// The Part 2 SNIPER DASHBOARD is also a separate, isolated, READ-ONLY surface — it visualizes the
+// loop's artifacts and carries NO wallet code (signing stays in the live console). See
+// apps/web/tests/sniper-dashboard.test.ts.
+writeFileSync(join(publicDir, SNIPER_DASHBOARD_FILENAME), renderSniperDashboardHtml(), "utf8");
+console.log(`wrote public/${SNIPER_DASHBOARD_FILENAME} (sniper dashboard, read-only)`);
+
+console.log(`done: ${PAGES.length} pages + live console + sniper dashboard + assets/theme.css`);

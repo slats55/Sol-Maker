@@ -88,6 +88,29 @@ Part 1 introduces the **first path that can lead to a real mainnet transaction**
 See `docs/LIVE_EXECUTION_PHANTOM.md` for the full operator flow. Rules 1, 2, 7, 10, 11, and 12 above
 are unchanged and still binding.
 
+## Part 2: the armed sniper loop (Sprint 108)
+
+- **The loop never trades.** `loopModeCanTrade` is `false` for **every** mode
+  (off/observe_only/paper_shadow/armed_canary/paused/killed). Its strongest possible output is the
+  recommendation `prepare_canary_request`; a human still prepares the unsigned request and signs it in
+  Phantom. This is enforced in `packages/live/src/sniper-loop.ts` and proven by
+  `packages/live/src/part2-safety-regression.test.ts`.
+- **Default mode is `off`; arming is explicit and multi-step.** `armed_canary` is reachable only via
+  `off → observe_only → paper_shadow → armed_canary`; there is no shortcut. `paused` resumes to the
+  safe `observe_only`, never straight back to armed.
+- **Escalation is conservative and fail-closed.** One canary at a time, a cooldown between canaries
+  (floor enforced), per-session / per-day caps, a max-failed-attempts and daily-loss ceiling,
+  auto-pause after a failure / rejection / confirm-timeout, and a required manual re-arm. Large trades
+  are disabled (`largeTradesEnabled: false`, pinned).
+- **Fail-closed everywhere.** A missing quote, a stale quote, missing risk, a risk block, a policy
+  block, a denylisted mint, or an over-ceiling spend each blocks the canary. A malformed mint or a
+  candidate with no provenance is refused at discovery, never invented.
+- **Read-only CLI + a read-only dashboard.** `live:sniper:*` commands never sign or send. The Part 2
+  `sniper-dashboard.html` carries no wallet code; signing stays in the Live Console.
+- **Honest accounting.** Reconciliation reports PnL as `unknown` unless it can be computed from
+  supplied balances; it never fabricates a profit and refuses to claim confirmed/finalized without a
+  signature.
+
 ## Secrets handling
 
 - Real secrets live only in `.env` (gitignored) or, preferably later, an OS
