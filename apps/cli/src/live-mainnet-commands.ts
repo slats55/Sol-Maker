@@ -296,7 +296,14 @@ function render(report: MainnetExecutionReport, notes: string[]): string {
   for (const c of report.caveats) l.push(`CAVEAT: ${c}`);
   for (const n of notes) l.push(n);
   l.push("Not a profitability claim. A confirmed transaction is a fact; an edge is not.");
-  return redactString(l.join("\n"));
+  // Signatures are public chain data but shape-identical to a base58 secret key, so free-text
+  // redaction would erase them. Redact the whole block, then restore ONLY the known signatures.
+  const sigs = [report.signature, report.position?.entrySignature ?? null, report.position?.close?.signature ?? null].filter((s): s is string => typeof s === "string");
+  let text = l.join("\n");
+  sigs.forEach((s, i) => { text = text.split(s).join(`\u0000SIG${i}\u0000`); });
+  text = redactString(text);
+  sigs.forEach((s, i) => { text = text.split(`\u0000SIG${i}\u0000`).join(s); });
+  return text;
 }
 
 function exitCodeFor(report: MainnetExecutionReport): number {

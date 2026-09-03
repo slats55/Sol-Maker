@@ -2530,7 +2530,7 @@ program
 program
   .command("execution:status")
   .description(
-    "Resolve and SHOW the execution mode honestly (paper | readonly | devnet-execution | mainnet-dry-run | mainnet-live-blocked | mainnet-live-armed) plus the FULL fourteen-condition mainnet live-gate checklist (default: BLOCKED, every condition failed), the core DANGEROUS_BURNER_LIVE gate, and the emergency-stop state. Read-only: this command can never arm anything. Mainnet sending has NO CLI surface in Sprint 92 — deliberately",
+    "Resolve and SHOW the execution mode honestly (paper | readonly | devnet-execution | mainnet-dry-run | mainnet-live-blocked | mainnet-live-armed) plus the FULL fourteen-condition mainnet live-gate checklist (default: BLOCKED, every condition failed), the core DANGEROUS_BURNER_LIVE gate, and the emergency-stop state. Read-only: this command can never arm anything. Mainnet sending exists ONLY as execution:mainnet:send / execution:mainnet:sell (S111), each behind this same fourteen-condition gate; this command can never arm anything",
   )
   .option("--request <mode>", "what to evaluate: paper (default) | readonly | devnet | mainnet-dry-run | mainnet-live")
   .option("--acknowledge-devnet-execution", "the explicit devnet acknowledgment flag (with the env flag)")
@@ -2653,7 +2653,7 @@ program
 program
   .command("execution:devnet:send")
   .description(
-    "The ONLY send surface in Sprint 92, DEVNET-ONLY by construction: requires SOLMAKER_ENABLE_DEVNET_EXECUTION=devnet-only AND --acknowledge-devnet-execution; the envelope and the signer boundary must both be devnet; every operator safety control is enforced; every attempt (refused or submitted) is appended to the required --audit-log. The signer keypair file PATH comes from an env var NAME (--signer-env) and is never logged or serialized. There is NO mainnet variant of this command — deliberately. Submission is not confirmation",
+    "The ONLY send surface in Sprint 92, DEVNET-ONLY by construction: requires SOLMAKER_ENABLE_DEVNET_EXECUTION=devnet-only AND --acknowledge-devnet-execution; the envelope and the signer boundary must both be devnet; every operator safety control is enforced; every attempt (refused or submitted) is appended to the required --audit-log. The signer keypair file PATH comes from an env var NAME (--signer-env) and is never logged or serialized. The mainnet counterpart is execution:mainnet:send (S111), gated by the fourteen-condition live gate and a separate acknowledgment. Submission is not confirmation",
   )
   .option("--envelope <path>", "unsigned transaction envelope JSON (txpreview.envelope.v1; required; must be devnet)")
   .option("--signer-env <ENV_VAR_NAME>", "the NAME of the env var holding the devnet keypair file PATH (required)")
@@ -2698,7 +2698,7 @@ program
 program
   .command("execution:readiness")
   .description(
-    "The HONEST mainnet readiness checklist (Sprint 93): evaluate ALL fourteen live-gate conditions against operator-NAMED evidence (a LIVE quote fetch report + explicit age cap, a token:risk report + explicit cap, a txpreview simulation report, a wallet public key, an audit path) and name every missing condition with its exact next safe action. STRUCTURALLY incapable of reporting armed: the CLI acknowledgment, the signer boundary, and the redaction findings evaluate only at execution time. No bypass flag, no force flag, no env-only enable. Read-only; mainnet sending has NO CLI surface",
+    "The HONEST mainnet readiness checklist (Sprint 93): evaluate ALL fourteen live-gate conditions against operator-NAMED evidence (a LIVE quote fetch report + explicit age cap, a token:risk report + explicit cap, a txpreview simulation report, a wallet public key, an audit path) and name every missing condition with its exact next safe action. STRUCTURALLY incapable of reporting armed: the CLI acknowledgment, the signer boundary, and the redaction findings evaluate only at execution time. No bypass flag, no force flag, no env-only enable. Read-only; the mainnet send surface is execution:mainnet:send / execution:mainnet:sell (S111), gated by these same fourteen conditions",
   )
   .option("--quote-report <path>", "a LIVE routequote.fetch.report.v1 for condition 9 (operator-supplied quote artifacts refused)")
   .option("--max-quote-age-ms <ms>", "the EXPLICIT quote age cap for condition 9 (no default by design)")
@@ -2884,7 +2884,6 @@ const mainnetCommonOptions = (cmd: Command): Command =>
     .option("--rpc-url <url>", "mainnet RPC endpoint (required; no default can trade)")
     .option("--ledger <path>", "position ledger JSON (required; created if absent; positions persist here)")
     .option("--audit-log <path>", "append-only JSONL audit log (required; every attempt is journaled)")
-    .option("--i-understand-this-can-lose-real-money", "the explicit mainnet acknowledgment flag (required with SOLMAKER_ENABLE_LIVE_TRADING)")
     .option("--max-spend-sol <sol>", `per-trade spend cap (required; ≤ config caps.maxTradeSizeSol and ≤ ${MAINNET_HARD_CEILINGS.maxSpendSol})`)
     .option("--slippage-cap-bps <bps>", `slippage cap (required; ≤ ${MAINNET_HARD_CEILINGS.maxSlippageBps})`)
     .option("--risk-score-cap <n>", "advisory risk score cap (required)")
@@ -2925,6 +2924,7 @@ mainnetCommonOptions(
     .description(
       "S111: the FIRST mainnet send surface — a bounded BUY signed by the local HOT-WALLET keypair. Refuses unless ALL fourteen live-gate conditions hold (SOLMAKER_ENABLE_LIVE_TRADING sentence, config phase7LiveTradingReady, this flag, explicit caps, kill switch clear, fresh quote, simulated-ok for the EXACT envelope, risk under cap, signer boundary = fee payer, audit log). Submits ONCE, then CONFIRMS: a position is written to the ledger ONLY when the transaction lands. failed-onchain and unconfirmed never create a position. Exit 0 confirmed / 2 unconfirmed / 1 refused-or-failed",
     )
+    .option("--i-understand-this-can-lose-real-money", "the explicit mainnet acknowledgment flag (required with SOLMAKER_ENABLE_LIVE_TRADING)")
     .option("--symbol <sym>", "display symbol recorded on the position"),
 ).action(async (o: Record<string, unknown>) => {
   const { text, exitCode } = await executionMainnetSendReport({}, { ...toMainnetOpts(o), symbol: o.symbol as string | undefined });
@@ -2938,6 +2938,7 @@ mainnetCommonOptions(
     .description(
       "S111: SELL one OPEN backend-signed live position from the ledger. Same fourteen-condition gate as send; the envelope must be a token→SOL swap for the position's mint (execution:build --input-mint <mint> --candidate-mint So111…). Submits ONCE, CONFIRMS, then closes the position live-auto with realized PnL from the REAL SOL delta. An unconfirmed sell leaves the position OPEN and visible",
     )
+    .option("--i-understand-this-can-lose-real-money", "the explicit mainnet acknowledgment flag (required with SOLMAKER_ENABLE_LIVE_TRADING)")
     .option("--position-id <id>", "the ledger positionId to sell (required)")
     .option("--reason <reason>", "exit reason: take-profit | stop-loss | trailing-stop | time-exit | emergency | kill-switch | operator-manual (default operator-manual)"),
 ).action(async (o: Record<string, unknown>) => {
@@ -3349,7 +3350,7 @@ program
 program
   .command("paper:phase7:authorization:audit")
   .description(
-    "Build the READ-ONLY `phase7.authorization.audit.v1` — the written, versioned answer to 'is the repo ready to be CONSIDERED for a separately-authorized S104 controlled micro-trade?'. The cheap structural facts are MACHINE-VERIFIED at runtime (the fourteen-condition live gate defaults to BLOCKED; the mode resolver is fail-closed; a mainnet signer refuses without an armed gate; the redactor strips secrets; the release candidate pins live-send disabled; the reconciliation wall fail-closes; the CLI surface carries no mainnet-send command/flag; the Rust dependency allowlist holds). The verdict is RE-DERIVED from the evidence and DEFAULTS to not-authorized. This command authorizes NOTHING and sends NOTHING; a controlled micro-trade still needs a separate, explicit, written authorization",
+    "Build the READ-ONLY `phase7.authorization.audit.v1` — the written, versioned answer to 'is the repo ready to be CONSIDERED for a separately-authorized S104 controlled micro-trade?'. The cheap structural facts are MACHINE-VERIFIED at runtime (the fourteen-condition live gate defaults to BLOCKED; the mode resolver is fail-closed; a mainnet signer refuses without an armed gate; the redactor strips secrets; the release candidate pins live-send disabled; the reconciliation wall fail-closes; the CLI surface carries exactly the S111 mainnet allowlist (execution:mainnet:send / :sell, each acknowledgment-gated) and no bypass flag; the Rust dependency allowlist holds). The verdict is RE-DERIVED from the evidence and DEFAULTS to not-authorized. This command authorizes NOTHING and sends NOTHING; a controlled micro-trade still needs a separate, explicit, written authorization",
   )
   .option("--audit-id <label>", "operator label echoed into the audit (default: phase7-authorization-audit)")
   .option("--repo-sha <sha>", "the repo SHA the audit was run against (recorded verbatim)")
@@ -4060,7 +4061,7 @@ program
 program
   .command("live:policy:inspect")
   .description(
-    "Build (or load) the LIVE-MODE POLICY and SHOW its gate verdict (read-only; authorizes nothing). Live is disabled by default, micro-capped, and every cap is clamped to an absolute hard ceiling. The backend never signs and never sends — a human signs every transaction in Phantom. Mainnet sending has NO CLI surface; this command can never arm anything",
+    "Build (or load) the LIVE-MODE POLICY and SHOW its gate verdict (read-only; authorizes nothing). Live is disabled by default, micro-capped, and every cap is clamped to an absolute hard ceiling. The backend never signs and never sends — a human signs every transaction in Phantom. The backend send surface is execution:mainnet:send / execution:mainnet:sell (S111), separately gated; this command can never arm anything",
   )
   .option("--policy <path>", "load a live.policy.v1 JSON instead of building one from flags")
   .option("--mode <mode>", "paper (default) | readonly | live_prepare | live_canary")
@@ -4140,7 +4141,7 @@ program
 program
   .command("live:canary:prepare")
   .description(
-    "ASSEMBLE a live.canary.request.v1 (a Phantom-signable, UNSIGNED canary) from real artifacts: a token:risk report (required), an UNSIGNED execution:build envelope, optional quote facts and a simulation report. The backend NEVER signs and NEVER sends — Phantom submits the transaction in your browser, not this CLI; mainnet sending has no CLI surface. The request re-derives its own state and can only ever reach blocked/quote_ready/preflight_ready; arming and signing happen in the web Live Console",
+    "ASSEMBLE a live.canary.request.v1 (a Phantom-signable, UNSIGNED canary) from real artifacts: a token:risk report (required), an UNSIGNED execution:build envelope, optional quote facts and a simulation report. The backend NEVER signs and NEVER sends — Phantom submits the transaction in your browser, not this command; the backend-signed path is execution:mainnet:send (S111). The request re-derives its own state and can only ever reach blocked/quote_ready/preflight_ready; arming and signing happen in the web Live Console",
   )
   .option("--candidate-mint <mint>", "the mint to buy (required; cross-checked against the envelope and risk report)")
   .option("--risk <path>", "token:risk --json report for the candidate (required)")

@@ -29,6 +29,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { MAINNET_SEND_COMMAND_ALLOWLIST } from "./phase7-audit-probes.js";
 import {
   EXECUTION_MODES,
   resolveExecutionMode,
@@ -68,22 +69,32 @@ describe("S103 command-surface — registry scan: no mainnet send/live command",
     expect(commands.length).toBeGreaterThanOrEqual(80);
   });
 
-  it("no command name can send or arm mainnet / live", () => {
+  it("no command name outside the S111 mainnet allowlist can send or arm mainnet / live", () => {
     for (const command of commands) {
+      if (MAINNET_SEND_COMMAND_ALLOWLIST.includes(command)) continue;
       expect(command, command).not.toMatch(/mainnet.*send|send.*mainnet|live.*send|send.*live|mainnet.*live|arm|go-live/i);
     }
   });
 
-  it("the ONLY send-named command is execution:devnet:send (devnet)", () => {
-    const sendCommands = commands.filter((c) => /send/i.test(c));
-    expect(sendCommands).toEqual(["execution:devnet:send"]);
+  it("the send-named commands are exactly execution:devnet:send plus the S111 mainnet allowlist", () => {
+    const sendCommands = commands.filter((c) => /send/i.test(c)).sort();
+    expect(sendCommands).toEqual(["execution:devnet:send", "execution:mainnet:send"]);
+    expect(MAINNET_SEND_COMMAND_ALLOWLIST).toEqual(["execution:mainnet:send", "execution:mainnet:sell"]);
   });
 
-  it("the only execution commands that can broadcast are devnet-scoped", () => {
+  it("the only execution commands that can broadcast are devnet-scoped or on the S111 mainnet allowlist", () => {
     const exec = commands.filter((c) => c.startsWith("execution:"));
-    // Sending/rehearsing are both devnet-named; everything else is read-only accounting/status.
-    const broadcasters = exec.filter((c) => /send|rehearse/i.test(c));
-    expect(broadcasters.sort()).toEqual(["execution:devnet:rehearse", "execution:devnet:send"]);
+    const broadcasters = exec.filter((c) => /send|sell|rehearse/i.test(c));
+    expect(broadcasters.sort()).toEqual(["execution:devnet:rehearse", "execution:devnet:send", "execution:mainnet:sell", "execution:mainnet:send"]);
+  });
+
+  it("S111: every mainnet send command carries the explicit acknowledgment flag and refuses without it", () => {
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "index.ts"), "utf8");
+    for (const c of MAINNET_SEND_COMMAND_ALLOWLIST) {
+      const at = source.indexOf(`.command("${c}")`);
+      expect(at, c).toBeGreaterThan(-1);
+      expect(source.slice(at, at + 6000), c).toContain("--i-understand-this-can-lose-real-money");
+    }
   });
 });
 
@@ -98,12 +109,12 @@ describe("S103 command-surface — flag scan: no arm / bypass / force-live flag"
     }
   });
 
-  it("the live acknowledgment flag is an ACK (never sufficient alone), present only on read-only/build commands", () => {
+  it("the live acknowledgment flag is an ACK (never sufficient alone), present only on read-only/build commands and the S111 mainnet allowlist", () => {
     // --i-understand-this-can-lose-real-money is one of FOURTEEN conditions and never a bypass.
-    // It must NOT appear on any command that can actually broadcast (devnet send / rehearse).
+    // It must NOT appear on any devnet broadcaster; on mainnet it appears ONLY on the S111 allowlist.
     for (const { command, block } of commandBlocks()) {
       if (/--i-understand-this-can-lose-real-money/.test(block)) {
-        expect(["execution:status", "execution:build"], command).toContain(command);
+        expect(["execution:status", "execution:build", ...MAINNET_SEND_COMMAND_ALLOWLIST], command).toContain(command);
       }
     }
   });
@@ -142,16 +153,16 @@ describe("S103 command-surface — help-text scan: no command promises a mainnet
     const byName = new Map(describedCommands().map((p) => [p.command, p.description]));
     const send = byName.get("execution:devnet:send") ?? "";
     expect(send).toMatch(/devnet-only|devnet only/);
-    expect(send).toMatch(/no mainnet variant/);
+    expect(send).toMatch(/execution:mainnet:send/);
     const rehearse = byName.get("execution:devnet:rehearse") ?? "";
     expect(rehearse).toMatch(/devnet/);
     expect(rehearse).toMatch(/mainnet endpoints are refused|no mainnet variant/);
   });
 
-  it("the read-only execution commands state mainnet sending has no CLI surface", () => {
+  it("the read-only execution commands name the S111 mainnet send surface", () => {
     const byName = new Map(describedCommands().map((p) => [p.command, p.description]));
-    expect(byName.get("execution:status") ?? "").toMatch(/no cli surface/);
-    expect(byName.get("execution:readiness") ?? "").toMatch(/no cli surface/);
+    expect(byName.get("execution:status") ?? "").toMatch(/execution:mainnet:send/);
+    expect(byName.get("execution:readiness") ?? "").toMatch(/execution:mainnet:send/);
   });
 });
 

@@ -9,6 +9,8 @@
 
 export const CONFIRM_DEFAULT_TIMEOUT_MS = 45_000;
 export const CONFIRM_DEFAULT_POLL_MS = 1_500;
+/** Absolute poll ceiling — guarantees termination even if an injected clock never advances. */
+export const CONFIRM_MAX_POLLS = 400;
 
 export const CONFIRM_STATUSES = ["confirmed", "finalized", "failed", "timeout", "rpc-error"] as const;
 export type ConfirmStatus = (typeof CONFIRM_STATUSES)[number];
@@ -91,7 +93,7 @@ export async function confirmSignature(input: ConfirmSignatureInput): Promise<Co
       if (cs === "finalized") return done("finalized", entry.slot, null);
       if (cs === "confirmed" && want === "confirmed") return done("confirmed", entry.slot, null);
     }
-    if (nowMs() - start >= timeoutMs) return done("timeout", entry?.slot ?? null, null);
+    if (nowMs() - start >= timeoutMs || polls >= CONFIRM_MAX_POLLS) return done("timeout", entry?.slot ?? null, null);
     await sleep(pollMs);
   }
 }

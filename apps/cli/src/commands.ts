@@ -6651,7 +6651,7 @@ export interface Phase7AuthorizationAuditCommandOptions {
  * The cheap structural facts are MACHINE-VERIFIED at runtime (the fourteen-condition gate defaults to
  * blocked; the resolver is fail-closed; a mainnet signer refuses without an armed gate; the redactor
  * strips secrets; the release candidate pins live-send disabled; the reconciliation wall fail-closes;
- * the CLI surface carries no mainnet-send command/flag; the Rust dependency allowlist holds). The
+ * the CLI surface carries exactly the S111 mainnet allowlist and no bypass flag; the Rust dependency allowlist holds). The
  * verdict is RE-DERIVED from the evidence and DEFAULTS to not-authorized. This command authorizes
  * nothing and sends nothing.
  */
@@ -7000,7 +7000,7 @@ export function phase7SignoffTemplateReport(
 // and a bounded max-spend, and emits the no-send phase7.microtrade.preflight.v1
 // artifact. It never signs, never sends, never loads a private key, and the best
 // verdict it can reach is ready-for-separate-execution-authorization — which
-// authorizes nothing. There is no mainnet send command anywhere in this file.
+// authorizes nothing. The mainnet send surface lives in live-mainnet-commands.ts (S111), not here.
 
 /** Map the release-candidate verdict onto the preflight's RC status enum. */
 function mapReleaseCandidateStatus(verdict: string): Phase7PreflightRcStatus {
@@ -10097,8 +10097,8 @@ const DEVNET_SEND_QUOTE_AGE_CAP_MS = 60_000;
  * `soulmaker execution:devnet:send` — the ONLY send surface in Sprint 92, and it is DEVNET-ONLY
  * by construction: the resolved mode must be devnet-execution (env flag + CLI flag), the envelope
  * and the signer boundary must both be devnet, every safety control is enforced, and the attempt
- * (refused or submitted) is appended to the audit log. There is no mainnet variant of this
- * command — deliberately.
+ * (refused or submitted) is appended to the audit log. The mainnet counterpart (S111) is execution:mainnet:send in live-mainnet-commands.ts; this
+ * command stays DEVNET-ONLY.
  */
 export async function executionDevnetSendReport(
   ctx: CommandContext = {},
@@ -10472,7 +10472,7 @@ function reconciliationFromRehearsal(report: DevnetRehearsalReport, sessionId: s
  * generate (or load) a devnet-only signer, airdrop devnet SOL, build the unsigned self-transfer
  * probe, simulate it, submit it through the refusal-first send path, confirm it, and write the
  * full honest artifact set into ONE output directory. DEVNET ONLY by construction — same double
- * opt-in as execution:devnet:send; there is NO mainnet variant. A generated throwaway keypair is
+ * opt-in as execution:devnet:send; the mainnet path is execution:mainnet:send (S111), separately gated. A generated throwaway keypair is
  * written ONLY under a `runs/` directory (gitignored) with the gitignored `.keypair` suffix, and
  * its secret bytes never reach a log, report, or terminal. An airdrop rate-limit or faucet
  * outage produces an honest `devnet-funding-blocked` artifact — never a faked success.

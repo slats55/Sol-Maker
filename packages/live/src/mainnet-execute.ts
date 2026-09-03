@@ -458,9 +458,12 @@ export async function executeMainnetSell(input: MainnetSellInput): Promise<Mainn
     return refusedReport(r, `sell envelope is for ${envelope.candidateMint ?? "no mint"}, not the position's ${position.mint}`, pf.value.liveGate);
   }
 
-  // A sell is bounded by what the position cost — never more "spend" than the entry.
+  // A sell is bounded by what the position cost — never more "spend" than the entry. The
+  // duplicate-mint control guards against buying a mint twice; selling the mint we HOLD is the
+  // point, so the position's own mint is excluded from the session's traded set for this call.
   const spend = String(position.entrySpendLamports);
-  r = await sendAndConfirm(input, pf.value, r, position.mint, spend, nowMs);
+  const sellInput: MainnetSellInput = { ...input, session: { ...input.session, mintsTraded: input.session.mintsTraded.filter((m) => m !== position.mint) } };
+  r = await sendAndConfirm(sellInput, pf.value, r, position.mint, spend, nowMs);
   if (r.outcome !== "confirmed" || !r.signature) return r;
 
   const caveats = [...r.caveats];

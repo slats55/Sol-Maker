@@ -40,9 +40,9 @@ describe("S104 plan doc — design only, adds no command surface", () => {
     }
   });
 
-  it("no registered CLI command targets mainnet; the only send command is execution:devnet:send", () => {
+  it("the only mainnet-targeting commands are the S111 allowlist; send commands are devnet:send + mainnet:send", () => {
     const names = registeredCommandNames();
-    expect(names.filter((c) => /mainnet/i.test(c))).toEqual([]);
-    expect(names.filter((c) => /(^|:)send$/i.test(c))).toEqual(["execution:devnet:send"]);
+    expect(names.filter((c) => /mainnet/i.test(c)).sort()).toEqual(["execution:mainnet:sell", "execution:mainnet:send"]);
+    expect(names.filter((c) => /(^|:)send$/i.test(c)).sort()).toEqual(["execution:devnet:send", "execution:mainnet:send"]);
   });
 });

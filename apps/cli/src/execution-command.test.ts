@@ -539,13 +539,16 @@ describe("execution:devnet:send — devnet-only, double opt-in, journaled", () =
   });
 });
 
-describe("there is NO mainnet send surface", () => {
-  it("the registered command list carries no mainnet send command", () => {
+describe("S111: the mainnet send surface is exactly the allowlist", () => {
+  it("the registered command list carries only execution:mainnet:send / :sell as mainnet senders", () => {
     const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "index.ts"), "utf8");
     const commands = [...source.matchAll(/\.command\("([^"]+)"\)/g)].map((m) => m[1] as string);
     expect(commands).toContain("execution:devnet:send");
     for (const command of commands) {
+      if (command === "execution:mainnet:send" || command === "execution:mainnet:sell") continue;
       expect(command).not.toMatch(/mainnet.*send|send.*mainnet|live.*send|send.*live/i);
     }
+    expect(commands).toContain("execution:mainnet:send");
+    expect(commands).toContain("execution:mainnet:sell");
   });
 });

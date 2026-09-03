@@ -74,16 +74,27 @@ export function scanCliCommandSurface(repoRoot: string): ProbeResult {
   const badFlags = flags.filter((f) =>
     /^--(force-live|enable-live|mainnet-send|mainnet-live|arm|go-live|bypass|disable-gate|no-dry-run|live-send|allow-live)/i.test(f),
   );
-  const onlyDevnetSend = sendNamed.every((c) => c === "execution:devnet:send");
-  const clean = liveCommands.length === 0 && badFlags.length === 0 && onlyDevnetSend;
+  // S111: the mainnet send surface is an explicit, closed allowlist. Anything mainnet/live-named
+  // outside it is UNSAFE; each allowed command must carry the explicit acknowledgment flag.
+  const mainnetSurface = commands.filter((c) => /mainnet/i.test(c) && /send|sell/i.test(c));
+  const unexpectedMainnet = mainnetSurface.filter((c) => !MAINNET_SEND_COMMAND_ALLOWLIST.includes(c));
+  const missingAck = MAINNET_SEND_COMMAND_ALLOWLIST.filter((c) => {
+    const at = src.indexOf(`.command("${c}")`);
+    return at < 0 || !src.slice(at, at + 6000).includes("--i-understand-this-can-lose-real-money");
+  });
+  const strayLive = liveCommands.filter((c) => !MAINNET_SEND_COMMAND_ALLOWLIST.includes(c));
+  const clean = strayLive.length === 0 && badFlags.length === 0 && unexpectedMainnet.length === 0 && missingAck.length === 0 && sendNamed.every((c) => c === "execution:devnet:send" || MAINNET_SEND_COMMAND_ALLOWLIST.includes(c));
   return {
     checked: true,
     clean,
     detail: clean
-      ? `no mainnet-send command, no live/arm/bypass flag; only send command is ${sendNamed.join(", ") || "(none)"}`
-      : `UNSAFE: live-commands=[${liveCommands.join(", ")}] bad-flags=[${badFlags.join(", ")}] send=[${sendNamed.join(", ")}]`,
+      ? `mainnet send surface is exactly [${MAINNET_SEND_COMMAND_ALLOWLIST.join(", ")}] (each gated by the explicit acknowledgment flag); no live/arm/bypass flag; other send command: execution:devnet:send`
+      : `UNSAFE: stray-live=[${strayLive.join(", ")}] unexpected-mainnet=[${unexpectedMainnet.join(", ")}] missing-ack=[${missingAck.join(", ")}] bad-flags=[${badFlags.join(", ")}] send=[${sendNamed.join(", ")}]`,
   };
 }
+
+/** S111: the ONLY commands allowed to broadcast on mainnet. Adding to this list is a design decision, never a convenience. */
+export const MAINNET_SEND_COMMAND_ALLOWLIST: readonly string[] = ["execution:mainnet:send", "execution:mainnet:sell"];
 
 export interface Phase7AuditProbes {
   gateDefaultBlocked: boolean;

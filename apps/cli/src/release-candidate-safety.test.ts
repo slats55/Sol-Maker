@@ -48,10 +48,11 @@ function completeEvidence(): BuildMainnetDryRunReleaseCandidateInput {
 }
 
 describe("S102 RC safety — no mainnet send command, no live-arming bypass flag", () => {
-  it("the CLI registers no mainnet-send command and no live-arming flag", () => {
+  it("the CLI registers only the S111 mainnet allowlist as mainnet senders and no live-arming flag", () => {
     const source = readFileSync(join(HERE, "index.ts"), "utf8");
     const commands = [...source.matchAll(/\.command\("([^"]+)"\)/g)].map((m) => m[1] as string);
     for (const command of commands) {
+      if (command === "execution:mainnet:send" || command === "execution:mainnet:sell") continue;
       expect(command, command).not.toMatch(/mainnet.*send|send.*mainnet|live.*send|send.*live|mainnet.*live/i);
     }
     const options = [...source.matchAll(/\.option\("(--[a-z0-9-]+)/gi)].map((m) => m[1] as string);

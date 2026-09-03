@@ -18,6 +18,15 @@
 
 export const REDACTED = "[REDACTED]";
 
+/** S111: keys under which a well-formed base58 transaction signature is preserved by redactValue. */
+export const SIGNATURE_KEYS: ReadonlySet<string> = new Set(["signature", "entrySignature", "exitSignature", "txSignature", "buySignature", "sellSignature", "pendingSignature"]);
+/** Exact shape of a 64-byte base58 transaction signature (87–88 chars; bounds allow slack). */
+export const TX_SIGNATURE_SHAPE = /^[1-9A-HJ-NP-Za-km-z]{86,90}$/;
+
+export function isSignatureKey(key: string): boolean {
+  return SIGNATURE_KEYS.has(key);
+}
+
 /**
  * Key-name patterns matched against a normalized key (lowercased, with all
  * non-alphanumeric characters stripped — so "API-Key", "api_key" and "apiKey"
@@ -154,6 +163,15 @@ function redactInner(
 ): unknown {
   if (keyHint !== undefined && isSensitiveKey(keyHint)) {
     return REDACTED;
+  }
+
+  // S111: a transaction SIGNATURE is public chain data, but a 64-byte base58 signature is
+  // shape-identical to a 64-byte base58 secret key. The only sound discriminator is the key it
+  // lives under: the signer boundary never emits a secret under a signature-named key, so a
+  // well-formed value under exactly one of these keys is preserved verbatim. Free-text
+  // redaction (redactString) is unchanged and still scrubs any long base58 blob.
+  if (keyHint !== undefined && typeof value === "string" && isSignatureKey(keyHint) && TX_SIGNATURE_SHAPE.test(value)) {
+    return value;
   }
 
   if (typeof value === "string") return redactString(value);
