@@ -1,5 +1,6 @@
 #!/usr/bin/env -S npx tsx
 import { Command } from "commander";
+import { executionMainnetSendReport, executionMainnetSellReport, MAINNET_HARD_CEILINGS } from "./live-mainnet-commands.js";
 import { PHASE6_READINESS_EVIDENCE_AREAS } from "@soulmaker/simulation";
 import {
   livePolicyInspectReport,
@@ -2873,6 +2874,77 @@ program
     console.log(text);
     if (exitCode !== 0) process.exitCode = exitCode;
   });
+
+const mainnetCommonOptions = (cmd: Command): Command =>
+  cmd
+    .option("--envelope <path>", "unsigned mainnet-beta envelope JSON from execution:build (required)")
+    .option("--simulation <path>", "paper:simulation:tx report for the EXACT envelope; must be simulated-ok and < 2 minutes old (required)")
+    .option("--risk-score <n>", "advisory risk score from token:risk (required)")
+    .option("--signer-env <ENV_VAR_NAME>", "NAME of the env var holding the HOT-WALLET keypair file PATH (required; never a path or key)")
+    .option("--rpc-url <url>", "mainnet RPC endpoint (required; no default can trade)")
+    .option("--ledger <path>", "position ledger JSON (required; created if absent; positions persist here)")
+    .option("--audit-log <path>", "append-only JSONL audit log (required; every attempt is journaled)")
+    .option("--i-understand-this-can-lose-real-money", "the explicit mainnet acknowledgment flag (required with SOLMAKER_ENABLE_LIVE_TRADING)")
+    .option("--max-spend-sol <sol>", `per-trade spend cap (required; ≤ config caps.maxTradeSizeSol and ≤ ${MAINNET_HARD_CEILINGS.maxSpendSol})`)
+    .option("--slippage-cap-bps <bps>", `slippage cap (required; ≤ ${MAINNET_HARD_CEILINGS.maxSlippageBps})`)
+    .option("--risk-score-cap <n>", "advisory risk score cap (required)")
+    .option("--max-quote-age-ms <ms>", `quote freshness cap (default 8000; ≤ ${MAINNET_HARD_CEILINGS.maxQuoteAgeMs})`)
+    .option("--session-loss-cap-sol <sol>", "24h realized-loss cap (default config caps.maxDailyLossSol; may only tighten)")
+    .option("--min-sol-reserve-sol <sol>", "SOL the wallet must retain after the trade (default 0.01)")
+    .option("--max-trades-per-day <n>", `24h trade cap derived from the ledger (default 10; ≤ ${MAINNET_HARD_CEILINGS.maxTradesPerDay})`)
+    .option("--confirm-timeout-ms <ms>", "confirmation deadline (default 45000; timeout = honestly unknown, never failed)")
+    .option("--out <path>", "write the full execution report JSON")
+    .option("--force", "overwrite an existing --out file")
+    .option("--json", "emit the execution report as stable JSON");
+
+const toMainnetOpts = (o: Record<string, unknown>) => ({
+  envelopePath: o.envelope as string | undefined,
+  simulationPath: o.simulation as string | undefined,
+  riskScore: o.riskScore as string | undefined,
+  signerEnvVar: o.signerEnv as string | undefined,
+  rpcUrl: o.rpcUrl as string | undefined,
+  ledgerPath: o.ledger as string | undefined,
+  auditLog: o.auditLog as string | undefined,
+  iUnderstandThisCanLoseRealMoney: Boolean(o.iUnderstandThisCanLoseRealMoney),
+  maxSpendSol: o.maxSpendSol as string | undefined,
+  slippageCapBps: o.slippageCapBps as string | undefined,
+  riskScoreCap: o.riskScoreCap as string | undefined,
+  maxQuoteAgeMs: o.maxQuoteAgeMs as string | undefined,
+  sessionLossCapSol: o.sessionLossCapSol as string | undefined,
+  minSolReserveSol: o.minSolReserveSol as string | undefined,
+  maxTradesPerDay: o.maxTradesPerDay as string | undefined,
+  confirmTimeoutMs: o.confirmTimeoutMs as string | undefined,
+  out: o.out as string | undefined,
+  force: Boolean(o.force),
+  json: Boolean(o.json),
+});
+
+mainnetCommonOptions(
+  program
+    .command("execution:mainnet:send")
+    .description(
+      "S111: the FIRST mainnet send surface — a bounded BUY signed by the local HOT-WALLET keypair. Refuses unless ALL fourteen live-gate conditions hold (SOLMAKER_ENABLE_LIVE_TRADING sentence, config phase7LiveTradingReady, this flag, explicit caps, kill switch clear, fresh quote, simulated-ok for the EXACT envelope, risk under cap, signer boundary = fee payer, audit log). Submits ONCE, then CONFIRMS: a position is written to the ledger ONLY when the transaction lands. failed-onchain and unconfirmed never create a position. Exit 0 confirmed / 2 unconfirmed / 1 refused-or-failed",
+    )
+    .option("--symbol <sym>", "display symbol recorded on the position"),
+).action(async (o: Record<string, unknown>) => {
+  const { text, exitCode } = await executionMainnetSendReport({}, { ...toMainnetOpts(o), symbol: o.symbol as string | undefined });
+  console.log(text);
+  if (exitCode !== 0) process.exitCode = exitCode;
+});
+
+mainnetCommonOptions(
+  program
+    .command("execution:mainnet:sell")
+    .description(
+      "S111: SELL one OPEN backend-signed live position from the ledger. Same fourteen-condition gate as send; the envelope must be a token→SOL swap for the position's mint (execution:build --input-mint <mint> --candidate-mint So111…). Submits ONCE, CONFIRMS, then closes the position live-auto with realized PnL from the REAL SOL delta. An unconfirmed sell leaves the position OPEN and visible",
+    )
+    .option("--position-id <id>", "the ledger positionId to sell (required)")
+    .option("--reason <reason>", "exit reason: take-profit | stop-loss | trailing-stop | time-exit | emergency | kill-switch | operator-manual (default operator-manual)"),
+).action(async (o: Record<string, unknown>) => {
+  const { text, exitCode } = await executionMainnetSellReport({}, { ...toMainnetOpts(o), positionId: o.positionId as string | undefined, reason: o.reason as string | undefined });
+  console.log(text);
+  if (exitCode !== 0) process.exitCode = exitCode;
+});
 
 program
   .command("engine:quote:score")
