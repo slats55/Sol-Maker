@@ -427,3 +427,6 @@ export type {
   PositionReconciliationRecord,
   ReconcilePositionInput,
 } from "./sell-request.js";
+
+export { MAINNET_EXECUTION_OUTCOMES, MAINNET_EXECUTION_REPORT_SCHEMA_VERSION, MAX_SIMULATION_AGE_MS, executeMainnetBuy, executeMainnetSell } from "./mainnet-execute.js";
+export type { BalanceSnapshot, MainnetBuyInput, MainnetCaps, MainnetExecutionOutcome, MainnetExecutionReport, MainnetRpcSeams, MainnetSellInput } from "./mainnet-execute.js";

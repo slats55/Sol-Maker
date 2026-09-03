@@ -12,5 +12,8 @@
     "@soulmaker/execution": "workspace:*",
     "@soulmaker/security": "workspace:*",
     "@soulmaker/txpreview": "workspace:*"
+  },
+  "devDependencies": {
+    "@solana/web3.js": "^1.95.0"
   }
 }

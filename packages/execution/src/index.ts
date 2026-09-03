@@ -264,3 +264,8 @@ export type {
   BuildPhase7MicrotradePreflightInput,
   Phase7MicrotradePreflight,
 } from "./phase7-microtrade-preflight.js";
+
+export { CONFIRM_DEFAULT_POLL_MS, CONFIRM_DEFAULT_TIMEOUT_MS, CONFIRM_STATUSES, confirmSignature } from "./confirm.js";
+export type { ConfirmResult, ConfirmRpcLike, ConfirmSignatureInput, ConfirmStatus, SignatureStatusLike } from "./confirm.js";
+export { createBalanceRpc, sumRawAmounts, tokenDelta } from "./balances.js";
+export type { BalanceRpc, BalanceRpcLike, TokenDelta } from "./balances.js";

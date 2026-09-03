@@ -40,7 +40,11 @@ export const LIVE_EXIT_DECISION_SCHEMA_VERSION = "live.exit.decision.v1";
 export const LAMPORTS_PER_SOL = 1_000_000_000;
 
 /** Position kinds. `paper` may auto-close; `live_canary` closes only via an operator-confirmed fact. */
-export const POSITION_KINDS = ["paper", "live_canary"] as const;
+/**
+ * S111: `live` is a position opened AND closable by the backend signer (execution:mainnet:send /
+ * :sell). `live_canary` keeps its original Phantom-only meaning: never auto-closed.
+ */
+export const POSITION_KINDS = ["paper", "live_canary", "live"] as const;
 export type PositionKind = (typeof POSITION_KINDS)[number];
 
 export const POSITION_STATUSES = ["open", "closed"] as const;
@@ -51,7 +55,7 @@ export const EXIT_REASONS = ["emergency", "kill-switch", "stop-loss", "trailing-
 export type ExitReason = (typeof EXIT_REASONS)[number];
 
 /** How a close was applied. `paper-auto` is refused for live positions. */
-export const CLOSE_KINDS = ["paper-auto", "operator-confirmed"] as const;
+export const CLOSE_KINDS = ["paper-auto", "operator-confirmed", "live-auto"] as const;
 export type CloseKind = (typeof CLOSE_KINDS)[number];
 
 /** Exit-policy hard bounds. A stop that can never fire and an unbounded hold are both refused. */
@@ -106,6 +110,8 @@ export interface PositionClose {
   /** Realized PnL in lamports (value - entry spend), when computable. */
   pnlLamports: number | null;
   detail: string;
+  /** S111: the confirmed sell transaction signature for a `live-auto` close; null otherwise. */
+  signature: string | null;
 }
 
 export interface LivePosition {
@@ -126,10 +132,15 @@ export interface LivePosition {
   /** Last observed value + when (null until first mark). */
   lastMark: { valueLamports: number; atMs: number; source: string } | null;
   close: PositionClose | null;
+  /** S111: the CONFIRMED buy transaction signature for a `live` position; null for paper/canary. */
+  entrySignature: string | null;
   /** Pinned honesty literals. */
   paperPositionNeverHeldFunds: boolean;
   notProfitabilityClaim: true;
 }
+
+/** Base58 transaction signature (64 bytes → 87–88 chars). Never key material. */
+export const TX_SIGNATURE_RE = /^[1-9A-HJ-NP-Za-km-z]{86,90}$/;
 
 export interface ExitDecision {
   schemaVersion: typeof LIVE_EXIT_DECISION_SCHEMA_VERSION;
@@ -239,6 +250,8 @@ export interface OpenPositionInput {
   entrySpendLamports: number;
   /** Token amount received (raw integer string), when known from the quote/confirmation. */
   tokenAmountRaw?: string | null;
+  /** S111: REQUIRED for kind `live` — the confirmed buy signature. Refused for other kinds. */
+  entrySignature?: string | null;
 }
 
 /** Open a position (or throw). The spend ceiling applies to PAPER too — parity, not fantasy. */
@@ -261,6 +274,16 @@ export function openPosition(input: OpenPositionInput): LivePosition {
   }
   let tokenAmountRaw: string | null = null;
   if (typeof input.tokenAmountRaw === "string" && /^[0-9]{1,38}$/.test(input.tokenAmountRaw)) tokenAmountRaw = input.tokenAmountRaw;
+  // S111: a LIVE position exists only because a buy CONFIRMED on-chain — the signature is its proof.
+  let entrySignature: string | null = null;
+  if (input.kind === "live") {
+    if (typeof input.entrySignature !== "string" || !TX_SIGNATURE_RE.test(input.entrySignature)) {
+      throw new LivePositionError("a live position REQUIRES a confirmed buy transaction signature — an unconfirmed buy is never a position");
+    }
+    entrySignature = input.entrySignature;
+  } else if (input.entrySignature !== undefined && input.entrySignature !== null) {
+    throw new LivePositionError(`entrySignature is only valid for kind "live" (got "${input.kind}")`);
+  }
   return {
     schemaVersion: LIVE_POSITION_SCHEMA_VERSION,
     positionId: `${input.kind}:${input.mint}:${input.openedAt}`,
@@ -274,6 +297,7 @@ export function openPosition(input: OpenPositionInput): LivePosition {
     peakValueLamports: entrySpendLamports,
     lastMark: null,
     close: null,
+    entrySignature,
     paperPositionNeverHeldFunds: input.kind === "paper",
     notProfitabilityClaim: true,
   };
@@ -366,6 +390,8 @@ export interface ClosePositionInput {
   /** Realized value in lamports when known (paper: the mark used; live: operator-captured). */
   valueLamports?: number | null;
   detail?: string;
+  /** S111: REQUIRED for closeKind `live-auto` — the confirmed sell signature. */
+  signature?: string | null;
 }
 
 /**
@@ -384,6 +410,21 @@ export function closePosition(input: ClosePositionInput): LivePosition {
   if (position.kind === "live_canary" && input.closeKind === "paper-auto") {
     throw new LivePositionError("a live_canary position can NEVER be auto-closed — the human sells in Phantom, then records the close as operator-confirmed");
   }
+  if (position.kind === "live" && input.closeKind === "paper-auto") {
+    throw new LivePositionError("a live position is closed only by a CONFIRMED sell (live-auto) or an operator-confirmed fact — never paper-auto");
+  }
+  if (input.closeKind === "live-auto" && position.kind !== "live") {
+    throw new LivePositionError(`live-auto closes apply only to kind "live" positions (got "${position.kind}")`);
+  }
+  let signature: string | null = null;
+  if (input.closeKind === "live-auto") {
+    if (typeof input.signature !== "string" || !TX_SIGNATURE_RE.test(input.signature)) {
+      throw new LivePositionError("a live-auto close REQUIRES the confirmed sell transaction signature — an unconfirmed sell never closes a position");
+    }
+    signature = input.signature;
+  } else if (typeof input.signature === "string" && TX_SIGNATURE_RE.test(input.signature)) {
+    signature = input.signature; // operator-confirmed closes may record the human's Phantom signature
+  }
   parseIsoMs(input.closedAt, "closedAt");
   let valueLamports: number | null = null;
   if (input.valueLamports !== undefined && input.valueLamports !== null) {
@@ -400,6 +441,7 @@ export function closePosition(input: ClosePositionInput): LivePosition {
       valueLamports,
       pnlLamports,
       detail: (input.detail ?? "").slice(0, 200),
+      signature,
     },
   };
 }
@@ -474,6 +516,7 @@ const POSITION_KEYS: ReadonlySet<string> = new Set([
   "peakValueLamports",
   "lastMark",
   "close",
+  "entrySignature",
   "paperPositionNeverHeldFunds",
   "notProfitabilityClaim",
 ]);
@@ -509,6 +552,7 @@ function validatePosition(value: unknown, label: string): LivePosition {
     openedAt: value.openedAt as string,
     entrySpendLamports: value.entrySpendLamports as number,
     tokenAmountRaw: (value.tokenAmountRaw as string | null) ?? null,
+    entrySignature: (value.entrySignature as string | null) ?? null,
   });
   if (value.positionId !== base.positionId) {
     throw new LivePositionError(`${label}.positionId does not match its derivation — tampered ids are refused`);
@@ -532,6 +576,7 @@ function validatePosition(value: unknown, label: string): LivePosition {
       closeKind: c.closeKind as CloseKind,
       valueLamports: (c.valueLamports as number | null) ?? null,
       detail: (c.detail as string) ?? "",
+      signature: (c.signature as string | null) ?? null,
     });
   }
   return position;
