@@ -503,7 +503,7 @@ export async function liveSniperDaemonReport(ctx: LiveDaemonContext = {}, opts: 
   let lastDecision: RuntimeStatus["lastDecision"] = null;
   let lastExecution: RuntimeStatus["execution"] = { lastIntent: null, lastOutcome: null, lastSignature: null, lastConfirmSlot: null, lastError: null, lastAt: null, inFlight: [] };
   let walletSol: number | null = null;
-  let lastSlot: number | null = null;
+  const lastSlot: number | null = null;
   let rpcStatus: RuntimeStatus["providers"]["rpcStatus"] = mode === "live" ? "unknown" : "unknown";
   let quoteStatus: RuntimeStatus["providers"]["quoteProvider"] = "unknown";
   let endedByForStatus: string | null = null;
