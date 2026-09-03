@@ -128,6 +128,9 @@ export interface MainnetExecutionReport {
   confirm: ConfirmResult | null;
   /** The signature when anything was sent (public chain data); null when refused. */
   signature: string | null;
+  /** The fee payer / signer public key and the bounded spend, recorded so a crash after send is recoverable. */
+  feePayer: string | null;
+  spendLamports: string | null;
   balancesBefore: BalanceSnapshot | null;
   balancesAfter: BalanceSnapshot | null;
   tokenDelta: TokenDelta | null;
@@ -272,6 +275,8 @@ function baseReport(side: "buy" | "sell", input: MainnetExecuteCommonInput, atte
     attempt: null,
     confirm: null,
     signature: null,
+    feePayer: null,
+    spendLamports: null,
     balancesBefore: null,
     balancesAfter: null,
     tokenDelta: null,
@@ -303,7 +308,7 @@ async function sendAndConfirm(
   } catch (err) {
     return refusedReport(r, `could not read balances before sending (${(err as Error).message}) — refusing to trade blind`, pf.liveGate);
   }
-  r = { ...r, liveGate: pf.liveGate, balancesBefore: before };
+  r = { ...r, liveGate: pf.liveGate, balancesBefore: before, feePayer: owner, spendLamports: spendLamports };
 
   const attempt = await attemptExecution({
     mode: "mainnet-live-armed",

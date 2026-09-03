@@ -15,13 +15,28 @@ export interface BalanceRpcLike {
   getTokenBalanceRaw(ownerBase58: string, mintBase58: string): Promise<string>;
 }
 
-export interface BalanceRpc {
-  readonly endpointHost: string;
-  readonly rpc: BalanceRpcLike;
+export interface TokenHolding {
+  mint: string;
+  amountRaw: string;
+  /** "spl-token" | "token-2022" */
+  program: string;
 }
 
+/** S111 reconcile: list every non-zero token holding of an owner across BOTH token programs. */
+export interface HoldingsRpcLike {
+  listTokenHoldings(ownerBase58: string): Promise<TokenHolding[]>;
+}
+
+export interface BalanceRpc {
+  readonly endpointHost: string;
+  readonly rpc: BalanceRpcLike & HoldingsRpcLike;
+}
+
+const SPL_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEHdkAS6EPFLC1PHnBqCXEpPxuEb";
+
 interface ParsedTokenAccountLike {
-  account: { data: { parsed?: { info?: { tokenAmount?: { amount?: string } } } } };
+  account: { data: { parsed?: { info?: { mint?: string; tokenAmount?: { amount?: string } } } } };
 }
 
 /** Production factory over a `Connection`, exposing only the two read methods. */
@@ -42,8 +57,29 @@ export function createBalanceRpc(rpcUrl: string): BalanceRpc {
         const res = await connection.getParsedTokenAccountsByOwner(new PublicKey(owner), { mint: new PublicKey(mint) }, "confirmed");
         return sumRawAmounts(res.value as unknown as ParsedTokenAccountLike[]);
       },
+      listTokenHoldings: async (owner: string): Promise<TokenHolding[]> => {
+        const out: TokenHolding[] = [];
+        for (const [programId, label] of [[SPL_TOKEN_PROGRAM, "spl-token"], [TOKEN_2022_PROGRAM, "token-2022"]] as const) {
+          const res = await connection.getParsedTokenAccountsByOwner(new PublicKey(owner), { programId: new PublicKey(programId) }, "confirmed");
+          out.push(...groupHoldings(res.value as unknown as ParsedTokenAccountLike[], label));
+        }
+        return out;
+      },
     }),
   });
+}
+
+/** Group parsed accounts by mint, summing amounts; zero balances are dropped. */
+export function groupHoldings(accounts: readonly ParsedTokenAccountLike[], program: string): TokenHolding[] {
+  const byMint = new Map<string, bigint>();
+  for (const a of accounts) {
+    const info = a?.account?.data?.parsed?.info;
+    const mint = info?.mint;
+    const amt = info?.tokenAmount?.amount;
+    if (typeof mint !== "string" || typeof amt !== "string" || !/^[0-9]{1,38}$/.test(amt)) continue;
+    byMint.set(mint, (byMint.get(mint) ?? 0n) + BigInt(amt));
+  }
+  return [...byMint.entries()].filter(([, v]) => v > 0n).map(([mint, v]) => ({ mint, amountRaw: v.toString(), program }));
 }
 
 /** Sum parsed token-account amounts as BigInt; returns a decimal integer string. */

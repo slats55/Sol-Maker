@@ -430,3 +430,5 @@ export type {
 
 export { MAINNET_EXECUTION_OUTCOMES, MAINNET_EXECUTION_REPORT_SCHEMA_VERSION, MAX_SIMULATION_AGE_MS, executeMainnetBuy, executeMainnetSell } from "./mainnet-execute.js";
 export type { BalanceSnapshot, MainnetBuyInput, MainnetCaps, MainnetExecutionOutcome, MainnetExecutionReport, MainnetRpcSeams, MainnetSellInput } from "./mainnet-execute.js";
+export { RECONCILE_REPORT_SCHEMA_VERSION, RECONCILE_RESOLUTION_SCHEMA_VERSION, RECONCILE_VERDICTS, parseAuditEntries, reconcileStartup } from "./reconcile-startup.js";
+export type { AuditExecutionEntry, ReconcileItem, ReconcileReport, ReconcileResolution, ReconcileStartupInput, ReconcileVerdict } from "./reconcile-startup.js";
