@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -163,12 +163,17 @@ function daemonCtx(dir: string, overrides: Record<string, unknown> = {}) {
 }
 
 describe("live:sniper:daemon — orchestration", () => {
-  it("refuses any non-paper mode and a missing out-dir", async () => {
+  it("S111: --mode live without arming FAILS CLOSED; an unknown mode is refused; a missing out-dir is refused", async () => {
     const { dir, cleanup } = workspace();
     try {
       const live = await liveSniperDaemonReport(daemonCtx(dir), { mode: "live", outDir: "runs/x" });
       expect(live.exitCode).toBe(1);
-      expect(live.text).toMatch(/no live mode/);
+      expect(live.text).toMatch(/fail closed/);
+      expect(live.text).toMatch(/SOLMAKER_ENABLE_LIVE_TRADING/);
+      expect(live.text).toMatch(/--max-spend-sol is required/);
+      const bogus = await liveSniperDaemonReport(daemonCtx(dir), { mode: "bogus", outDir: "runs/x" });
+      expect(bogus.exitCode).toBe(1);
+      expect(bogus.text).toMatch(/must be "paper" or "live"/);
       const noDir = await liveSniperDaemonReport(daemonCtx(dir), {});
       expect(noDir.exitCode).toBe(1);
     } finally {
@@ -645,6 +650,192 @@ describe("live:sniper:rank --require-ai — proof mode fails loud", () => {
       );
       expect(r.exitCode).toBe(1);
       expect(r.text).toMatch(/simulated outage/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S111 live:sniper:daemon --mode live — the autonomous loop over the REAL execution core (injected seams)
+// ---------------------------------------------------------------------------
+
+import { Keypair, PublicKey, SystemProgram, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import { LIVE_TRADING_ENV_FLAG, LIVE_TRADING_ENV_VALUE } from "@soulmaker/execution";
+import type { MainnetRpcSeams } from "@soulmaker/live";
+import type { SwapTransactionBuilder } from "@soulmaker/txbuilder";
+import type { TxPreviewRpc } from "@soulmaker/txpreview";
+
+const L_SIGNER = Keypair.generate();
+const L_WALLET = L_SIGNER.publicKey.toBase58();
+const L_BLOCKHASH = new PublicKey(Buffer.alloc(32, 3)).toBase58();
+const L_SIG_BUY = "7".repeat(88);
+const L_SIG_SELL = "8".repeat(88);
+const L_ENV = { [LIVE_TRADING_ENV_FLAG]: LIVE_TRADING_ENV_VALUE, HOT_WALLET_FILE: "/fake/hot.keypair" };
+const L_OPTS = { mode: "live", iUnderstandThisCanLoseRealMoney: true, wallet: L_WALLET, signerEnvVar: "HOT_WALLET_FILE", rpcUrl: "https://rpc.test", maxSpendSol: "0.005", maxOpenSolExposureSol: "0.01", maxOpenPositions: "2", maxTradesPerHour: "3", sessionLossCapSol: "0.02", slippageBps: "100", maxPriceImpactPct: "1", minSolReserveSol: "0.01", riskScoreCap: "50" };
+
+function liveWorkspace(): { dir: string; cleanup: () => void } {
+  const dir = mkdtempSync(join(tmpdir(), "live-daemon-live-"));
+  writeFileSync(join(dir, "soulmaker.config.json"), JSON.stringify({ mode: "PAPER", killSwitch: false, caps: { maxTradeSizeSol: 0.01, maxDailyLossSol: 0.05, maxOpenPositions: 2 }, phase7LiveTradingReady: true }));
+  return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+function liveEnvelope(candidateMint: string): Record<string, unknown> {
+  const message = new TransactionMessage({ payerKey: L_SIGNER.publicKey, recentBlockhash: L_BLOCKHASH, instructions: [SystemProgram.transfer({ fromPubkey: L_SIGNER.publicKey, toPubkey: L_SIGNER.publicKey, lamports: 1 })] }).compileToV0Message();
+  return { schemaVersion: "txpreview.envelope.v1", network: "mainnet-beta", feePayerPublicKey: L_WALLET, txBase64: Buffer.from(new VersionedTransaction(message).serialize()).toString("base64"), builderId: "jupiter-swap-api", candidateMint, routeCaveats: [], constraints: { maxSpendLamports: "5000000", slippageBps: 100 }, quotedAt: new Date().toISOString(), unsigned: true, neverSigned: true, phase7LiveTradingReady: false };
+}
+
+interface LiveWorld { sent: Uint8Array[]; sigs: string[]; status: unknown; sol: number; token: string; holdings: Array<{ mint: string; amountRaw: string; program: string }>; simOk: boolean }
+
+function liveSeams(w: LiveWorld, clock: () => string) {
+  const swapBuilder: SwapTransactionBuilder = {
+    builderId: "jupiter-swap-api", endpointHost: "jup.test",
+    build: async (req) => ({ built: true, envelope: { ...liveEnvelope(req.candidateMint as string), quotedAt: clock() } as never, quoteFacts: { inAmountRaw: req.amountRaw as string, outAmountRaw: "777", priceImpactPct: "0.1", contextSlot: 1, quotedAt: clock() }, txFacts: {} as never }),
+  };
+  const txPreview: TxPreviewRpc = { endpointHost: "rpc.test", rpc: { simulateTransaction: async () => ({ context: { slot: 5 }, value: w.simOk ? { err: null, logs: [], unitsConsumed: 1000 } : { err: { InstructionError: [0, "Custom"] }, logs: [], unitsConsumed: 0 } }) as never } };
+  const rpc: MainnetRpcSeams & { balance: MainnetRpcSeams["balance"] & { listTokenHoldings: () => Promise<LiveWorld["holdings"]> } } = {
+    endpointHost: "rpc.test",
+    send: { getLatestBlockhash: async () => ({ blockhash: L_BLOCKHASH }), sendRawTransaction: async (b) => { w.sent.push(b); const s = w.sigs[w.sent.length - 1] ?? L_SIG_BUY; return s; } },
+    confirm: { getSignatureStatuses: async () => ({ value: [w.status as never] }) },
+    balance: { getBalanceLamports: async () => w.sol, getTokenBalanceRaw: async () => w.token, listTokenHoldings: async () => w.holdings },
+  };
+  return { swapBuilder, txPreview, createMainnetRpc: () => rpc, readFile: () => JSON.stringify(Array.from(L_SIGNER.secretKey)) };
+}
+
+const L_CONFIRMED = { slot: 12, err: null, confirmationStatus: "confirmed" };
+
+describe("live:sniper:daemon --mode live (S111) — autonomous loop over the real execution core", () => {
+  it("full lifecycle: reconcile → candidate → confirmed BUY → live position with signature → mark → take-profit → confirmed SELL → closed with realized PnL; status.json written", async () => {
+    const { dir, cleanup } = liveWorkspace();
+    try {
+      const w: LiveWorld = { sent: [], sigs: [L_SIG_BUY, L_SIG_SELL], status: L_CONFIRMED, sol: 1e9, token: "0", holdings: [], simOk: true };
+      const clock = fakeClock();
+      let sellCall = 0;
+      const ctx = {
+        cwd: dir, env: L_ENV, now: clock, sleep: async () => {}, registerInterrupt: () => () => {},
+        candidateSources: [fakeSource("fake-feed", () => observedResult("fake-feed", [observation(MINT_A)]))],
+        quoteProvider: fakeQuotes({ clock, sellOutRaw: () => (sellCall++ === 0 ? "5100000" : "8000000") }), // +60% → take-profit
+        riskFetcher: async () => CLEAN_RISK_REPORT,
+        ...liveSeams(w, clock),
+      };
+      // Balance/token reads: the buy sees token 0→777; after the sell, SOL is up and token is 0.
+      const rpcSeams = ctx.createMainnetRpc();
+      let reads = 0;
+      rpcSeams.balance.getTokenBalanceRaw = async () => (w.sent.length === 0 ? "0" : w.sent.length === 1 ? "777" : "0");
+      rpcSeams.balance.getBalanceLamports = async () => { reads++; return w.sent.length < 2 ? 1e9 - (w.sent.length === 1 ? 5_005_000 : 0) : 1e9 + 2_900_000; };
+
+      const r = await liveSniperDaemonReport(ctx, { ...L_OPTS, outDir: "runs/live", maxLoops: "3", json: true });
+      expect(r.exitCode, r.text).toBe(0);
+      const ledger = JSON.parse(readFileSync(join(dir, "runs/live/ledger.json"), "utf8"));
+      expect(ledger.positions).toHaveLength(1);
+      const p = ledger.positions[0];
+      expect(p.kind).toBe("live");
+      expect(p.entrySignature).toBe(L_SIG_BUY);
+      expect(p.status).toBe("closed");
+      expect(p.close.closeKind).toBe("live-auto");
+      expect(p.close.reason).toBe("take-profit");
+      expect(p.close.signature).toBe(L_SIG_SELL);
+      expect(p.close.pnlLamports).toBeGreaterThan(0);
+      expect(w.sent).toHaveLength(2);
+      // Intents were persisted and are all done; audit journal carries both executions; status is live+armed.
+      const intents = JSON.parse(readFileSync(join(dir, "runs/live/intents.json"), "utf8"));
+      expect(intents.every((i: { state: string }) => i.state === "done")).toBe(true);
+      const audit = readFileSync(join(dir, "runs/live/audit.jsonl"), "utf8");
+      expect(audit).toContain(L_SIG_BUY);
+      expect(audit).toContain(L_SIG_SELL);
+      expect(audit).not.toContain(JSON.stringify(Array.from(L_SIGNER.secretKey)));
+      const status = JSON.parse(readFileSync(join(dir, "runs/live/status.json"), "utf8"));
+      expect(status.daemon.mode).toBe("live");
+      expect(status.daemon.armed).toBe(true);
+      expect(status.daemon.running).toBe(false);
+      expect(status.wallet.publicKey).toBe(L_WALLET);
+      expect(status.execution.lastSignature).toBe(L_SIG_SELL);
+      expect(status.positions.recentClosed[0].realizedPnlLamports).toBeGreaterThan(0);
+      expect(status.reconciliation.tradingAllowed).toBe(true);
+      expect(existsSync(join(dir, "runs/live/reconcile.json"))).toBe(true);
+      expect(reads).toBeGreaterThan(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("a failed simulation → refused entry, nothing sent, no position; the rejection reason is visible in status", async () => {
+    const { dir, cleanup } = liveWorkspace();
+    try {
+      const w: LiveWorld = { sent: [], sigs: [], status: L_CONFIRMED, sol: 1e9, token: "0", holdings: [], simOk: false };
+      const clock = fakeClock();
+      const ctx = { cwd: dir, env: L_ENV, now: clock, sleep: async () => {}, registerInterrupt: () => () => {}, candidateSources: [fakeSource("fake-feed", () => observedResult("fake-feed", [observation(MINT_A)]))], quoteProvider: fakeQuotes({ clock }), riskFetcher: async () => CLEAN_RISK_REPORT, ...liveSeams(w, clock) };
+      const r = await liveSniperDaemonReport(ctx, { ...L_OPTS, outDir: "runs/simfail", maxLoops: "1", json: true });
+      expect(r.exitCode, r.text).toBe(0);
+      expect(w.sent).toHaveLength(0);
+      const ledger = JSON.parse(readFileSync(join(dir, "runs/simfail/ledger.json"), "utf8"));
+      expect(ledger.positions).toHaveLength(0);
+      const status = JSON.parse(readFileSync(join(dir, "runs/simfail/status.json"), "utf8"));
+      expect(status.lastDecision.verdict).toBe("rejected");
+      expect(status.lastDecision.reasons.join(" ")).toMatch(/simulation/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("SAFE STOP (.soulmaker-no-entry) blocks entries but a fired exit still SELLS; HARD STOP (emergency stop) sends nothing", async () => {
+    const { dir, cleanup } = liveWorkspace();
+    try {
+      // Session 1: buy under normal state (1 loop).
+      const w: LiveWorld = { sent: [], sigs: [L_SIG_BUY, L_SIG_SELL], status: L_CONFIRMED, sol: 1e9, token: "0", holdings: [], simOk: true };
+      const clock = fakeClock();
+      const seams = liveSeams(w, clock);
+      const rpcSeams = seams.createMainnetRpc();
+      rpcSeams.balance.getTokenBalanceRaw = async () => (w.sent.length === 0 ? "0" : w.sent.length === 1 ? "777" : "0");
+      const base = { cwd: dir, env: L_ENV, now: clock, sleep: async () => {}, registerInterrupt: () => () => {}, candidateSources: [fakeSource("fake-feed", () => observedResult("fake-feed", [observation(MINT_A)]))], riskFetcher: async () => CLEAN_RISK_REPORT, ...seams };
+      await liveSniperDaemonReport({ ...base, quoteProvider: fakeQuotes({ clock, sellOutRaw: () => "5100000" }) }, { ...L_OPTS, outDir: "runs/stops", maxLoops: "1", json: true });
+      expect(w.sent).toHaveLength(1);
+      expect(JSON.parse(readFileSync(join(dir, "runs/stops/ledger.json"), "utf8")).positions[0].status).toBe("open");
+
+      // Session 2 (restart, SAFE STOP): reconcile finds the open position held on chain; entries blocked; +60% mark fires take-profit → SELL sends.
+      writeFileSync(join(dir, ".soulmaker-no-entry"), "");
+      w.holdings = [{ mint: MINT_A, amountRaw: "777", program: "spl-token" }];
+      const two = await liveSniperDaemonReport({ ...base, candidateSources: [fakeSource("fake-feed", () => observedResult("fake-feed", [observation(MINT_B)]))], quoteProvider: fakeQuotes({ clock, sellOutRaw: () => "8000000" }) }, { ...L_OPTS, outDir: "runs/stops", maxLoops: "1", json: true, force: true });
+      expect(two.exitCode, two.text).toBe(0);
+      expect(w.sent).toHaveLength(2);
+      const ledger2 = JSON.parse(readFileSync(join(dir, "runs/stops/ledger.json"), "utf8"));
+      expect(ledger2.positions).toHaveLength(1); // no MINT_B entry under SAFE STOP
+      expect(ledger2.positions[0].status).toBe("closed");
+      const status2 = JSON.parse(readFileSync(join(dir, "runs/stops/status.json"), "utf8"));
+      expect(status2.stops.safeStop).toBe(true);
+      expect(status2.stops.hardStop).toBe(false);
+      rmSync(join(dir, ".soulmaker-no-entry"));
+
+      // Session 3 (HARD STOP): a fresh candidate and a fresh open position → NOTHING sends.
+      w.holdings = [];
+      writeFileSync(join(dir, ".soulmaker-emergency-stop"), "");
+      const three = await liveSniperDaemonReport({ ...base, quoteProvider: fakeQuotes({ clock, sellOutRaw: () => "8000000" }) }, { ...L_OPTS, outDir: "runs/hard", maxLoops: "1", json: true });
+      expect(three.exitCode, three.text).toBe(0);
+      expect(w.sent).toHaveLength(2);
+      const status3 = JSON.parse(readFileSync(join(dir, "runs/hard/status.json"), "utf8"));
+      expect(status3.stops.hardStop).toBe(true);
+      expect(JSON.parse(readFileSync(join(dir, "runs/hard/ledger.json"), "utf8")).positions).toHaveLength(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("startup FAILS CLOSED when reconciliation blocks (ledger open, chain holds 0, no journaled sell)", async () => {
+    const { dir, cleanup } = liveWorkspace();
+    try {
+      const w: LiveWorld = { sent: [], sigs: [], status: L_CONFIRMED, sol: 1e9, token: "0", holdings: [], simOk: true };
+      const clock = fakeClock();
+      mkdirSync(join(dir, "runs/blocked"), { recursive: true });
+      const open = openPosition({ kind: "live", mint: MINT_A, openedAt: new Date(T0_MS - 60_000).toISOString(), entrySpendLamports: 5_000_000, tokenAmountRaw: "777", entrySignature: L_SIG_BUY });
+      writeFileSync(join(dir, "runs/blocked/ledger.json"), JSON.stringify(buildLedger([open])));
+      const ctx = { cwd: dir, env: L_ENV, now: clock, sleep: async () => {}, registerInterrupt: () => () => {}, candidateSources: [fakeSource("fake-feed", () => observedResult("fake-feed", [observation(MINT_B)]))], quoteProvider: fakeQuotes({ clock }), riskFetcher: async () => CLEAN_RISK_REPORT, ...liveSeams(w, clock) };
+      const r = await liveSniperDaemonReport(ctx, { ...L_OPTS, outDir: "runs/blocked", maxLoops: "1", json: true, force: true });
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toMatch(/reconciliation BLOCKED/);
+      expect(r.text).toMatch(/0 on chain/);
+      expect(w.sent).toHaveLength(0);
+      // The ledger was NOT mutated — the position is still there for the operator.
+      expect(JSON.parse(readFileSync(join(dir, "runs/blocked/ledger.json"), "utf8")).positions[0].status).toBe("open");
     } finally {
       cleanup();
     }

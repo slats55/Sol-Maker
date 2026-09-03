@@ -19,7 +19,7 @@
 export const REDACTED = "[REDACTED]";
 
 /** S111: keys under which a well-formed base58 transaction signature is preserved by redactValue. */
-export const SIGNATURE_KEYS: ReadonlySet<string> = new Set(["signature", "entrySignature", "exitSignature", "txSignature", "buySignature", "sellSignature", "pendingSignature"]);
+export const SIGNATURE_KEYS: ReadonlySet<string> = new Set(["signature", "entrySignature", "exitSignature", "txSignature", "buySignature", "sellSignature", "pendingSignature", "lastSignature", "closeSignature"]);
 /** Exact shape of a 64-byte base58 transaction signature (87–88 chars; bounds allow slack). */
 export const TX_SIGNATURE_SHAPE = /^[1-9A-HJ-NP-Za-km-z]{86,90}$/;
 

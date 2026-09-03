@@ -31,6 +31,18 @@ import { isAbsolute, join, normalize } from "node:path";
 import { loadConfig, ConfigError } from "@soulmaker/core";
 import type { Config, LoadConfigOptions } from "@soulmaker/core";
 import { redactString, redactValue } from "@soulmaker/security";
+import { reconcileStartup } from "@soulmaker/live";
+import type { MainnetRpcSeams, ReconcileReport } from "@soulmaker/live";
+import type { TokenHolding } from "@soulmaker/execution";
+import { createJupiterSwapBuilder } from "@soulmaker/txbuilder";
+import type { SwapTransactionBuilder } from "@soulmaker/txbuilder";
+import { createTxPreviewRpc } from "@soulmaker/txpreview";
+import type { TxPreviewRpc } from "@soulmaker/txpreview";
+import { LiveExecutor, resolveLiveArming, stopState } from "./live-executor.js";
+import type { LiveArming, LiveArmingOptions, StopState } from "./live-executor.js";
+import { createMainnetRpcSeams } from "./live-mainnet-commands.js";
+import { ledgerSessionView, positionView, reconciliationView, writeStatusAtomic, RUNTIME_STATUS_SCHEMA_VERSION } from "./live-status.js";
+import type { RuntimeStatus } from "./live-status.js";
 import {
   buildDaemonSummary,
   buildEscalationPolicy,
@@ -124,6 +136,12 @@ export interface LiveDaemonContext {
   riskFetcher?: (mint: string) => Promise<unknown | null>;
   /** Injectable interrupt registration (tests: manual trigger). Returns an unregister fn. */
   registerInterrupt?: (handler: () => void) => () => void;
+  /** S111 live mode seams (tests: fakes). Defaults: real Jupiter swap builder, real RPC simulation, real mainnet RPC. */
+  swapBuilder?: SwapTransactionBuilder;
+  txPreview?: TxPreviewRpc;
+  createMainnetRpc?: (rpcUrl: string) => MainnetRpcSeams;
+  /** Injectable keypair-file reader (tests). Never logs. */
+  readFile?: (path: string) => string;
 }
 
 export interface LiveDaemonReport {
@@ -226,7 +244,7 @@ function resolveProfile(ctx: LiveDaemonContext, profileOpt: string | undefined, 
 // live:sniper:daemon
 // ---------------------------------------------------------------------------
 
-export interface LiveSniperDaemonOptions {
+export interface LiveSniperDaemonOptions extends LiveArmingOptions {
   mode?: string;
   durationMinutes?: string;
   pollSeconds?: string;
@@ -256,6 +274,10 @@ interface DaemonFiles {
   providerHealthPath: string;
   summaryPath: string;
   humanReportPath: string;
+  statusPath: string;
+  reconcilePath: string;
+  intentsPath: string;
+  auditLogPath: string;
 }
 
 function daemonFiles(outDir: string): DaemonFiles {
@@ -269,6 +291,10 @@ function daemonFiles(outDir: string): DaemonFiles {
     providerHealthPath: join(outDir, "provider-health.json"),
     summaryPath: join(outDir, "summary.json"),
     humanReportPath: join(outDir, "human-report.md"),
+    statusPath: join(outDir, "status.json"),
+    reconcilePath: join(outDir, "reconcile.json"),
+    intentsPath: join(outDir, "intents.json"),
+    auditLogPath: join(outDir, "audit.jsonl"),
   };
 }
 
@@ -306,8 +332,9 @@ function chunkedSleep(sleep: (ms: number) => Promise<void>, totalMs: number, int
  */
 export async function liveSniperDaemonReport(ctx: LiveDaemonContext = {}, opts: LiveSniperDaemonOptions = {}): Promise<LiveDaemonReport> {
   // --- Validate configuration up front (refusals, not surprises mid-run) ---
-  if ((opts.mode ?? "paper") !== "paper") {
-    return { text: 'Refusing: --mode must be "paper" — the daemon has no live mode, by design.', exitCode: 1 };
+  const mode: "paper" | "live" = (opts.mode ?? "paper") === "live" ? "live" : (opts.mode ?? "paper") === "paper" ? "paper" : "invalid" as never;
+  if ((mode as string) === "invalid") {
+    return { text: 'Refusing: --mode must be "paper" or "live".', exitCode: 1 };
   }
   if (!opts.outDir) {
     return { text: "Refusing: --out-dir is required (e.g. runs/s109-paper-daemon).", exitCode: 1 };
@@ -392,17 +419,132 @@ export async function liveSniperDaemonReport(ctx: LiveDaemonContext = {}, opts: 
   });
 
   const startedAt = isoNow(ctx);
-  let state: DaemonState = createDaemonState({ startedAt, profileName: profile.name });
+  let state: DaemonState = createDaemonState({ startedAt, profileName: profile.name, mode });
   let ledger: PositionLedger = buildLedger();
   const deadlineMs = Date.parse(startedAt) + durationMinutes * 60_000;
   const exitPolicy = profileExitPolicy(profile);
 
+  // ---------------- S111 LIVE STARTUP (fail closed) ----------------
+  // config → arming (signer env NAME, wallet PUBLIC key, every cap) → persisted ledger → chain
+  // truth → reconciliation → in-flight intents → stop state. No candidate can execute before this.
+  let arming: LiveArming | null = null;
+  let executor: LiveExecutor | null = null;
+  let mainnetRpc: MainnetRpcSeams | null = null;
+  let lastReconcile: ReconcileReport | null = null;
+  const envRecord = (ctx.env ?? process.env) as Record<string, string | undefined>;
+  if (mode === "live") {
+    const armed = resolveLiveArming(envRecord, config, opts);
+    if (!armed.ok) {
+      unregister();
+      return { text: redactString(`Refusing to start LIVE (fail closed):\n  - ${armed.reasons.join("\n  - ")}`), exitCode: 1 };
+    }
+    arming = armed.value;
+    try {
+      mainnetRpc = (ctx.createMainnetRpc ?? createMainnetRpcSeams)(arming.rpcUrl);
+    } catch (err) {
+      unregister();
+      return { text: redactString(`Refusing to start LIVE: mainnet RPC seams could not be created (${(err as Error).message})`), exitCode: 1 };
+    }
+    // The ledger is PERSISTENT across live sessions (never wiped by --force).
+    if (existsSync(files.ledgerPath)) {
+      try {
+        ledger = validateLedger(readJson(ctx, files.ledgerPath, "position ledger"));
+      } catch (err) {
+        unregister();
+        return { text: redactString(`Refusing to start LIVE: the persisted ledger is unreadable (${(err as Error).message}) — an unreadable ledger never authorizes trading.`), exitCode: 1 };
+      }
+    }
+    let auditEntries: unknown[] = [];
+    if (existsSync(files.auditLogPath)) {
+      auditEntries = readFileSync(files.auditLogPath, "utf8").split("\n").filter((l) => l.trim().length > 0).map((l) => { try { return JSON.parse(l) as unknown; } catch { return null; } });
+    }
+    const balanceRpc = mainnetRpc.balance as MainnetRpcSeams["balance"] & { listTokenHoldings?: (o: string) => Promise<TokenHolding[]> };
+    if (typeof balanceRpc.listTokenHoldings !== "function") {
+      unregister();
+      return { text: "Refusing to start LIVE: the RPC seam cannot list token holdings — reconciliation impossible.", exitCode: 1 };
+    }
+    lastReconcile = await reconcileStartup({
+      wallet: arming.wallet,
+      ledger,
+      auditEntries,
+      rpc: { confirm: mainnetRpc.confirm, balance: balanceRpc as MainnetRpcSeams["balance"] & { listTokenHoldings: (o: string) => Promise<TokenHolding[]> } },
+      nowMs: () => Date.parse(isoNow(ctx)),
+      clock: () => isoNow(ctx),
+      sleep,
+    });
+    writeJsonFile(files.reconcilePath, redactValue({ ...lastReconcile, ledger: undefined }));
+    for (const res of lastReconcile.resolutions) appendJsonl(files.auditLogPath, res);
+    if (lastReconcile.ledgerChanged) {
+      ledger = lastReconcile.ledger;
+      writeJsonFile(files.ledgerPath, redactValue(ledger));
+    }
+    executor = new LiveExecutor({
+      cwd: ctx.cwd, env: envRecord, config, arming,
+      auditLogPath: files.auditLogPath, intentsPath: files.intentsPath,
+      swapBuilder: ctx.swapBuilder ?? createJupiterSwapBuilder(),
+      txPreview: ctx.txPreview ?? createTxPreviewRpc(arming.rpcUrl),
+      rpc: mainnetRpc,
+      readFile: ctx.readFile ?? ((path: string): string => readFileSync(path, "utf8")),
+      nowMs: () => Date.parse(isoNow(ctx)), clock: () => isoNow(ctx), sleep,
+    });
+    const lingering = executor.loadIntents().filter((i) => i.state === "in-flight");
+    const blockers = [...lastReconcile.blockingReasons, ...lingering.map((i) => `lingering in-flight ${i.side} intent for ${i.mint} (${i.at}) — a crash mid-send; resolve against the chain (audit.jsonl / explorer) then delete intents.json`)];
+    if (blockers.length > 0) {
+      unregister();
+      return { text: redactString(`Refusing to start LIVE: reconciliation BLOCKED trading (fail closed):\n  - ${blockers.join("\n  - ")}\n\nDetails: ${files.reconcilePath}`), exitCode: 1 };
+    }
+  }
+
   const journalDecision = (entry: Record<string, unknown>): void => appendJsonl(files.decisionsPath, entry);
 
-  const persist = (): void => {
+  // S111 runtime-status trackers (authoritative state for the dashboard; written every loop).
+  let stop: StopState = "none";
+  let lastStop: StopState | null = null;
+  let lastDecision: RuntimeStatus["lastDecision"] = null;
+  let lastExecution: RuntimeStatus["execution"] = { lastIntent: null, lastOutcome: null, lastSignature: null, lastConfirmSlot: null, lastError: null, lastAt: null, inFlight: [] };
+  let walletSol: number | null = null;
+  let lastSlot: number | null = null;
+  let rpcStatus: RuntimeStatus["providers"]["rpcStatus"] = mode === "live" ? "unknown" : "unknown";
+  let quoteStatus: RuntimeStatus["providers"]["quoteProvider"] = "unknown";
+  let endedByForStatus: string | null = null;
+  let sessionHalted = false;
+
+  const buildStatus = (running: boolean): RuntimeStatus => {
+    const nowMs = Date.parse(isoNow(ctx));
+    const kind: "paper" | "live" = mode;
+    const openList = ledger.positions.filter((p) => p.status === "open" && p.kind === kind).map((p) => positionView(p, executor?.exitStateFor(p.positionId) ?? null));
+    const recentClosed = ledger.positions.filter((p) => p.status === "closed" && p.kind === kind).slice(-10).reverse().map((p) => positionView(p, null));
+    const sess = ledgerSessionView(ledger, kind, nowMs);
+    const lossCap = arming ? Math.round(arming.caps.sessionLossCapSol * LAMPORTS_PER_SOL) : null;
+    const reserve = arming ? arming.caps.minSolReserveLamports : null;
+    const unreal = openList.reduce<number | null>((acc, p) => (p.unrealizedPnlLamports === null ? acc : (acc ?? 0) + p.unrealizedPnlLamports), null);
+    return {
+      schemaVersion: RUNTIME_STATUS_SCHEMA_VERSION,
+      at: isoNow(ctx),
+      daemon: { running, mode, armed: mode === "live" && arming !== null, startedAt, loops: state.totals.loops, lastLoopAt: state.lastLoopAt, endedBy: endedByForStatus, version: "s111" },
+      stops: { safeStop: stop === "safe-stop", hardStop: stop === "hard-stop", state: stop },
+      cluster: "mainnet-beta",
+      wallet: { publicKey: arming?.wallet ?? null, solLamports: walletSol, reserveLamports: reserve, availableUnderCapsLamports: walletSol !== null && reserve !== null && arming ? Math.max(0, Math.min(walletSol - reserve, arming.maxOpenSolExposureLamports - sess.openExposureLamports)) : null },
+      providers: { rpcHost: mainnetRpc?.endpointHost ?? null, rpcStatus, lastSlot, quoteProvider: quoteStatus, feeds: Object.entries(state.providerHealth).map(([providerId, h]) => ({ providerId, status: (h as { status?: string }).status ?? "unknown", detail: (h as { detail?: string | null }).detail ?? null })) },
+      scanner: { running, candidatesSeen: state.totals.candidatesSeen, newCandidates: state.totals.newCandidates, lastCandidate: lastDecision ? { mint: lastDecision.mint, symbol: lastDecision.symbol, at: lastDecision.at } : null },
+      lastDecision,
+      execution: { ...lastExecution, inFlight: executor?.lingeringIntents() ?? [] },
+      positions: { open: openList.length, openList, recentClosed, openExposureLamports: sess.openExposureLamports, unrealizedPnlLamports: unreal },
+      session: { tradesLastHour: sess.tradesLastHour, tradesToday: sess.tradesToday, realizedPnlLamports: sess.realizedPnlLamports, lossCapLamports: lossCap, lossUsedLamports: sess.lossUsedLamports, lossRemainingLamports: lossCap === null ? null : Math.max(0, lossCap - sess.lossUsedLamports), maxTradesPerHour: arming?.maxTradesPerHour ?? null, maxOpenPositions: arming?.caps.maxOpenPositions ?? null },
+      reconciliation: reconciliationView(lastReconcile),
+      notProfitabilityClaim: true,
+    };
+  };
+
+  const persist = (running = true): void => {
     writeJsonFile(files.sessionPath, redactValue(state));
     writeJsonFile(files.ledgerPath, redactValue(ledger));
     writeJsonFile(files.providerHealthPath, redactValue({ schemaVersion: "live.sniper.daemon.provider_health.v1", at: state.lastLoopAt ?? startedAt, providers: state.providerHealth }));
+    try {
+      writeStatusAtomic(files.statusPath, redactValue(buildStatus(running)) as RuntimeStatus);
+    } catch {
+      /* status is observability; a failed write never affects execution */
+    }
   };
 
   let endedBy: DaemonSummary["endedBy"] = "duration-elapsed";
@@ -411,6 +553,23 @@ export async function liveSniperDaemonReport(ctx: LiveDaemonContext = {}, opts: 
     for (;;) {
       const loopAt = isoNow(ctx);
       const loopMs = Date.parse(loopAt);
+      // S111: stop state is evaluated EVERY tick before any transaction can be produced.
+      stop = stopState({ cwd: ctx.cwd, env: envRecord, configKillSwitch: config.killSwitch === true });
+      if (stop !== lastStop) {
+        journalDecision({ at: loopAt, stage: "stop", action: stop, previous: lastStop });
+        lastStop = stop;
+      }
+      // S111: fresh wallet SOL + RPC health every live tick (read-only; a failure degrades, never trades).
+      if (mode === "live" && arming && mainnetRpc) {
+        try {
+          walletSol = await mainnetRpc.balance.getBalanceLamports(arming.wallet);
+          rpcStatus = "healthy";
+        } catch {
+          rpcStatus = "degraded";
+        }
+      }
+      const quotesFetchedBefore = state.totals.quotesFetched;
+      const quotesUnavailableBefore = state.totals.quotesUnavailable;
 
       // 1) Poll every allowed source; one bad provider never kills the loop.
       const observations: CandidateObservation[] = [];
@@ -527,21 +686,58 @@ export async function liveSniperDaemonReport(ctx: LiveDaemonContext = {}, opts: 
         const strategy = scoreStrategyV2({ candidate, quote, riskAppetite: profile.riskAppetite, timestamp: loopAt });
         const shadow = shadowDecide({ candidate, strategy, quote, decidedAt: loopAt }, { outAmountRaw: entryOutAmountRaw });
 
-        // Deterministic paper-entry rule: EVERY condition must hold.
-        const openPaper = ledger.positions.filter((p) => p.status === "open" && p.kind === "paper");
+        // Deterministic entry rule: EVERY condition must hold. Positions of THIS mode's kind only.
+        const kindForMode: "paper" | "live" = mode;
+        const openPaper = ledger.positions.filter((p) => p.status === "open" && p.kind === kindForMode);
         const quoteFresh = quote !== null && quote.ageMs !== null && quote.ageMs <= profile.quoteFreshnessTtlMs;
+        const capacity = mode === "live" && arming ? arming.caps.maxOpenPositions : Math.min(maxPaperPositions, profile.maxOpenPositions);
         const rules: Array<[string, boolean]> = [
           ["no-blocking-reasons", blocking.length === 0],
           ["shadow-would-enter", shadow.decision === "would_enter"],
           ["no-strategy-hard-block", strategy.hardBlocks.length === 0],
           ["quote-fresh", quoteFresh],
           ["expected-tokens-known", entryOutAmountRaw !== null],
-          ["position-capacity", openPaper.length < Math.min(maxPaperPositions, profile.maxOpenPositions)],
+          ["position-capacity", openPaper.length < capacity],
           ["no-open-position-for-mint", !openPaper.some((p) => p.mint === candidate.mint)],
+          ["no-safe-stop", stop === "none"],
+          ["session-not-halted", !sessionHalted],
         ];
         const failed = rules.filter(([, ok]) => !ok).map(([name]) => name);
 
-        if (failed.length === 0) {
+        if (failed.length === 0 && mode === "live" && executor && arming) {
+          // S111 LIVE ENTRY: intent → fresh build → price-impact cap → simulate → executeMainnetBuy →
+          // confirm → balance verify → position. NO CONFIRMED SIGNATURE = NO POSITION.
+          const spend = arming.caps.maxSpendLamports;
+          // The cached candidate risk summary has no flag list; the builder still applies score/decision gates and the freeze/mint facts are in the summary.
+          const riskFlags: Array<{ id: string; severity: string }> = [];
+          const outcome = await executor.buy({ ledger, mint: candidate.mint, symbol: candidate.symbol, spendLamports: spend, riskScore: risk?.score ?? 100, riskDecision: risk?.decision ?? null, riskFlags, stop });
+          if (outcome.kind === "executed") {
+            const r = outcome.report;
+            ledger = r.ledger;
+            lastExecution = { lastIntent: executor.lingeringIntents()[0] ?? null, lastOutcome: r.outcome, lastSignature: r.signature, lastConfirmSlot: r.confirm?.slot ?? null, lastError: r.outcome === "confirmed" ? null : (r.refusalDetail ?? r.confirm?.errLabel ?? r.outcome), lastAt: loopAt, inFlight: [] };
+            if (r.balancesAfter) walletSol = r.balancesAfter.solLamports;
+            if (r.outcome === "confirmed" && r.position) {
+              state = bumpTotals(state, { positionsOpened: 1 });
+              appendJsonl(files.positionsPath, { at: loopAt, event: "open", kind: "live", positionId: r.position.positionId, mint: r.position.mint, entrySpendLamports: r.position.entrySpendLamports, tokenAmountRaw: r.position.tokenAmountRaw, signature: r.signature, slot: r.confirm?.slot ?? null });
+              journalDecision({ at: loopAt, stage: "entry", mint: candidate.mint, action: "live-open", score: strategy.score, signature: r.signature, slot: r.confirm?.slot ?? null, caveats: r.caveats });
+              lastDecision = { mint: candidate.mint, symbol: candidate.symbol, at: loopAt, verdict: "accepted", reasons: ["live-open"], score: strategy.score };
+            } else {
+              journalDecision({ at: loopAt, stage: "entry", mint: candidate.mint, action: `live-${r.outcome}`, score: strategy.score, signature: r.signature, reason: r.refusalDetail ?? r.confirm?.errLabel ?? null, caveats: r.caveats });
+              lastDecision = { mint: candidate.mint, symbol: candidate.symbol, at: loopAt, verdict: "rejected", reasons: [`live-${r.outcome}`, ...(r.refusalDetail ? [r.refusalDetail.split("\n")[0] as string] : [])], score: strategy.score };
+              if (r.outcome === "submitted-unconfirmed") {
+                // Truth is unknown. Stop entries for the rest of this session; reconcile on restart.
+                journalDecision({ at: loopAt, stage: "stop", action: "session-halt", reason: "unconfirmed buy — reconcile before any further entry" });
+                sessionHalted = true;
+              }
+            }
+            persist();
+          } else {
+            state = recordNoTradeReasons(state, [outcome.reason]);
+            journalDecision({ at: loopAt, stage: "entry", mint: candidate.mint, action: "live-refused", score: strategy.score, reason: outcome.reason });
+            lastDecision = { mint: candidate.mint, symbol: candidate.symbol, at: loopAt, verdict: "rejected", reasons: [outcome.reason], score: strategy.score };
+            if (outcome.report) lastExecution = { ...lastExecution, lastOutcome: outcome.report.outcome, lastError: outcome.reason, lastAt: loopAt };
+          }
+        } else if (failed.length === 0) {
           try {
             const position = openPosition({
               kind: "paper",
@@ -562,12 +758,13 @@ export async function liveSniperDaemonReport(ctx: LiveDaemonContext = {}, opts: 
           const reasons = [...blocking, ...strategy.hardBlocks, ...failed.filter((f) => f !== "no-blocking-reasons" && f !== "no-strategy-hard-block")];
           state = recordNoTradeReasons(state, reasons.length > 0 ? reasons : ["not-eligible"]);
           journalDecision({ at: loopAt, stage: "entry", mint: candidate.mint, action: "no-trade", score: strategy.score, decision: strategy.decision, failedRules: failed, blocking: reasons.slice(0, 8) });
+          lastDecision = { mint: candidate.mint, symbol: candidate.symbol, at: loopAt, verdict: "rejected", reasons: (reasons.length > 0 ? reasons : ["not-eligible"]).slice(0, 8), score: strategy.score };
         }
       }
 
-      // 7..8) Mark + exit every open paper position via a REAL sell-side quote.
+      // 7..8) Mark + exit every open position of this mode's kind via a REAL sell-side quote.
       for (const p of ledger.positions) {
-        if (p.status !== "open" || p.kind !== "paper") continue;
+        if (p.status !== "open" || p.kind !== mode) continue;
         let marked: LivePosition = p;
         if (p.tokenAmountRaw !== null) {
           try {
@@ -591,10 +788,32 @@ export async function liveSniperDaemonReport(ctx: LiveDaemonContext = {}, opts: 
             state = bumpTotals(state, { quotesUnavailable: 1 });
           }
         }
-        const decision = evaluateExitRules({ position: marked, policy: exitPolicy, nowMs: loopMs, killSwitch: config.killSwitch === true });
+        const decision = evaluateExitRules({ position: marked, policy: exitPolicy, nowMs: loopMs, killSwitch: config.killSwitch === true || stop === "hard-stop" });
         if (decision.shouldExit && decision.reason !== null) {
-          appendJsonl(files.exitsPath, { at: loopAt, positionId: marked.positionId, mint: marked.mint, reason: decision.reason, unrealizedPnlPct: decision.unrealizedPnlPct, applied: Boolean(opts.applyExits), detail: decision.detail });
-          if (opts.applyExits) {
+          appendJsonl(files.exitsPath, { at: loopAt, positionId: marked.positionId, mint: marked.mint, reason: decision.reason, unrealizedPnlPct: decision.unrealizedPnlPct, applied: mode === "live" ? true : Boolean(opts.applyExits), detail: decision.detail });
+          if (mode === "live" && executor) {
+            // S111 LIVE EXIT: fresh build+simulate per attempt → executeMainnetSell → confirm → close.
+            // HARD STOP: nothing sends (the core refuses too). SAFE STOP: exits proceed. Bounded retries.
+            const outcome = await executor.sell({ ledger, position: marked, reason: decision.reason, detail: decision.detail, stop });
+            const exitState = executor.exitStateFor(marked.positionId);
+            if (outcome.kind === "executed") {
+              const r = outcome.report;
+              ledger = r.ledger;
+              lastExecution = { lastIntent: null, lastOutcome: r.outcome, lastSignature: r.signature, lastConfirmSlot: r.confirm?.slot ?? null, lastError: r.outcome === "confirmed" ? null : (r.refusalDetail ?? r.confirm?.errLabel ?? r.outcome), lastAt: loopAt, inFlight: [] };
+              if (r.balancesAfter) walletSol = r.balancesAfter.solLamports;
+              if (r.outcome === "confirmed" && r.position) {
+                state = bumpTotals(state, { positionsClosed: 1 });
+                appendJsonl(files.positionsPath, { at: loopAt, event: "close", kind: "live", positionId: r.position.positionId, mint: r.position.mint, reason: decision.reason, pnlLamports: r.position.close?.pnlLamports ?? null, signature: r.signature, slot: r.confirm?.slot ?? null });
+                journalDecision({ at: loopAt, stage: "exit", mint: marked.mint, action: "live-close", reason: decision.reason, signature: r.signature, slot: r.confirm?.slot ?? null, pnlLamports: r.position.close?.pnlLamports ?? null, caveats: r.caveats });
+              } else {
+                journalDecision({ at: loopAt, stage: "exit", mint: marked.mint, action: `live-${r.outcome}`, reason: decision.reason, signature: r.signature, exitState: exitState?.state ?? null, attempts: exitState?.attempts ?? 0, detail: r.refusalDetail ?? r.confirm?.errLabel ?? null });
+              }
+              persist();
+            } else {
+              journalDecision({ at: loopAt, stage: "exit", mint: marked.mint, action: "live-exit-refused", reason: decision.reason, exitState: exitState?.state ?? null, attempts: exitState?.attempts ?? 0, detail: outcome.reason });
+              lastExecution = { ...lastExecution, lastError: outcome.reason, lastAt: loopAt };
+            }
+          } else if (opts.applyExits) {
             const closed = closePosition({
               position: marked,
               closedAt: loopAt,
@@ -611,6 +830,8 @@ export async function liveSniperDaemonReport(ctx: LiveDaemonContext = {}, opts: 
       }
 
       // 9..10) Persist every loop; decide whether to keep going.
+      if (state.totals.quotesUnavailable > quotesUnavailableBefore) quoteStatus = "degraded";
+      else if (state.totals.quotesFetched > quotesFetchedBefore) quoteStatus = "healthy";
       state = completeLoop(state, loopAt);
       persist();
 
@@ -635,10 +856,13 @@ export async function liveSniperDaemonReport(ctx: LiveDaemonContext = {}, opts: 
   } catch (err) {
     unregister();
     const msg = err instanceof DaemonStateError || err instanceof LivePositionError || err instanceof Error ? err.message : String(err);
-    persist();
+    endedByForStatus = "error";
+    persist(false);
     return { text: redactString(`Daemon aborted on an unexpected error (state persisted honestly): ${msg}`), exitCode: 1 };
   }
   unregister();
+  endedByForStatus = endedBy;
+  persist(false);
 
   // Final artifacts: summary + human report.
   const endedAt = isoNow(ctx);

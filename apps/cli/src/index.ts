@@ -4514,9 +4514,9 @@ program
 program
   .command("live:sniper:daemon")
   .description(
-    "Run the CONTINUOUS PAPER sniper daemon over REAL market feeds (Jupiter recent-tokens + DexScreener): dedupes candidates across loops, runs real token:risk (cached, TTL) when --rpc-url is set, fetches real Jupiter quotes, opens/exits PAPER positions by deterministic rule, journals every decision, and writes a session summary. Mode is structurally 'paper' — there is no live daemon mode; nothing here can sign or send. Graceful Ctrl+C writes the summary",
+    "Run the CONTINUOUS PAPER sniper daemon over REAL market feeds (Jupiter recent-tokens + DexScreener): dedupes candidates across loops, runs real token:risk (cached, TTL) when --rpc-url is set, fetches real Jupiter quotes, opens/exits PAPER positions by deterministic rule, journals every decision, and writes a session summary. --mode paper (default) opens PAPER positions only. --mode live (S111) runs the SAME scanner->risk->strategy path through the real mainnet execution core: it fails closed unless the fourteen-condition arming holds (SOLMAKER_ENABLE_LIVE_TRADING sentence, config phase7LiveTradingReady, --i-understand-this-can-lose-real-money, --wallet PUBLIC key, --signer-env NAME, and EVERY cap explicit), reconciles the persisted ledger against the chain before the first loop, persists an execution intent before every send, opens a position ONLY on a confirmed buy, auto-exits through the same gate, checks SAFE STOP (.soulmaker-no-entry) and HARD STOP (kill switch) every tick, and writes status.json atomically every loop. Graceful Ctrl+C writes the summary",
   )
-  .option("--mode <mode>", "must be 'paper' (the only mode; refused otherwise)")
+  .option("--mode <mode>", "paper (default) | live (S111; requires full arming; fails closed)")
   .option("--duration-minutes <n>", "session length in minutes (default 10; max 480)")
   .option("--poll-seconds <n>", "seconds between loops (default 15; min 5)")
   .option("--out-dir <dir>", "session artifact folder (e.g. runs/s109-paper-daemon; required)")
@@ -4528,6 +4528,20 @@ program
   .option("--rpc-url <url>", "read-only RPC endpoint enabling REAL per-candidate token:risk checks (without it, risk stays missing and no position can open)")
   .option("--sources <list>", "comma-separated candidate sources: jupiter,dexscreener (default both)")
   .option("--max-loops <n>", "stop after N loops (bounded proof runs)")
+  .option("--i-understand-this-can-lose-real-money", "LIVE: the explicit mainnet acknowledgment (one of fourteen conditions; never sufficient alone)")
+  .option("--wallet <pubkey>", "LIVE: the hot-wallet PUBLIC key the bot signs with (must equal the signer; confirm it on purpose)")
+  .option("--signer-env <ENV_VAR_NAME>", "LIVE: NAME of the env var holding the hot-wallet keypair file PATH (never a path or key)")
+  .option("--max-spend-sol <sol>", "LIVE: per-trade spend cap (required; ≤ config caps.maxTradeSizeSol and ≤ 0.05)")
+  .option("--max-open-sol-exposure-sol <sol>", "LIVE: aggregate open exposure cap (required; ≤ 0.25)")
+  .option("--max-open-positions <n>", "LIVE: concurrent live positions cap (required; ≤ config caps.maxOpenPositions and ≤ 5)")
+  .option("--max-trades-per-hour <n>", "LIVE: entries per rolling hour, derived from the ledger (required; ≤ 20)")
+  .option("--session-loss-cap-sol <sol>", "LIVE: 24h realized-loss cap from the ledger (required; ≤ config caps.maxDailyLossSol)")
+  .option("--slippage-bps <bps>", "LIVE: slippage cap (required; ≤ 500)")
+  .option("--max-price-impact-pct <pct>", "LIVE: quoted price-impact cap (required; ≤ 5)")
+  .option("--min-sol-reserve-sol <sol>", "LIVE: SOL the wallet must retain after any buy (required)")
+  .option("--risk-score-cap <n>", "LIVE: advisory risk score cap (required)")
+  .option("--max-quote-age-ms <ms>", "LIVE: quote freshness cap (default 8000; ≤ 15000)")
+  .option("--confirm-timeout-ms <ms>", "LIVE: confirmation deadline (default 45000; timeout = unknown, never failed)")
   .option("--json", "emit the session summary as stable JSON")
   .option("--force", "overwrite an existing session in --out-dir")
   .action(
@@ -4546,6 +4560,20 @@ program
       maxLoops?: string;
       json?: boolean;
       force?: boolean;
+      iUnderstandThisCanLoseRealMoney?: boolean;
+      wallet?: string;
+      signerEnv?: string;
+      maxSpendSol?: string;
+      maxOpenSolExposureSol?: string;
+      maxOpenPositions?: string;
+      maxTradesPerHour?: string;
+      sessionLossCapSol?: string;
+      slippageBps?: string;
+      maxPriceImpactPct?: string;
+      minSolReserveSol?: string;
+      riskScoreCap?: string;
+      maxQuoteAgeMs?: string;
+      confirmTimeoutMs?: string;
     }) => {
       const { text, exitCode } = await liveSniperDaemonReport(
         {},
@@ -4564,6 +4592,20 @@ program
           maxLoops: opts.maxLoops,
           json: Boolean(opts.json),
           force: Boolean(opts.force),
+          iUnderstandThisCanLoseRealMoney: Boolean(opts.iUnderstandThisCanLoseRealMoney),
+          wallet: opts.wallet,
+          signerEnvVar: opts.signerEnv,
+          maxSpendSol: opts.maxSpendSol,
+          maxOpenSolExposureSol: opts.maxOpenSolExposureSol,
+          maxOpenPositions: opts.maxOpenPositions,
+          maxTradesPerHour: opts.maxTradesPerHour,
+          sessionLossCapSol: opts.sessionLossCapSol,
+          slippageBps: opts.slippageBps,
+          maxPriceImpactPct: opts.maxPriceImpactPct,
+          minSolReserveSol: opts.minSolReserveSol,
+          riskScoreCap: opts.riskScoreCap,
+          maxQuoteAgeMs: opts.maxQuoteAgeMs,
+          confirmTimeoutMs: opts.confirmTimeoutMs,
         },
       );
       console.log(text);
