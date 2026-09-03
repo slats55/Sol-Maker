@@ -11,8 +11,8 @@
  *   - honest per-loop TOTALS that only ever count what really happened.
  *
  * Hard rules:
- *   - The daemon mode set is CLOSED to ["paper"]. There is no live daemon mode to misconfigure:
- *     a state claiming any other mode is refused. The daemon can therefore never trade.
+ *   - The daemon mode set is CLOSED to ["paper", "live"] (S111). "live" is only reachable through the
+ *     fourteen-condition arming in the CLI; the state itself carries no capability.
  *   - State is round-trippable JSON: `validateDaemonState` re-derives every invariant on resume.
  *   - Nothing here fabricates data: a provider failure is a recorded status, never a retry-lie.
  *
@@ -27,8 +27,8 @@ import type { SniperCandidate, SniperCandidateRisk } from "./discovery.js";
 export const LIVE_SNIPER_DAEMON_STATE_SCHEMA_VERSION = "live.sniper.daemon.state.v1";
 export const LIVE_SNIPER_DAEMON_SUMMARY_SCHEMA_VERSION = "live.sniper.daemon.summary.v1";
 
-/** The ONLY daemon mode. Closed by design: a daemon cannot be configured toward live. */
-export const DAEMON_MODES = ["paper"] as const;
+/** Daemon modes. CLOSED set; "live" (S111) requires full arming in the CLI — the state carries no capability. */
+export const DAEMON_MODES = ["paper", "live"] as const;
 export type DaemonMode = (typeof DAEMON_MODES)[number];
 
 /** Default TTL for a cached risk report (ms). Risk facts go stale; 10 minutes is generous. */
@@ -127,7 +127,7 @@ export function emptyDaemonTotals(): DaemonTotals {
 export function createDaemonState(input: { startedAt: string; profileName: string; mode?: string }): DaemonState {
   const mode = input.mode ?? "paper";
   if (!(DAEMON_MODES as readonly string[]).includes(mode)) {
-    throw new DaemonStateError(`daemon mode must be "paper" — there is no live daemon mode, by design`);
+    throw new DaemonStateError(`daemon mode must be one of ${DAEMON_MODES.join("|")}`);
   }
   if (typeof input.profileName !== "string" || input.profileName.trim().length === 0) {
     throw new DaemonStateError("profileName is required");
@@ -325,8 +325,8 @@ export function validateDaemonState(value: unknown): DaemonState {
   if (value.schemaVersion !== LIVE_SNIPER_DAEMON_STATE_SCHEMA_VERSION) {
     throw new DaemonStateError(`daemon state.schemaVersion must be "${LIVE_SNIPER_DAEMON_STATE_SCHEMA_VERSION}"`);
   }
-  if (value.mode !== "paper") {
-    throw new DaemonStateError('daemon state.mode must be "paper" — there is no live daemon mode');
+  if (!(DAEMON_MODES as readonly string[]).includes(value.mode as string)) {
+    throw new DaemonStateError(`daemon state.mode must be one of ${DAEMON_MODES.join("|")}`);
   }
   if (value.daemonNeverSends !== true || value.notProfitabilityClaim !== true) {
     throw new DaemonStateError("daemon state honesty literals must be the literal true");

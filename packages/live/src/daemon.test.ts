@@ -25,13 +25,15 @@ const candidate = (mint: string) => normalizeManualMint({ mint }, { discoveredAt
 
 const RISK: SniperCandidateRisk = { score: 5, decision: "ACCEPT", criticalFlagCount: 0, freezeAuthorityPresent: false, mintAuthorityPresent: false };
 
-describe("daemon state — mode is structurally paper-only", () => {
-  it("refuses any non-paper mode at creation and on resume", () => {
-    expect(() => createDaemonState({ startedAt: AT, profileName: "balanced", mode: "live" })).toThrow(/paper/);
+describe("daemon state — mode set is CLOSED to paper | live (S111)", () => {
+  it("accepts paper (default) and live; refuses any unknown mode at creation and on resume", () => {
+    expect(createDaemonState({ startedAt: AT, profileName: "balanced" }).mode).toBe("paper");
+    expect(createDaemonState({ startedAt: AT, profileName: "balanced", mode: "live" }).mode).toBe("live");
+    expect(() => createDaemonState({ startedAt: AT, profileName: "balanced", mode: "mainnet" })).toThrow(/paper\|live/);
     const state = createDaemonState({ startedAt: AT, profileName: "balanced" });
     const tampered = JSON.parse(JSON.stringify(state));
-    tampered.mode = "live";
-    expect(() => validateDaemonState(tampered)).toThrow(/no live daemon mode/);
+    tampered.mode = "yolo";
+    expect(() => validateDaemonState(tampered)).toThrow(/paper\|live/);
   });
 
   it("round-trips through validateDaemonState (closed schema)", () => {
