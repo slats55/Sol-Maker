@@ -40,8 +40,10 @@ export interface UnsignedTxEnvelope {
   txBase64: string;
   /** Which builder produced this (kebab-case, e.g. "jupiter-swap-api"). */
   builderId: string;
-  /** The candidate mint this envelope is about, when applicable. */
+  /** The candidate (OUTPUT) mint this envelope is about, when applicable. */
   candidateMint: string | null;
+  /** S111: the swap INPUT mint (SOL for a buy; the held token for a sell). Absent in pre-S111 envelopes => null. */
+  inputMint: string | null;
   /** Route caveats carried from the quote/builder (display only). */
   routeCaveats: string[];
   /** Bounded constraint facts recorded at build time (refusal evidence, not enforcement). */
@@ -68,6 +70,7 @@ const ENVELOPE_KEYS: ReadonlySet<string> = new Set([
   "txBase64",
   "builderId",
   "candidateMint",
+  "inputMint",
   "routeCaveats",
   "constraints",
   "quotedAt",
@@ -159,6 +162,10 @@ export function validateUnsignedTxEnvelope(value: unknown): UnsignedTxEnvelope {
   if (value.candidateMint !== undefined && value.candidateMint !== null) {
     candidateMint = parsePublicKeyStrict(value.candidateMint, "envelope.candidateMint");
   }
+  let inputMint: string | null = null;
+  if (value.inputMint !== undefined && value.inputMint !== null) {
+    inputMint = parsePublicKeyStrict(value.inputMint, "envelope.inputMint");
+  }
   if (!Array.isArray(value.routeCaveats) || value.routeCaveats.length > 20) {
     throw new TxPreviewError("envelope.routeCaveats must be an array of at most 20 strings");
   }
@@ -219,6 +226,7 @@ export function validateUnsignedTxEnvelope(value: unknown): UnsignedTxEnvelope {
     txBase64: value.txBase64,
     builderId: value.builderId,
     candidateMint,
+    inputMint,
     routeCaveats,
     constraints: { maxSpendLamports, slippageBps },
     quotedAt,

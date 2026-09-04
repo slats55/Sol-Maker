@@ -214,6 +214,7 @@ export function createJupiterSwapBuilder(options: JupiterSwapBuilderOptions = {}
         txBase64: swap.swapTransaction,
         builderId: JUPITER_SWAP_BUILDER_ID,
         candidateMint: request.candidateMint as string,
+        inputMint: request.inputMint as string,
         routeCaveats: [
           `built from a FRESH quote at ${quotedAt}; quotes expire within seconds`,
           priceImpactPct !== null ? `provider-reported price impact ${priceImpactPct}%` : "price impact not reported",

@@ -459,8 +459,12 @@ export async function executeMainnetSell(input: MainnetSellInput): Promise<Mainn
   const pf = preflight(input, nowMs);
   if (!pf.ok) return refusedReport(r, pf.detail, pf.liveGate);
   const { envelope } = pf.value;
-  if (envelope.candidateMint !== position.mint) {
-    return refusedReport(r, `sell envelope is for ${envelope.candidateMint ?? "no mint"}, not the position's ${position.mint}`, pf.value.liveGate);
+  // A sell envelope swaps the position's mint (INPUT) into SOL (OUTPUT). Accept exactly that shape; also
+  // accept the daemon's relabeled shape (candidateMint = position mint) for backward compatibility.
+  const WSOL = "So11111111111111111111111111111111111111112";
+  const sellsPosition = (envelope.inputMint === position.mint && envelope.candidateMint === WSOL) || (envelope.candidateMint === position.mint && (envelope.inputMint === null || envelope.inputMint === position.mint));
+  if (!sellsPosition) {
+    return refusedReport(r, `sell envelope must swap the position's mint ${position.mint} into SOL (envelope input ${envelope.inputMint ?? "unknown"} -> output ${envelope.candidateMint ?? "none"})`, pf.value.liveGate);
   }
 
   // A sell is bounded by what the position cost — never more "spend" than the entry. The

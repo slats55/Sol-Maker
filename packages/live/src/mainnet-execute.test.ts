@@ -269,10 +269,23 @@ describe("executeMainnetSell (S111)", () => {
     expect(w.sent).toHaveLength(0);
   });
 
+  it("S111: accepts the builder's real sell shape (inputMint = position mint, output = SOL) and refuses selling a different held token", async () => {
+    const WSOL = "So11111111111111111111111111111111111111112";
+    const w: World = { sent: [], statuses: [CONFIRMED], sol: [1e9, 1e9 + 5_400_000], token: ["123456789", "0"] };
+    const r = await executeMainnetSell(sellInput(w, { envelopeValue: envelope({ inputMint: MINT, candidateMint: WSOL }), simulationValue: simulation({ candidateMint: WSOL }) }));
+    expect(r.outcome).toBe("confirmed");
+    expect(r.position?.close?.signature).toBe(SIG);
+    const w2: World = { sent: [], statuses: [CONFIRMED], sol: [1e9], token: ["123456789"] };
+    const wrong = await executeMainnetSell(sellInput(w2, { envelopeValue: envelope({ inputMint: OTHER.publicKey.toBase58(), candidateMint: WSOL }), simulationValue: simulation({ candidateMint: WSOL }) }));
+    expect(wrong.outcome).toBe("refused");
+    expect(wrong.refusalDetail).toContain("must swap the position");
+    expect(w2.sent).toHaveLength(0);
+  });
+
   it("refuses a sell envelope for a different mint", async () => {
     const w: World = { sent: [], statuses: [CONFIRMED], sol: [1e9], token: ["123456789"] };
     const r = await executeMainnetSell(sellInput(w, { envelopeValue: envelope({ candidateMint: OTHER.publicKey.toBase58() }), simulationValue: simulation({ candidateMint: OTHER.publicKey.toBase58() }) }));
-    expect(r.refusalDetail).toContain("not the position's");
+    expect(r.refusalDetail).toContain("must swap the position");
     expect(w.sent).toHaveLength(0);
   });
 
