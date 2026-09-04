@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sol Maker - Command Center (Live)</title>
+<link rel="stylesheet" href="assets/theme.css" />
+<style>
+  body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #0b0f14; color: #e6edf3; }
+  .cc { max-width: 1180px; margin: 0 auto; padding: 20px; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .top h1 { font-size: 20px; margin: 0; letter-spacing: 0.04em; }
+  .pill { display: inline-block; padding: 6px 12px; border-radius: 999px; font-weight: 700; font-size: 13px; letter-spacing: 0.06em; border: 1px solid #30363d; background: #161b22; }
+  .pill.ok { background: #0f3d2e; border-color: #1f6f4f; color: #7ee2b8; }
+  .pill.warn { background: #3d2e0f; border-color: #6f5a1f; color: #ffd37e; }
+  .pill.bad { background: #3d0f14; border-color: #6f1f28; color: #ff9aa2; }
+  .pill.off { background: #161b22; color: #8b949e; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 16px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 14px; }
+  .card h2 { font-size: 11px; letter-spacing: 0.12em; color: #8b949e; margin: 0 0 8px 0; text-transform: uppercase; }
+  .big { font-size: 22px; font-weight: 700; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; word-break: break-all; }
+  .muted { color: #8b949e; font-size: 12px; }
+  .banner { margin-top: 16px; padding: 18px; border-radius: 10px; text-align: center; font-weight: 800; font-size: 20px; letter-spacing: 0.08em; }
+  .banner.bad { background: #3d0f14; color: #ff9aa2; border: 1px solid #6f1f28; }
+  .banner.warn { background: #3d2e0f; color: #ffd37e; border: 1px solid #6f5a1f; }
+  .banner.off { background: #161b22; color: #8b949e; border: 1px solid #30363d; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #30363d; vertical-align: top; }
+  th { color: #8b949e; font-weight: 600; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .pos { color: #7ee2b8; } .neg { color: #ff9aa2; }
+  details { margin-top: 16px; } summary { cursor: pointer; color: #8b949e; }
+  pre { background: #0b0f14; border: 1px solid #30363d; border-radius: 8px; padding: 10px; overflow: auto; font-size: 11px; }
+  .stop-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="cc">
+  <div class="top">
+    <h1>SOL MAKER — COMMAND CENTER</h1>
+    <div id="pills"><span class="pill off">CONNECTING…</span></div>
+  </div>
+  <div id="banner"></div>
+  <div id="main" class="grid"></div>
+  <div id="positions" class="card" style="margin-top:12px"></div>
+  <div id="executions" class="card" style="margin-top:12px"></div>
+  <details><summary>Diagnostics (raw status document)</summary><pre id="raw"></pre></details>
+  <p class="muted">Read-only. Polls <span class="mono">/api/live/status</span> every 2s. Valuations are ESTIMATES from the latest real sell-side quote; realized P&amp;L is net of fees only when it came from the real SOL delta. Not a profitability claim. To stop entries: create <span class="mono">.soulmaker-no-entry</span> (SAFE STOP). To stop all sends: create <span class="mono">.soulmaker-emergency-stop</span> (HARD STOP).</p>
+</div>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function sol(l) { return l == null ? "—" : (l / 1e9).toFixed(6) + " SOL"; }
+  function pnl(l) { if (l == null) return '<span class="muted">unknown</span>'; var c = l >= 0 ? "pos" : "neg"; return '<span class="' + c + '">' + (l >= 0 ? "+" : "") + (l / 1e9).toFixed(6) + " SOL</span>"; }
+  function pct(p) { return p == null ? "" : " (" + (p >= 0 ? "+" : "") + p.toFixed(2) + "%)"; }
+  function pill(t, cls) { return '<span class="pill ' + cls + '">' + esc(t) + "</span> "; }
+  function short(k) { return k ? k.slice(0, 4) + "…" + k.slice(-4) : "—"; }
+  function card(title, body) { return '<div class="card"><h2>' + esc(title) + "</h2>" + body + "</div>"; }
+
+  function renderOffline(kind, detail) {
+    $("pills").innerHTML = pill(kind, "bad");
+    $("banner").innerHTML = '<div class="banner ' + (kind === "BACKEND OFFLINE" ? "bad" : "off") + '">' + esc(kind) + "</div>";
+    $("main").innerHTML = card("Detail", '<div class="muted">' + esc(detail || "") + "</div>");
+    $("positions").innerHTML = card("Positions", '<div class="muted">NO LIVE STATUS</div>');
+    $("executions").innerHTML = "";
+    $("raw").textContent = "";
+  }
+
+  function render(doc) {
+    var s = doc.status, live = doc.liveness;
+    var run = live === "RUNNING" ? pill("RUNNING", "ok") : live === "STALE" ? pill("STALE — last heartbeat " + (doc.ageSeconds == null ? "?" : doc.ageSeconds) + "s ago", "warn") : pill("STOPPED", "off");
+    var mode = s.daemon.mode === "live" ? pill("LIVE", "bad") : pill("PAPER", "warn");
+    var armed = s.daemon.armed ? pill("ARMED", "bad") : pill("DISARMED", "off");
+    var rpc = s.providers.rpcStatus === "healthy" ? pill("RPC HEALTHY", "ok") : s.providers.rpcStatus === "degraded" ? pill("RPC DEGRADED", "warn") : s.providers.rpcStatus === "down" ? pill("RPC DOWN", "bad") : pill("RPC UNKNOWN", "off");
+    $("pills").innerHTML = run + mode + armed + rpc;
+    var banner = "";
+    if (s.stops.hardStop) banner = '<div class="banner bad">HARD STOP ACTIVE — NO SENDS</div>';
+    else if (s.stops.safeStop) banner = '<div class="banner warn">SAFE STOP ACTIVE — NO NEW ENTRIES, EXITS CONTINUE</div>';
+    else if (live === "STALE") banner = '<div class="banner warn">STATUS STALE — the daemon may be hung or dead</div>';
+    else if (live === "STOPPED") banner = '<div class="banner off">DAEMON STOPPED' + (s.daemon.endedBy ? " (" + esc(s.daemon.endedBy) + ")" : "") + "</div>";
+    $("banner").innerHTML = banner;
+
+    var w = s.wallet, sess = s.session, sc = s.scanner, d = s.lastDecision, ex = s.execution, rec = s.reconciliation;
+    var main = "";
+    main += card("Wallet", '<div class="mono">' + esc(w.publicKey || "—") + '</div><div class="big">' + esc(sol(w.solLamports)) + '</div><div class="muted">available under caps: ' + esc(sol(w.availableUnderCapsLamports)) + " · reserve: " + esc(sol(w.reserveLamports)) + "</div>");
+    main += card("Stops", '<div class="stop-row">' + (s.stops.safeStop ? pill("SAFE STOP ACTIVE", "warn") : pill("SAFE STOP OFF", "ok")) + (s.stops.hardStop ? pill("HARD STOP ACTIVE", "bad") : pill("HARD STOP OFF", "ok")) + "</div>");
+    main += card("Scanner", '<div class="big">' + (sc.running ? "RUNNING" : "STOPPED") + '</div><div class="muted">candidates seen ' + sc.candidatesSeen + " · new " + sc.newCandidates + " · loops " + s.daemon.loops + " · last loop " + esc(s.daemon.lastLoopAt || "—") + "</div>");
+    main += card("Last candidate", d ? '<div class="mono">' + esc(d.symbol ? d.symbol + " · " : "") + esc(d.mint) + "</div><div>" + (d.verdict === "accepted" ? pill("ACCEPTED", "ok") : pill("REJECTED", "warn")) + '</div><div class="muted">' + esc((d.reasons || []).join("; ")) + (d.score != null ? " · score " + d.score : "") + "</div>" : '<div class="muted">none yet</div>');
+    main += card("Last execution", ex.lastOutcome ? "<div>" + pill(String(ex.lastOutcome).toUpperCase(), ex.lastOutcome === "confirmed" ? "ok" : ex.lastOutcome === "submitted-unconfirmed" ? "warn" : "bad") + '</div><div class="mono">' + esc(ex.lastSignature || "no signature") + '</div><div class="muted">' + (ex.lastConfirmSlot ? "confirmed @ slot " + ex.lastConfirmSlot + " · " : "") + esc(ex.lastError || "") + " · " + esc(ex.lastAt || "") + "</div>" : '<div class="muted">no execution yet</div>');
+    main += card("Session", "<div>trades last hour " + sess.tradesLastHour + (sess.maxTradesPerHour != null ? " / " + sess.maxTradesPerHour : "") + " · today " + sess.tradesToday + "</div><div>realized P&amp;L " + pnl(sess.realizedPnlLamports) + "</div><div class=\"muted\">loss budget used " + esc(sol(sess.lossUsedLamports)) + (sess.lossCapLamports != null ? " of " + esc(sol(sess.lossCapLamports)) + " · remaining " + esc(sol(sess.lossRemainingLamports)) : "") + "</div>");
+    main += card("Reconciliation", rec ? "<div>" + (rec.tradingAllowed ? pill("TRADING ALLOWED", "ok") : pill("BLOCKED", "bad")) + '</div><div class="muted">' + esc(rec.at || "") + " · orphans " + rec.orphans + (rec.blockingReasons && rec.blockingReasons.length ? " · " + esc(rec.blockingReasons.join("; ")) : "") + "</div>" : '<div class="muted">not run (paper mode)</div>');
+    $("main").innerHTML = main;
+
+    var p = s.positions;
+    var ph = "<h2>Open positions (" + p.open + ") · exposure " + esc(sol(p.openExposureLamports)) + " · unrealized " + pnl(p.unrealizedPnlLamports) + "</h2>";
+    if (!p.openList.length) ph += '<div class="big">NO OPEN POSITIONS</div>';
+    else {
+      ph += "<table><tr><th>token</th><th>opened</th><th>buy signature</th><th>SOL spent</th><th>tokens</th><th>est. exit value</th><th>unrealized</th><th>exit state</th></tr>";
+      p.openList.forEach(function (x) { ph += "<tr><td>" + esc(x.symbol || "") + '<div class="mono">' + esc(x.mint) + "</div></td><td>" + esc(x.openedAt) + '</td><td class="mono">' + esc(x.entrySignature || "—") + "</td><td>" + esc(sol(x.entrySpendLamports)) + "</td><td>" + esc(x.tokenAmountRaw || "unknown") + "</td><td>" + esc(sol(x.markValueLamports)) + ' <span class="muted">(estimate' + (x.markAt ? " @ " + esc(x.markAt) : "") + ")</span></td><td>" + pnl(x.unrealizedPnlLamports) + pct(x.unrealizedPnlPct) + "</td><td>" + esc(x.exitState || "monitoring") + (x.exitAttempts ? " · attempts " + x.exitAttempts : "") + (x.exitLastError ? '<div class="muted">' + esc(x.exitLastError) + "</div>" : "") + "</td></tr>"; });
+      ph += "</table>";
+    }
+    if (p.recentClosed && p.recentClosed.length) {
+      ph += "<h2 style=\"margin-top:12px\">Recently closed</h2><table><tr><th>token</th><th>closed</th><th>reason</th><th>sell signature</th><th>realized</th></tr>";
+      p.recentClosed.forEach(function (x) { ph += "<tr><td>" + esc(x.symbol || "") + '<div class="mono">' + esc(x.mint) + "</div></td><td>" + esc(x.closedAt || "") + "</td><td>" + esc(x.closeReason || "") + '</td><td class="mono">' + esc(x.closeSignature || "—") + "</td><td>" + pnl(x.realizedPnlLamports) + pct(x.realizedPnlPct) + "</td></tr>"; });
+      ph += "</table>";
+    }
+    $("positions").innerHTML = ph;
+    $("raw").textContent = JSON.stringify(s, null, 2);
+  }
+
+  function renderExecutions(list) {
+    var h = "<h2>Recent executions</h2>";
+    if (!list || !list.length) { $("executions").innerHTML = h + '<div class="muted">none journaled</div>'; return; }
+    h += "<table><tr><th>at</th><th>side</th><th>outcome</th><th>mint</th><th>signature</th><th>slot</th><th>detail</th></tr>";
+    list.forEach(function (e) { h += "<tr><td>" + esc(e.attemptedAt) + "</td><td>" + esc(String(e.side).toUpperCase()) + "</td><td>" + esc(String(e.outcome).toUpperCase()) + '</td><td class="mono">' + esc(e.mint || "") + '</td><td class="mono">' + esc(e.signature || "—") + "</td><td>" + esc(e.slot == null ? "" : e.slot) + '</td><td class="muted">' + esc(e.refusalDetail ? String(e.refusalDetail).split("\n")[0] : "") + "</td></tr>"; });
+    $("executions").innerHTML = h + "</table>";
+  }
+
+  function tick() {
+    fetch("/api/live/status", { cache: "no-store" }).then(function (r) { return r.json().then(function (j) { return { code: r.status, body: j }; }); }).then(function (x) {
+      if (x.code === 503 || !x.body.status) renderOffline("NO LIVE STATUS", x.body.error);
+      else render(x.body);
+      return fetch("/api/live/executions", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (j) { renderExecutions(j.executions); }).catch(function () {});
+    }).catch(function () { renderOffline("BACKEND OFFLINE", "The status server is not reachable. Start it with: pnpm soulmaker live:status:serve --status <run-dir>/status.json"); });
+  }
+  tick(); setInterval(tick, 2000);
+})();
+</script>
+</body>
+</html>

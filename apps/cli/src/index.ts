@@ -1,6 +1,9 @@
 #!/usr/bin/env -S npx tsx
 import { Command } from "commander";
 import { executionMainnetSendReport, executionMainnetSellReport, liveReadinessReport, MAINNET_HARD_CEILINGS, walletHotCreateReport, walletHotPubkeyReport } from "./live-mainnet-commands.js";
+import { createStatusServer, STATUS_SERVER_DEFAULT_PORT, STATUS_STALE_AFTER_SECONDS_DEFAULT } from "./live-status-server.js";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { PHASE6_READINESS_EVIDENCE_AREAS } from "@soulmaker/simulation";
 import {
   livePolicyInspectReport,
@@ -2967,6 +2970,26 @@ program
     const { text, exitCode } = walletHotPubkeyReport({}, { signerEnvVar: o.signerEnv, wallet: o.wallet });
     console.log(text);
     if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("live:status:serve")
+  .description("S111: serve the Command Center (Live) and the daemon's status.json over HTTP on localhost. GET /health, /api/live/status (RUNNING | STALE | STOPPED | NO_LIVE_STATUS — never fabricated), /api/live/positions, /api/live/executions (audit journal; signatures are public). Read-only; no wallet code; every response passes the redactor")
+  .option("--status <path>", "the daemon's status.json (e.g. runs/live/status.json) (required)")
+  .option("--audit-log <path>", "the daemon's audit.jsonl for /api/live/executions (default: sibling of --status)")
+  .option("--web-dir <dir>", "static web build to serve (default apps/web/public)")
+  .option("--port <n>", `port (default ${STATUS_SERVER_DEFAULT_PORT})`)
+  .option("--stale-after-seconds <n>", `heartbeat threshold before RUNNING becomes STALE (default ${STATUS_STALE_AFTER_SECONDS_DEFAULT})`)
+  .action(async (o: { status?: string; auditLog?: string; webDir?: string; port?: string; staleAfterSeconds?: string }) => {
+    if (!o.status) { console.log("Refusing: --status <path to status.json> is required."); process.exitCode = 1; return; }
+    const port = Number(o.port ?? STATUS_SERVER_DEFAULT_PORT);
+    const stale = Number(o.staleAfterSeconds ?? STATUS_STALE_AFTER_SECONDS_DEFAULT);
+    const webDir = o.webDir ?? join(dirname(fileURLToPath(import.meta.url)), "..", "..", "web", "public");
+    const auditLogPath = o.auditLog ?? join(dirname(o.status), "audit.jsonl");
+    const server = createStatusServer({ statusPath: o.status, auditLogPath, webDir, port, staleAfterSeconds: stale });
+    await new Promise<void>((resolveStart) => { server.listen(port, "127.0.0.1", () => resolveStart()); });
+    console.log(`Command Center (Live): http://127.0.0.1:${port}/live.html   status: ${o.status}   (Ctrl+C to stop; read-only)`);
+    await new Promise<void>((resolveStop) => { const stop = (): void => { server.close(() => resolveStop()); }; process.once("SIGINT", stop); process.once("SIGTERM", stop); });
   });
 
 program

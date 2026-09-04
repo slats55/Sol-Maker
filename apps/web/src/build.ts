@@ -22,6 +22,7 @@ import { DashboardShell } from "./components/layout.js";
 import { PAGES } from "./pages/registry.js";
 import { LIVE_CONSOLE_FILENAME, renderLiveConsoleHtml } from "./live/console.js";
 import { SNIPER_DASHBOARD_FILENAME, renderSniperDashboardHtml } from "./live/sniper-dashboard.js";
+import { COMMAND_CENTER_LIVE_FILENAME, renderCommandCenterLiveHtml } from "./live/command-center.js";
 
 const here = dirname(fileURLToPath(import.meta.url)); // apps/web/src
 const webRoot = dirname(here); // apps/web
@@ -58,4 +59,9 @@ console.log(`wrote public/${LIVE_CONSOLE_FILENAME} (live canary console)`);
 writeFileSync(join(publicDir, SNIPER_DASHBOARD_FILENAME), renderSniperDashboardHtml(), "utf8");
 console.log(`wrote public/${SNIPER_DASHBOARD_FILENAME} (sniper dashboard, read-only)`);
 
-console.log(`done: ${PAGES.length} pages + live console + sniper dashboard + assets/theme.css`);
+// S111: the COMMAND CENTER (LIVE) is a separate READ-ONLY surface that polls the status server
+// (live:status:serve). No wallet code, no demo data: offline/stale/no-position states are explicit.
+writeFileSync(join(publicDir, COMMAND_CENTER_LIVE_FILENAME), renderCommandCenterLiveHtml(), "utf8");
+console.log(`wrote public/${COMMAND_CENTER_LIVE_FILENAME} (command center live, read-only)`);
+
+console.log(`done: ${PAGES.length} pages + live console + sniper dashboard + command center live + assets/theme.css`);
