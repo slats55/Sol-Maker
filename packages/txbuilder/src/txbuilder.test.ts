@@ -65,6 +65,13 @@ describe("evaluateBuildRefusals — every refusal reason, individually", () => {
     });
   }
 
+  it("S111: the lamport spend cap applies to a SOL-input BUY only; a token->SOL SELL of a held amount is not compared to it, but the cap stays required", () => {
+    const sell = cleanRequest({ inputMint: USDC, candidateMint: WSOL, amountRaw: "16514881510", controls: { maxSpendLamports: "5000000", slippageCapBps: 100, riskScoreCap: 100 } });
+    expect(codes(sell)).not.toContain("build-refused-spend-over-cap");
+    expect(codes({ ...sell, controls: { maxSpendLamports: null, slippageCapBps: 100, riskScoreCap: 100 } })).toContain("build-refused-spend-cap-missing");
+    expect(codes(cleanRequest({ inputMint: WSOL, amountRaw: "16514881510", controls: { maxSpendLamports: "5000000", slippageCapBps: 100, riskScoreCap: 100 } }))).toContain("build-refused-spend-over-cap");
+  });
+
   it("refusals ACCUMULATE — a many-problem request reports them all at once", () => {
     const all = codes(cleanRequest({ killSwitchActive: true, executionMode: "paper", risk: null, slippageBps: 50000 }));
     expect(all.length).toBeGreaterThanOrEqual(4);

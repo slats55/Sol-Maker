@@ -202,11 +202,16 @@ export function evaluateBuildRefusals(request: BuildSwapRequest): BuildRefusal[]
     }
   }
 
-  // Spend cap: required, and the input amount must fit under it.
+  // Spend cap: required, and the input amount must fit under it. The cap is denominated in
+  // LAMPORTS, so it is compared only when the swap INPUT is SOL (a buy). For a token→SOL swap
+  // (a sell of something already held) the input is in token units and cannot be compared to a
+  // lamport cap; the sell is bounded by the position itself and the cap is still REQUIRED.
+  const WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112";
   const maxSpend = request.controls?.maxSpendLamports;
+  const inputIsSol = (request.inputMint ?? WRAPPED_SOL_MINT) === WRAPPED_SOL_MINT;
   if (typeof maxSpend !== "string" || !RAW_AMOUNT_RE.test(maxSpend)) {
     refusals.push({ code: "build-refused-spend-cap-missing", detail: "an explicit maxSpendLamports cap is required" });
-  } else if (typeof request.amountRaw === "string" && RAW_AMOUNT_RE.test(request.amountRaw) && BigInt(request.amountRaw) > BigInt(maxSpend)) {
+  } else if (inputIsSol && typeof request.amountRaw === "string" && RAW_AMOUNT_RE.test(request.amountRaw) && BigInt(request.amountRaw) > BigInt(maxSpend)) {
     refusals.push({ code: "build-refused-spend-over-cap", detail: `amountRaw ${request.amountRaw} exceeds maxSpendLamports ${maxSpend}` });
   }
 
