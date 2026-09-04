@@ -28,7 +28,15 @@ import {
   EXIT_REASONS,
 } from "@soulmaker/live";
 import type { ExitReason, MainnetCaps, MainnetExecutionReport, MainnetRpcSeams, PositionLedger } from "@soulmaker/live";
-import { Connection } from "@solana/web3.js";
+import { Connection, Keypair } from "@solana/web3.js";
+import type { HoldingsRpcLike } from "@soulmaker/execution";
+import { reconcileStartup } from "@soulmaker/live";
+import { createJupiterSwapBuilder } from "@soulmaker/txbuilder";
+import type { SwapTransactionBuilder } from "@soulmaker/txbuilder";
+import { createTxPreviewRpc, simulateUnsignedEnvelope } from "@soulmaker/txpreview";
+import type { TxPreviewRpc } from "@soulmaker/txpreview";
+import { resolveLiveArming, stopState } from "./live-executor.js";
+import type { LiveArming, LiveArmingOptions } from "./live-executor.js";
 
 export interface LiveMainnetContext {
   cwd?: string;
@@ -387,3 +395,237 @@ export async function executionMainnetSellReport(ctx: LiveMainnetContext = {}, o
 }
 
 export { LIVE_TRADING_ENV_FLAG, LIVE_TRADING_ENV_VALUE };
+
+// ---------------------------------------------------------------------------
+// wallet:hot:create / wallet:hot:pubkey (S111) — the ONLY safe way to obtain a bot signer.
+// ---------------------------------------------------------------------------
+
+export interface HotWalletCreateOptions {
+  out?: string;
+}
+
+/**
+ * Generate a FRESH hot-wallet keypair for the bot and write it to an operator-chosen `*.keypair`
+ * path (gitignored). Prints ONLY the public key. Never overwrites. This is deliberately not an
+ * import: a main-wallet secret must never enter this CLI.
+ */
+export function walletHotCreateReport(ctx: LiveMainnetContext = {}, opts: HotWalletCreateOptions = {}): LiveMainnetReport {
+  if (!opts.out) return { text: "Refusing: --out <path ending in .keypair> is required (gitignored by *.keypair).", exitCode: 1 };
+  if (!opts.out.endsWith(".keypair")) return { text: "Refusing: --out must end in .keypair so it is gitignored.", exitCode: 1 };
+  const path = resolvePath(ctx, opts.out);
+  if (existsSync(path)) return { text: `Refusing: ${opts.out} already exists — never overwritten. Use wallet:hot:pubkey to read its PUBLIC key.`, exitCode: 1 };
+  const kp = Keypair.generate();
+  try {
+    writeFileSync(path, JSON.stringify(Array.from(kp.secretKey)), { mode: 0o600 });
+  } catch (err) {
+    return { text: redactString(`Refusing: could not write ${opts.out} (${(err as Error).message})`), exitCode: 1 };
+  }
+  const lines = [
+    "HOT WALLET CREATED (secret written to the file below; NEVER printed, NEVER commit it)",
+    "=================================================================================",
+    `public key:  ${kp.publicKey.toBase58()}`,
+    `file:        ${opts.out}`,
+    "",
+    "Next:",
+    `  1. Fund ONLY this address with the small amount you are willing to risk (e.g. 0.05–0.1 SOL).`,
+    `  2. Point the bot at it by env var NAME, e.g.  $env:HOT_WALLET_FILE = "<absolute path to ${opts.out}>"`,
+    `  3. Verify: pnpm soulmaker wallet:hot:pubkey --signer-env HOT_WALLET_FILE`,
+    "  4. Use --wallet <this public key> --signer-env HOT_WALLET_FILE on execution:mainnet:* and live:sniper:daemon --mode live.",
+    "Do NOT use your main Phantom wallet. Do NOT put a seed phrase or key in any command.",
+  ];
+  return { text: lines.join("\n"), exitCode: 0 };
+}
+
+export interface HotWalletPubkeyOptions {
+  signerEnvVar?: string;
+  /** Optional: the --wallet the operator intends to pass; compared against the signer honestly. */
+  wallet?: string;
+}
+
+/** Derive and print ONLY the public key of the keypair file named by an env var. */
+export function walletHotPubkeyReport(ctx: LiveMainnetContext = {}, opts: HotWalletPubkeyOptions = {}): LiveMainnetReport {
+  const env = (ctx.env ?? process.env) as Record<string, string | undefined>;
+  if (!opts.signerEnvVar || !/^[A-Z][A-Z0-9_]*$/.test(opts.signerEnvVar)) return { text: "Refusing: --signer-env <ENV_VAR_NAME> is required (UPPER_SNAKE_CASE; the NAME, never a path or key).", exitCode: 1 };
+  const filePath = env[opts.signerEnvVar];
+  if (!filePath) return { text: `Refusing: env var ${opts.signerEnvVar} is not set.\nKEYPAIR FILE: not configured`, exitCode: 1 };
+  let text: string;
+  try {
+    text = (ctx.readFile ?? ((p: string): string => readFileSync(p, "utf8")))(filePath);
+  } catch {
+    return { text: `Refusing: the file named by ${opts.signerEnvVar} could not be read (path not shown).\nKEYPAIR FILE: missing or unreadable`, exitCode: 1 };
+  }
+  let bytes: unknown;
+  try {
+    bytes = JSON.parse(text);
+  } catch {
+    return { text: `Refusing: the file named by ${opts.signerEnvVar} is not a solana-keygen JSON array.\nKEYPAIR FILE: present but malformed`, exitCode: 1 };
+  }
+  if (!Array.isArray(bytes) || bytes.length !== 64 || bytes.some((b) => !Number.isInteger(b) || b < 0 || b > 255)) {
+    return { text: `Refusing: the file named by ${opts.signerEnvVar} is not a 64-byte keypair.\nKEYPAIR FILE: present but malformed`, exitCode: 1 };
+  }
+  const kp = Keypair.fromSecretKey(Uint8Array.from(bytes as number[]));
+  const pub = kp.publicKey.toBase58();
+  const lines = [`SIGNER: ${pub}`, `KEYPAIR FILE: present (named by ${opts.signerEnvVar}; path and contents never printed)`];
+  let exitCode = 0;
+  if (opts.wallet) {
+    if (opts.wallet === pub) lines.push("PUBLIC KEY MATCH: yes — --wallet equals the signer");
+    else { lines.push(`PUBLIC KEY MATCH: NO — --wallet ${opts.wallet} is NOT the signer; the bot signs with ${pub}. Fund and name THAT address.`); exitCode = 1; }
+  }
+  lines.push("This is the --wallet value the bot signs with. Fund THIS address; nothing else is the bot.");
+  return { text: lines.join("\n"), exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// live:readiness (S111) — the honest ladder: cluster → RPC → signer → balance → reserve → caps →
+// ledger → reconciliation → stops → quote → build → simulation → status interface.
+// ---------------------------------------------------------------------------
+
+export const READINESS_STATUSES = ["PASS", "BLOCKED_WALLET_UNFUNDED", "BLOCKED_CONFIG", "BLOCKED_STOP", "BLOCKED_RECONCILE", "FAIL_PROVIDER", "FAIL_QUOTE", "FAIL_BUILD", "FAIL_SIMULATION", "SKIPPED"] as const;
+export type ReadinessStatus = (typeof READINESS_STATUSES)[number];
+
+export interface ReadinessCheck { name: string; status: ReadinessStatus; detail: string }
+
+export interface ReadinessOptions extends LiveArmingOptions {
+  /** A mint to quote/build/simulate against (default: a deep-liquidity reference mint). */
+  probeMint?: string;
+  probeAmountSol?: string;
+  ledgerPath?: string;
+  statusPath?: string;
+  json?: boolean;
+}
+
+export interface ReadinessDeps {
+  createMainnetRpc?: (rpcUrl: string) => MainnetRpcSeams & { balance: MainnetRpcSeams["balance"] & HoldingsRpcLike };
+  swapBuilder?: SwapTransactionBuilder;
+  txPreview?: TxPreviewRpc;
+  readFile?: (path: string) => string;
+  /** Genesis + slot probe (tests inject; default: a real Connection). */
+  clusterProbe?: (rpcUrl: string) => Promise<{ genesis: string; slot: number }>;
+}
+
+export const MAINNET_GENESIS_HASH = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
+const PROBE_MINT_DEFAULT = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"; // BONK — deep liquidity reference
+
+export async function liveReadinessReport(ctx: LiveMainnetContext & ReadinessDeps = {}, opts: ReadinessOptions = {}): Promise<LiveMainnetReport> {
+  const checks: ReadinessCheck[] = [];
+  const env = (ctx.env ?? process.env) as Record<string, string | undefined>;
+  const push = (name: string, status: ReadinessStatus, detail: string): void => { checks.push({ name, status, detail }); };
+  const blocked = (): boolean => checks.some((c) => c.status !== "PASS" && c.status !== "SKIPPED");
+
+  // 1) Config + arming (the exact same resolver the daemon uses).
+  let config: Config | null = null;
+  let arming: LiveArming | null = null;
+  try {
+    config = loadConfig({ cwd: ctx.cwd, env: ctx.env, configPath: ctx.configPath });
+    push("Config", "PASS", `phase7LiveTradingReady=${config.phase7LiveTradingReady} caps.maxTradeSizeSol=${config.caps.maxTradeSizeSol}`);
+  } catch (err) {
+    push("Config", "BLOCKED_CONFIG", redactString(err instanceof ConfigError ? err.message.split("\n")[0] ?? "invalid" : String(err)));
+  }
+  if (config) {
+    const armed = resolveLiveArming(env, config, opts);
+    if (armed.ok) { arming = armed.value; push("Risk caps", "PASS", `spend≤${Number(arming.caps.maxSpendLamports) / LAMPORTS_PER_SOL} SOL, exposure≤${arming.maxOpenSolExposureLamports / LAMPORTS_PER_SOL} SOL, open≤${arming.caps.maxOpenPositions}, ${arming.maxTradesPerHour}/h, loss≤${arming.caps.sessionLossCapSol} SOL, slip≤${arming.caps.slippageCapBps}bps, impact≤${arming.maxPriceImpactPct}%, reserve≥${arming.caps.minSolReserveLamports / LAMPORTS_PER_SOL} SOL`); }
+    else push("Risk caps", "BLOCKED_CONFIG", armed.reasons.join("; "));
+  }
+
+  // 2) Signer identity (public key only) must equal --wallet.
+  let signerPub: string | null = null;
+  if (opts.signerEnvVar && /^[A-Z][A-Z0-9_]*$/.test(opts.signerEnvVar) && env[opts.signerEnvVar]) {
+    const r = walletHotPubkeyReport(ctx, { signerEnvVar: opts.signerEnvVar });
+    if (r.text.startsWith("SIGNER: ")) {
+      signerPub = (r.text.match(/^SIGNER: ([1-9A-HJ-NP-Za-km-z]{32,44})/m) ?? [])[1] ?? null;
+      if (signerPub && opts.wallet && signerPub !== opts.wallet) push("Signer", "BLOCKED_CONFIG", `signer is ${signerPub} but --wallet is ${opts.wallet} — the bot signs with the SIGNER; fund/name that one`);
+      else push("Signer", "PASS", signerPub ?? "unknown");
+    } else push("Signer", "BLOCKED_CONFIG", r.text.split("\n")[0] ?? "unreadable");
+  } else push("Signer", "BLOCKED_CONFIG", "--signer-env <ENV_VAR_NAME> not set or env var missing (no bot signer exists yet: run wallet:hot:create)");
+
+  const wallet = signerPub ?? opts.wallet ?? null;
+  const rpcUrl = opts.rpcUrl ?? env.SOULMAKER_RPC_URL ?? null;
+  // 3) Cluster + RPC + balance.
+  let sol: number | null = null;
+  let rpc: (MainnetRpcSeams & { balance: MainnetRpcSeams["balance"] & HoldingsRpcLike }) | null = null;
+  if (!rpcUrl) push("RPC", "FAIL_PROVIDER", "--rpc-url (or SOULMAKER_RPC_URL) is required");
+  else {
+    try {
+      const probe = ctx.clusterProbe ?? (async (u: string) => { const conn = new Connection(u, "confirmed"); const [genesis, slot] = await Promise.all([conn.getGenesisHash(), conn.getSlot("confirmed")]); return { genesis, slot }; });
+      const { genesis, slot } = await probe(rpcUrl);
+      if (genesis !== MAINNET_GENESIS_HASH) push("Cluster", "FAIL_PROVIDER", `NOT mainnet-beta (genesis ${genesis.slice(0, 8)}…)`);
+      else push("Cluster", "PASS", `mainnet-beta @ slot ${slot} via ${new URL(rpcUrl).host}`);
+      rpc = (ctx.createMainnetRpc ?? (createMainnetRpcSeams as ReadinessDeps["createMainnetRpc"]))!(rpcUrl);
+      push("RPC", "PASS", rpc.endpointHost);
+    } catch (err) {
+      push("RPC", "FAIL_PROVIDER", redactString(String((err as Error).message ?? err)).slice(0, 120));
+    }
+  }
+  if (rpc && wallet) {
+    try {
+      sol = await rpc.balance.getBalanceLamports(wallet);
+      const reserve = arming?.caps.minSolReserveLamports ?? 0;
+      const spend = arming ? Number(arming.caps.maxSpendLamports) : 0;
+      if (sol === 0) push("Balance", "BLOCKED_WALLET_UNFUNDED", `${wallet} holds 0 SOL on mainnet-beta`);
+      else push("Balance", "PASS", `${(sol / LAMPORTS_PER_SOL).toFixed(6)} SOL (${sol} lamports) at ${wallet}`);
+      if (sol > 0) push("Reserve", sol - spend - 10_000 >= reserve ? "PASS" : "BLOCKED_WALLET_UNFUNDED", `after one max buy (${spend} lamports + fee) the wallet keeps ${sol - spend - 10_000} ≥ reserve ${reserve}? `);
+    } catch (err) {
+      push("Balance", "FAIL_PROVIDER", redactString(String((err as Error).message ?? err)).slice(0, 120));
+    }
+  } else push("Balance", "SKIPPED", "no RPC or no wallet");
+
+  // 4) Ledger + reconciliation (read-only pass; resolutions are NOT journaled here).
+  let ledger: PositionLedger = buildLedger();
+  if (opts.ledgerPath && existsSync(resolvePath(ctx, opts.ledgerPath))) {
+    try { ledger = validateLedger(readJson(ctx, opts.ledgerPath, "position ledger")); push("Ledger", "PASS", `${ledger.totals.open} open / ${ledger.totals.closed} closed at ${opts.ledgerPath}`); }
+    catch (err) { push("Ledger", "BLOCKED_RECONCILE", redactString((err as Error).message).slice(0, 120)); }
+  } else push("Ledger", "PASS", opts.ledgerPath ? `${opts.ledgerPath} absent (fresh ledger)` : "no --ledger given (fresh ledger)");
+  if (rpc && wallet) {
+    try {
+      const rec = await reconcileStartup({ wallet, ledger, auditEntries: [], rpc: { confirm: rpc.confirm, balance: rpc.balance }, nowMs: () => Date.now(), clock: () => new Date().toISOString(), confirmTimeoutMs: 5_000 });
+      const open = rec.ledger.positions.filter((p) => p.status === "open" && p.kind === "live").length;
+      push("Reconciliation", rec.tradingAllowed ? "PASS" : "BLOCKED_RECONCILE", rec.tradingAllowed ? `no unresolved positions (${open} open live position(s) confirmed on chain${rec.orphans.length > 0 ? `; ${rec.orphans.length} external holding(s) ignored` : ""})` : rec.blockingReasons.join("; "));
+    } catch (err) { push("Reconciliation", "FAIL_PROVIDER", redactString(String((err as Error).message ?? err)).slice(0, 120)); }
+  } else push("Reconciliation", "SKIPPED", "no RPC or no wallet");
+
+  // 5) Stops.
+  const stop = stopState({ cwd: ctx.cwd, env, configKillSwitch: config?.killSwitch === true });
+  push("Hard stop", stop === "hard-stop" ? "BLOCKED_STOP" : "PASS", stop === "hard-stop" ? "ON — kill switch / emergency stop active (nothing can send)" : "OFF");
+  push("Safe stop", stop === "safe-stop" ? "BLOCKED_STOP" : "PASS", stop === "safe-stop" ? "ON — .soulmaker-no-entry / SOULMAKER_NO_NEW_ENTRIES (no new entries)" : "OFF");
+
+  // 6) Quote → build → simulation against a deep-liquidity probe mint with the REAL wallet as fee payer.
+  const probeMint = opts.probeMint ?? PROBE_MINT_DEFAULT;
+  const probeSol = Number(opts.probeAmountSol ?? "0.005");
+  if (wallet && rpcUrl && Number.isFinite(probeSol) && probeSol > 0) {
+    try {
+      const builder = ctx.swapBuilder ?? createJupiterSwapBuilder();
+      const built = await builder.build({ candidateMint: probeMint, inputMint: "So11111111111111111111111111111111111111112", amountRaw: String(Math.round(probeSol * LAMPORTS_PER_SOL)), slippageBps: arming?.slippageBps ?? 100, walletPublicKey: wallet, network: "mainnet-beta", executionMode: "mainnet-dry-run", killSwitchActive: false, risk: { score: 0, decision: "PASS_FOR_PAPER_EVALUATION", flags: [] }, controls: { maxSpendLamports: String(Math.round(probeSol * LAMPORTS_PER_SOL)), slippageCapBps: arming?.caps.slippageCapBps ?? 500, riskScoreCap: 100 } });
+      if (!built.built) { push("Jupiter quote", "FAIL_QUOTE", built.refusals.map((r) => r.code).join(", ")); push("Transaction build", "SKIPPED", "no quote"); push("Simulation", "SKIPPED", "no build"); }
+      else {
+        push("Jupiter quote", "PASS", `${built.quoteFacts.inAmountRaw} → ${built.quoteFacts.outAmountRaw} raw, impact ${built.quoteFacts.priceImpactPct ?? "?"}%`);
+        push("Transaction build", "PASS", `v0 envelope for fee payer ${wallet}`);
+        const preview = ctx.txPreview ?? createTxPreviewRpc(rpcUrl);
+        const sim = await simulateUnsignedEnvelope(preview, built.envelope);
+        push("Simulation", sim.outcome === "simulated-ok" ? "PASS" : "FAIL_SIMULATION", sim.outcome === "simulated-ok" ? `simulated-ok @ slot ${sim.slot ?? "?"}, ${sim.unitsConsumed ?? "?"} CU` : `${sim.outcome}: ${sim.classification} ${sim.errLabel ?? ""}`.trim());
+      }
+    } catch (err) { push("Jupiter quote", "FAIL_QUOTE", redactString(String((err as Error).message ?? err)).slice(0, 120)); }
+  } else { push("Jupiter quote", "SKIPPED", "no wallet/RPC"); push("Transaction build", "SKIPPED", ""); push("Simulation", "SKIPPED", ""); }
+
+  // 7) Status interface: is a daemon publishing status.json?
+  if (opts.statusPath) {
+    const sp = resolvePath(ctx, opts.statusPath);
+    if (!existsSync(sp)) push("Runtime status", "SKIPPED", `${opts.statusPath} absent (no daemon has run yet)`);
+    else { try { const s = JSON.parse(readFileSync(sp, "utf8")) as { at?: string; daemon?: { running?: boolean; mode?: string } }; push("Runtime status", "PASS", `${s.daemon?.running ? "RUNNING" : "STOPPED"} ${s.daemon?.mode ?? ""} @ ${s.at ?? "?"}`); } catch { push("Runtime status", "SKIPPED", "status.json unreadable"); } }
+  } else push("Runtime status", "SKIPPED", "no --status given");
+
+  // READY_TO_ARM: everything green. READY_TO_SIMULATE: only signer/arming config missing (chain side green). BLOCKED: anything else.
+  const chainNames = new Set(["Cluster", "RPC", "Balance", "Reserve", "Ledger", "Reconciliation", "Hard stop", "Safe stop", "Jupiter quote", "Transaction build", "Simulation"]);
+  const chainGreen = [...chainNames].every((n) => checks.find((c) => c.name === n)?.status === "PASS" || checks.find((c) => c.name === n)?.status === "SKIPPED");
+  const onlyArmingMissing = checks.filter((c) => c.status !== "PASS" && c.status !== "SKIPPED").every((c) => c.name === "Signer" || c.name === "Risk caps" || c.name === "Config");
+  const verdict = !blocked() ? "READY_TO_ARM" : chainGreen && onlyArmingMissing ? "READY_TO_SIMULATE" : "BLOCKED";
+  const reasons = checks.filter((c) => c.status !== "PASS" && c.status !== "SKIPPED").map((c) => `${c.name}: ${c.detail}`);
+  if (opts.json) return { text: JSON.stringify(redactValue({ schemaVersion: "live.readiness.v1", at: new Date().toISOString(), verdict, checks, reasons, notProfitabilityClaim: true }), null, 2), exitCode: verdict === "READY_TO_ARM" ? 0 : 1 };
+  const width = 24;
+  const lines = ["SOL MAKER LIVE READINESS", "========================"];
+  for (const c of checks) lines.push(`${(c.name + " ").padEnd(width, ".")} ${c.status}${c.detail ? "  " + c.detail : ""}`);
+  lines.push("", `LIVE READINESS: ${verdict}`);
+  for (const r of reasons) lines.push(`Reason: ${r}`);
+  if (verdict === "READY_TO_ARM") lines.push("READY_TO_ARM means every gate that can be checked without sending is green. It is NOT a profit claim and arms nothing by itself.");
+  if (verdict === "READY_TO_SIMULATE") lines.push("READY_TO_SIMULATE: the chain side (mainnet, RPC, balance, quote, build, simulation) is green; the bot cannot arm until a signer + live config exist. Next: wallet:hot:create.");
+  return { text: redactString(lines.join("\n")).replace(/\[REDACTED\]/g, (m) => m), exitCode: verdict === "READY_TO_ARM" ? 0 : 1 };
+}

@@ -114,7 +114,7 @@ describe("S103 command-surface — flag scan: no arm / bypass / force-live flag"
     // It must NOT appear on any devnet broadcaster; on mainnet it appears ONLY on the S111 allowlist.
     for (const { command, block } of commandBlocks()) {
       if (/--i-understand-this-can-lose-real-money/.test(block)) {
-        expect(["execution:status", "execution:build", "live:sniper:daemon", ...MAINNET_SEND_COMMAND_ALLOWLIST], command).toContain(command);
+        expect(["execution:status", "execution:build", "live:sniper:daemon", "live:readiness", ...MAINNET_SEND_COMMAND_ALLOWLIST], command).toContain(command);
       }
     }
   });

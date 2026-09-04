@@ -1,6 +1,6 @@
 #!/usr/bin/env -S npx tsx
 import { Command } from "commander";
-import { executionMainnetSendReport, executionMainnetSellReport, MAINNET_HARD_CEILINGS } from "./live-mainnet-commands.js";
+import { executionMainnetSendReport, executionMainnetSellReport, liveReadinessReport, MAINNET_HARD_CEILINGS, walletHotCreateReport, walletHotPubkeyReport } from "./live-mainnet-commands.js";
 import { PHASE6_READINESS_EVIDENCE_AREAS } from "@soulmaker/simulation";
 import {
   livePolicyInspectReport,
@@ -2943,9 +2943,63 @@ mainnetCommonOptions(
     .option("--reason <reason>", "exit reason: take-profit | stop-loss | trailing-stop | time-exit | emergency | kill-switch | operator-manual (default operator-manual)"),
 ).action(async (o: Record<string, unknown>) => {
   const { text, exitCode } = await executionMainnetSellReport({}, { ...toMainnetOpts(o), positionId: o.positionId as string | undefined, reason: o.reason as string | undefined });
+
   console.log(text);
   if (exitCode !== 0) process.exitCode = exitCode;
 });
+
+program
+  .command("wallet:hot:create")
+  .description("S111: generate a FRESH hot-wallet keypair for the bot at --out <path>.keypair (gitignored) and print ONLY its public key. Never overwrites; never imports a main wallet. Fund only this address with what you are willing to risk")
+  .option("--out <path>", "destination file path ending in .keypair (required)")
+  .action((o: { out?: string }) => {
+    const { text, exitCode } = walletHotCreateReport({}, { out: o.out });
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("wallet:hot:pubkey")
+  .description("S111: print ONLY the public key of the keypair file named by --signer-env <ENV_VAR_NAME>. This is the address the bot signs with — the one to fund and to pass as --wallet")
+  .option("--signer-env <ENV_VAR_NAME>", "NAME of the env var holding the keypair file PATH (required)")
+  .option("--wallet <pubkey>", "optional: the --wallet you intend to use; reported as a match or an honest mismatch (exit 1)")
+  .action((o: { signerEnv?: string; wallet?: string }) => {
+    const { text, exitCode } = walletHotPubkeyReport({}, { signerEnvVar: o.signerEnv, wallet: o.wallet });
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
+
+program
+  .command("live:readiness")
+  .description("S111: the honest live-readiness ladder — config, caps (same resolver as the daemon), signer PUBLIC key vs --wallet, mainnet genesis + slot, RPC, balance + reserve, ledger, read-only reconciliation, HARD/SAFE stop, live Jupiter quote → v0 build → mainnet simulation for the real fee payer, runtime status. Prints PASS / BLOCKED_* / FAIL_* per check and READY_TO_ARM or BLOCKED with exact reasons. Arms nothing; sends nothing")
+  .option("--wallet <pubkey>", "the hot-wallet PUBLIC key (must equal the signer)")
+  .option("--signer-env <ENV_VAR_NAME>", "NAME of the env var holding the keypair file PATH")
+  .option("--rpc-url <url>", "mainnet RPC (or SOULMAKER_RPC_URL)")
+  .option("--ledger <path>", "position ledger to reconcile (optional)")
+  .option("--status <path>", "a daemon status.json to check (optional)")
+  .option("--probe-mint <mint>", "mint to quote/build/simulate against (default BONK)")
+  .option("--probe-amount-sol <sol>", "probe amount (default 0.005)")
+  .option("--i-understand-this-can-lose-real-money", "the explicit acknowledgment (checked as part of arming)")
+  .option("--max-spend-sol <sol>", "per-trade spend cap")
+  .option("--max-open-sol-exposure-sol <sol>", "aggregate open exposure cap")
+  .option("--max-open-positions <n>", "concurrent live positions cap")
+  .option("--max-trades-per-hour <n>", "entries per rolling hour")
+  .option("--session-loss-cap-sol <sol>", "24h realized-loss cap")
+  .option("--slippage-bps <bps>", "slippage cap")
+  .option("--max-price-impact-pct <pct>", "price-impact cap")
+  .option("--min-sol-reserve-sol <sol>", "SOL reserve the wallet must keep")
+  .option("--risk-score-cap <n>", "advisory risk score cap")
+  .option("--json", "emit the readiness report as JSON")
+  .action(async (o: Record<string, unknown>) => {
+    const { text, exitCode } = await liveReadinessReport({}, {
+      wallet: o.wallet as string | undefined, signerEnvVar: o.signerEnv as string | undefined, rpcUrl: o.rpcUrl as string | undefined, ledgerPath: o.ledger as string | undefined, statusPath: o.status as string | undefined,
+      probeMint: o.probeMint as string | undefined, probeAmountSol: o.probeAmountSol as string | undefined, iUnderstandThisCanLoseRealMoney: Boolean(o.iUnderstandThisCanLoseRealMoney),
+      maxSpendSol: o.maxSpendSol as string | undefined, maxOpenSolExposureSol: o.maxOpenSolExposureSol as string | undefined, maxOpenPositions: o.maxOpenPositions as string | undefined, maxTradesPerHour: o.maxTradesPerHour as string | undefined,
+      sessionLossCapSol: o.sessionLossCapSol as string | undefined, slippageBps: o.slippageBps as string | undefined, maxPriceImpactPct: o.maxPriceImpactPct as string | undefined, minSolReserveSol: o.minSolReserveSol as string | undefined, riskScoreCap: o.riskScoreCap as string | undefined, json: Boolean(o.json),
+    });
+    console.log(text);
+    if (exitCode !== 0) process.exitCode = exitCode;
+  });
 
 program
   .command("engine:quote:score")
