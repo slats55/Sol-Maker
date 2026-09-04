@@ -166,7 +166,7 @@ describe("live:sniper:daemon — orchestration", () => {
   it("S111: --mode live without arming FAILS CLOSED; an unknown mode is refused; a missing out-dir is refused", async () => {
     const { dir, cleanup } = workspace();
     try {
-      const live = await liveSniperDaemonReport(daemonCtx(dir), { mode: "live", outDir: "runs/x" });
+      const live = await liveSniperDaemonReport(daemonCtx(dir, { env: {} }), { mode: "live", outDir: "runs/x" }); // explicit empty env: never inherit an operator shell
       expect(live.exitCode).toBe(1);
       expect(live.text).toMatch(/fail closed/);
       expect(live.text).toMatch(/SOLMAKER_ENABLE_LIVE_TRADING/);
