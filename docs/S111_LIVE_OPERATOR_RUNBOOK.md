@@ -46,7 +46,7 @@ Environment (session):
 
 ```powershell
 $env:SOULMAKER_RPC_URL = "https://api.mainnet-beta.solana.com"
-$env:SOULMAKER_ENABLE_LIVE_TRADING = "I_UNDERSTAND_REAL_FUNDS_ARE_AT_RISK"   # exact sentence; required to arm
+$env:SOLMAKER_ENABLE_LIVE_TRADING = "I_UNDERSTAND_REAL_FUNDS_ARE_AT_RISK"   # exact sentence; required to arm
 ```
 
 Use a private RPC provider for live operation if you can; the public endpoint rate-limits.
