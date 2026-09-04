@@ -138,9 +138,11 @@ export function createJupiterSwapBuilder(options: JupiterSwapBuilderOptions = {}
     if (quote.outputMint !== request.candidateMint || quote.inputMint !== request.inputMint) {
       return { built: false, refusals: [refusal("build-refused-quote-mint-mismatch", "the fresh quote's mints contradict the request — refused")] };
     }
-    // Defense in depth: the FRESH quote's input amount must still fit the spend cap.
+    // Defense in depth: the FRESH quote's input amount must still fit the spend cap — when the input
+    // is SOL (a buy). A token→SOL sell's input is token units and is bounded by the held position.
     const maxSpend = request.controls?.maxSpendLamports as string;
-    if (BigInt(quote.inAmount) > BigInt(maxSpend)) {
+    const inputIsSol = (request.inputMint ?? "So11111111111111111111111111111111111111112") === "So11111111111111111111111111111111111111112";
+    if (inputIsSol && BigInt(quote.inAmount) > BigInt(maxSpend)) {
       return { built: false, refusals: [refusal("build-refused-spend-over-cap", "the fresh quote's inAmount exceeds maxSpendLamports")] };
     }
 
