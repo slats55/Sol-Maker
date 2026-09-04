@@ -33,7 +33,7 @@ export interface BalanceRpc {
 }
 
 const SPL_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEHdkAS6EPFLC1PHnBqCXEpPxuEb";
+const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 
 interface ParsedTokenAccountLike {
   account: { data: { parsed?: { info?: { mint?: string; tokenAmount?: { amount?: string } } } } };
