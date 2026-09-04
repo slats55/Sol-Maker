@@ -892,7 +892,7 @@ export async function liveSniperDaemonReport(ctx: LiveDaemonContext = {}, opts: 
   lines.push(`profile: ${profile.name}   loops: ${state.totals.loops}   ended by: ${endedBy}`);
   lines.push(`candidates: ${state.totals.candidatesSeen} seen, ${state.totals.newCandidates} new, ${state.totals.duplicatesSkipped} duplicates`);
   lines.push(`risk: ${state.totals.riskChecked} checked, ${state.totals.riskRejected} rejected   quotes: ${state.totals.quotesFetched} fetched, ${state.totals.quotesUnavailable} unavailable`);
-  lines.push(`paper positions: ${state.totals.positionsOpened} opened, ${state.totals.positionsClosed} closed, ${ledger.totals.open} still open`);
+  lines.push(`${mode} positions: ${state.totals.positionsOpened} opened, ${state.totals.positionsClosed} closed, ${ledger.totals.open} still open`);
   lines.push(`known realized PnL: ${ledger.totals.realizedPnlKnownLamports} lamports   edge: ${performance.edge.verdict}`);
   lines.push("");
   lines.push(`artifacts: ${outDir}`);
